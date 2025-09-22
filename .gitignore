@@ -4,7 +4,12 @@ public/js
 /target
 /checkouts
 /src/gen
-
+.clj-kondo
+.pnpm-store
+.cpcache
+.pnpm-lock.yaml
+.pnpm-workspace.yaml
+.pnpm-workspace.yaml.lock
 pom.xml
 pom.xml.asc
 *.iml

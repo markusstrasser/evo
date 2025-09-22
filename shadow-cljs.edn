@@ -1,12 +1,14 @@
 ;; shadow-cljs configuration
 {:source-paths
- ["src"]
+ ["src" "src/test"]
 
-  :dependencies
-  [[no.cjohansen/replicant "2025.06.21"]
-   [metosin/malli "0.19.1"]
-   [datascript "1.7.5"]]
+ :dependencies
+ [[no.cjohansen/replicant "2025.06.21"]
+  [metosin/malli "0.19.1"]
+  [datascript "1.7.5"]]
  :dev-http {8080 "public"}
+
+  :nrepl {:port 55449}
 
  :builds
  {:frontend
