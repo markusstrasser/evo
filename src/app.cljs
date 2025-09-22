@@ -11,4 +11,13 @@
       ;; We only care about DOM events for this logic.
   ;; Initial render
   (let [root (.getElementById js/document "root")]
-    (r/render root [:div "Hello World"])))
+    ;; Initial
+    (r/render root [:div "Store: " @store])
+
+    (add-watch store :render
+               (fn [key atom old-state new-state]
+                 (r/render root [:div "Store: " new-state])))))
+
+
+
+
