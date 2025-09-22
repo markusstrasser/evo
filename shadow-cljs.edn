@@ -12,7 +12,7 @@
 
  :dev-http {8080 "public"}
 
-  :nrepl {:port 55449}
+   :nrepl {:port 55449}
  :compiler-options {:externs ["datascript/externs.js"]}
  :builds
  {:frontend
