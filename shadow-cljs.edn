@@ -2,8 +2,10 @@
 {:source-paths
  ["src"]
 
- :dependencies
- []
+  :dependencies
+  [[no.cjohansen/replicant "2025.06.21"]
+   [metosin/malli "0.19.1"]
+   [datascript "1.7.5"]]
  :dev-http {8080 "public"}
 
  :builds
