@@ -29,10 +29,6 @@ The required namespace "shadow.cljs.devtools.api" is not available
 ```
 **Reality**: That's a Clojure-only namespace. In ClojureScript REPL, just work directly.
 
-### 4. Store State Reset  
-**Error I Made**: Updated store to `{:a 42, :message "Hello from Claude!"}` but later `@app/store` returned `{:a 5}`
-**Reality**: Hot reload or REPL session reset the atom. Always check current state before assuming.
-
 ### 5. File Write Safety Check
 **Error I Made**: Tried to overwrite `agent.md` without reading it first
 ```

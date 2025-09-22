@@ -5,6 +5,7 @@ public/js
 /checkouts
 /src/gen
 .clj-kondo
+.archived
 .pnpm-store
 .cpcache
 .pnpm-lock.yaml

@@ -4,5 +4,13 @@
   "private": true,
   "devDependencies": {
     "shadow-cljs": "3.2.0"
+  },
+  "scripts": {
+    "start": "shadow-cljs watch frontend",
+    "mcp": "clojure -M:nrepl",
+    "dev": "concurrently --kill-others \"npm start\" \"npm run mcp\""
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
   }
 }
