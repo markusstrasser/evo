@@ -61,7 +61,7 @@
 (defn move! [conn entity-id pos]
   (let [db @conn
         ;; cycle check via rule-free closure (slow is fine)
-        desc (loop [fr #{entity-id} acc #{}]
+        desc (loop [fr #{entity-id} acc #{entity-id}]
                (if (empty? fr) acc
                    (let [kids (set (mapcat #(children-ids db %) fr))]
                      (recur kids (into acc kids)))))
@@ -191,7 +191,7 @@
     (insert! conn {:id "validator", :type "validator", :pattern "email"} {:parent "root"})
 
     ; Add cross-references using the :references attribute
-    (update! conn "input" {:references [[:id "validator"]]})
+    (update! conn "input" {:references [:id "validator"]})
 
     ; Verify relationships exist
     (is (= 1 (count (:references (e @conn "input")))))
@@ -203,3 +203,4 @@
                                  [?e :id ?id]]
                                @conn [:id "validator"])]
       (is (= ["input"] validator-users)))))
+
