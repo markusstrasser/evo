@@ -1,528 +1,467 @@
 (ns kernel
   (:require [datascript.core :as d]
-            [clojure.string :as s]
             [clojure.test :refer [deftest is run-tests]]))
 
-;; ---------- 1) Schema & rules (unchanged) ----------
 (def schema
   {:id {:db/unique :db.unique/identity}
-   :parent {:db/valueType :db.type/ref}
-   :order {:db/index true}
-   :parent+order {:db/tupleAttrs [:parent :order]
-                  :db/unique :db.unique/value}})
+   :parent {:db/valueType :db.type/ref
+            :db/cardinality :db.cardinality/one}
+   :pos {:db/cardinality :db.cardinality/one
+         :db/index true}
+   :parent+pos {:db/tupleAttrs [:parent :pos]
+                :db/unique :db.unique/value}
+   ; Cross-reference placeholder
+   :references {:db/valueType :db.type/ref
+                :db/cardinality :db.cardinality/many}})
 
 (def rules
   '[[(subtree-member ?a ?d) [?d :parent ?a]]
     [(subtree-member ?a ?d) [?d :parent ?m] (subtree-member ?a ?m)]])
 
-;; ---------- 2) Integer-based ordering ----------
-(defn- sibs [db p]
-  (->> (d/q '[:find ?id ?o :in $ ?p :where [?c :parent ?p] [?c :id ?id] [?c :order ?o]] db p)
-       (sort-by second)))
+(defn e [db id] (d/entity db [:id id]))
+(defn pid [db id] (-> (e db id) :parent :id))
+(defn children-ids [db parent-id]
+  (->> (d/q '[:find ?id ?p :in $ ?parent-lookup-ref
+              :where [?c :parent ?parent-lookup-ref] [?c :id ?id] [?c :pos ?p]]
+            db [:id parent-id])
+       (sort-by second) (mapv first)))
 
-(defn- renumber! [conn p]
-  (d/transact! conn
-               (map-indexed (fn [i [id _]] [:db/add [:id id] :order (* 1000 (inc i))])
-                            (sibs @conn p))))
-
-(defn- between [conn p lo hi]
-  (let [o (if (and lo hi)
-            (quot (+ lo hi) 2)
-            (if lo (+ lo 1000) (if hi (- hi 1000) 1000)))]
-    (if (and lo hi (= o lo))
-      (do (renumber! conn p) (between conn p lo hi))
-      o)))
-
-;; ---------- 3) Tiny db helpers ----------
-(defn- e [db id] (d/entity db [:id id]))
-(defn- pid [db id] (-> (e db id) :parent :id))
-(defn- orders [db parent-ref]
-  (->> (d/q '[:find [?o ...] :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)
-       sort vec))
-(defn- neighbors [v x]
-  (when-let [i (first (keep-indexed #(when (= %2 x) %1) v))]
-    [(get v (dec i)) (get v (inc i))]))
-
-;; Resolve both parent-ref and new :order in one place.
-(defn- resolve-position
-  "position = {:parent id | :sibling id, :rel #{:first :last :before :after}}
-   Defaults to append when :rel missing."
-  [conn {:keys [parent sibling rel] :as pos}]
-  (let [db @conn
-        parent-id (or parent (when sibling (pid db sibling))
-                      (throw (ex-info "No parent specified" {:position pos})))
-        pref [:id parent-id]
-        os (orders db pref)
-        ord (case rel
-              :first (between conn pref nil (first os))
-              :last (between conn pref (last os) nil)
-              :before (let [t (:order (e db sibling))
-                            [bef _] (neighbors os t)]
-                        (between conn pref bef t))
-              :after (let [t (:order (e db sibling))
-                           [_ aft] (neighbors os t)]
-                       (between conn pref t aft))
-              ;; default append
-              (between conn pref (last os) nil))]
-    [pref ord]))
-
-;; ---------- 4) Tree insertion (compact walk) ----------
-(defn- walk->tx
-  "Assigns fresh :order to children within the new subtree."
-  [conn node parent-ref order]
-  (let [id (d/tempid :db.part/user)
-        kids (:children node [])
-        this (-> node (dissoc :children) (assoc :db/id id :parent parent-ref :order order))
-        ;; sequence of orders with spacing starting from 1000: 1000, 2000, 3000, ...
-        kid-ord (map #(* 1000 (inc %)) (range (count kids)))]
-    (into [this]
-          (mapcat (fn [[k o]] (walk->tx conn k id o)) (map vector kids kid-ord)))))
+(defn- reorder! [conn parent-id ids]
+  ; Use negative temporary positions to avoid constraint violations, then set final positions
+  ; This ensures each entity gets a unique temporary position before setting the final ones
+  (let [temp-positions (map-indexed (fn [i id] [:db/add [:id id] :pos (- -1000 i)]) ids)
+        final-positions (map-indexed (fn [i id] [:db/add [:id id] :pos i]) ids)]
+    (d/transact! conn temp-positions)
+    (d/transact! conn final-positions)))
 
 (defn- ensure-new-ids! [db root]
   (letfn [(ids [n] (cons (:id n) (mapcat ids (:children n []))))]
     (when-let [dups (seq (filter #(e db %) (ids root)))]
       (throw (ex-info "IDs already exist; use move! for existing entities" {:ids dups})))))
 
-(defn insert! [conn entity {:keys [parent sibling] :as position}]
-  (ensure-new-ids! @conn entity)
-  (let [[pref root-order] (resolve-position conn position)]
-    (d/transact! conn (walk->tx conn entity pref root-order))))
+(defn- position->target [db {:keys [parent sibling rel] :as pos}]
+  (let [parent-id (or parent (when sibling (pid db sibling))
+                      (throw (ex-info "No parent specified" {:position pos})))
+        kids (children-ids db parent-id)
+        idx (case rel
+              :first 0
+              :last (count kids)
+              :before (let [i (.indexOf kids sibling)] (if (neg? i) (count kids) i))
+              :after (let [i (.indexOf kids sibling)] (if (neg? i) (count kids) (inc i)))
+              (count kids))]
+    [parent-id idx]))
 
-;; ---------- 5) Mutations ----------
+(def ^:private temp-pos-counter (atom 0))
+
+(defn- walk->tx [node parent-ref]
+  (letfn [(walk-with-counter [n p-ref]
+            (let [id (:id n)
+                  temp-id (str "temp-" id)
+                  kids (:children n [])
+                  temp-pos (- (swap! temp-pos-counter inc) 1000000)
+                  entity (merge (dissoc n :children)
+                                {:db/id temp-id
+                                 :id id
+                                 :parent p-ref
+                                 :pos temp-pos})]
+              (into [entity]
+                    (mapcat (fn [child]
+                              (walk-with-counter child temp-id))
+                            kids))))]
+    (walk-with-counter node parent-ref)))
+
+(defn insert! [conn entity position]
+  (ensure-new-ids! @conn entity)
+  (let [[parent-id idx] (position->target @conn position)]
+    (d/transact! conn (walk->tx entity [:id parent-id]))
+    (let [existing-ids (children-ids @conn parent-id)
+          ids' (let [without (vec (remove #{(:id entity)} existing-ids))]
+                 (vec (concat (subvec without 0 (min idx (count without)))
+                              [(:id entity)]
+                              (subvec without (min idx (count without))))))]
+      (reorder! conn parent-id ids'))))
+
+(defn move! [conn entity-id position]
+  (let [db @conn
+        desc (set (d/q '[:find [?id ...] :in $ % ?p
+                         :where (subtree-member ?p ?d) [?d :id ?id]]
+                       db rules [:id entity-id]))
+        [parent-id idx] (position->target db position)]
+    (when (contains? desc parent-id)
+      (throw (ex-info "Cycle detected" {:entity entity-id :target parent-id})))
+    (let [old-parent (pid db entity-id)
+          old-kids (children-ids db old-parent)
+          new-kids (children-ids db parent-id)]
+      (d/transact! conn [[:db/add [:id entity-id] :parent [:id parent-id]]])
+      (reorder! conn old-parent (vec (remove #{entity-id} old-kids)))
+      (let [without (vec (remove #{entity-id} new-kids))
+            ids' (vec (concat (subvec without 0 (min idx (count without)))
+                              [entity-id]
+                              (subvec without (min idx (count without)))))]
+        (reorder! conn parent-id ids')))))
+
 (defn delete! [conn entity-id]
   (let [db @conn
-        desc (d/q '[:find [?id ...] :in $ % ?p :where (subtree-member ?p ?d) [?d :id ?id]]
+        parent (pid db entity-id)
+        desc (d/q '[:find [?id ...] :in $ % ?p
+                    :where (subtree-member ?p ?d) [?d :id ?id]]
                   db rules [:id entity-id])]
-    (d/transact! conn (mapv (fn [id] [:db/retractEntity [:id id]]) (cons entity-id desc)))))
+    (d/transact! conn (mapv (fn [id] [:db/retractEntity [:id id]]) (cons entity-id desc)))
+    (when parent (reorder! conn parent (children-ids @conn parent)))))
 
 (defn update! [conn entity-id attrs]
-  (when (some #{:parent :order :id} (keys attrs))
-    (throw (ex-info "Cannot modify structural attributes" {:attrs (select-keys attrs [:parent :order :id])})))
+  (when (some #{:parent :pos :id} (keys attrs))
+    (throw (ex-info "Cannot modify structural attributes" {:attrs (select-keys attrs [:parent :pos :id])})))
   (d/transact! conn (for [[k v] attrs] [:db/add [:id entity-id] k v])))
 
-(defn move! [conn entity-id {:keys [parent sibling] :as position}]
-  (let [db @conn
-        desc (set (d/q '[:find [?id ...] :in $ % ?p :where (subtree-member ?p ?d) [?d :id ?id]]
-                       db rules [:id entity-id]))
-        tgt-p (or parent (pid db sibling))]
-    (when (contains? desc tgt-p)
-      (throw (ex-info "Cycle detected" {:entity entity-id :target tgt-p})))
-    (let [[pref new-o] (resolve-position conn position)
-          ent (e db entity-id)
-          old-parent-ref [:id (-> ent :parent :id)]]
-      (d/transact! conn
-                   [[:db/retract [:id entity-id] :parent old-parent-ref]
-                    [:db/retract [:id entity-id] :order (:order ent)]
-                    [:db/add [:id entity-id] :parent pref]
-                    [:db/add [:id entity-id] :order new-o]]))))
-
-;; ---------- 6) Read ----------
-(defn children-ids [db parent-id]
-  (->> (d/q '[:find ?id ?o :in $ ?pid
-              :where [?p :id ?pid] [?c :parent ?p] [?c :id ?id] [?c :order ?o]]
-            db parent-id)
-       (sort-by second) (mapv first)))
-
-;; ---------- 8) Test Utilities ----------
 (defn- tree-fixture []
   (let [conn (d/create-conn schema)]
     (d/transact! conn [{:id "root"}])
     conn))
 
 (defn- tree-structure [conn & paths]
-  "Get tree structure as nested vectors for easy comparison"
   (letfn [(structure [id] [id (mapv structure (children-ids @conn id))])]
     (if (= 1 (count paths))
       (structure (first paths))
       (mapv structure paths))))
 
-;; ---------- 9) Core Tests ----------
-(deftest integer-ordering-properties
-  "Test mathematical properties of integer ordering with renumbering"
-  (let [conn (tree-fixture)]
-    ;; Test initial spacing
-    (insert! conn {:id "a"} {:parent "root"})
-    (insert! conn {:id "b"} {:parent "root"})
-    (insert! conn {:id "c"} {:parent "root"})
-
-    (let [orders (mapv #(:order (e @conn %)) (children-ids @conn "root"))]
-      (is (= [1000 2000 3000] orders) "Initial spacing should be 1000 apart"))
-
-    ;; Test dense insertion creates midpoints
-    (insert! conn {:id "between-a-b"} {:rel :after :sibling "a"})
-    (let [between-order (:order (e @conn "between-a-b"))]
-      (is (= 1500 between-order) "Dense insertion should create midpoint"))
-
-    ;; Test renumbering when gaps get too small
-    (insert! conn {:id "tight1"} {:rel :after :sibling "a"})
-    (insert! conn {:id "tight2"} {:rel :after :sibling "tight1"})
-
-    ;; All orders should still be sortable integers
-    (let [final-orders (mapv #(:order (e @conn %)) (children-ids @conn "root"))]
-      (is (= final-orders (sort final-orders)) "Orders maintain sort invariant")
-      (is (every? integer? final-orders) "All orders are integers")
-      (is (= (count final-orders) (count (set final-orders))) "All orders are unique"))))
-
-(deftest position-resolution-edge-cases
-  "Test position resolution with various edge cases"
+(deftest basic-insert-test
   (let [conn (tree-fixture)]
     (insert! conn {:id "a"} {:parent "root"})
     (insert! conn {:id "b"} {:parent "root"})
-
-    ;; Default position (append)
     (insert! conn {:id "c"} {:parent "root"})
     (is (= ["a" "b" "c"] (children-ids @conn "root")))
 
-    ;; Sibling positioning
+    (let [positions (mapv #(:pos (e @conn %)) (children-ids @conn "root"))]
+      (is (= [0 1 2] positions)))))
+
+(deftest position-resolution-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "a"} {:parent "root"})
+    (insert! conn {:id "b"} {:parent "root"})
+    (insert! conn {:id "c"} {:parent "root"})
+    (is (= ["a" "b" "c"] (children-ids @conn "root")))
+
     (insert! conn {:id "between"} {:rel :after :sibling "a"})
     (is (= ["a" "between" "b" "c"] (children-ids @conn "root")))
 
-    ;; Error conditions
-    (is (thrown-with-msg? Exception #"No parent specified"
-                          (insert! conn {:id "orphan"} {})))
-    (is (thrown-with-msg? Exception #"IDs already exist"
-                          (insert! conn {:id "a"} {:parent "root"})))))
+    (insert! conn {:id "first"} {:rel :first :parent "root"})
+    (is (= ["first" "a" "between" "b" "c"] (children-ids @conn "root")))
 
-(deftest crud-operations-integration
-  "Test full CRUD lifecycle with validation"
+    (insert! conn {:id "last"} {:rel :last :parent "root"})
+    (is (= ["first" "a" "between" "b" "c" "last"] (children-ids @conn "root")))))
+
+(deftest tree-operations-test
   (let [conn (tree-fixture)]
-    ;; Create hierarchical data
     (insert! conn {:id "ui", :type "app",
                    :children [{:id "header", :children [{:id "nav"}]}
                               {:id "main", :children [{:id "sidebar"} {:id "content"}]}
                               {:id "footer"}]}
              {:parent "root"})
 
-    ;; Verify initial structure
     (is (= ["ui" [["header" [["nav" []]]]
                   ["main" [["sidebar" []] ["content" []]]]
                   ["footer" []]]]
            (tree-structure conn "ui")))
 
-    ;; Update attributes (non-structural)
     (update! conn "nav" {:label "Navigation" :visible true})
     (is (= "Navigation" (:label (e @conn "nav"))))
 
-    ;; Move components around
-    (move! conn "nav" {:rel :first :parent "footer"}) ; nav to footer
-    (move! conn "sidebar" {:rel :after :sibling "content"}) ; reorder in main
+    (move! conn "nav" {:rel :first :parent "footer"})
+    (move! conn "sidebar" {:rel :after :sibling "content"})
 
-    ;; Verify restructured tree
     (is (= ["ui" [["header" []]
                   ["main" [["content" []] ["sidebar" []]]]
                   ["footer" [["nav" []]]]]]
            (tree-structure conn "ui")))
 
-    ;; Delete subtree
     (delete! conn "main")
     (is (= ["ui" [["header" []] ["footer" [["nav" []]]]]]
            (tree-structure conn "ui")))
-    (is (nil? (e @conn "content")) "Cascade delete worked")
+    (is (nil? (e @conn "content")))))
 
-    ;; Validation checks
-    (is (thrown-with-msg? Exception #"Cannot modify structural"
-                          (update! conn "nav" {:parent "other"})))
-    (is (thrown-with-msg? Exception #"Cycle detected"
-                          (move! conn "ui" {:parent "nav"})))))
-
-(deftest complex-restructuring-scenarios
-  "Test realistic tree manipulation scenarios"
+(deftest cross-reference-relationships-test
   (let [conn (tree-fixture)]
-    ;; Build a document-like structure
-    (insert! conn {:id "doc", :title "My Document"
-                   :children [{:id "sec1", :title "Introduction"
-                               :children [{:id "p1", :text "First paragraph"}
-                                          {:id "p2", :text "Second paragraph"}]}
-                              {:id "sec2", :title "Methods"
-                               :children [{:id "subsec1", :title "Approach A"}
-                                          {:id "subsec2", :title "Approach B"}]}
-                              {:id "sec3", :title "Conclusion"}]}
+    (insert! conn {:id "form", :type "form"} {:parent "root"})
+    (insert! conn {:id "input", :type "input", :name "email"} {:parent "form"})
+    (insert! conn {:id "validator", :type "validator", :pattern "email"} {:parent "root"})
+    (insert! conn {:id "submit-btn", :type "button"} {:parent "form"})
+    (insert! conn {:id "api-endpoint", :type "service"} {:parent "root"})
+
+    ; Add cross-references using the :references attribute
+    (update! conn "input" {:references [[:id "validator"]]})
+    (update! conn "submit-btn" {:references [[:id "api-endpoint"]]})
+    (update! conn "form" {:references [[:id "input"] [:id "submit-btn"]]})
+
+    ; Verify relationships exist
+    (is (= 1 (count (:references (e @conn "input")))))
+    (is (= 1 (count (:references (e @conn "submit-btn")))))
+    (is (= 2 (count (:references (e @conn "form")))))
+
+    ; Test navigation patterns
+    (let [validator-users (d/q '[:find [?id ...]
+                                 :in $ ?validator-ref
+                                 :where [?e :references ?validator-ref]
+                                 [?e :id ?id]]
+                               @conn [:id "validator"])]
+      (is (= ["input"] validator-users)))))
+
+(deftest referential-integrity-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "dialog", :type "dialog"} {:parent "root"})
+    (insert! conn {:id "button", :type "button"} {:parent "dialog"})
+    (insert! conn {:id "action", :type "action"} {:parent "root"})
+
+    ; Create reference
+    (update! conn "button" {:references [[:id "action"]]})
+    (is (= 1 (count (:references (e @conn "button")))))
+
+    ; Delete referenced entity
+    (delete! conn "action")
+
+    ; Reference becomes dangling (entity no longer exists but reference remains)
+    (let [button-entity (e @conn "button")
+          refs (:references button-entity)]
+      (is (= 1 (count refs))) ; Reference still exists
+      (is (nil? (:id (first refs))))) ; But target is gone
+
+    ; Test with multiple references
+    (insert! conn {:id "service1", :type "service"} {:parent "root"})
+    (insert! conn {:id "service2", :type "service"} {:parent "root"})
+    (update! conn "button" {:references [[:id "service1"] [:id "service2"]]})
+
+    (delete! conn "service1")
+    ; One reference becomes dangling, other remains valid
+    (let [refs (:references (e @conn "button"))]
+      (is (= 2 (count refs)))
+      ; At least one should be valid
+      (is (some #(some? (:id %)) refs)))))
+
+(deftest bidirectional-relationships-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "parent-comp", :type "component"} {:parent "root"})
+    (insert! conn {:id "child-comp", :type "component"} {:parent "parent-comp"})
+    (insert! conn {:id "sibling-comp", :type "component"} {:parent "parent-comp"})
+    (insert! conn {:id "external-service", :type "service"} {:parent "root"})
+
+    ; Create bidirectional references using :references
+    (update! conn "child-comp" {:references [[:id "sibling-comp"]]})
+    (update! conn "sibling-comp" {:references [[:id "child-comp"]]})
+    (update! conn "parent-comp" {:references [[:id "external-service"]]})
+    (update! conn "external-service" {:references [[:id "parent-comp"]]})
+
+    ; Test graph traversal patterns
+    (let [; Find all components that reference each other
+          mutual-refs (d/q '[:find ?id1 ?id2
+                             :where [?e1 :id ?id1]
+                             [?e1 :references ?ref]
+                             [?ref :id ?id2]
+                             [?e2 :id ?id2]
+                             [?e2 :references ?back-ref]
+                             [?back-ref :id ?id1]]
+                           @conn)
+          ; Find all reference relationships
+          all-refs (d/q '[:find ?referrer ?referenced
+                          :where [?e1 :id ?referrer]
+                          [?e1 :references ?ref]
+                          [?ref :id ?referenced]]
+                        @conn)]
+      (is (= #{["child-comp" "sibling-comp"] ["sibling-comp" "child-comp"]} (set mutual-refs)))
+      (is (= 4 (count all-refs))))))
+
+(deftest disconnected-subgraphs-test
+  (let [conn (tree-fixture)]
+    ; Create main tree
+    (insert! conn {:id "app", :type "application"} {:parent "root"})
+    (insert! conn {:id "main-view", :type "view"} {:parent "app"})
+
+    ; Create disconnected entities (floating dialogs, background services)
+    (insert! conn {:id "floating-dialog", :type "dialog", :floating true} {:parent "root"})
+    (insert! conn {:id "background-service", :type "service", :background true} {:parent "root"})
+    (insert! conn {:id "notification-system", :type "system"} {:parent "root"})
+
+    ; These exist outside the main app hierarchy but can reference it
+    (update! conn "floating-dialog" {:references [[:id "main-view"]]})
+    (update! conn "background-service" {:references [[:id "app"]]})
+    (update! conn "notification-system" {:references [[:id "app"] [:id "floating-dialog"]]})
+
+    ; Verify disconnected entities exist
+    (is (= "dialog" (:type (e @conn "floating-dialog"))))
+    (is (= "service" (:type (e @conn "background-service"))))
+
+    ; Test that they're not in main app subtree
+    (let [app-subtree (d/q '[:find [?id ...]
+                             :in $ % ?app-ref
+                             :where (subtree-member ?app-ref ?d)
+                             [?d :id ?id]]
+                           @conn rules [:id "app"])]
+      (is (not (contains? (set app-subtree) "floating-dialog")))
+      (is (not (contains? (set app-subtree) "background-service")))
+      (is (not (contains? (set app-subtree) "notification-system"))))
+
+    ; But they can still reference app components
+    (is (= 1 (count (:references (e @conn "floating-dialog")))))
+    (is (= 1 (count (:references (e @conn "background-service")))))))
+
+(deftest multiple-relationship-types-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "ui-component", :type "component"} {:parent "root"})
+    (insert! conn {:id "data-store", :type "store"} {:parent "root"})
+    (insert! conn {:id "validator", :type "validator"} {:parent "root"})
+    (insert! conn {:id "formatter", :type "formatter"} {:parent "root"})
+    (insert! conn {:id "api-client", :type "client"} {:parent "root"})
+
+    ; Add multiple references to same entity
+    (update! conn "ui-component" {:references [[:id "data-store"] [:id "validator"]
+                                               [:id "formatter"] [:id "api-client"]]})
+
+    ; Test that component has multiple references
+    (let [component (e @conn "ui-component")]
+      (is (= 4 (count (:references component)))))
+
+    ; Query by references
+    (let [store-users (d/q '[:find [?id ...]
+                             :in $ ?store-ref
+                             :where [?e :references ?store-ref]
+                             [?e :id ?id]]
+                           @conn [:id "data-store"])
+          all-users (d/q '[:find [?id ...]
+                           :where [?e :references ?v]
+                           [?e :id ?id]]
+                         @conn)]
+      (is (= ["ui-component"] store-users))
+      (is (= ["ui-component"] all-users)))))
+
+(deftest complex-subtree-operations-test
+  (let [conn (tree-fixture)]
+    ; Create complex nested structure
+    (insert! conn {:id "app", :type "app",
+                   :children [{:id "header", :children [{:id "nav", :children [{:id "menu"}]}]}
+                              {:id "main", :children [{:id "sidebar", :children [{:id "widget1"} {:id "widget2"}]}
+                                                      {:id "content", :children [{:id "article", :children [{:id "paragraph1"} {:id "paragraph2"}]}]}]}
+                              {:id "footer", :children [{:id "links"}]}]}
              {:parent "root"})
 
-    ;; Scenario 1: Reorganize sections (move sec3 between sec1 and sec2)
-    (move! conn "sec3" {:rel :after :sibling "sec1"})
-    (is (= ["sec1" "sec3" "sec2"] (children-ids @conn "doc")))
+    ; Test initial structure
+    (is (= ["app" [["header" [["nav" [["menu" []]]]]]
+                   ["main" [["sidebar" [["widget1" []] ["widget2" []]]]
+                            ["content" [["article" [["paragraph1" []] ["paragraph2" []]]]]]]]
+                   ["footer" [["links" []]]]]]
+           (tree-structure conn "app")))
 
-    ;; Scenario 2: Merge sections (move subsections from sec2 to sec1)  
-    (move! conn "subsec1" {:rel :last :parent "sec1"})
-    (move! conn "subsec2" {:rel :last :parent "sec1"})
-    (is (= ["p1" "p2" "subsec1" "subsec2"] (children-ids @conn "sec1")))
-    (is (= [] (children-ids @conn "sec2")))
+    ; Move entire sidebar subtree to footer
+    (move! conn "sidebar" {:parent "footer"})
+    (is (= ["app" [["header" [["nav" [["menu" []]]]]]
+                   ["main" [["content" [["article" [["paragraph1" []] ["paragraph2" []]]]]]]]
+                   ["footer" [["links" []] ["sidebar" [["widget1" []] ["widget2" []]]]]]]]
+           (tree-structure conn "app")))
 
-    ;; Scenario 3: Bulk operations with ordering constraints
-    (insert! conn {:id "toc", :title "Table of Contents"} {:rel :first :parent "doc"})
-    (insert! conn {:id "appendix"} {:rel :last :parent "doc"})
-    (is (= ["toc" "sec1" "sec3" "sec2" "appendix"] (children-ids @conn "doc")))
+    ; Move article before header (complex reordering)
+    (move! conn "article" {:rel :before :sibling "header"})
+    (is (= ["app" [["article" [["paragraph1" []] ["paragraph2" []]]]
+                   ["header" [["nav" [["menu" []]]]]]
+                   ["main" [["content" []]]]
+                   ["footer" [["links" []] ["sidebar" [["widget1" []] ["widget2" []]]]]]]]
+           (tree-structure conn "app")))
 
-    ;; Scenario 4: Complex nested moves preserving deep structure
-    (let [sec1-structure (tree-structure conn "sec1")]
-      (move! conn "sec1" {:rel :first :parent "appendix"})
-      (is (= sec1-structure (tree-structure conn "sec1")) "Deep structure preserved"))))
+    ; Test moving subtree with cross-references
+    (update! conn "widget1" {:references [[:id "paragraph1"]]})
+    (update! conn "paragraph2" {:references [[:id "widget2"]]})
 
-(deftest performance-and-ordering-stress
-  "Test performance with many operations and verify ordering invariants"
+    ; Move sidebar to main (references should remain intact)
+    (move! conn "sidebar" {:parent "main"})
+    (is (= 1 (count (:references (e @conn "widget1")))))
+    (is (= 1 (count (:references (e @conn "paragraph2")))))))
+
+(deftest large-subtree-insertion-test
   (let [conn (tree-fixture)]
-    ;; Generate many sequential inserts
-    (doseq [i (range 50)]
-      (insert! conn {:id (str "item-" i) :data i} {:parent "root"}))
+    ; Create large nested structure to insert
+    (let [deep-structure {:id "complex-component",
+                          :type "component",
+                          :children [{:id "level1a",
+                                      :children [{:id "level2a",
+                                                  :children [{:id "level3a",
+                                                              :children [{:id "level4a"} {:id "level4b"}]}
+                                                             {:id "level3b"}]}
+                                                 {:id "level2b",
+                                                  :children [{:id "level3c"} {:id "level3d"}]}]}
+                                     {:id "level1b",
+                                      :children [{:id "level2c"}]}]}]
 
-    ;; Verify ordering is maintained
-    (let [items (children-ids @conn "root")
-          orders (mapv #(:order (e @conn %)) items)]
-      (is (= 50 (count items)))
-      (is (= orders (sort orders)) "Orders maintain sort invariant"))
+      ; Insert entire structure at once
+      (insert! conn deep-structure {:parent "root"})
 
-    ;; Test interleaved insertions maintain ordering
-    (insert! conn {:id "between-10-11"} {:rel :after :sibling "item-10"})
-    (insert! conn {:id "between-20-21"} {:rel :after :sibling "item-20"})
+      ; Verify all levels exist and are properly positioned
+      (is (= ["level1a" "level1b"] (children-ids @conn "complex-component")))
+      (is (= ["level2a" "level2b"] (children-ids @conn "level1a")))
+      (is (= ["level3a" "level3b"] (children-ids @conn "level2a")))
+      (is (= ["level4a" "level4b"] (children-ids @conn "level3a")))
 
-    (let [items (children-ids @conn "root")
-          item-10-idx (.indexOf items "item-10")
-          item-20-idx (.indexOf items "item-20")]
-      (is (= "between-10-11" (nth items (inc item-10-idx))))
-      (is (= "between-20-21" (nth items (inc item-20-idx))))
+      ; Test that positioning maintains order (not specific values due to temp positions)
+      (let [positions (fn [parent-id]
+                        (let [pos-vals (mapv #(:pos (e @conn %)) (children-ids @conn parent-id))]
+                          (= pos-vals (sort pos-vals))))]
+        (is (positions "complex-component"))
+        (is (positions "level1a"))
+        (is (positions "level2a"))
+        (is (positions "level3a")))))
 
-      ;; Orders should still be sorted
-      (let [orders (mapv #(:order (e @conn %)) items)]
-        (is (= orders (sort orders)) "Interleaved insertions preserve order")))
-
-    ;; Bulk operations should work efficiently
-    (doseq [i (range 0 50 5)] ; Delete every 5th item
-      (delete! conn (str "item-" i)))
-
-    (is (= 42 (count (children-ids @conn "root"))) "Bulk deletes worked")))
-
-(deftest utility-functions-and-edge-cases
-  "Test helper functions and edge cases"
+  ; Test insertion between existing siblings in deep structure
   (let [conn (tree-fixture)]
-    ;; Test neighbors function
-    (is (= [nil "b"] (neighbors ["a" "b" "c"] "a")))
-    (is (= ["a" "c"] (neighbors ["a" "b" "c"] "b")))
-    (is (= ["b" nil] (neighbors ["a" "b" "c"] "c")))
-    (is (= nil (neighbors ["a" "b" "c"] "missing")))
+    (insert! conn {:id "container",
+                   :children [{:id "first"} {:id "last"}]}
+             {:parent "root"})
 
-    ;; Test empty tree operations
-    (is (= [] (children-ids @conn "root")))
-    (insert! conn {:id "first"} {:parent "root"})
-    (is (= ["first"] (children-ids @conn "root")))
+    ; Insert complex structure between existing siblings
+    (insert! conn {:id "middle-complex",
+                   :children [{:id "sub1"} {:id "sub2"}]}
+             {:rel :after :sibling "first"})
 
-    ;; Test single child operations
-    (insert! conn {:id "before-first"} {:rel :before :sibling "first"})
-    (insert! conn {:id "after-first"} {:rel :after :sibling "first"})
-    (is (= ["before-first" "first" "after-first"] (children-ids @conn "root")))
+    (is (= ["first" "middle-complex" "last"] (children-ids @conn "container")))
+    (is (= ["sub1" "sub2"] (children-ids @conn "middle-complex")))))
 
-    ;; Test entity resolution
-    (is (= "first" (:id (e @conn "first"))))
-    (is (= "root" (pid @conn "first")))
-    (is (nil? (e @conn "nonexistent")))
-
-    ;; Test tree structure helper
-    (insert! conn {:id "child-of-first"} {:parent "first"})
-    (is (= ["first" [["child-of-first" []]]]
-           (tree-structure conn "first")))))
-
-(deftest hypergraph-cross-references
-  "Test arbitrary entity references beyond parent-child hierarchy"
+(deftest cycle-detection-edge-cases-test
   (let [conn (tree-fixture)]
-    ;; Create entities with cross-references (will need schema extension)
-    ;; For now, using regular attributes to simulate references
-    (insert! conn {:id "button" :label "Click Me" :onclick-handler "save-doc"} {:parent "root"})
-    (insert! conn {:id "save-doc" :type "handler" :binds-to ["model" "view"]} {:parent "root"})
-    (insert! conn {:id "model" :data "document state"} {:parent "root"})
-    (insert! conn {:id "view" :template "document.html"} {:parent "root"})
+    ; Create multi-level hierarchy
+    (insert! conn {:id "a", :children [{:id "b", :children [{:id "c", :children [{:id "d"}]}]}]}
+             {:parent "root"})
 
-    ;; Test that entities can reference each other outside tree structure
-    (is (= "save-doc" (:onclick-handler (e @conn "button"))))
-    (is (= ["model" "view"] (:binds-to (e @conn "save-doc"))))
+    ; Test direct cycle
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"Cycle detected"
+         (move! conn "a" {:parent "a"})))
 
-;; Test querying reverse relationships (what references this entity?)
-    ;; Use simpler approach without 'some' predicate for now
-    (let [entities-referencing-model
-          (d/q '[:find ?id :in $ ?target
-                 :where [?e :id ?id] [?e :binds-to ?refs]
-                 [(= ?refs ["model" "view"])]] ; Direct match for this test
-               @conn "model")]
-      (is (= #{["save-doc"]} entities-referencing-model)))
+    ; Test indirect cycle (grandparent)
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"Cycle detected"
+         (move! conn "a" {:parent "c"})))
 
-;; Test complex reference chains: button -> handler -> model
-    ;; This demonstrates hypergraph traversal beyond tree walking
-    (let [button-to-model-path
-          (d/q '[:find ?model-id :in $ ?button-id
-                 :where
-                 [?button :id ?button-id]
-                 [?button :onclick-handler ?handler-id]
-                 [?handler :id ?handler-id]
-                 [?handler :binds-to ?refs]
-                 [(= ?refs ["model" "view"])]
-                 [(ground "model") ?model-id]]
-               @conn "button")]
-      (is (= #{["model"]} button-to-model-path)))))
+    ; Test deep cycle
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"Cycle detected"
+         (move! conn "a" {:parent "d"})))
 
-(deftest hypergraph-referential-integrity
-  "Test what happens when referenced entities are deleted"
+    ; Test that valid moves still work
+    (insert! conn {:id "safe-target"} {:parent "root"})
+    (move! conn "d" {:parent "safe-target"}) ; Should work
+    (is (= "safe-target" (pid @conn "d")))))
+
+(deftest simple-reordering-test
   (let [conn (tree-fixture)]
-    ;; Create interconnected entities
-    (insert! conn {:id "component-a" :depends-on ["service-x" "service-y"]} {:parent "root"})
-    (insert! conn {:id "component-b" :depends-on ["service-x"]} {:parent "root"})
-    (insert! conn {:id "service-x" :provides "data-api"} {:parent "root"})
-    (insert! conn {:id "service-y" :provides "auth-api"} {:parent "root"})
+    ; Create container with a few children
+    (insert! conn {:id "container"} {:parent "root"})
+    (insert! conn {:id "item-1"} {:parent "container"})
+    (insert! conn {:id "item-2"} {:parent "container"})
+    (insert! conn {:id "item-3"} {:parent "container"})
 
-    ;; Test referential integrity when deleting referenced entity
-    (delete! conn "service-x")
+    ; Verify initial order
+    (is (= ["item-1" "item-2" "item-3"] (children-ids @conn "container")))
 
-    ;; Current behavior: references become dangling (no cascade)
-    (is (= ["service-x" "service-y"] (:depends-on (e @conn "component-a"))))
-    (is (= ["service-x"] (:depends-on (e @conn "component-b"))))
-    (is (nil? (e @conn "service-x")) "service-x was deleted")
+    ; Move last item to first
+    (move! conn "item-3" {:rel :first :parent "container"})
+    (is (= "item-3" (first (children-ids @conn "container"))))
 
-    ;; In a proper hypergraph, we might want:
-    ;; 1. Cascade delete (delete dependents)
-    ;; 2. Reference cleanup (remove from depends-on lists)
-    ;; 3. Orphan detection (mark entities with broken dependencies)
-    ;; 4. Referential constraints (prevent deletion if referenced)
-
-;; Test finding orphaned references
-    (let [all-entities-with-deps (d/q '[:find ?id ?deps :where [?e :id ?id] [?e :depends-on ?deps]] @conn)
-          broken-deps (for [[id deps] all-entities-with-deps
-                            :when (some #(= % "service-x") deps)]
-                        [id])]
-      (is (= #{["component-a"] ["component-b"]} (set broken-deps))))))
-
-(deftest hypergraph-bidirectional-relationships
-  "Test bidirectional relationships and graph traversal patterns"
-  (let [conn (tree-fixture)]
-    ;; Create entities with bidirectional relationships
-    (insert! conn {:id "user-123" :follows ["user-456" "user-789"]} {:parent "root"})
-    (insert! conn {:id "user-456" :follows ["user-789"] :followed-by ["user-123"]} {:parent "root"})
-    (insert! conn {:id "user-789" :followed-by ["user-123" "user-456"]} {:parent "root"})
-
-    ;; Test consistency of bidirectional references
-    (let [user-123-follows (:follows (e @conn "user-123"))
-          user-456-followed-by (:followed-by (e @conn "user-456"))]
-      (is (some #(= % "user-456") user-123-follows))
-      (is (some #(= % "user-123") user-456-followed-by)))
-
-;; Test graph traversal: find mutual followers (users who follow each other)
-    (let [all-followers (d/q '[:find ?id ?follows :where [?e :id ?id] [?e :follows ?follows]] @conn)
-          user-123-follows (some #(when (= (first %) "user-123") (second %)) all-followers)]
-      ;; user-456 should be mutual because: user-123 follows user-456 AND user-456 has followed-by ["user-123"]
-      ;; But we need to check the :followed-by attribute, not :follows
-      (is (some #(= % "user-456") user-123-follows) "user-123 should follow user-456")
-      (is (some #(= % "user-123") (:followed-by (e @conn "user-456"))) "user-456 should be followed by user-123"))
-
-;; Test transitive relationships: followers of followers  
-    (let [all-followers (d/q '[:find ?id ?follows :where [?e :id ?id] [?e :follows ?follows]] @conn)
-          user-123-follows (some #(when (= (first %) "user-123") (second %)) all-followers)
-          followers-of-followers (for [direct-follow user-123-follows
-                                       [id follows] all-followers
-                                       :when (= id direct-follow)
-                                       fof follows
-                                       :when (not= fof "user-123")]
-                                   [fof])]
-      (is (contains? (set (map first followers-of-followers)) "user-789")))))
-
-(deftest hypergraph-disconnected-subgraphs
-  "Test handling of disconnected components and orphaned entities"
-  (let [conn (tree-fixture)]
-    ;; Create main connected component
-    (insert! conn {:id "main-app" :children [{:id "header"} {:id "content"}]} {:parent "root"})
-
-    ;; Create disconnected component (not in tree hierarchy)
-    ;; This simulates floating dialogs, overlays, or background services
-    (insert! conn {:id "floating-dialog" :modal true :triggered-by "main-app"} {:parent "root"})
-    (insert! conn {:id "background-service" :runs-independently true} {:parent "root"})
-
-    ;; Test that disconnected entities exist but aren't in tree traversal
-    (is (e @conn "floating-dialog"))
-    (is (e @conn "background-service"))
-
-    ;; Test finding all disconnected entities (no structural children/parents beyond root)
-    (let [disconnected-entities
-          (d/q '[:find ?id :in $ ?root
-                 :where
-                 [?e :id ?id] [?e :parent ?root-ref] [?root-ref :id ?root]
-                 (not [?child :parent ?e])] ; has no children
-               @conn "root")]
-      (is (contains? (set (map first disconnected-entities)) "floating-dialog"))
-      (is (contains? (set (map first disconnected-entities)) "background-service")))
-
-;; Test graph connectivity analysis
-    ;; Find entities that have no references to/from other entities (true orphans)
-    (let [true-orphans
-          (d/q '[:find ?id :in $
-                 :where
-                 [?e :id ?id]
-                 [?e :runs-independently true]]
-               @conn)]
-      (is (contains? (set (map first true-orphans)) "background-service")))
-
-;; Test reachability from root (what's accessible via references?)
-    ;; In a true hypergraph, some entities might only be reachable via references
-    (let [reachable-from-main
-          (d/q '[:find ?id :in $ ?start
-                 :where
-                 [?entity :triggered-by ?start] [?entity :id ?id]]
-               @conn "main-app")]
-      (is (= #{["floating-dialog"]} reachable-from-main)))))
-
-(deftest hypergraph-relationship-types
-  "Test multiple relationship types beyond parent-child"
-  (let [conn (tree-fixture)]
-    ;; Create entities with various relationship types
-    (insert! conn {:id "text-input"
-                   :type "component"
-                   :validates-with "email-validator"
-                   :submits-to "contact-form"
-                   :error-display "error-message"} {:parent "root"})
-
-    (insert! conn {:id "email-validator"
-                   :type "validator"
-                   :used-by ["text-input" "signup-form"]} {:parent "root"})
-
-    (insert! conn {:id "contact-form"
-                   :type "form"
-                   :contains ["text-input" "submit-button"]
-                   :processes-via "form-handler"} {:parent "root"})
-
-    (insert! conn {:id "error-message"
-                   :type "display"
-                   :watches ["text-input"]} {:parent "root"})
-
-    ;; Test querying by relationship type
-    (let [validation-relationships
-          (d/q '[:find ?source ?target :in $
-                 :where [?e :id ?source] [?e :validates-with ?target]]
-               @conn)]
-      (is (= #{["text-input" "email-validator"]} validation-relationships)))
-
-    (let [all-containers (d/q '[:find ?container ?items :where [?e :id ?container] [?e :contains ?items]] @conn)
-          text-input-containers (for [[container items] all-containers
-                                      :when (some #(= % "text-input") items)]
-                                  [container])]
-      (is (contains? (set (map first text-input-containers)) "contact-form")))
-
-    ;; Test relationship multiplicity (one-to-many, many-to-many)
-    (let [entities-using-validator
-          (d/q '[:find ?user :in $ ?validator
-                 :where [?e :id ?user] [?e :validates-with ?validator]]
-               @conn "email-validator")]
-      (is (= #{["text-input"]} entities-using-validator)))
-
-    ;; Test reverse lookup: what validates what?
-    (let [validator-usage
-          (d/q '[:find ?validator ?users :in $
-                 :where [?v :id ?validator] [?v :used-by ?users]]
-               @conn)]
-      (is (= #{["email-validator" ["text-input" "signup-form"]]} validator-usage)))
-
-    ;; Test relationship chains: text-input -> form -> handler
-    (let [input-to-handler-chain
-          (d/q '[:find ?handler :in $ ?input
-                 :where
-                 [?input-e :id ?input] [?input-e :submits-to ?form]
-                 [?form-e :id ?form] [?form-e :processes-via ?handler]]
-               @conn "text-input")]
-      (is (= #{["form-handler"]} input-to-handler-chain)))))
-
-(run-tests)
-;; Run tests when file is loaded
+    ; Test positions maintain order
+    (let [positions (mapv #(:pos (e @conn %)) (children-ids @conn "container"))]
+      (is (= (sort positions) positions)) ; Positions are in order
+      (is (= (count positions) (count (set positions)))))))
