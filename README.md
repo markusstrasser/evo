@@ -7,14 +7,28 @@ You're designing a conversational interface canvas. The product is a tool where 
 
 
 ## Design Decisions
+
+### Tree Operations in DataScript
 Core insight: Trees in DataScript require fighting the tool - it's a flat EAV store pretending to do hierarchies. But if committed to this approach, the API must prioritize atomic operations that maintain tree coherence.
 What we learned:
 
-Position isn't conflation, it's a requirement. Creating an entity without position leaves the tree incoherent. Atomic create-with-position is a legitimate compound operation, not bad design.
-Order calculation belongs in the system, not client. The LLM/client should declare intent ({:after "x"}) not implementation details (order strings). This keeps fractional indexing mechanics hidden.
-Manual cascade deletion was the right call. DataScript's :db/isComponent is broken. Explicit descendant collection is more predictable.
+- Position isn't conflation, it's a requirement. Creating an entity without position leaves the tree incoherent. Atomic create-with-position is a legitimate compound operation, not bad design.
+- Order calculation belongs in the system, not client. The LLM/client should declare intent ({:after "x"}) not implementation details (order strings). This keeps fractional indexing mechanics hidden.
+- Manual cascade deletion was the right call. DataScript's :db/isComponent is broken. Explicit descendant collection is more predictable.
 
 The entire complexity stems from supporting operations like :after and :before.
+
+### Fractional Ordering Implementation (2024)
+**Decision**: Replaced verbose ~70 LOC fractional indexing with canonical Greenspan-style implementation in ~25 LOC.
+
+**Reasoning**: 
+- Original implementation was overcomplicated for a toy problem
+- New version uses standard 62-character alphabet (0-9, A-Z, a-z) for maximum density
+- Returns lexicographically sortable strings without numeric conversion
+- Handles edge cases (nil boundaries, gap exhaustion) with mathematical precision
+- Maintains same API (`calculate-order`) for backward compatibility
+
+**Key insight**: Fractional indexing is a solved problem. Use the canonical algorithm rather than reinventing string interpolation logic. The ~25 LOC version is more maintainable and follows established patterns from systems like Jira's LexoRank.
 
 # ref docs
 

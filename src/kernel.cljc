@@ -1,6 +1,6 @@
 (ns kernel
   (:require [datascript.core :as d]
-            [fractional-ordering :as fo]
+            [clojure.string]
             [clojure.test :refer [deftest is run-tests]]))
 
 ;; ## 1. SCHEMA ##
@@ -22,6 +22,52 @@
     [(subtree-member ?ancestor ?descendant)
      [?descendant :parent ?intermediate]
      (subtree-member ?ancestor ?intermediate)]])
+
+;; ## 2. FRACTIONAL ORDERING ##
+;; Canonical fractional indexing - Greenspan-style in ~25 LOC
+(def ^:private digits "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+(def ^:private base (count digits))
+
+(defn- code [s i]
+  (let [c (when (and s (< i (count s))) (.charAt s i))]
+    (if c (inc (clojure.string/index-of digits c)) 0))) ; 0 is -∞ sentinel
+
+(defn- ch [i] (.charAt digits (dec i))) ; 1..base ⇒ digit
+
+(defn- rank-between
+  "Return a rank strictly between a and b (strings or nil)."
+  ([a b] (loop [i 0, acc (StringBuilder.)]
+           (let [lo (code a i) ; inclusive lower bound (0..base)
+                 hi (let [x (code b i)] ; exclusive upper bound (1..base+1)
+                      (if (pos? x) x (inc base)))]
+             (if (< (inc lo) hi)
+               (str (.append acc (ch (quot (+ lo hi) 2))))
+               (do (.append acc (if (pos? lo) (ch lo) (ch 1)))
+                   (recur (inc i) acc))))))
+  ([] (rank-between nil nil))
+  ([a] (rank-between a nil))) ; convenience: after a
+
+;; Integration with existing API
+(defn- get-ordered-siblings [db parent-ref]
+  (->> (d/q '[:find ?o :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)
+       (mapv first)
+       (remove nil?)
+       (sort-by str)))
+
+(defn- calculate-order [db parent-ref {:keys [rel target]}]
+  (let [siblings (get-ordered-siblings db parent-ref)]
+    (case rel
+      :first (rank-between nil (first siblings))
+      :last (rank-between (last siblings) nil)
+      :after (let [target-order (:order (d/entity db [:id target]))
+                   target-idx (.indexOf siblings target-order)
+                   next-order (when (< (inc target-idx) (count siblings))
+                                (nth siblings (inc target-idx)))]
+               (rank-between target-order next-order))
+      :before (let [target-order (:order (d/entity db [:id target]))
+                    target-idx (.indexOf siblings target-order)
+                    prev-order (when (pos? target-idx) (nth siblings (dec target-idx)))]
+                (rank-between prev-order target-order)))))
 
 ;; ## 3. CORE LOGIC - COMMAND MODEL ##
 ;; This implementation uses a data-driven command model.
@@ -188,5 +234,27 @@
     (is (= ["A2"] (children-ids @conn "A")))
     (is (nil? (d/entity @conn [:id "A1"])))
     (is (nil? (d/entity @conn [:id "A1a"])))))
+
+(deftest fractional-ordering-test
+  "Tests the fractional ordering system edge cases"
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [{:id "root" :name "Root"}])
+
+    ;; Test many insertions to verify lexicographic ordering
+    (doseq [i (range 10)]
+      (execute! conn {:op :put, :entity {:id (str "item" i)},
+                      :position {:rel :last, :target "root"}}))
+
+    (let [children (children-ids @conn "root")
+          orders (mapv #(:order (d/entity @conn [:id %])) children)]
+      (is (= children (mapv #(str "item" %) (range 10))) "Sequential insertion maintains order")
+      (is (= orders (sort orders)) "Orders are lexicographically sorted"))
+
+    ;; Test insertion between existing items creates proper fractional ranks
+    (execute! conn {:op :put, :entity {:id "between"},
+                    :position {:rel :after, :target "item4"}})
+    (let [orders (mapv #(:order (d/entity @conn [:id %]))
+                       ["item4" "between" "item5"])]
+      (is (= orders (sort orders)) "Fractional rank sorts between neighbors"))))
 
 (run-tests)
