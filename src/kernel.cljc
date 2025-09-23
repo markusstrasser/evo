@@ -1,32 +1,26 @@
 (ns kernel
   (:require [datascript.core :as d]
-            [clojure.string]
+            [clojure.string :as s]
             [clojure.test :refer [deftest is run-tests]]))
 
-;; ## 1. SCHEMA & RULES ##
-;; Defines the data model and declarative rules for subtree queries.
-;; This section is unchanged; the schema and rule are fundamentally correct.
+;; ---------- 1) Schema & rules (unchanged) ----------
 (def schema
-  {:id {:db/unique :db.unique/identity}
-   :parent {:db/valueType :db.type/ref}
-   :order {:db/index true}
+  {:id           {:db/unique :db.unique/identity}
+   :parent       {:db/valueType :db.type/ref}
+   :order        {:db/index true}
    :parent+order {:db/tupleAttrs [:parent :order]
-                  :db/unique :db.unique/value}})
+                  :db/unique     :db.unique/value}})
 
 (def rules
-  '[[(subtree-member ?ancestor ?descendant) [?descendant :parent ?ancestor]]
-    [(subtree-member ?ancestor ?descendant) [?descendant :parent ?intermediate]
-     (subtree-member ?ancestor ?intermediate)]])
+  '[[(subtree-member ?a ?d) [?d :parent ?a]]
+    [(subtree-member ?a ?d) [?d :parent ?m] (subtree-member ?a ?m)]])
 
-;; ## 2. LOW-LEVEL MECHANISM: FRACTIONAL ORDERING ##
-;; Pure, context-free implementation of fractional indexing. Unchanged.
+;; ---------- 2) Fractional ordering (tight) ----------
 (def ^:private digits "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 (def ^:private base (count digits))
-(defn- code [s i]
-  (let [c (when (and s (< i (count s))) (nth s i))]
-    (if c (inc (clojure.string/index-of digits (str c))) 0)))
+(defn- code [s i] (let [c (when (and s (< i (count s))) (nth s i))]
+                    (if c (inc (s/index-of digits (str c))) 0)))
 (defn- ch [i] (nth digits (dec i)))
-
 (defn- rank-between [a b]
   (loop [i 0, acc ""]
     (let [lo (code a i)
@@ -35,132 +29,95 @@
         (str acc (ch (quot (+ lo hi) 2)))
         (recur (inc i) (str acc (if (pos? lo) (ch lo) (ch 1))))))))
 
-;; ## 3. MID-LEVEL POLICY & PREPARATION ##
-;; REWRITTEN for semantic clarity. Hierarchy (:parent) and sibling order (:order) are decoupled.
-;; The `:order` attribute is now purely local to its parent.
+;; ---------- 3) Tiny db helpers ----------
+(defn- e [db id] (d/entity db [:id id]))
+(defn- pid [db id] (-> (e db id) :parent :id))
+(defn- orders [db parent-ref]
+  (->> (d/q '[:find [?o ...] :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)
+       sort vec))
+(defn- neighbors [v x]
+  (when-let [i (first (keep-indexed #(when (= %2 x) %1) v))]
+    [(get v (dec i)) (get v (inc i))]))
 
-(defn- entity-by-id [db id] (d/entity db [:id id]))
+;; Resolve both parent-ref and new :order in one place.
+(defn- resolve-position
+  "position = {:parent id | :sibling id, :rel #{:first :last :before :after}}
+   Defaults to append when :rel missing."
+  [db {:keys [parent sibling rel] :as pos}]
+  (let [parent-id (or parent (when sibling (pid db sibling))
+                      (throw (ex-info "No parent specified" {:position pos})))
+        pref [:id parent-id]
+        os (orders db pref)
+        ord (case rel
+              :first (rank-between nil (first os))
+              :last (rank-between (last os) nil)
+              :before (let [t (:order (e db sibling))
+                            [bef _] (neighbors os t)]
+                        (rank-between bef t))
+              :after (let [t (:order (e db sibling))
+                           [_ aft] (neighbors os t)]
+                       (rank-between t aft))
+              ;; default append
+              (rank-between (last os) nil))]
+    [pref ord]))
 
-(defn- parent-id [db entity-id] (:id (:parent (entity-by-id db entity-id))))
+;; ---------- 4) Tree insertion (compact walk) ----------
+(defn- walk->tx
+  "Assigns fresh :order to children within the new subtree."
+  [node parent-ref order]
+  (let [id (d/tempid :db.part/user)
+        kids (:children node [])
+        this (-> node (dissoc :children) (assoc :db/id id :parent parent-ref :order order))
+        ;; sequence of orders: mid, next-after-mid, ...
+        kid-ord (take (count kids) (iterate #(rank-between % nil) (rank-between nil nil)))]
+    (into [this]
+          (mapcat (fn [[k o]] (walk->tx k id o)) (map vector kids kid-ord)))))
 
-(defn- find-surrounding-orders [siblings target-order]
-  (when-let [idx (first (keep-indexed #(when (= %2 target-order) %1) siblings))]
-    [(when (pos? idx) (nth siblings (dec idx)))
-     (when (< (inc idx) (count siblings)) (nth siblings (inc idx)))]))
+(defn- ensure-new-ids! [db root]
+  (letfn [(ids [n] (cons (:id n) (mapcat ids (:children n []))))]
+    (when-let [dups (seq (filter #(e db %) (ids root)))]
+      (throw (ex-info "IDs already exist; use move! for existing entities" {:ids dups})))))
 
-(defn- resolve-parent-ref [db {:keys [parent sibling] :as position}]
-  (let [parent-id (cond
-                    parent parent
-                    sibling (parent-id db sibling)
-                    :else (throw (ex-info "No parent specified" {:position position})))]
-    (when parent-id [:id parent-id])))
+(defn insert! [conn entity {:keys [parent sibling] :as position}]
+  (ensure-new-ids! @conn entity)
+  (let [[pref root-order] (resolve-position @conn position)]
+    (d/transact! conn (walk->tx entity pref root-order))))
 
-(defn- resolve-rank [db parent-ref {:keys [rel parent sibling]}]
-  (let [siblings (->> (d/q '[:find [?o ...]
-                             :in $ ?p
-                             :where [?e :parent ?p] [?e :order ?o]]
-                           db parent-ref)
-                      (sort))]
-    (case [rel (boolean parent) (boolean sibling)]
-      [:first true false] (rank-between nil (first siblings))
-      [:last true false] (rank-between (last siblings) nil)
-      [:before false true] (let [t-order (:order (entity-by-id db sibling))
-                                 [before after] (find-surrounding-orders siblings t-order)]
-                             (rank-between before t-order))
-      [:after false true] (let [t-order (:order (entity-by-id db sibling))
-                                [before after] (find-surrounding-orders siblings t-order)]
-                            (rank-between t-order after)))))
-
-(defn- tree-walk [node parent-ref order]
-  (let [tempid (d/tempid :db.part/user)
-        children (:children node [])
-        this-tx (-> node (dissoc :children)
-                    (assoc :db/id tempid :parent parent-ref :order order))
-        child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))]
-    (concat [this-tx]
-            (mapcat tree-walk children (repeat tempid) child-orders))))
-
-(defn tree->tx-data [db entity-map position]
-  (let [parent-ref (resolve-parent-ref db position)
-        root-order (resolve-rank db parent-ref position)]
-    (tree-walk entity-map parent-ref root-order)))
-
-;; ## 4. HIGH-LEVEL API: COMMAND INTERPRETER ##
-;; Unchanged. This abstraction correctly separates command definition from execution.
-(defn command->tx
-  "Takes a db value and a command map, returns transaction data."
-  [db {:keys [op] :as command}]
-  (case op
-    :apply-txs (:tx-data command)
-    :patch (mapv (fn [[k v]] [:db/add [:id (:entity-id command)] k v]) (:attrs command))
-    :move (let [entity-id (:entity-id command)
-                position (:position command)
-                new-parent-ref (resolve-parent-ref db position)
-                new-order (resolve-rank db new-parent-ref position)
-                entity (entity-by-id db entity-id)
-                old-parent-ref [:id (:id (:parent entity))]
-                old-order (:order entity)]
-            [[:db/retract [:id entity-id] :parent old-parent-ref]
-             [:db/retract [:id entity-id] :order old-order]
-             [:db/add [:id entity-id] :parent new-parent-ref]
-             [:db/add [:id entity-id] :order new-order]])
-    :delete (let [e-id (:entity-id command)
-                  descendants (d/q '[:find [?did ...] :in $ % ?p :where
-                                     (subtree-member ?p ?d) [?d :id ?did]]
-                                   db rules [:id e-id])]
-              (mapv #(vector :db/retractEntity [:id %]) (cons e-id descendants)))))
-
-(defn execute!
-  "Executes a command against a DataScript connection."
-  [conn command]
-  (when-let [tx-data (command->tx @conn command)]
-    (d/transact! conn tx-data)))
-
-;; ## 5. PUBLIC CONVENIENCE FUNCTIONS ##
-;; Unchanged. These compose the layers cleanly.
-(defn insert!
-  "Insert new entities into the tree. Throws if any ID already exists."
-  [conn entity-map position]
-  (letfn [(collect-ids [em]
-            (cons (:id em) (mapcat collect-ids (:children em []))))]
-    (when-let [existing-ids (seq (filter #(entity-by-id @conn %) (collect-ids entity-map)))]
-      (throw (ex-info "Cannot insert: IDs already exist"
-                      {:existing-ids existing-ids
-                       :hint "Use move! to relocate existing entities"}))))
-  (let [tx-data (tree->tx-data @conn entity-map position)]
-    (execute! conn {:op :apply-txs :tx-data tx-data})))
-
+;; ---------- 5) Mutations ----------
 (defn delete! [conn entity-id]
-  (execute! conn {:op :delete :entity-id entity-id}))
+  (let [db @conn
+        desc (d/q '[:find [?id ...] :in $ % ?p :where (subtree-member ?p ?d) [?d :id ?id]]
+                  db rules [:id entity-id])]
+    (d/transact! conn (mapv (fn [id] [:db/retractEntity [:id id]]) (cons entity-id desc)))))
 
 (defn update! [conn entity-id attrs]
   (when (some #{:parent :order :id} (keys attrs))
-    (throw (ex-info "Cannot modify structural attributes" {:attrs attrs})))
-  (execute! conn {:op :patch :entity-id entity-id :attrs attrs}))
+    (throw (ex-info "Cannot modify structural attributes" {:attrs (select-keys attrs [:parent :order :id])})))
+  (d/transact! conn (for [[k v] attrs] [:db/add [:id entity-id] k v])))
 
-(defn move! [conn entity-id position]
-  "Move an entity to a new position without changing its attributes or children"
-  (let [descendants (d/q '[:find [?id ...] :in $ % ?p :where
-                           (subtree-member ?p ?d) [?d :id ?id]]
-                         @conn rules [:id entity-id])
-        {:keys [parent sibling]} position
-        target-parent (cond
-                        parent parent
-                        sibling (parent-id @conn sibling))]
-    (when (contains? (set descendants) target-parent)
-      (throw (ex-info "Cycle detected" {:entity entity-id :target target-parent}))))
-  (execute! conn {:op :move :entity-id entity-id :position position}))
+(defn move! [conn entity-id {:keys [parent sibling] :as position}]
+  (let [db @conn
+        desc (set (d/q '[:find [?id ...] :in $ % ?p :where (subtree-member ?p ?d) [?d :id ?id]]
+                       db rules [:id entity-id]))
+        tgt-p (or parent (pid db sibling))]
+    (when (contains? desc tgt-p)
+      (throw (ex-info "Cycle detected" {:entity entity-id :target tgt-p})))
+    (let [[pref new-o] (resolve-position db position)
+          ent (e db entity-id)]
+      (d/transact! conn
+                   [[:db/retract [:id entity-id] :parent [:id (-> ent :parent :id)]]
+                    [:db/retract [:id entity-id] :order (:order ent)]
+                    [:db/add [:id entity-id] :parent pref]
+                    [:db/add [:id entity-id] :order new-o]]))))
 
-(defn children-ids
-  "Query function to get child IDs in correct order."
-  [db parent-id]
-  (->> (d/q '[:find ?id ?order :in $ ?pid :where
-              [?p :id ?pid] [?c :parent ?p]
-              [?c :id ?id] [?c :order ?order]]
+;; ---------- 6) Read ----------
+(defn children-ids [db parent-id]
+  (->> (d/q '[:find ?id ?o :in $ ?pid
+              :where [?p :id ?pid] [?c :parent ?p] [?c :id ?id] [?c :order ?o]]
             db parent-id)
-       (sort-by second)
-       (mapv first)))
+       (sort-by second) (mapv first)))
 
+;; ---------- 7) Tests ----------
 (deftest subtree-reparenting-test
   (let [conn (d/create-conn schema)]
     (d/transact! conn [{:id "root"}])
@@ -197,14 +154,14 @@
       (is (< (compare (nth orders 0) (nth orders 1)) 0) "Fractional rank is greater than predecessor")
       (is (< (compare (nth orders 1) (nth orders 2)) 0) "Fractional rank is less than successor"))))
 
-(deftest find-surrounding-orders-test
+(deftest neighbors-test
   ;; Test helper function behavior
-  (is (= [nil "b"] (find-surrounding-orders ["a" "b" "c"] "a")) "First element")
-  (is (= ["a" "c"] (find-surrounding-orders ["a" "b" "c"] "b")) "Middle element")
-  (is (= ["b" nil] (find-surrounding-orders ["a" "b" "c"] "c")) "Last element")
-  (is (= nil (find-surrounding-orders ["a" "b" "c"] "d")) "Missing element")
-  (is (= [nil nil] (find-surrounding-orders ["a"] "a")) "Single element")
-  (is (= nil (find-surrounding-orders [] "a")) "Empty list"))
+  (is (= [nil "b"] (neighbors ["a" "b" "c"] "a")) "First element")
+  (is (= ["a" "c"] (neighbors ["a" "b" "c"] "b")) "Middle element")
+  (is (= ["b" nil] (neighbors ["a" "b" "c"] "c")) "Last element")
+  (is (= nil (neighbors ["a" "b" "c"] "d")) "Missing element")
+  (is (= [nil nil] (neighbors ["a"] "a")) "Single element")
+  (is (= nil (neighbors [] "a")) "Empty list"))
 
 (deftest delete-and-patch-operations-test
   (let [conn (d/create-conn schema)]
@@ -240,13 +197,13 @@
   (let [conn (d/create-conn schema)]
     ;; Set up a complex tree structure
     (d/transact! conn [{:id "root"}])
-    (insert! conn {:id "section-a", :name "Section A",
-                   :children [{:id "comp-1", :name "Component 1",
+    (insert! conn {:id       "section-a", :name "Section A",
+                   :children [{:id       "comp-1", :name "Component 1",
                                :children [{:id "elem-1", :name "Element 1"}
                                           {:id "elem-2", :name "Element 2"}]}
                               {:id "comp-2", :name "Component 2"}]}
              {:rel :first :parent "root"})
-    (insert! conn {:id "section-b", :name "Section B",
+    (insert! conn {:id       "section-b", :name "Section B",
                    :children [{:id "comp-3", :name "Component 3"}]}
              {:rel :last :parent "root"})
     (insert! conn {:id "section-c", :name "Section C"}
@@ -285,13 +242,13 @@
     (d/transact! conn [{:id "app"}])
 
     ;; Create a complex UI-like structure
-    (insert! conn {:id "header", :type "component",
-                   :children [{:id "nav", :type "navigation",
+    (insert! conn {:id       "header", :type "component",
+                   :children [{:id       "nav", :type "navigation",
                                :children [{:id "home-link", :type "link"}
                                           {:id "about-link", :type "link"}]}
                               {:id "logo", :type "image"}]}
              {:rel :first :parent "app"})
-    (insert! conn {:id "main", :type "component",
+    (insert! conn {:id       "main", :type "component",
                    :children [{:id "sidebar", :type "component"}
                               {:id "content", :type "component"}]}
              {:rel :last :parent "app"})
