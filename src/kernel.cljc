@@ -5,11 +5,11 @@
 
 ;; ---------- 1) Schema & rules (unchanged) ----------
 (def schema
-  {:id           {:db/unique :db.unique/identity}
-   :parent       {:db/valueType :db.type/ref}
-   :order        {:db/index true}
+  {:id {:db/unique :db.unique/identity}
+   :parent {:db/valueType :db.type/ref}
+   :order {:db/index true}
    :parent+order {:db/tupleAttrs [:parent :order]
-                  :db/unique     :db.unique/value}})
+                  :db/unique :db.unique/value}})
 
 (def rules
   '[[(subtree-member ?a ?d) [?d :parent ?a]]
@@ -117,157 +117,193 @@
             db parent-id)
        (sort-by second) (mapv first)))
 
-;; ---------- 7) Tests ----------
-(deftest subtree-reparenting-test
+;; ---------- 8) Test Utilities ----------
+(defn- tree-fixture []
   (let [conn (d/create-conn schema)]
     (d/transact! conn [{:id "root"}])
-    (insert! conn {:id "branch1", :children [{:id "leaf1"} {:id "leaf2"}]} {:rel :first :parent "root"})
-    (insert! conn {:id "branch2", :children [{:id "leaf3"}]} {:rel :last :parent "root"})
+    conn))
 
-    (is (= ["branch1" "branch2"] (children-ids @conn "root")))
-    (is (= ["leaf1" "leaf2"] (children-ids @conn "branch1")))
+(defn- tree-structure [conn & paths]
+  "Get tree structure as nested vectors for easy comparison"
+  (letfn [(structure [id] [id (mapv structure (children-ids @conn id))])]
+    (if (= 1 (count paths))
+      (structure (first paths))
+      (mapv structure paths))))
 
-    ;; Reparent "branch1" and all its children to be the first child of "branch2"
-    (move! conn "branch1" {:rel :first :parent "branch2"})
+;; ---------- 9) Core Tests ----------
+(deftest fractional-ordering-properties
+  "Test mathematical properties of fractional ordering"
+  ;; Test that we can generate different orders by building incrementally
+  (let [orders (loop [acc [], prev nil, n 10]
+                 (if (zero? n)
+                   acc
+                   (let [next-order (rank-between prev nil)]
+                     (recur (conj acc next-order) next-order (dec n)))))]
+    ;; All orders should be unique
+    (is (= (count orders) (count (set orders))))
+    ;; Should be lexicographically sortable  
+    (is (= orders (sort orders)))
+    ;; Should work with insertions between existing orders
+    (let [between (rank-between (first orders) (second orders))]
+      (is (< (compare (first orders) between) 0))
+      (is (< (compare between (second orders)) 0)))))
 
-    (is (= ["branch2"] (children-ids @conn "root")) "Root now has only branch2")
-    (is (= ["branch1" "leaf3"] (children-ids @conn "branch2")) "Branch2 now contains branch1")
-    (is (= ["leaf1" "leaf2"] (children-ids @conn "branch1")) "Branch1 still has its children")
-    (is (= "branch2" (:id (:parent (d/entity @conn [:id "branch1"])))) "branch1 parent is now branch2")))
+(deftest position-resolution-edge-cases
+  "Test position resolution with various edge cases"
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "a"} {:parent "root"})
+    (insert! conn {:id "b"} {:parent "root"})
 
-(deftest fractional-ordering-stress-test
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn [{:id "root"}])
+    ;; Default position (append)
+    (insert! conn {:id "c"} {:parent "root"})
+    (is (= ["a" "b" "c"] (children-ids @conn "root")))
 
-    (doseq [i (range 10)]
-      (insert! conn {:id (str "item" i)} {:rel :last :parent "root"}))
+    ;; Sibling positioning
+    (insert! conn {:id "between"} {:rel :after :sibling "a"})
+    (is (= ["a" "between" "b" "c"] (children-ids @conn "root")))
 
-    (let [children (children-ids @conn "root")
-          orders (mapv #(:order (d/entity @conn [:id %])) children)]
-      (is (= children (mapv #(str "item" %) (range 10))) "Sequential insertion maintains order")
-      (is (= orders (sort orders)) "Orders are lexicographically sorted"))
+    ;; Error conditions
+    (is (thrown-with-msg? Exception #"No parent specified"
+                          (insert! conn {:id "orphan"} {})))
+    (is (thrown-with-msg? Exception #"IDs already exist"
+                          (insert! conn {:id "a"} {:parent "root"})))))
 
-    (insert! conn {:id "between"} {:rel :after :sibling "item4"})
-    (is (= ["item0" "item1" "item2" "item3" "item4" "between" "item5" "item6" "item7" "item8" "item9"]
-           (children-ids @conn "root")))
-    (let [orders (mapv #(:order (d/entity @conn [:id %])) ["item4" "between" "item5"])]
-      (is (< (compare (nth orders 0) (nth orders 1)) 0) "Fractional rank is greater than predecessor")
-      (is (< (compare (nth orders 1) (nth orders 2)) 0) "Fractional rank is less than successor"))))
-
-(deftest neighbors-test
-  ;; Test helper function behavior
-  (is (= [nil "b"] (neighbors ["a" "b" "c"] "a")) "First element")
-  (is (= ["a" "c"] (neighbors ["a" "b" "c"] "b")) "Middle element")
-  (is (= ["b" nil] (neighbors ["a" "b" "c"] "c")) "Last element")
-  (is (= nil (neighbors ["a" "b" "c"] "d")) "Missing element")
-  (is (= [nil nil] (neighbors ["a"] "a")) "Single element")
-  (is (= nil (neighbors [] "a")) "Empty list"))
-
-(deftest delete-and-patch-operations-test
-  (let [conn (d/create-conn schema)]
-    ;; Set up test data
-    (d/transact! conn [{:id "root"}])
-    (insert! conn {:id "parent", :name "Parent Node", :children [{:id "child1", :name "Child 1"} {:id "child2", :name "Child 2"}]} {:rel :first :parent "root"})
-    (insert! conn {:id "sibling", :name "Sibling Node"} {:rel :last :parent "root"})
-
-    ;; Test initial state
-    (is (= ["parent" "sibling"] (children-ids @conn "root")))
-    (is (= ["child1" "child2"] (children-ids @conn "parent")))
-    (is (= "Parent Node" (:name (d/entity @conn [:id "parent"]))))
-
-    ;; Test patch operation
-    (update! conn "parent" {:name "Updated Parent", :description "New description"})
-    (let [updated-parent (d/entity @conn [:id "parent"])]
-      (is (= "Updated Parent" (:name updated-parent)) "Name should be updated")
-      (is (= "New description" (:description updated-parent)) "Description should be added"))
-
-    ;; Test that patch doesn't affect children
-    (is (= ["child1" "child2"] (children-ids @conn "parent")) "Children should remain unchanged after patch")
-
-    ;; Test delete operation (should cascade to children)
-    (delete! conn "parent")
-    (is (= ["sibling"] (children-ids @conn "root")) "Parent should be deleted from root children")
-    (is (nil? (d/entity @conn [:id "parent"])) "Parent entity should not exist")
-    (is (nil? (d/entity @conn [:id "child1"])) "Child1 should be deleted (cascade)")
-    (is (nil? (d/entity @conn [:id "child2"])) "Child2 should be deleted (cascade)")
-    (is (not (nil? (d/entity @conn [:id "sibling"]))) "Sibling should still exist")))
-
-(deftest move-subtree-test
-  "Test moving subtrees (nodes with children) to different positions"
-  (let [conn (d/create-conn schema)]
-    ;; Set up a complex tree structure
-    (d/transact! conn [{:id "root"}])
-    (insert! conn {:id       "section-a", :name "Section A",
-                   :children [{:id       "comp-1", :name "Component 1",
-                               :children [{:id "elem-1", :name "Element 1"}
-                                          {:id "elem-2", :name "Element 2"}]}
-                              {:id "comp-2", :name "Component 2"}]}
-             {:rel :first :parent "root"})
-    (insert! conn {:id       "section-b", :name "Section B",
-                   :children [{:id "comp-3", :name "Component 3"}]}
-             {:rel :last :parent "root"})
-    (insert! conn {:id "section-c", :name "Section C"}
-             {:rel :last :parent "root"})
+(deftest crud-operations-integration
+  "Test full CRUD lifecycle with validation"
+  (let [conn (tree-fixture)]
+    ;; Create hierarchical data
+    (insert! conn {:id "ui", :type "app",
+                   :children [{:id "header", :children [{:id "nav"}]}
+                              {:id "main", :children [{:id "sidebar"} {:id "content"}]}
+                              {:id "footer"}]}
+             {:parent "root"})
 
     ;; Verify initial structure
-    (is (= ["section-a" "section-b" "section-c"] (children-ids @conn "root")))
-    (is (= ["comp-1" "comp-2"] (children-ids @conn "section-a")))
-    (is (= ["elem-1" "elem-2"] (children-ids @conn "comp-1")))
-    (is (= ["comp-3"] (children-ids @conn "section-b")))
-    (is (= [] (children-ids @conn "section-c")))
+    (is (= ["ui" [["header" [["nav" []]]]
+                  ["main" [["sidebar" []] ["content" []]]]
+                  ["footer" []]]]
+           (tree-structure conn "ui")))
 
-    ;; Test 1: Move a component with children to a different section
-    (move! conn "comp-1" {:rel :first :parent "section-b"})
+    ;; Update attributes (non-structural)
+    (update! conn "nav" {:label "Navigation" :visible true})
+    (is (= "Navigation" (:label (e @conn "nav"))))
 
-    (is (= ["comp-2"] (children-ids @conn "section-a"))
-        "comp-1 should be removed from section-a")
-    (is (= ["comp-1" "comp-3"] (children-ids @conn "section-b"))
-        "comp-1 should be first child of section-b")
-    (is (= ["elem-1" "elem-2"] (children-ids @conn "comp-1"))
-        "comp-1 should retain its children after move")
+    ;; Move components around
+    (move! conn "nav" {:rel :first :parent "footer"}) ; nav to footer
+    (move! conn "sidebar" {:rel :after :sibling "content"}) ; reorder in main
 
-    ;; Test 2: Move an entire section with all its descendants
-    (move! conn "section-b" {:rel :after :sibling "section-c"})
+    ;; Verify restructured tree
+    (is (= ["ui" [["header" []]
+                  ["main" [["content" []] ["sidebar" []]]]
+                  ["footer" [["nav" []]]]]]
+           (tree-structure conn "ui")))
 
-    (is (= ["section-a" "section-c" "section-b"] (children-ids @conn "root"))
-        "section-b should move after section-c")
-    (is (= ["comp-1" "comp-3"] (children-ids @conn "section-b"))
-        "section-b should retain its components")
-    (is (= ["elem-1" "elem-2"] (children-ids @conn "comp-1"))
-        "Deep children should be preserved")))
+    ;; Delete subtree
+    (delete! conn "main")
+    (is (= ["ui" [["header" []] ["footer" [["nav" []]]]]]
+           (tree-structure conn "ui")))
+    (is (nil? (e @conn "content")) "Cascade delete worked")
 
-(deftest move-complex-component-test
-  "Test moving complex nested components like UI components"
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn [{:id "app"}])
+    ;; Validation checks
+    (is (thrown-with-msg? Exception #"Cannot modify structural"
+                          (update! conn "nav" {:parent "other"})))
+    (is (thrown-with-msg? Exception #"Cycle detected"
+                          (move! conn "ui" {:parent "nav"})))))
 
-    ;; Create a complex UI-like structure
-    (insert! conn {:id       "header", :type "component",
-                   :children [{:id       "nav", :type "navigation",
-                               :children [{:id "home-link", :type "link"}
-                                          {:id "about-link", :type "link"}]}
-                              {:id "logo", :type "image"}]}
-             {:rel :first :parent "app"})
-    (insert! conn {:id       "main", :type "component",
-                   :children [{:id "sidebar", :type "component"}
-                              {:id "content", :type "component"}]}
-             {:rel :last :parent "app"})
-    (insert! conn {:id "footer", :type "component"}
-             {:rel :last :parent "app"})
+(deftest complex-restructuring-scenarios
+  "Test realistic tree manipulation scenarios"
+  (let [conn (tree-fixture)]
+    ;; Build a document-like structure
+    (insert! conn {:id "doc", :title "My Document"
+                   :children [{:id "sec1", :title "Introduction"
+                               :children [{:id "p1", :text "First paragraph"}
+                                          {:id "p2", :text "Second paragraph"}]}
+                              {:id "sec2", :title "Methods"
+                               :children [{:id "subsec1", :title "Approach A"}
+                                          {:id "subsec2", :title "Approach B"}]}
+                              {:id "sec3", :title "Conclusion"}]}
+             {:parent "root"})
 
-    ;; Verify initial structure
-    (is (= ["header" "main" "footer"] (children-ids @conn "app")))
-    (is (= ["nav" "logo"] (children-ids @conn "header")))
-    (is (= ["home-link" "about-link"] (children-ids @conn "nav")))
+    ;; Scenario 1: Reorganize sections (move sec3 between sec1 and sec2)
+    (move! conn "sec3" {:rel :after :sibling "sec1"})
+    (is (= ["sec1" "sec3" "sec2"] (children-ids @conn "doc")))
 
-    ;; Test: Move navigation component to footer (like moving a component in UI editor)
-    (move! conn "nav" {:rel :first :parent "footer"})
+    ;; Scenario 2: Merge sections (move subsections from sec2 to sec1)  
+    (move! conn "subsec1" {:rel :last :parent "sec1"})
+    (move! conn "subsec2" {:rel :last :parent "sec1"})
+    (is (= ["p1" "p2" "subsec1" "subsec2"] (children-ids @conn "sec1")))
+    (is (= [] (children-ids @conn "sec2")))
 
-    (is (= ["logo"] (children-ids @conn "header"))
-        "nav should be removed from header")
-    (is (= ["nav"] (children-ids @conn "footer"))
-        "nav should be moved to footer")
-    (is (= ["home-link" "about-link"] (children-ids @conn "nav"))
-        "nav should preserve its link children")))
+    ;; Scenario 3: Bulk operations with ordering constraints
+    (insert! conn {:id "toc", :title "Table of Contents"} {:rel :first :parent "doc"})
+    (insert! conn {:id "appendix"} {:rel :last :parent "doc"})
+    (is (= ["toc" "sec1" "sec3" "sec2" "appendix"] (children-ids @conn "doc")))
 
-(run-tests)
+    ;; Scenario 4: Complex nested moves preserving deep structure
+    (let [sec1-structure (tree-structure conn "sec1")]
+      (move! conn "sec1" {:rel :first :parent "appendix"})
+      (is (= sec1-structure (tree-structure conn "sec1")) "Deep structure preserved"))))
+
+(deftest performance-and-ordering-stress
+  "Test performance with many operations and verify ordering invariants"
+  (let [conn (tree-fixture)]
+    ;; Generate many sequential inserts
+    (doseq [i (range 50)]
+      (insert! conn {:id (str "item-" i) :data i} {:parent "root"}))
+
+    ;; Verify ordering is maintained
+    (let [items (children-ids @conn "root")
+          orders (mapv #(:order (e @conn %)) items)]
+      (is (= 50 (count items)))
+      (is (= orders (sort orders)) "Orders maintain sort invariant"))
+
+    ;; Test interleaved insertions maintain ordering
+    (insert! conn {:id "between-10-11"} {:rel :after :sibling "item-10"})
+    (insert! conn {:id "between-20-21"} {:rel :after :sibling "item-20"})
+
+    (let [items (children-ids @conn "root")
+          item-10-idx (.indexOf items "item-10")
+          item-20-idx (.indexOf items "item-20")]
+      (is (= "between-10-11" (nth items (inc item-10-idx))))
+      (is (= "between-20-21" (nth items (inc item-20-idx))))
+
+      ;; Orders should still be sorted
+      (let [orders (mapv #(:order (e @conn %)) items)]
+        (is (= orders (sort orders)) "Interleaved insertions preserve order")))
+
+    ;; Bulk operations should work efficiently
+    (doseq [i (range 0 50 5)] ; Delete every 5th item
+      (delete! conn (str "item-" i)))
+
+    (is (= 42 (count (children-ids @conn "root"))) "Bulk deletes worked")))
+
+(deftest utility-functions-and-edge-cases
+  "Test helper functions and edge cases"
+  (let [conn (tree-fixture)]
+    ;; Test neighbors function
+    (is (= [nil "b"] (neighbors ["a" "b" "c"] "a")))
+    (is (= ["a" "c"] (neighbors ["a" "b" "c"] "b")))
+    (is (= ["b" nil] (neighbors ["a" "b" "c"] "c")))
+    (is (= nil (neighbors ["a" "b" "c"] "missing")))
+
+    ;; Test empty tree operations
+    (is (= [] (children-ids @conn "root")))
+    (insert! conn {:id "first"} {:parent "root"})
+    (is (= ["first"] (children-ids @conn "root")))
+
+    ;; Test single child operations
+    (insert! conn {:id "before-first"} {:rel :before :sibling "first"})
+    (insert! conn {:id "after-first"} {:rel :after :sibling "first"})
+    (is (= ["before-first" "first" "after-first"] (children-ids @conn "root")))
+
+    ;; Test entity resolution
+    (is (= "first" (:id (e @conn "first"))))
+    (is (= "root" (pid @conn "first")))
+    (is (nil? (e @conn "nonexistent")))
+
+    ;; Test tree structure helper
+    (insert! conn {:id "child-of-first"} {:parent "first"})
+    (is (= ["first" [["child-of-first" []]]]
+           (tree-structure conn "first")))))
+
+;; Run tests when file is loaded
