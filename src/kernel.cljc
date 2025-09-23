@@ -1,6 +1,6 @@
 (ns kernel
   (:require [datascript.core :as d]
-            [fractional-ordering :refer [calculate-order]]
+            [fractional-ordering :as fo]
             [clojure.test :refer [deftest is run-tests]])
   )
 
@@ -18,7 +18,7 @@
                     (:target position-spec)
                     (:id (:parent (d/entity db [:id (:target position-spec)]))))
         parent-ref [:id parent-id]
-        order (calculate-order db parent-ref position-spec)
+        order (fo/calculate-order db parent-ref position-spec)
         entity-id (or (:id entity-map) (str (random-uuid)))
         tx-data [(-> entity-map
                      (dissoc :children)
