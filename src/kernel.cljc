@@ -4,9 +4,13 @@
             [clojure.test :refer [deftest is run-tests]]))
 
 ;; ## 1. SCHEMA ##
-(def schema {:id {:db/unique :db.unique/identity}
-             :parent {:db/valueType :db.type/ref}
-             :order {:db/index true}})
+(def schema
+  {:id {:db/unique :db.unique/identity}
+   :parent {:db/valueType :db.type/ref}
+   :order {:db/index true}
+   ;; Enforces that :order is unique per :parent
+   :parent+order {:db/tupleAttrs [:parent :order]
+                  :db/unique :db.unique/value}})
 
 ;; ## 2. DATALOG RULES ##
 ;; Rules define the transitive closure of the parent-child relationship.
@@ -29,6 +33,35 @@
 (comment "collect-descendant-ids function replaced by declarative Datalog query using rules")
 
 ;; --- Interpreter (Pure Function) ---
+(defn- tree->txns
+  "Recursively generates a flat vector of transaction maps from a nested entity map."
+  [entity-map parent-ref order]
+  (let [entity-id (:id entity-map)
+        temp-id (str "temp-" entity-id) ;; Predictable temporary ID
+        children (:children entity-map)
+
+        ;; The transaction map for the current entity
+        ;; :children is removed as it's not part of the new schema
+        entity-txn (-> entity-map
+                       (dissoc :children)
+                       (assoc :db/id temp-id
+                              :parent parent-ref
+                              :order order))
+
+        ;; Recursively generate transactions for children
+        ;; Each child gets positioned sequentially
+        children-txns (when children
+                        (mapcat
+                         (fn [[idx child-map]]
+                            ;; For children, we'll use a simple ordering scheme
+                            ;; Each child gets an order based on its index
+                           (let [child-order (str order "." (format "%03d" idx))]
+                             (tree->txns child-map temp-id child-order)))
+                         (map-indexed vector children)))]
+    (if children-txns
+      (cons entity-txn children-txns)
+      [entity-txn])))
+
 (defn command->tx
   "Takes a db value and a command map, returns transaction data. Pure."
   [db {:keys [op] :as command}]
@@ -39,13 +72,8 @@
                       (:target position)
                       (:id (:parent (d/entity db [:id (:target position)]))))
           parent-ref [:id parent-id]
-          order (fo/calculate-order db parent-ref position)
-          entity-id (or (:id entity) (str (random-uuid)))]
-      [(-> entity
-           (dissoc :children)
-           (assoc :id entity-id
-                  :parent parent-ref
-                  :order order))])
+          order (fo/calculate-order db parent-ref position)]
+      (tree->txns entity parent-ref order))
 
     :patch
     (let [{:keys [entity-id attrs]} command]
@@ -69,6 +97,17 @@
   [conn command]
   (when-let [tx-data (command->tx @conn command)]
     (d/transact! conn tx-data)))
+
+;; --- Convenience Functions ---
+(defn create!
+  "Creates an entity with optional nested children. Wrapper around execute! for :put operations."
+  [conn entity-map position]
+  (execute! conn {:op :put :entity entity-map :position position}))
+
+(defn delete!
+  "Deletes an entity and all its descendants using declarative Datalog rules."
+  [conn entity-id]
+  (execute! conn {:op :delete :entity-id entity-id}))
 
 ;; ## 4. QUERIES ##
 (defn children-ids
