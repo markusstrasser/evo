@@ -16,9 +16,6 @@
 (defn e [db id]
   (d/entity db [:id id]))
 
-(defn pid [db id]
-  (:id (:parent (e db id))))
-
 (defn children-ids [db parent-id]
   (->> (d/q '[:find [?id ...]
               :in $ ?parent
@@ -37,27 +34,19 @@
   (map-indexed (fn [i id] [:db/add [:id id] :pos i]) ids))
 
 (defn target [db {:keys [parent sibling rel idx] :as pos}]
-  (let [p (or parent (when sibling (pid db sibling))
+  (let [p (or parent (when sibling (:id (:parent (e db sibling))))
               (throw (ex-info "No parent specified" {:position pos})))
         ks (children-ids db p)
-        i (case rel
-            :first 0
-            :last (count ks)
-            :before (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) j))
-            :after (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) (inc j)))
-            (min (or idx (count ks)) (count ks)))]
+        i (cond
+            (= rel :first) 0
+            (= rel :last) (count ks)
+            (= rel :before) (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) j))
+            (= rel :after) (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) (inc j)))
+            :else (min (or idx (count ks)) (count ks)))]
     [p i]))
 
 ;; ---------- Tree operations ----------
 (def cid (atom 0))
-
-(defn- walk->tx [{:keys [id children] :as node} parent-ref idx]
-  (when id ; Skip nodes without IDs
-    (let [node-tx [[:db/add [:id id] :parent parent-ref]
-                   [:db/add [:id id] :pos idx]]
-          rest-tx (apply concat
-                         (map-indexed #(walk->tx %2 [:id id] %1) children))]
-      (concat node-tx (seq rest-tx)))))
 
 (defn insert! [conn entity pos]
   (let [db @conn
@@ -65,29 +54,23 @@
         id (or id (str "auto-" (swap! cid inc)))
         entity (assoc entity :id id)
         [p i] (target db pos)
-        temp-id (- (swap! cid inc))]
-    ; Insert the entity first with a temp id
-    (d/transact! conn [[:db/add temp-id :id id]
-                       [:db/add temp-id :parent [:id p]]])
-    ; Add other attributes 
-    (doseq [[k v] (dissoc entity :id :children)]
-      (d/transact! conn [[:db/add [:id id] k v]]))
-    ; Now reorder the parent's children
+        temp-id (- (swap! cid inc))
+        tx (concat [[:db/add temp-id :id id]
+                    [:db/add temp-id :parent [:id p]]]
+                   (for [[k v] (dissoc entity :id :children)]
+                     [:db/add [:id id] k v]))]
+    (d/transact! conn tx)
     (let [siblings (children-ids @conn p)
           reordered (splice (vec (remove #{id} siblings)) i id)]
       (d/transact! conn (reorder-tx p reordered)))))
 
 (defn move! [conn id pos]
   (let [db @conn
-        ;; cycle check via rule-free closure (slow is fine)
-        desc (loop [fr #{id} acc #{id}]
-               (if (empty? fr) acc
-                   (let [kids (set (mapcat #(children-ids db %) fr))]
-                     (recur kids (into acc kids)))))
+        desc (set (tree-seq #(seq (children-ids db %)) #(children-ids db %) id))
         [p i] (target db pos)]
     (when (contains? desc p)
       (throw (ex-info "Cycle detected" {:entity id :target p})))
-    (let [old (pid db id)
+    (let [old (:id (:parent (e db id)))
           same? (= old p)
           oldks (children-ids db old)
           newks (if same? oldks (children-ids db p))
@@ -106,16 +89,14 @@
 
 (defn delete! [conn entity-id]
   (let [db @conn
-        parent (pid db entity-id)
+        parent (:id (:parent (e db entity-id)))
         siblings (children-ids db parent)]
     (d/transact! conn [[:db.fn/retractEntity [:id entity-id]]])
     (d/transact! conn (reorder-tx parent (vec (remove #{entity-id} siblings))))))
 
 (defn update! [conn entity-id attrs]
   (let [tx (for [[k v] attrs]
-             (if (and (coll? v) (every? keyword? v))
-               [:db/add [:id entity-id] k v]
-               [:db/add [:id entity-id] k v]))]
+             [:db/add [:id entity-id] k v])]
     (d/transact! conn tx)))
 
 ;; ---------- Test fixtures ----------
@@ -243,7 +224,7 @@
 (defn pids-round-trip? [db]
   (let [all-ids (d/q '[:find [?id ...] :where [?e :id ?id]] db)]
     (every? (fn [id]
-              (if-let [parent (pid db id)]
+              (if-let [parent (:id (:parent (e db id)))]
                 (some #{id} (children-ids db parent))
                 true)) ; root nodes are fine
             all-ids)))
