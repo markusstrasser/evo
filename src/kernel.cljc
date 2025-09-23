@@ -50,7 +50,7 @@
 ;; ## 3. PUBLIC API ##
 ;; Simplified approach based on agent.md learnings - avoid transaction functions
 
-(defn position!
+(defn put!
   "Creates or moves an entity to a position."
   [conn entity-map position-spec]
   (let [db @conn
@@ -109,20 +109,20 @@
     (d/transact! conn [{:id "root" :name "Root"}])
 
     ;; Seed with a root and two children
-    (position! conn {:id "child1" :name "A"} {:rel :first :target "root"})
-    (position! conn {:id "child2" :name "B"} {:rel :last :target "root"})
+    (put! conn {:id "child1" :name "A"} {:rel :first :target "root"})
+    (put! conn {:id "child2" :name "B"} {:rel :last :target "root"})
     (is (= ["child1" "child2"] (children-ids @conn "root")) "Initial order")
 
     ;; Insert between
-    (position! conn {:id "child3" :name "C"} {:rel :after :target "child1"})
+    (put! conn {:id "child3" :name "C"} {:rel :after :target "child1"})
     (is (= ["child1" "child3" "child2"] (children-ids @conn "root")) "Insert after")
 
     ;; Insert at the beginning
-    (position! conn {:id "child0" :name "Z"} {:rel :first :target "root"})
+    (put! conn {:id "child0" :name "Z"} {:rel :first :target "root"})
     (is (= ["child0" "child1" "child3" "child2"] (children-ids @conn "root")) "Insert first")
 
     ;; Deletion with cascade
-    (position! conn {:id "grandchild1"} {:rel :first :target "child1"})
+    (put! conn {:id "grandchild1"} {:rel :first :target "child1"})
     (is (= ["grandchild1"] (children-ids @conn "child1")) "Grandchild created")
     (delete! conn "child1")
     (is (= ["child0" "child3" "child2"] (children-ids @conn "root")) "Parent deleted")
@@ -135,13 +135,13 @@
     (d/transact! conn [{:id "root" :name "Root"}])
 
     ;; Test creating nested structure: root -> branch1 -> leaf1, leaf2
-    (position! conn {:id "branch1" :name "Branch 1"} {:rel :first :target "root"})
-    (position! conn {:id "leaf1" :name "Leaf 1"} {:rel :first :target "branch1"})
-    (position! conn {:id "leaf2" :name "Leaf 2"} {:rel :last :target "branch1"})
+    (put! conn {:id "branch1" :name "Branch 1"} {:rel :first :target "root"})
+    (put! conn {:id "leaf1" :name "Leaf 1"} {:rel :first :target "branch1"})
+    (put! conn {:id "leaf2" :name "Leaf 2"} {:rel :last :target "branch1"})
 
     ;; Create another branch: root -> branch2 -> leaf3
-    (position! conn {:id "branch2" :name "Branch 2"} {:rel :last :target "root"})
-    (position! conn {:id "leaf3" :name "Leaf 3"} {:rel :first :target "branch2"})
+    (put! conn {:id "branch2" :name "Branch 2"} {:rel :last :target "root"})
+    (put! conn {:id "leaf3" :name "Leaf 3"} {:rel :first :target "branch2"})
 
     ;; Verify initial structure
     (is (= ["branch1" "branch2"] (children-ids @conn "root")) "Root has two branches")
@@ -149,7 +149,7 @@
     (is (= ["leaf3"] (children-ids @conn "branch2")) "Branch2 has one leaf")
 
     ;; Test moving subtree: move branch1 (with children) under branch2
-    (position! conn {:id "branch1"} {:rel :first :target "branch2"})
+    (put! conn {:id "branch1"} {:rel :first :target "branch2"})
     (is (= ["branch2"] (children-ids @conn "root")) "Root now has only branch2")
     (is (= ["leaf3" "branch1"] (children-ids @conn "branch2")) "Branch2 now contains leaf3 and branch1")
     (is (= ["leaf1" "leaf2"] (children-ids @conn "branch1")) "Branch1 still has its children after move")
@@ -173,13 +173,13 @@
     (d/transact! conn [{:id "root" :name "Root"}])
 
     ;; Create 3-level deep tree: root -> A -> A1 -> A1a, A1b
-    (position! conn {:id "A" :name "Node A"} {:rel :first :target "root"})
-    (position! conn {:id "A1" :name "Node A1"} {:rel :first :target "A"})
-    (position! conn {:id "A1a" :name "Node A1a"} {:rel :first :target "A1"})
-    (position! conn {:id "A1b" :name "Node A1b"} {:rel :after :target "A1a"})
+    (put! conn {:id "A" :name "Node A"} {:rel :first :target "root"})
+    (put! conn {:id "A1" :name "Node A1"} {:rel :first :target "A"})
+    (put! conn {:id "A1a" :name "Node A1a"} {:rel :first :target "A1"})
+    (put! conn {:id "A1b" :name "Node A1b"} {:rel :after :target "A1a"})
 
     ;; Add sibling to A1
-    (position! conn {:id "A2" :name "Node A2"} {:rel :after :target "A1"})
+    (put! conn {:id "A2" :name "Node A2"} {:rel :after :target "A1"})
 
     ;; Verify deep structure
     (is (= ["A"] (children-ids @conn "root")) "Root has A")
@@ -188,7 +188,7 @@
     (is (= [] (children-ids @conn "A2")) "A2 has no children initially")
 
     ;; Test moving node between siblings: move A1b from A1 to A2
-    (position! conn {:id "A1b"} {:rel :first :target "A2"})
+    (put! conn {:id "A1b"} {:rel :first :target "A2"})
     (is (= ["A1a"] (children-ids @conn "A1")) "A1 now has only A1a")
     (is (= ["A1b"] (children-ids @conn "A2")) "A2 now has A1b")
 
