@@ -226,3 +226,51 @@ My wrong interpretation: ":db/isComponent on :parent means parent gets deleted w
 ```
 
 This incremental approach helps isolate exactly where failures occur and what DataScript can/cannot handle.
+
+## DataScript `:db/isComponent` vs Manual Cascade Deletion (Latest Session)
+
+### 20. The Pragmatic Solution: Skip `:db/isComponent` Entirely
+**Discovery**: After attempting multiple approaches to make `:db/isComponent` work with nested entity creation, the simplest and most reliable solution is to avoid it completely.
+
+**Problems with `:db/isComponent` in DataScript**:
+- Requires establishing parent→child references via `:children` attributes
+- Intra-transaction reference resolution fails when trying to reference entities being created in the same transaction
+- Two-phase transactions add significant complexity to `position!` 
+- Behavior differences from Datomic create confusion
+
+**Simple Alternative**: Manual cascade deletion in `delete!` function
+```clojure
+(defn- collect-descendant-ids [db parent-id]
+  (let [child-ids (d/q '[:find [?cid ...] :in $ ?pid :where
+                         [?p :id ?pid] [?c :parent ?p] [?c :id ?cid]]
+                       db parent-id)]
+    (concat child-ids (mapcat #(collect-descendant-ids db %) child-ids))))
+
+(defn delete! [conn entity-id]
+  (let [db @conn
+        all-to-delete (cons entity-id (collect-descendant-ids db entity-id))
+        tx-data (mapv #(vector :db/retractEntity [:id %]) all-to-delete)]
+    (d/transact! conn tx-data)))
+```
+
+**Benefits of Manual Approach**:
+- ✅ `position!` stays simple (4 lines)
+- ✅ No complex transaction ordering
+- ✅ Explicit and predictable behavior  
+- ✅ No dependency on DataScript's component semantics
+- ✅ Easy to understand and debug
+
+**Schema Simplification**:
+```clojure
+;; Simple schema - no :children or :db/isComponent
+(def schema {:id {:db/unique :db.unique/identity}
+             :parent {:db/valueType :db.type/ref}
+             :order {:db/index true}})
+```
+
+### 21. Key Lesson: Pragmatism Over Purity
+**Principle**: When database features create more complexity than they solve, implement the functionality manually.
+
+**Application**: Rather than fighting DataScript's `:db/isComponent` limitations, we achieved the same cascade deletion behavior through explicit traversal. This kept both `position!` and `delete!` simple and readable.
+
+**Pattern**: Use direct Datalog queries for tree traversal instead of relying on component relationships that may not work as expected across different database implementations.

@@ -2,20 +2,17 @@
   (:require [datascript.core :as d]
             [clojure.test :refer [deftest is run-tests]]))
 
-;; ## Schema (Unchanged)
+;; ## Schema
 ;; ----------------------------------------------------------------------------
 (def schema {:id {:db/unique :db.unique/identity}
              :parent {:db/valueType :db.type/ref}
-             :children {:db/valueType :db.type/ref
-                        :db/cardinality :db.cardinality/many
-                        :db/isComponent true}
              :order {:db/index true}})
 
-;; ## Write Model: Refactored API
+;; ## Write Model: Unified API
 ;; ----------------------------------------------------------------------------
 
 (defn- calculate-order
-  "Calculates a fractional order using targeted Datalog aggregate queries. (Unchanged)"
+  "Calculates a fractional order using targeted Datalog aggregate queries."
   [db parent-ref {:keys [rel target]}]
   (case rel
     :first
@@ -37,84 +34,54 @@
         (let [next-order (d/q '[:find (min ?o) . :in $ ?p ?s-order :where [_ :parent ?p] [_ :order ?o] [(> ?o ?s-order)]] db parent-ref s-order)]
           (/ (+ s-order (or next-order (+ s-order 2.0))) 2.0))))))
 
-(defn- tree->txns
-  "Recursively transforms a nested entity map into a flat vector of transaction data.
-   Uses temporary IDs for all references within the same transaction."
-  ([entity-map parent-ref order]
-   (tree->txns entity-map parent-ref order nil))
-  ([entity-map parent-ref order given-temp-id]
-   (let [entity-id (or (:id entity-map) (str (random-uuid)))
-         child-maps (get entity-map :children [])
-         ;; Use given temp-id or generate one
-         temp-id (or given-temp-id (str "temp-" entity-id))
-         ;; Generate temp IDs for children
-         child-temp-ids (mapv #(str "temp-" (or (:id %) (str (random-uuid)))) child-maps)
-         ;; Create the root entity map for this subtree
-         root-entity (cond-> (-> entity-map
-                                 (dissoc :children)
-                                 (assoc :db/id temp-id
-                                        :id entity-id
-                                        :order order
-                                        :parent parent-ref))
-                       ;; Only add :children if there are actual children (avoid nil values)
-                       (seq child-temp-ids) (assoc :children child-temp-ids))]
-     ;; Prepend the root entity, then recurse for all children.
-     (into [root-entity]
-           (mapcat
-            (fn [i child-map child-temp-id]
-              ;; Pass the child's temp-id so it matches the parent's reference
-              (tree->txns child-map temp-id (double i) child-temp-id))
-            (range)
-            child-maps
-            child-temp-ids)))))
-
-(defn- get-parent-id
-  "Determines the parent ID from a position specification."
+(defn- resolve-position
+  "Calculates {:parent [:id _] :order _} from a position spec.
+   Infers parent from target for :before/:after relations."
   [db {:keys [rel target]}]
-  (if (#{:first :last} rel)
-    target
-    (d/q '[:find ?pid . :in $ ?tid :where [?t :id ?tid] [?t :parent ?p] [?p :id ?pid]]
-         db target)))
+  (let [parent-id (if (#{:first :last} rel)
+                    target
+                    (d/q '[:find ?pid . :in $ ?tid :where
+                           [?t :id ?tid] [?t :parent ?p] [?p :id ?pid]]
+                         db target))
+        parent-ref [:id parent-id]]
+    {:parent parent-ref
+     :order (calculate-order db parent-ref {:rel rel :target target})}))
 
-(defn create!
-  "Creates a new, potentially nested, entity at a specified position."
-  [conn entity-map position-spec]
-  (let [db @conn
-        parent-id (get-parent-id db position-spec)
-        parent-ref [:id parent-id]
-        order (calculate-order db parent-ref position-spec)
-        tx-data (tree->txns entity-map parent-ref order)]
-    (d/transact! conn tx-data)))
-
-(defn move!
-  "Moves an existing entity (and its subtree) to a new position."
-  [conn entity-id position-spec]
-  (let [db @conn
-        parent-id (get-parent-id db position-spec)
-        parent-ref [:id parent-id]
-        order (calculate-order db parent-ref position-spec)]
-    (d/transact! conn [[:db/add [:id entity-id] :parent parent-ref]
-                       [:db/add [:id entity-id] :order order]])))
+(defn- data->txns
+  "Recursively transforms a nested entity map into a flat vector of upsert transactions."
+  [entity-map default-parent-ref default-order]
+  (let [entity-id (or (:id entity-map) (str (random-uuid)))
+        temp-id (d/tempid :db.part/user)
+        children (get entity-map :children [])
+        base-entity (-> entity-map
+                        (dissoc :children)
+                        (assoc :db/id temp-id
+                               :id entity-id
+                               :parent default-parent-ref
+                               :order default-order))
+        child-txns (mapcat
+                    (fn [i child-map]
+                      (data->txns child-map temp-id (double i)))
+                    (range)
+                    children)]
+    (conj child-txns base-entity)))
 
 (defn position!
-  "Upserts an entity. Dispatches to create! or move!."
+  "Upserts an entity and its children to a specified position.
+   Replaces create!, move!, and the original position! dispatcher."
   [conn entity-map position-spec]
-  (if (and (:id entity-map) (d/entity @conn [:id (:id entity-map)]))
-    (move! conn (:id entity-map) position-spec)
-    (create! conn entity-map position-spec)))
+  (let [db @conn
+        {:keys [parent order]} (resolve-position db position-spec)
+        tx-data (data->txns entity-map parent order)]
+    (d/transact! conn tx-data)))
 
 (defn patch!
-  "Partially updates an entity with a map of new attribute values. (Unchanged)"
-  [conn entity-id attr-map]
+  "Partially updates an entity with a map of new attribute values."
+  [entity-id conn attr-map]
   (d/transact! conn (mapv (fn [[k v]] [:db/add [:id entity-id] k v]) attr-map)))
 
-(defn delete!
-  "Deletes an entity and all its descendants. (Unchanged)"
-  [conn entity-id]
-  (d/transact! conn [[:db/retractEntity [:id entity-id]]]))
-
 (defn children-ids
-  "Returns a sorted vector of child IDs for a given parent. (Unchanged)"
+  "Returns a sorted vector of child IDs for a given parent."
   [db parent-id]
   (->> (d/q '[:find ?id ?order
               :in $ ?pid
@@ -126,6 +93,25 @@
             db parent-id)
        (sort-by second)
        (mapv first)))
+
+(defn- collect-descendant-ids
+  "Recursively finds all descendant entity IDs for a given parent ID."
+  [db parent-id]
+  (let [child-ids (d/q '[:find [?cid ...] :in $ ?pid :where
+                         [?p :id ?pid] [?c :parent ?p] [?c :id ?cid]]
+                       db parent-id)]
+    (concat child-ids (mapcat #(collect-descendant-ids db %) child-ids))))
+
+;; ## Read Model
+;; ----------------------------------------------------------------------------
+
+(defn delete!
+  "Deletes an entity and all its descendants recursively."
+  [conn entity-id]
+  (let [db @conn
+        all-to-delete (cons entity-id (collect-descendant-ids db entity-id))
+        tx-data (mapv #(vector :db/retractEntity [:id %]) all-to-delete)]
+    (d/transact! conn tx-data)))
 
 ;; ## Tests
 ;; ----------------------------------------------------------------------------
@@ -153,7 +139,7 @@
     (position! conn {:id "header", :text "Header"} {:rel :first, :target "root"})
     (is (= ["header" "main"] (children-ids @conn "root")) "Header should be first, main second")
 
-    ;; Move "main" (and its children) to be after "header"  
+    ;; Move "main" (and its children) to be after "header"
     (position! conn {:id "main"} {:rel :after, :target "header"})
     (let [main-entity (d/entity @conn [:id "main"])]
       (is (= "root" (get-in main-entity [:parent :id])) "Parent of main should still be root")
@@ -162,20 +148,8 @@
 
     ;; --- Test Delete with cascade ---
     (println "\n=== Testing cascade delete ===")
-    (println "Before delete - entities exist:")
-    (println "  main:" (boolean (d/entity @conn [:id "main"])))
-    (println "  p1:" (boolean (d/entity @conn [:id "p1"])))
-    (println "  p2:" (boolean (d/entity @conn [:id "p2"])))
-    (println "  span1:" (boolean (d/entity @conn [:id "span1"])))
-
     (delete! conn "main")
     (is (= ["header"] (children-ids @conn "root")) "Main should be deleted")
-
-    (println "After delete - entities exist:")
-    (println "  main:" (boolean (d/entity @conn [:id "main"])))
-    (println "  p1:" (boolean (d/entity @conn [:id "p1"])))
-    (println "  p2:" (boolean (d/entity @conn [:id "p2"])))
-    (println "  span1:" (boolean (d/entity @conn [:id "span1"])))
 
     (is (nil? (d/entity @conn [:id "p1"])) "p1 should be gone")
     (is (nil? (d/entity @conn [:id "p2"])) "p2 should be gone")
