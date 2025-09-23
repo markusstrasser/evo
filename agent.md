@@ -571,3 +571,198 @@ descendant-ids (d/q '[:find [?did ...]
 4. **Regression testing**: Ensure all existing functionality remains working
 
 **Key Insight**: Datalog rules are as foundational to the data layer as the schema itself. They should be defined early, tested independently, and used consistently throughout the application rather than treated as an advanced or optional feature.
+
+## Clojure Tree CRUD Architecture (Latest Kernel Development)
+
+### 37. DataScript Schema Evolution for Ordered Trees
+**Final Schema Design**: Minimal but complete schema for ordered tree operations
+```clojure
+(def schema
+  {:id {:db/unique :db.unique/identity}
+   :parent {:db/valueType :db.type/ref}
+   :order {:db/index true}
+   :parent+order {:db/tupleAttrs [:parent :order]
+                  :db/unique :db.unique/value}})
+```
+
+**Key Design Decisions**:
+- `:id` as identity for stable entity references across operations
+- `:parent` ref for tree hierarchy - enables efficient parent→child queries  
+- `:order` indexed for fast sibling ordering operations
+- `:parent+order` tuple constraint prevents ordering conflicts (each position unique within parent)
+
+### 38. Integer vs Fractional Ordering Trade-offs
+**Migration**: Replaced complex fractional string ordering with simple integer-based system
+
+**Fractional Ordering (Previous)**:
+```clojure
+(defn- rank-between [a b]
+  (loop [i 0, acc ""]
+    (let [lo (code a i)
+          hi (let [x (code b i)] (if (pos? x) x (inc base)))]
+      ;; Complex string manipulation for infinite precision
+      )))
+```
+
+**Integer Ordering (Current)**:
+```clojure
+(defn- between [conn p lo hi]
+  (let [o (if (and lo hi)
+            (quot (+ lo hi) 2)  ; Simple midpoint calculation
+            (if lo (+ lo 1000) (if hi (- hi 1000) 1000)))]
+    (if (and lo hi (= o lo))
+      (do (renumber! conn p) (between conn p lo hi))  ; Renumber when gaps too small
+      o)))
+```
+
+**Trade-off Analysis**:
+- **Algorithmic Complexity**: Dramatically reduced (no string manipulation)
+- **Conceptual Simplicity**: Much easier to debug and reason about
+- **Performance**: Similar practical performance, but requires occasional renumbering
+- **LoC**: Minimal reduction (~2 lines) because infrastructure complexity increased
+
+**Key Insight**: The win was **maintainability** and **debuggability**, not code size reduction.
+
+### 39. Position Resolution Architecture
+**Unified Position System**: Single function handles all positioning operations (:first, :last, :before, :after)
+
+```clojure
+(defn- resolve-position [conn {:keys [parent sibling rel] :as pos}]
+  (let [db @conn
+        parent-id (or parent (when sibling (pid db sibling)))
+        pref [:id parent-id]
+        os (orders db pref)  ; Get existing sibling orders
+        ord (case rel
+              :first (between conn pref nil (first os))
+              :last (between conn pref (last os) nil)  
+              :before (let [t (:order (e db sibling))
+                           [bef _] (neighbors os t)]
+                       (between conn pref bef t))
+              :after (let [t (:order (e db sibling))
+                          [_ aft] (neighbors os t)]
+                      (between conn pref t aft))
+              ;; default append
+              (between conn pref (last os) nil))]
+    [pref ord]))
+```
+
+**Benefits**:
+- ✅ **Unified API**: All positioning operations use same interface
+- ✅ **Automatic Renumbering**: Handles dense insertions transparently  
+- ✅ **Sibling-Relative Positioning**: Can position relative to any sibling
+- ✅ **Stable Ordering**: Order values persist across operations
+
+### 40. CRUD Operations with Position Support
+**Tree Insertion**: Single operation handles both entity creation and positioning
+```clojure
+(defn insert! [conn entity {:keys [parent sibling] :as position}]
+  (ensure-new-ids! @conn entity)  ; Prevent ID conflicts
+  (let [[pref root-order] (resolve-position conn position)]
+    (d/transact! conn (walk->tx conn entity pref root-order))))
+```
+
+**Tree Movement**: Atomic operation preserves subtree structure
+```clojure
+(defn move! [conn entity-id {:keys [parent sibling] :as position}]
+  (let [db @conn
+        [pref new-o] (resolve-position conn position)
+        ent (e db entity-id)
+        old-parent-ref [:id (-> ent :parent :id)]]
+    (d/transact! conn
+                 [[:db/retract [:id entity-id] :parent old-parent-ref]
+                  [:db/retract [:id entity-id] :order (:order ent)]
+                  [:db/add [:id entity-id] :parent pref]
+                  [:db/add [:id entity-id] :order new-o]])))
+```
+
+**Cascade Deletion**: Manual traversal with Datalog rules
+```clojure
+(defn delete! [conn entity-id]
+  (let [db @conn
+        descendant-ids (d/q '[:find [?did ...] :in $ % ?pref :where
+                             [?d :id ?did] (subtree-member ?pref ?d)]
+                           db rules [:id entity-id])
+        tx-data (mapv #(vector :db/retractEntity [:id %]) 
+                     (cons entity-id descendant-ids))]
+    (d/transact! conn tx-data)))
+```
+
+### 41. Tree Structure Testing Strategy
+**Comprehensive Test Coverage**: Tests expose both tree and hypergraph requirements
+
+**Tree Operations Tested**:
+- Integer ordering properties with automatic renumbering
+- Position resolution edge cases (empty parents, missing siblings)
+- CRUD lifecycle with realistic document scenarios
+- Complex restructuring (section reordering, bulk operations)
+- Performance stress testing (50+ operations with ordering validation)
+
+**Hypergraph Tests Added**:
+- Cross-references beyond parent-child (`:validates-with`, `:submits-to`, `:contains`)
+- Referential integrity when deleting referenced entities
+- Bidirectional relationships and graph traversal patterns
+- Disconnected subgraphs and orphaned components
+- Multiple relationship types and reverse lookups
+
+**Key Discovery**: Current tree system handles all ordering/positioning perfectly, but **hypergraph functionality requires schema extensions and referential integrity handling**.
+
+### 42. DataScript Query Limitations for Hypergraph Operations
+**Challenge**: DataScript's query predicates don't support collection operations needed for graph traversal
+
+**Failed Approaches**:
+```clojure
+;; DataScript doesn't support 'some' predicate
+[(some #(= % ?target) ?refs)]  ; ❌ Unknown predicate 'some'
+
+;; DataScript doesn't support 'contains?' predicate  
+[(contains? ?deps ?missing)]   ; ❌ Unknown predicate 'contains?'
+
+;; get-else with nil default not supported
+[(get-else $ ?e :triggered-by nil) ?triggered-by]  ; ❌ nil default not supported
+```
+
+**Working Solutions**:
+```clojure
+;; Manual collection processing outside query
+(let [all-entities-with-deps (d/q '[:find ?id ?deps :where [?e :id ?id] [?e :depends-on ?deps]] @conn)
+      broken-deps (for [[id deps] all-entities-with-deps
+                       :when (some #(= % "service-x") deps)]
+                   [id])]
+  ;; Process results in Clojure
+  )
+
+;; Direct attribute matching where possible
+(d/q '[:find ?id :where [?e :id ?id] [?e :runs-independently true]] @conn)
+```
+
+**Architecture Implication**: For true hypergraph functionality, will need either:
+1. **DataScript extensions** for collection predicates
+2. **Mixed query approach** (simple queries + Clojure processing)  
+3. **Schema changes** to make relationships more query-friendly
+4. **Custom traversal functions** for complex graph operations
+
+### 43. Key Architecture Lessons Learned
+
+**Schema Design**:
+- ✅ **Minimal schemas are more reliable** - Avoid complex features until proven necessary
+- ✅ **Explicit is better than implicit** - Manual cascade deletion vs :db/isComponent
+- ✅ **Index what you query** - :order indexed for fast sibling operations
+- ✅ **Unique constraints prevent bugs** - :parent+order tuple prevents positioning conflicts
+
+**Transaction Patterns**:
+- ✅ **Single transactions when possible** - Avoid complex multi-phase approaches
+- ✅ **Test incrementally** - Simple entities → nested entities → complex operations
+- ✅ **Validate references early** - ensure-new-ids! prevents ID conflicts
+- ✅ **Use temp IDs for intra-transaction refs** - More reliable than lookup refs
+
+**Query Strategy**:
+- ✅ **Datalog rules for transitive operations** - Cleaner than imperative recursion
+- ✅ **Mixed approaches for limitations** - Combine declarative queries with Clojure processing
+- ✅ **Test rules independently** - Verify transitive closure logic before integration
+- ✅ **Plan for query engine limitations** - Not all graph operations can be purely declarative
+
+**Testing Philosophy**:
+- ✅ **Test what you don't have** - Hypergraph tests drive future development
+- ✅ **Progressive complexity** - Simple → realistic → stress testing
+- ✅ **Expose limitations early** - Better to know constraints than encounter surprises
+- ✅ **Document failure patterns** - Failed DataScript queries inform design decisions

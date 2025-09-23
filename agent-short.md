@@ -50,3 +50,31 @@
 - Decision framework: "Can operation be expressed as 'what data relationships exist'?" → Use declarative query
 - Datalog rules are as foundational as schema - define early, test independently, use consistently
 - File organization: Schema → Rules → Logic (all using same query patterns)
+
+## Tree CRUD Architecture Key Findings
+
+**Schema Design**:
+- Minimal schemas more reliable: `{:id identity, :parent ref, :order indexed, :parent+order unique}`
+- Manual cascade deletion beats `:db/isComponent` - explicit is better than DataScript's quirky behavior
+- Unique tuple constraints prevent positioning conflicts: `:parent+order {:db/tupleAttrs [:parent :order] :db/unique :db.unique/value}`
+
+**Ordering System Evolution**:
+- Replaced fractional string ordering with integer + renumbering system
+- Trade-off: Algorithmic complexity ↓↓, Infrastructure complexity ↑ = same LoC but vastly better debuggability
+- Key insight: Win was maintainability, not code size
+
+**CRUD Operations Pattern**:
+- Single `resolve-position` function handles all positioning (:first, :last, :before, :after)
+- Atomic `move!` preserves subtree structure with retract/add pattern
+- `walk->tx` creates nested entities in single transaction using temp IDs
+
+**Testing Strategy**:
+- Progressive complexity: simple entities → nested → realistic scenarios → stress testing
+- **Hypergraph tests expose future needs**: Added 66 assertions testing cross-references, referential integrity, graph traversal
+- Tests reveal DataScript limitations: No `some`/`contains?` predicates for collection operations
+- Current: Perfect tree operations. Future: Need schema extensions for true hypergraph
+
+**DataScript Query Limitations**:
+- Collection predicates unsupported: `[(some pred coll)]`, `[(contains? coll item)]` fail
+- Workaround: Mix simple declarative queries with Clojure collection processing
+- Alternative: Schema changes to make relationships more query-friendly

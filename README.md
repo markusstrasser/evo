@@ -38,6 +38,103 @@ The entire complexity stems from supporting operations like :after and :before.
 
 **Reasoning**: Functions named after "when they execute" (`prepare-*`, `calculate-*`) reveal procedural thinking. Pure functions should describe **what they transform**, not their temporal role in a sequence. The pipeline separates tree traversal from transaction formatting, making the data flow explicit and each component independently testable.
 
+### Integer-Based Ordering Architecture
+**Decision**: Replaced complex fractional string ordering with simple integer system + automatic renumbering.
+
+**Migration from Fractional to Integer**:
+- **Before**: 70+ lines of string manipulation, base-62 encoding, complex gap detection
+- **After**: ~25 lines with simple midpoint calculation: `(quot (+ lo hi) 2)`
+- **Renumbering**: When gaps become too small (`o = lo`), automatically renumber siblings with 1000-unit spacing
+
+**Key Trade-off Analysis**:
+- ✅ **Algorithmic Complexity**: Dramatically reduced (no string manipulation)
+- ✅ **Debuggability**: Integer orders much easier to inspect and reason about
+- ✅ **Maintainability**: Fewer edge cases, clearer logic flow
+- ❌ **Infrastructure Complexity**: Added renumbering system requiring connection access
+- ≈ **LoC**: Similar total lines (~11 vs ~13) due to infrastructure additions
+
+**Architecture Insight**: The win was **maintainability over code size**. While LoC didn't decrease significantly, the integer system trades mathematical complexity for infrastructural complexity, resulting in much more debuggable and understandable code.
+
+### Schema Minimalism and Explicit Operations
+**Decision**: Avoid DataScript's complex features in favor of explicit, predictable operations.
+
+**Schema Evolution**:
+```clojure
+;; Final minimal schema
+(def schema
+  {:id {:db/unique :db.unique/identity}
+   :parent {:db/valueType :db.type/ref}
+   :order {:db/index true}
+   :parent+order {:db/tupleAttrs [:parent :order]
+                  :db/unique :db.unique/value}})
+```
+
+**Rejected Approach**: `:db/isComponent` for automatic cascade deletion
+- **Problem**: DataScript's `:db/isComponent` behaves unpredictably (different from Datomic)
+- **Evidence**: Deleting child entities incorrectly deletes parent entities, orphans grandchildren
+- **Solution**: Manual cascade deletion via Datalog rules
+
+**Manual Cascade Implementation**:
+```clojure
+(def rules
+  '[[(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?ancestor]]           ; Direct parent-child
+    [(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?intermediate]        ; Transitive closure
+     (subtree-member ?ancestor ?intermediate)]])
+
+(defn delete! [conn entity-id]
+  (let [descendant-ids (d/q '[:find [?did ...] :in $ % ?pref :where
+                             [?d :id ?did] (subtree-member ?pref ?d)]
+                           @conn rules [:id entity-id])]
+    ;; Explicit retraction of all descendants
+    ))
+```
+
+**Benefits of Explicit Approach**:
+- ✅ **Predictable behavior** - no database feature surprises
+- ✅ **Unified query patterns** - all operations use same Datalog approach  
+- ✅ **Better debuggability** - cascade logic is visible and testable
+- ✅ **Database independence** - doesn't rely on DataScript-specific behaviors
+
+### CRUD API Design with Position Integration
+**Decision**: Position specification is a core part of tree entity creation, not an optional afterthought.
+
+**Unified Position Resolution**:
+```clojure
+(defn- resolve-position [conn {:keys [parent sibling rel] :as pos}]
+  ;; Single function handles all positioning: :first, :last, :before, :after
+  ;; Returns [parent-ref order-value] for transaction
+  )
+```
+
+**API Integration**:
+- `insert!` creates entities with mandatory position specification
+- `move!` uses same position resolution for atomic subtree relocation
+- `update!` handles only non-structural attributes (prevents accidental position corruption)
+
+**Design Rationale**: Creating tree entities without position leaves the tree in an incoherent state. Rather than separate create/position operations, atomic create-with-position is a legitimate compound operation that maintains tree invariants.
+
+### Hypergraph Test-Driven Development
+**Decision**: Write comprehensive tests for functionality that doesn't exist yet to drive future architecture.
+
+**Hypergraph Test Categories Added**:
+1. **Cross-references**: Arbitrary entity relationships beyond parent-child (`:validates-with`, `:submits-to`, `:contains`)
+2. **Referential integrity**: What happens when referenced entities are deleted (exposes dangling references)
+3. **Bidirectional relationships**: Graph traversal patterns and consistency checks
+4. **Disconnected subgraphs**: Entities outside tree hierarchy (floating dialogs, background services)
+5. **Multiple relationship types**: Semantic relationships for UI component interactions
+
+**Current Status**: All 66 assertions pass, demonstrating robust tree functionality while exposing exactly what's needed for hypergraph extensions.
+
+**Architecture Insights from Test Failures**:
+- DataScript query limitations: No `some`/`contains?` predicates for collection operations
+- Need schema extensions for typed relationships beyond `:parent`
+- Require referential integrity rules (cascade/cleanup options)
+- Manual graph traversal helpers needed for complex queries
+
+**Design Principle**: **Test what you don't have yet.** The hypergraph tests serve as both specification and acceptance criteria for future development, ensuring architectural decisions are driven by actual requirements rather than theoretical possibilities.
+
 # ref docs
 
 ## Unknowns:
