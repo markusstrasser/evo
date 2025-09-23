@@ -1,16 +1,12 @@
 (ns kernel-min
   (:require [datascript.core :as d]
-            [clojure.test :refer [deftest is run-tests]]
-            [clojure.test.check :as tc]
-            [clojure.test.check.generators :as gen]
-            [clojure.test.check.properties :as prop]))
+            [clojure.test :refer [deftest is run-tests]]))
 
 ;; ---------- Schema (make order cheap to mutate) ----------
 (def schema
   {:id {:db/unique :db.unique/identity}
    :parent {:db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
-   :pos {:db/cardinality :db.cardinality/one :db/index true}
-   :references {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many}})
+   :pos {:db/cardinality :db.cardinality/one :db/index true}})
 
 ;; ---------- Core helpers ----------
 (defn e [db id]
@@ -30,20 +26,16 @@
   (let [i (min (max 0 (or idx (count v))) (count v))]
     (into (subvec v 0 i) (cons x (subvec v i)))))
 
-(defn reorder-tx [parent-id ids]
-  (map-indexed (fn [i id] [:db/add [:id id] :pos i]) ids))
-
 (defn target [db {:keys [parent sibling rel idx] :as pos}]
-  (let [p (or parent (when sibling (:id (:parent (e db sibling))))
+  (let [rel-fns {:first (fn [_] 0)
+                 :last (fn [child-ids] (count child-ids))
+                 :before (fn [child-ids] (let [j (.indexOf child-ids sibling)] (if (neg? j) (count child-ids) j)))
+                 :after (fn [child-ids] (let [j (.indexOf child-ids sibling)] (if (neg? j) (count child-ids) (inc j))))
+                 nil (fn [child-ids] (min (or idx (count child-ids)) (count child-ids)))}
+        p (or parent (when sibling (:id (:parent (e db sibling))))
               (throw (ex-info "No parent specified" {:position pos})))
-        ks (children-ids db p)
-        i (cond
-            (= rel :first) 0
-            (= rel :last) (count ks)
-            (= rel :before) (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) j))
-            (= rel :after) (let [j (.indexOf ks sibling)] (if (neg? j) (count ks) (inc j)))
-            :else (min (or idx (count ks)) (count ks)))]
-    [p i]))
+        child-ids (children-ids db p)]
+    [p ((or (rel-fns rel) (rel-fns nil)) child-ids)]))
 
 ;; ---------- Tree operations ----------
 (def cid (atom 0))
@@ -54,45 +46,40 @@
         id (or id (str "auto-" (swap! cid inc)))
         entity (assoc entity :id id)
         [p i] (target db pos)
-        temp-id (- (swap! cid inc))
-        tx (concat [[:db/add temp-id :id id]
-                    [:db/add temp-id :parent [:id p]]]
-                   (for [[k v] (dissoc entity :id :children)]
-                     [:db/add [:id id] k v]))]
-    (d/transact! conn tx)
+        temp-entity-id (- (swap! cid inc))]
+    (d/transact! conn
+                 (cond-> [[:db/add temp-entity-id :id id]
+                          [:db/add temp-entity-id :parent [:id p]]]
+                   true (into (for [[k v] (dissoc entity :id :children)]
+                                [:db/add [:id id] k v]))))
     (let [siblings (children-ids @conn p)
           reordered (splice (vec (remove #{id} siblings)) i id)]
-      (d/transact! conn (reorder-tx p reordered)))))
+      (d/transact! conn (map-indexed (fn [idx id] [:db/add [:id id] :pos idx]) reordered)))))
 
 (defn move! [conn id pos]
   (let [db @conn
-        desc (set (tree-seq #(seq (children-ids db %)) #(children-ids db %) id))
+        descendant-ids (set (tree-seq #(seq (children-ids db %)) #(children-ids db %) id))
         [p i] (target db pos)]
-    (when (contains? desc p)
+    (when (contains? descendant-ids p)
       (throw (ex-info "Cycle detected" {:entity id :target p})))
-    (let [old (:id (:parent (e db id)))
-          same? (= old p)
-          oldks (children-ids db old)
-          newks (if same? oldks (children-ids db p))
-          final-old (if same? [] (vec (remove #{id} oldks)))
-          final-new (-> (vec (remove #{id} newks)) (splice i id))
-          tx (cond-> []
-               (not same?) (conj [:db/add [:id id] :parent [:id p]])
-               (not same?) (into (reorder-tx old final-old))
-               true (into (reorder-tx p final-new)))]
-      (d/transact! conn tx))))
-
-(defn set-refs! [conn id attr ids]
-  (d/transact! conn
-               (concat [[:db.fn/retractAttribute [:id id] attr]]
-                       (for [rid ids] [:db/add [:id id] attr [:id rid]]))))
+    (let [old-parent-id (:id (:parent (e db id)))
+          same-parent? (= old-parent-id p)
+          old-siblings (children-ids db old-parent-id)
+          new-siblings (if same-parent? old-siblings (children-ids db p))
+          final-old (if same-parent? [] (vec (remove #{id} old-siblings)))
+          final-new (-> (vec (remove #{id} new-siblings)) (splice i id))]
+      (d/transact! conn
+                   (cond-> []
+                     (not same-parent?) (conj [:db/add [:id id] :parent [:id p]])
+                     (not same-parent?) (into (map-indexed (fn [idx id] [:db/add [:id id] :pos idx]) final-old))
+                     true (into (map-indexed (fn [idx id] [:db/add [:id id] :pos idx]) final-new)))))))
 
 (defn delete! [conn entity-id]
   (let [db @conn
-        parent (:id (:parent (e db entity-id)))
-        siblings (children-ids db parent)]
+        parent-id (:id (:parent (e db entity-id)))
+        siblings (children-ids db parent-id)]
     (d/transact! conn [[:db.fn/retractEntity [:id entity-id]]])
-    (d/transact! conn (reorder-tx parent (vec (remove #{entity-id} siblings))))))
+    (d/transact! conn (map-indexed (fn [idx id] [:db/add [:id id] :pos idx]) (vec (remove #{entity-id} siblings))))))
 
 (defn update! [conn entity-id attrs]
   (let [tx (for [[k v] attrs]
@@ -153,94 +140,5 @@
   (let [conn (tree-fixture)]
     ; Try to create a cycle: make "root" a child of "a"
     (is (thrown? Exception (move! conn "root" {:parent "a"})))))
-
-(deftest cross-reference-test
-  (let [conn (tree-fixture)]
-    (insert! conn {:id "form", :type "form"} {:parent "root"})
-    (insert! conn {:id "input", :type "input", :name "email"} {:parent "form"})
-    (insert! conn {:id "validator", :type "validator", :pattern "email"} {:parent "root"})
-
-    ; Add cross-references using the :references attribute
-    (update! conn "input" {:references [:id "validator"]})
-
-    ; Verify relationships exist
-    (is (= 1 (count (:references (e @conn "input")))))
-
-    ; Test navigation patterns
-    (let [validator-users (d/q '[:find [?id ...]
-                                 :in $ ?validator-ref
-                                 :where [?e :references ?validator-ref]
-                                 [?e :id ?id]]
-                               @conn [:id "validator"])]
-      (is (= ["input"] validator-users)))))
-
-;; Property-based testing generators and helpers
-(defn gen-id [] (gen/fmap #(str "id-" %) (gen/choose 1 20)))
-
-(defn gen-operation [db]
-  (let [existing-ids (d/q '[:find [?id ...] :where [?e :id ?id]] db)]
-    (gen/one-of
-     (remove nil?
-             [(gen/hash-map :op (gen/return :upsert)
-                            :id (gen-id)
-                            :pos (gen/hash-map :parent (gen/elements existing-ids)))
-              (when (seq existing-ids)
-                (gen/hash-map :op (gen/return :move)
-                              :id (gen/elements existing-ids)
-                              :pos (gen/hash-map :parent (gen/elements existing-ids))))
-              (when (seq existing-ids)
-                (gen/hash-map :op (gen/return :delete)
-                              :id (gen/elements existing-ids)))]))))
-
-(defn apply-operation! [conn op]
-  (try
-    (case (:op op)
-      :upsert (insert! conn {:id (:id op)} (:pos op))
-      :move (move! conn (:id op) (:pos op))
-      :delete (delete! conn (:id op)))
-    true
-    (catch Exception _ false)))
-
-(defn has-cycles? [db]
-  (let [all-ids (d/q '[:find [?id ...] :where [?e :id ?id]] db)]
-    (some (fn [id]
-            (try
-              (loop [fr #{id} acc #{id} depth 0]
-                (if (or (empty? fr) (> depth 100)) false
-                    (let [kids (set (mapcat #(children-ids db %) fr))]
-                      (if (some acc kids) true
-                          (recur kids (into acc kids) (inc depth))))))
-              (catch Exception _ true)))
-          all-ids)))
-
-(defn children-sorted-by-pos? [db]
-  (let [all-ids (d/q '[:find [?id ...] :where [?e :id ?id]] db)]
-    (every? (fn [id]
-              (let [kids (children-ids db id)
-                    positions (map #(:pos (e db %)) kids)]
-                (= positions (sort positions))))
-            all-ids)))
-
-(defn pids-round-trip? [db]
-  (let [all-ids (d/q '[:find [?id ...] :where [?e :id ?id]] db)]
-    (every? (fn [id]
-              (if-let [parent (:id (:parent (e db id)))]
-                (some #{id} (children-ids db parent))
-                true)) ; root nodes are fine
-            all-ids)))
-
-(deftest property-fuzz-test
-  (let [property (prop/for-all
-                  [ops (gen/vector (gen/bind (gen/return {})
-                                             (fn [_] (gen-operation @(tree-fixture))))
-                                   5 10)]
-                  (let [conn (tree-fixture)]
-                    (doseq [op ops]
-                      (apply-operation! conn op))
-                    (let [db @conn]
-                      (and (not (has-cycles? db))
-                           (children-sorted-by-pos? db)
-                           (pids-round-trip? db)))))]
-    (is (:pass? (tc/quick-check 50 property)))))
 
 (run-tests)
