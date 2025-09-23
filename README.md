@@ -3,9 +3,6 @@
 ## Design: Semantic UI REPL
 You're designing a conversational interface canvas. The product is a tool where a user sculpts a fully reactive application by issuing natural language commands to an AI. Its core design principle moves beyond static layout tools by treating the interface not as a rigid tree of visual elements, but as a dynamic graph of interconnected components. A user can direct the AI to forge not just structural parent-child relationships, but also behavioral triggers, data-binding links, and semantic connections. This enables the rapid, iterative construction of both complex application logic and visual appearance from a single, unified conversational prompt, creating a fluid and deeply inspectable design environment.
 
-
-
-
 ## Design Decisions
 
 ### Tree Operations in DataScript
@@ -47,6 +44,41 @@ The entire complexity stems from supporting operations like :after and :before.
 
 The bottleneck in UI development isn't expressing intent, it's debugging when intent doesn't match behavior.
 The real challenge: ambiguity resolution at scale. Maybe I'll end up building a disambiguation UI that's more complex than just... writing code.
-# TODO
-[ ]
+
+## TODO
+
+```clojure
+;; 1) keep these today (pure, testable)
+(defn tx-insert [db entity position] (tree->tx-data db entity position))
+(defn tx-delete [db entity-id]       (calc-delete-txs db entity-id))  ;; your existing logic
+(defn tx-update [db entity-id attrs] (calc-update-txs entity-id attrs))
+(defn tx-move   [db entity-id pos]   (calc-move-txs db entity-id pos))
+
+;; 2) later: add the command adapter (doesn't change the above)
+(defmulti command->tx (fn [_ {:keys [op]}] op))
+
+(defmethod command->tx :insert [db {:keys [entity position]}]
+(tx-insert db entity position))
+(defmethod command->tx :delete [db {:keys [entity-id]}]
+(tx-delete db entity-id))
+(defmethod command->tx :update [db {:keys [entity-id attrs]}]
+(tx-update db entity-id attrs))
+(defmethod command->tx :move   [db {:keys [entity-id position]}]
+(tx-move db entity-id position))
+(defmethod command->tx :apply-txs [_ {:keys [tx-data]}] tx-data)
+(defmethod command->tx :batch  [db {:keys [commands]}]
+(mapcat #(command->tx db %) commands))
+
+(defn execute! [conn cmd]
+(d/transact! conn (vec (command->tx @conn cmd))))
+
+;; Optional: keep today’s API, route through commands when you flip a flag.
+(def ^:dynamic *use-commands* false)
+(defn insert! [conn entity position]
+(if *use-commands*
+(execute! conn {:op :insert :entity entity :position position})
+(d/transact! conn (tx-insert @conn entity position))))
+```
+
+
 https://code.thheller.com/blog/shadow-cljs/2024/10/18/fullstack-cljs-workflow-with-shadow-cljs.html

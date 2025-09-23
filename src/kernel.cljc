@@ -15,19 +15,23 @@
   '[[(subtree-member ?a ?d) [?d :parent ?a]]
     [(subtree-member ?a ?d) [?d :parent ?m] (subtree-member ?a ?m)]])
 
-;; ---------- 2) Fractional ordering (tight) ----------
-(def ^:private digits "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-(def ^:private base (count digits))
-(defn- code [s i] (let [c (when (and s (< i (count s))) (nth s i))]
-                    (if c (inc (s/index-of digits (str c))) 0)))
-(defn- ch [i] (nth digits (dec i)))
-(defn- rank-between [a b]
-  (loop [i 0, acc ""]
-    (let [lo (code a i)
-          hi (let [x (code b i)] (if (pos? x) x (inc base)))]
-      (if (< (inc lo) hi)
-        (str acc (ch (quot (+ lo hi) 2)))
-        (recur (inc i) (str acc (if (pos? lo) (ch lo) (ch 1))))))))
+;; ---------- 2) Integer-based ordering ----------
+(defn- sibs [db p]
+  (->> (d/q '[:find ?id ?o :in $ ?p :where [?c :parent ?p] [?c :id ?id] [?c :order ?o]] db p)
+       (sort-by second)))
+
+(defn- renumber! [conn p]
+  (d/transact! conn
+               (map-indexed (fn [i [id _]] [:db/add [:id id] :order (* 1000 (inc i))])
+                            (sibs @conn p))))
+
+(defn- between [conn p lo hi]
+  (let [o (if (and lo hi)
+            (quot (+ lo hi) 2)
+            (if lo (+ lo 1000) (if hi (- hi 1000) 1000)))]
+    (if (and lo hi (= o lo))
+      (do (renumber! conn p) (between conn p lo hi))
+      o)))
 
 ;; ---------- 3) Tiny db helpers ----------
 (defn- e [db id] (d/entity db [:id id]))
@@ -43,35 +47,36 @@
 (defn- resolve-position
   "position = {:parent id | :sibling id, :rel #{:first :last :before :after}}
    Defaults to append when :rel missing."
-  [db {:keys [parent sibling rel] :as pos}]
-  (let [parent-id (or parent (when sibling (pid db sibling))
+  [conn {:keys [parent sibling rel] :as pos}]
+  (let [db @conn
+        parent-id (or parent (when sibling (pid db sibling))
                       (throw (ex-info "No parent specified" {:position pos})))
         pref [:id parent-id]
         os (orders db pref)
         ord (case rel
-              :first (rank-between nil (first os))
-              :last (rank-between (last os) nil)
+              :first (between conn pref nil (first os))
+              :last (between conn pref (last os) nil)
               :before (let [t (:order (e db sibling))
                             [bef _] (neighbors os t)]
-                        (rank-between bef t))
+                        (between conn pref bef t))
               :after (let [t (:order (e db sibling))
                            [_ aft] (neighbors os t)]
-                       (rank-between t aft))
+                       (between conn pref t aft))
               ;; default append
-              (rank-between (last os) nil))]
+              (between conn pref (last os) nil))]
     [pref ord]))
 
 ;; ---------- 4) Tree insertion (compact walk) ----------
 (defn- walk->tx
   "Assigns fresh :order to children within the new subtree."
-  [node parent-ref order]
+  [conn node parent-ref order]
   (let [id (d/tempid :db.part/user)
         kids (:children node [])
         this (-> node (dissoc :children) (assoc :db/id id :parent parent-ref :order order))
-        ;; sequence of orders: mid, next-after-mid, ...
-        kid-ord (take (count kids) (iterate #(rank-between % nil) (rank-between nil nil)))]
+        ;; sequence of orders with spacing starting from 1000: 1000, 2000, 3000, ...
+        kid-ord (map #(* 1000 (inc %)) (range (count kids)))]
     (into [this]
-          (mapcat (fn [[k o]] (walk->tx k id o)) (map vector kids kid-ord)))))
+          (mapcat (fn [[k o]] (walk->tx conn k id o)) (map vector kids kid-ord)))))
 
 (defn- ensure-new-ids! [db root]
   (letfn [(ids [n] (cons (:id n) (mapcat ids (:children n []))))]
@@ -80,8 +85,8 @@
 
 (defn insert! [conn entity {:keys [parent sibling] :as position}]
   (ensure-new-ids! @conn entity)
-  (let [[pref root-order] (resolve-position @conn position)]
-    (d/transact! conn (walk->tx entity pref root-order))))
+  (let [[pref root-order] (resolve-position conn position)]
+    (d/transact! conn (walk->tx conn entity pref root-order))))
 
 ;; ---------- 5) Mutations ----------
 (defn delete! [conn entity-id]
@@ -102,10 +107,11 @@
         tgt-p (or parent (pid db sibling))]
     (when (contains? desc tgt-p)
       (throw (ex-info "Cycle detected" {:entity entity-id :target tgt-p})))
-    (let [[pref new-o] (resolve-position db position)
-          ent (e db entity-id)]
+    (let [[pref new-o] (resolve-position conn position)
+          ent (e db entity-id)
+          old-parent-ref [:id (-> ent :parent :id)]]
       (d/transact! conn
-                   [[:db/retract [:id entity-id] :parent [:id (-> ent :parent :id)]]
+                   [[:db/retract [:id entity-id] :parent old-parent-ref]
                     [:db/retract [:id entity-id] :order (:order ent)]
                     [:db/add [:id entity-id] :parent pref]
                     [:db/add [:id entity-id] :order new-o]]))))
@@ -131,22 +137,31 @@
       (mapv structure paths))))
 
 ;; ---------- 9) Core Tests ----------
-(deftest fractional-ordering-properties
-  "Test mathematical properties of fractional ordering"
-  ;; Test that we can generate different orders by building incrementally
-  (let [orders (loop [acc [], prev nil, n 10]
-                 (if (zero? n)
-                   acc
-                   (let [next-order (rank-between prev nil)]
-                     (recur (conj acc next-order) next-order (dec n)))))]
-    ;; All orders should be unique
-    (is (= (count orders) (count (set orders))))
-    ;; Should be lexicographically sortable  
-    (is (= orders (sort orders)))
-    ;; Should work with insertions between existing orders
-    (let [between (rank-between (first orders) (second orders))]
-      (is (< (compare (first orders) between) 0))
-      (is (< (compare between (second orders)) 0)))))
+(deftest integer-ordering-properties
+  "Test mathematical properties of integer ordering with renumbering"
+  (let [conn (tree-fixture)]
+    ;; Test initial spacing
+    (insert! conn {:id "a"} {:parent "root"})
+    (insert! conn {:id "b"} {:parent "root"})
+    (insert! conn {:id "c"} {:parent "root"})
+
+    (let [orders (mapv #(:order (e @conn %)) (children-ids @conn "root"))]
+      (is (= [1000 2000 3000] orders) "Initial spacing should be 1000 apart"))
+
+    ;; Test dense insertion creates midpoints
+    (insert! conn {:id "between-a-b"} {:rel :after :sibling "a"})
+    (let [between-order (:order (e @conn "between-a-b"))]
+      (is (= 1500 between-order) "Dense insertion should create midpoint"))
+
+    ;; Test renumbering when gaps get too small
+    (insert! conn {:id "tight1"} {:rel :after :sibling "a"})
+    (insert! conn {:id "tight2"} {:rel :after :sibling "tight1"})
+
+    ;; All orders should still be sortable integers
+    (let [final-orders (mapv #(:order (e @conn %)) (children-ids @conn "root"))]
+      (is (= final-orders (sort final-orders)) "Orders maintain sort invariant")
+      (is (every? integer? final-orders) "All orders are integers")
+      (is (= (count final-orders) (count (set final-orders))) "All orders are unique"))))
 
 (deftest position-resolution-edge-cases
   "Test position resolution with various edge cases"
@@ -306,4 +321,5 @@
     (is (= ["first" [["child-of-first" []]]]
            (tree-structure conn "first")))))
 
+(run-tests)
 ;; Run tests when file is loaded
