@@ -121,10 +121,18 @@
                 {:keys [rel parent sibling]} position
                 new-parent-ref (cond
                                  parent [:id parent]
-                                 sibling (:parent (d/entity db [:id sibling]))
+                                 sibling (let [parent-entity-ref (:parent (d/entity db [:id sibling]))]
+                                           [:id (:id (d/entity db (:db/id parent-entity-ref)))])
                                  :else (throw (ex-info "No parent specified" {:position position})))
-                new-order (resolve-rank db new-parent-ref position)]
-            [[:db/add [:id entity-id] :parent new-parent-ref]
+                new-order (resolve-rank db new-parent-ref position)
+                entity (d/entity db [:id entity-id])
+                old-parent-ref (let [old-parent-entity-ref (:parent entity)]
+                                 [:id (:id (d/entity db (:db/id old-parent-entity-ref)))])
+                old-order (:order entity)]
+            ;; Retract old values first, then add new ones
+            [[:db/retract [:id entity-id] :parent old-parent-ref]
+             [:db/retract [:id entity-id] :order old-order]
+             [:db/add [:id entity-id] :parent new-parent-ref]
              [:db/add [:id entity-id] :order new-order]])
     :delete (let [e-id (:entity-id command)
                   descendants (d/q '[:find [?did ...] :in $ % ?p :where
