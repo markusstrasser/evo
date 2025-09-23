@@ -86,3 +86,42 @@ Please read the WHOLE file again with `collapse: false` before editing.
 7. **Entity reference validation is immediate** - References must exist in transaction order, use two-phase approach
 8. **Bidirectional trees trade storage for functionality** - Redundant `:parent`/`:children` enables efficient queries + cascade delete
 9. **Fractional ordering with `:order` attribute** - Enables stable positioning without renumbering siblings
+
+## DataScript `:db/isComponent` Investigation (Latest Session)
+
+### 10. Misunderstanding `:db/isComponent` Semantics
+**Error I Made**: Incorrectly interpreted which entity gets deleted in component relationships
+```
+My wrong interpretation: ":db/isComponent on :parent means parent gets deleted when child is deleted"
+```
+**Reality**: Component relationship means the entity WITH the `:db/isComponent` attribute is a component of the entity it REFERENCES.
+
+**Correct Semantics**:
+- `:parent {:db/isComponent true}` = "This entity is a component of its parent"
+- When parent is deleted, children (components) should cascade delete
+- NOT the reverse (child deletion shouldn't affect parent)
+
+### 11. DataScript vs Datomic Behavior Discrepancy
+**Discovery**: DataScript's `:db/isComponent` implementation appears broken or different from Datomic
+**Test Results**: 
+```clojure
+;; Schema: {:parent {:db/valueType :db.type/ref :db/isComponent true}}
+;; Tree: root <- child1, root <- child2 <- grandchild
+;; Action: Delete child2
+;; Expected: child2 deleted, grandchild cascades delete, root untouched
+;; Actual: child2 AND root deleted, grandchild orphaned
+```
+**Conclusion**: DataScript either has a bug or implements `:db/isComponent` differently than Datomic
+
+### 12. Schema Design Implications
+**Theoretical Advantage of `:parent` component approach**:
+- ✅ Single-phase transactions (no complex two-phase needed)
+- ✅ Cleaner entity creation code
+- ✅ Correct semantic ownership (child is component of parent)
+
+**Practical Reality in DataScript**:
+- ❌ Cascading delete doesn't work correctly
+- ❌ Unpredictable deletion behavior
+- ❌ Forces manual cascade implementation
+
+**Decision**: Current complex two-phase approach exists as workaround for DataScript limitations, not because the alternative schema is wrong.
