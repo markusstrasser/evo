@@ -8,24 +8,25 @@
              :parent {:db/valueType :db.type/ref}
              :order {:db/index true}})
 
-;; ## 2. CORE LOGIC - COMMAND MODEL ##
+;; ## 2. DATALOG RULES ##
+;; Rules define the transitive closure of the parent-child relationship.
+;; A subtree-member relationship exists between an ancestor and descendant
+;; if there's a direct parent-child link OR an indirect link through other nodes.
+(def rules
+  '[[(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?ancestor]]
+    [(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?intermediate]
+     (subtree-member ?ancestor ?intermediate)]])
+
+;; ## 3. CORE LOGIC - COMMAND MODEL ##
 ;; This implementation uses a data-driven command model.
 ;; All mutations are represented as data maps.
 ;; A single pure function, `command->tx`, interprets these commands.
 ;; A single impure function, `execute!`, applies the resulting transaction.
 
 ;; --- Private Helpers ---
-(defn- collect-descendant-ids
-  "Recursively finds all entity IDs in a subtree."
-  [db parent-id]
-  (let [child-ids (d/q '[:find [?cid ...]
-                         :in $ ?pid
-                         :where
-                         [?p :id ?pid]
-                         [?c :parent ?p]
-                         [?c :id ?cid]]
-                       db parent-id)]
-    (concat child-ids (mapcat #(collect-descendant-ids db %) child-ids))))
+(comment "collect-descendant-ids function replaced by declarative Datalog query using rules")
 
 ;; --- Interpreter (Pure Function) ---
 (defn command->tx
@@ -52,7 +53,14 @@
 
     :delete
     (let [{:keys [entity-id]} command
-          all-to-delete (cons entity-id (collect-descendant-ids db entity-id))]
+          parent-ref [:id entity-id]
+          descendant-ids (d/q '[:find [?did ...]
+                                :in $ % ?pref
+                                :where
+                                [?d :id ?did]
+                                (subtree-member ?pref ?d)]
+                              db rules parent-ref)
+          all-to-delete (cons entity-id descendant-ids)]
       (mapv #(vector :db/retractEntity [:id %]) all-to-delete))))
 
 ;; --- Executor (Impure Function) ---
@@ -62,7 +70,7 @@
   (when-let [tx-data (command->tx @conn command)]
     (d/transact! conn tx-data)))
 
-;; ## 3. QUERIES ##
+;; ## 4. QUERIES ##
 (defn children-ids
   "Returns child IDs in order."
   [db parent-id]
@@ -73,7 +81,7 @@
        (sort-by second)
        (mapv first)))
 
-;; ## 4. TESTS ##
+;; ## 5. TESTS ##
 (deftest revised-kernel-test
   (let [conn (d/create-conn schema)]
     (d/transact! conn [{:id "root" :name "Root"}])

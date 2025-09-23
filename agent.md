@@ -454,3 +454,120 @@ This incremental approach helps isolate exactly where failures occur and what Da
 **Key Insight**: Fractional ordering bugs often compound - a small error in string generation gets magnified when used in tree operations. Testing the math functions in isolation catches issues before they become complex tree state problems.
 
 **Key Lesson**: Simple, explicit approaches often outperform "clever" database features that have unpredictable edge cases.
+
+## Datalog Rules for Transitive Closure (Latest Refactoring Session)
+
+### 31. Unifying Imperative and Declarative Query Patterns
+**Discovery**: Mixed imperative/declarative approaches create cognitive dissonance and maintenance burden
+
+**Problem Identified**:
+- Simple queries used declarative Datalog: `'[:find [?cid ...] :in $ ?pid :where ...]`
+- Complex queries dropped back to imperative Clojure recursion: `collect-descendant-ids`
+- Developers had to reason about two different mental models and execution patterns
+- Recursive tree traversal logic was scattered between query layer and application code
+
+**Root Cause**: **Transitive Closure** is a classic graph problem that Datalog is explicitly designed to solve through recursive rules, but many developers default to programmatic recursion in the host language.
+
+### 32. Datalog Recursive Rules Implementation
+**Solution**: Define recursive rules that capture the transitive closure of parent-child relationships entirely within the query language.
+
+**Rules Definition**:
+```clojure
+(def rules
+  '[[(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?ancestor]]           ; Direct parent-child
+    [(subtree-member ?ancestor ?descendant)
+     [?descendant :parent ?intermediate]        ; Indirect through chain
+     (subtree-member ?ancestor ?intermediate)]])
+```
+
+**Usage in Queries**:
+```clojure
+;; Before: Imperative recursion mixed with declarative query
+(defn- collect-descendant-ids [db parent-id]
+  (let [child-ids (d/q '[:find [?cid ...] :in $ ?pid :where
+                         [?p :id ?pid] [?c :parent ?p] [?c :id ?cid]]
+                       db parent-id)]
+    (concat child-ids (mapcat #(collect-descendant-ids db %) child-ids))))
+
+;; After: Pure declarative query using rules
+descendant-ids (d/q '[:find [?did ...]
+                      :in $ % ?pref
+                      :where
+                      [?d :id ?did]
+                      (subtree-member ?pref ?d)]
+                    db rules parent-ref)
+```
+
+### 33. Benefits of Unified Declarative Approach
+**Achieved Results**:
+- ✅ **Cognitive Consistency**: All queries now use the same declarative Datalog pattern
+- ✅ **Encapsulation**: Tree traversal logic is fully contained within the data layer (schema + rules)
+- ✅ **Reduced Complexity**: Single query replaces multi-line recursive function  
+- ✅ **Performance**: Datalog engine optimizes recursive rule evaluation
+- ✅ **Maintainability**: Logic changes only require updating rules, not scattered application code
+
+**Code Density Improvement**:
+- **Before**: 8 lines of imperative recursion + separate query logic
+- **After**: 4 lines of declarative rules + single unified query pattern
+
+### 34. Datalog Rules Testing Pattern  
+**Verification Approach**: Test rules independently before using in application logic
+
+```clojure
+;; Test transitive closure rules directly
+(def test-conn (d/create-conn schema))
+(d/transact! test-conn [{:id "root"}
+                        {:id "child1" :parent [:id "root"]}
+                        {:id "grandchild1" :parent [:id "child1"]}])
+
+;; Verify all descendants found correctly
+(d/q '[:find [?did ...] :in $ % ?pref :where
+       [?d :id ?did] (subtree-member ?pref ?d)]
+     @test-conn rules [:id "root"])
+;; => ["child1" "grandchild1"] ✅
+
+;; Verify partial subtree queries work  
+(d/q '[:find [?did ...] :in $ % ?pref :where
+       [?d :id ?did] (subtree-member ?pref ?d)]
+     @test-conn rules [:id "child1"])
+;; => ["grandchild1"] ✅
+```
+
+### 35. Architecture Principle: Query Language Unification
+**Design Guideline**: **When your data operations mix declarative and imperative approaches, look for opportunities to express the complex operations declaratively through the query language's built-in features.**
+
+**Application**: 
+- Recursive tree operations → Datalog recursive rules
+- Complex filtering → Advanced Datalog pattern matching  
+- Aggregations across relationships → Datalog aggregation functions
+- Graph traversals → Datalog path finding rules
+
+**Decision Framework**:
+- ✅ Can the operation be expressed as "what data relationships exist?" → Use declarative query
+- ❌ Does the operation require complex business logic, formatting, or external I/O? → Use imperative code
+
+**Result**: More consistent, maintainable, and debuggable data access patterns throughout the application.
+
+### 36. Datalog Rules Integration Best Practices
+**Pattern**: Define rules alongside schema as foundational data layer constructs
+
+**File Organization**:
+```clojure
+;; ## 1. SCHEMA ##
+(def schema {...})
+
+;; ## 2. DATALOG RULES ##  
+(def rules [...])
+
+;; ## 3. CORE LOGIC ##
+(defn command->tx [...])  ; Uses both schema and rules
+```
+
+**Testing Strategy**: 
+1. **Schema validation**: Ensure entities can be created/stored correctly
+2. **Rules validation**: Test rules with simple test data independently  
+3. **Integration testing**: Verify rules work correctly within application transactions
+4. **Regression testing**: Ensure all existing functionality remains working
+
+**Key Insight**: Datalog rules are as foundational to the data layer as the schema itself. They should be defined early, tested independently, and used consistently throughout the application rather than treated as an advanced or optional feature.
