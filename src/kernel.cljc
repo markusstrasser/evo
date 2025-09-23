@@ -159,10 +159,22 @@
   (execute! conn {:op :delete :entity-id entity-id}))
 
 (defn update! [conn entity-id attrs]
+  (when (some #{:parent :order :id} (keys attrs))
+    (throw (ex-info "Cannot modify structural attributes" {:attrs attrs})))
   (execute! conn {:op :patch :entity-id entity-id :attrs attrs}))
 
 (defn move! [conn entity-id position]
   "Move an entity to a new position without changing its attributes or children"
+  ;; Prevent cycles
+  (let [descendants (d/q '[:find [?id ...] :in $ % ?p :where
+                           (subtree-member ?p ?d) [?d :id ?id]]
+                         @conn rules [:id entity-id])
+        {:keys [parent sibling]} position
+        target-parent (cond
+                        parent parent
+                        sibling (:id (:parent (d/entity @conn [:id sibling]))))]
+    (when (contains? (set descendants) target-parent)
+      (throw (ex-info "Cycle detected" {:entity entity-id :target target-parent}))))
   (execute! conn {:op :move :entity-id entity-id :position position}))
 
 (defn children-ids
