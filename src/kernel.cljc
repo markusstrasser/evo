@@ -39,16 +39,6 @@
 ;; REWRITTEN for semantic clarity. Hierarchy (:parent) and sibling order (:order) are decoupled.
 ;; The `:order` attribute is now purely local to its parent.
 
-(defn- get-ordered-siblings
-  "Data Access: Fetches and sorts sibling order strings for a given parent."
-  [db parent-ref]
-  ;; Use :find [?o ...] to get a vector of scalars, then sort.
-  (->> (d/q '[:find [?o ...]
-              :in $ ?p
-              :where [?e :parent ?p] [?e :order ?o]]
-            db parent-ref)
-       (sort)))
-
 (defn- find-surrounding-orders [siblings target-order]
   (when-let [idx (first (keep-indexed #(when (= %2 target-order) %1) siblings))]
     [(when (pos? idx) (nth siblings (dec idx)))
@@ -57,7 +47,11 @@
 (defn- resolve-rank
   "Policy: Decides *which* ranks to pass to rank-between based on user intent."
   [db parent-ref {:keys [rel parent sibling]}]
-  (let [siblings (get-ordered-siblings db parent-ref)]
+  (let [siblings (->> (d/q '[:find [?o ...]
+                             :in $ ?p
+                             :where [?e :parent ?p] [?e :order ?o]]
+                           db parent-ref)
+                      (sort))]
     (cond
       ;; :parent key for :first/:last
       (and parent (#{:first :last} rel))
@@ -149,7 +143,15 @@
 ;; ## 5. PUBLIC CONVENIENCE FUNCTIONS ##
 ;; Unchanged. These compose the layers cleanly.
 (defn insert!
+  "Insert new entities into the tree. Throws if any ID already exists."
   [conn entity-map position]
+  ;; Check if any ID in the entity-map already exists
+  (letfn [(collect-ids [em]
+            (cons (:id em) (mapcat collect-ids (:children em []))))]
+    (when-let [existing-ids (seq (filter #(d/entity @conn [:id %]) (collect-ids entity-map)))]
+      (throw (ex-info "Cannot insert: IDs already exist"
+                      {:existing-ids existing-ids
+                       :hint "Use move! to relocate existing entities"}))))
   (let [tx-data (tree->tx-data @conn entity-map position)]
     (execute! conn {:op :apply-txs :tx-data tx-data})))
 
@@ -183,7 +185,7 @@
     (is (= ["leaf1" "leaf2"] (children-ids @conn "branch1")))
 
     ;; Reparent "branch1" and all its children to be the first child of "branch2"
-    (insert! conn {:id "branch1"} {:rel :first :parent "branch2"})
+    (move! conn "branch1" {:rel :first :parent "branch2"})
 
     (is (= ["branch2"] (children-ids @conn "root")) "Root now has only branch2")
     (is (= ["branch1" "leaf3"] (children-ids @conn "branch2")) "Branch2 now contains branch1")
@@ -272,7 +274,7 @@
     (is (= [] (children-ids @conn "section-c")))
 
     ;; Test 1: Move a component with children to a different section
-    (insert! conn {:id "comp-1"} {:rel :first :parent "section-b"})
+    (move! conn "comp-1" {:rel :first :parent "section-b"})
 
     (is (= ["comp-2"] (children-ids @conn "section-a"))
         "comp-1 should be removed from section-a")
@@ -282,7 +284,7 @@
         "comp-1 should retain its children after move")
 
     ;; Test 2: Move an entire section with all its descendants
-    (insert! conn {:id "section-b"} {:rel :after :sibling "section-c"})
+    (move! conn "section-b" {:rel :after :sibling "section-c"})
 
     (is (= ["section-a" "section-c" "section-b"] (children-ids @conn "root"))
         "section-b should move after section-c")
@@ -316,7 +318,7 @@
     (is (= ["home-link" "about-link"] (children-ids @conn "nav")))
 
     ;; Test: Move navigation component to footer (like moving a component in UI editor)
-    (insert! conn {:id "nav"} {:rel :first :parent "footer"})
+    (move! conn "nav" {:rel :first :parent "footer"})
 
     (is (= ["logo"] (children-ids @conn "header"))
         "nav should be removed from header")
