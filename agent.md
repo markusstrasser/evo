@@ -274,3 +274,90 @@ This incremental approach helps isolate exactly where failures occur and what Da
 **Application**: Rather than fighting DataScript's `:db/isComponent` limitations, we achieved the same cascade deletion behavior through explicit traversal. This kept both `position!` and `delete!` simple and readable.
 
 **Pattern**: Use direct Datalog queries for tree traversal instead of relying on component relationships that may not work as expected across different database implementations.
+
+## Test-Driven DataScript Entity Reference Resolution (Latest Session)
+
+### 22. Missing Root Entity - Immediate Reference Validation
+**Error Encountered**: `Nothing found for entity id [:id "root"]` when running tests
+**Root Cause**: DataScript validates entity references **immediately**, even for existing entities outside the current transaction.
+
+**Problem Details**:
+- Test was trying to create children with `:parent [:id "root"]` reference
+- But no entity with `:id "root"` existed in the database
+- DataScript's reference validation fails before the transaction can complete
+- This is different from referencing entities being created in the same transaction (where temp IDs work)
+
+**Simple Fix**: Create the referenced entity first
+```clojure
+;; Before (fails)
+(deftest revised-kernel-test
+  (let [conn (d/create-conn schema)]
+    (position! conn {:id "child1"} {:rel :first :target "root"}))) ; ← "root" doesn't exist
+
+;; After (works)
+(deftest revised-kernel-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [{:id "root" :name "Root"}])  ; ← Create root first
+    (position! conn {:id "child1"} {:rel :first :target "root"})))
+```
+
+### 23. Subtree Operations Work Seamlessly 
+**Discovery**: Once entity references are properly handled, all subtree operations work correctly without additional complexity.
+
+**Comprehensive Subtree Operations Verified**:
+1. **Deep nesting** - 3+ level hierarchies work without transaction issues
+2. **Moving subtrees** - Parent changes correctly, children maintain their parent relationships
+3. **Cascade deletion** - Manual cascade deletion works reliably at any depth
+4. **Complex positioning** - All positioning operations (`:first`, `:last`, `:after`, `:before`) work across multiple levels
+
+**Key Insight**: The fractional ordering system (`:order` attribute) and manual cascade deletion provide all the functionality needed for complex tree operations without DataScript's problematic `:db/isComponent` feature.
+
+### 24. Test Strategy for Tree Operations
+**Pattern**: Test progressively from simple to complex operations
+```clojure
+;; 1. Simple parent-child relationships
+(position! conn {:id "child"} {:rel :first :target "parent"})
+
+;; 2. Multiple children with ordering  
+(position! conn {:id "child2"} {:rel :after :target "child1"})
+
+;; 3. Deep nesting (3+ levels)
+(position! conn {:id "grandchild"} {:rel :first :target "child"})
+
+;; 4. Moving subtrees
+(position! conn {:id "child"} {:rel :first :target "new-parent"})
+
+;; 5. Cascade deletion
+(delete! conn "parent") ; Should delete all descendants
+```
+
+**Testing Benefits**:
+- ✅ Catches reference resolution issues early
+- ✅ Verifies parent-child relationships are maintained during moves
+- ✅ Confirms cascade deletion works at all levels
+- ✅ Validates ordering is preserved across operations
+
+### 25. Final Architecture Validation
+**Result**: The simplified schema + manual cascade deletion approach handles all real-world tree operations:
+
+```clojure
+;; Simple, reliable schema
+(def schema {:id {:db/unique :db.unique/identity}
+             :parent {:db/valueType :db.type/ref}  
+             :order {:db/index true}})
+
+;; Single function handles create + move + positioning
+(defn position! [conn entity-map position-spec] ...)
+
+;; Manual cascade deletion works reliably  
+(defn delete! [conn entity-id] ...)
+```
+
+**Architectural Benefits**:
+- ✅ No complex transaction phases needed
+- ✅ No dependency on DataScript's `:db/isComponent` quirks
+- ✅ Predictable behavior for all tree operations
+- ✅ Easy to test and debug
+- ✅ Works with arbitrarily deep nesting
+
+**Key Lesson**: Simple, explicit approaches often outperform "clever" database features that have unpredictable edge cases.
