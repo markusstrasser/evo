@@ -36,14 +36,13 @@
 
 (defn- rank-between
   "Return a rank strictly between a and b (strings or nil)."
-  ([a b] (loop [i 0, acc (StringBuilder.)]
+  ([a b] (loop [i 0, acc ""]
            (let [lo (code a i) ; inclusive lower bound (0..base)
                  hi (let [x (code b i)] ; exclusive upper bound (1..base+1)
                       (if (pos? x) x (inc base)))]
              (if (< (inc lo) hi)
-               (str (.append acc (ch (quot (+ lo hi) 2))))
-               (do (.append acc (if (pos? lo) (ch lo) (ch 1)))
-                   (recur (inc i) acc))))))
+               (str acc (ch (quot (+ lo hi) 2)))
+               (do (recur (inc i) (str acc (if (pos? lo) (ch lo) (ch 1)))))))))
   ([] (rank-between nil nil))
   ([a] (rank-between a nil))) ; convenience: after a
 
@@ -118,7 +117,7 @@
                       (:target position)
                       (:id (:parent (d/entity db [:id (:target position)]))))
           parent-ref [:id parent-id]
-          order (fo/calculate-order db parent-ref position)]
+          order (calculate-order db parent-ref position)]
       (tree->txns entity parent-ref order))
 
     :patch
