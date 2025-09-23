@@ -27,11 +27,8 @@
 ;; Canonical fractional indexing - Greenspan-style in ~25 LOC
 (def ^:private digits "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 (def ^:private base (count digits))
-
-(defn- code [s i]
-  (let [c (when (and s (< i (count s))) (.charAt s i))]
-    (if c (inc (clojure.string/index-of digits c)) 0))) ; 0 is -∞ sentinel
-
+(defn- code [s i] (let [c (when (and s (< i (count s))) (.charAt s i))]
+                    (if c (inc (clojure.string/index-of digits c)) 0))) ; 0 is -∞ sentinel
 (defn- ch [i] (.charAt digits (dec i))) ; 1..base ⇒ digit
 
 (defn- rank-between
@@ -42,9 +39,14 @@
                       (if (pos? x) x (inc base)))]
              (if (< (inc lo) hi)
                (str acc (ch (quot (+ lo hi) 2)))
-               (do (recur (inc i) (str acc (if (pos? lo) (ch lo) (ch 1)))))))))
+               (recur (inc i) (str acc (if (pos? lo) (ch lo) (ch 1))))))))
   ([] (rank-between nil nil))
   ([a] (rank-between a nil))) ; convenience: after a
+;
+;(defn- rank-first [] (rank-between nil "")) ; before first
+;(defn- rank-last [last] (rank-between last nil))
+;(defn- rank-after [a] (rank-between a nil))
+;(defn- rank-before [b] (rank-between nil b))
 
 ;; Integration with existing API
 (defn- get-ordered-siblings [db parent-ref]
@@ -93,16 +95,22 @@
                               :parent parent-ref
                               :order order))
 
-        ;; Recursively generate transactions for children
-        ;; Each child gets positioned sequentially
+        ;; Recursively generate transactions for children using fractional ordering
         children-txns (when children
-                        (mapcat
-                         (fn [[idx child-map]]
-                            ;; For children, we'll use a simple ordering scheme
-                            ;; Each child gets an order based on its index
-                           (let [child-order (str order "." (format "%03d" idx))]
-                             (tree->txns child-map temp-id child-order)))
-                         (map-indexed vector children)))]
+                        (let [;; Generate fractional orders for all children at once
+                              child-orders (loop [orders []
+                                                  prev-order nil
+                                                  remaining (count children)]
+                                             (if (zero? remaining)
+                                               orders
+                                               (let [next-order (rank-between prev-order nil)]
+                                                 (recur (conj orders next-order)
+                                                        next-order
+                                                        (dec remaining)))))]
+                          (mapcat
+                           (fn [child-map child-order]
+                             (tree->txns child-map temp-id (str order "." child-order)))
+                           children child-orders)))]
     (if children-txns
       (cons entity-txn children-txns)
       [entity-txn])))
