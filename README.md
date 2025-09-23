@@ -135,6 +135,34 @@ The entire complexity stems from supporting operations like :after and :before.
 
 **Design Principle**: **Test what you don't have yet.** The hypergraph tests serve as both specification and acceptance criteria for future development, ensuring architectural decisions are driven by actual requirements rather than theoretical possibilities.
 
+### Kernel Minimalism Refactoring (kernel-min.cljc)
+**Decision**: Eliminate uniqueness constraint complexity by treating order as soft metadata that can be renumbered whenever touching a sibling list.
+
+**Core Problem**: The `:parent+pos` unique constraint was forcing an "elegance tax" - complex two-phase transactions with negative temporary positions to avoid constraint violations during reordering.
+
+**Solution Architecture**:
+```clojure
+;; Before: Complex schema with uniqueness constraint
+{:parent+pos {:db/tupleAttrs [:parent :pos] :db/unique :db.unique/value}}
+
+;; After: Simple schema, order as soft metadata
+{:pos {:db/cardinality :db.cardinality/one :db/index true}}
+```
+
+**Key Simplifications**:
+- **Single-phase transactions**: No more temp-pos counter or negative position gymnastics
+- **Canonical list maintenance**: Every operation = `target → [parent-id idx] → splice vector → renumber once`
+- **Rule-free cycle detection**: Simple closure instead of complex Datalog rules  
+- **Direct subtree insertion**: Build entire subtree in one transaction with negative tempids
+
+**Complexity Reduction**:
+- `reorder!`: 6 lines → 1 line (`map-indexed`)
+- `walk->tx`: Eliminated temp-pos counter and string-based temp IDs
+- `move!`: Still 3 transactions but dramatically simpler logic
+- **Overall**: Reduced moving parts, fewer transaction phases, easier debugging
+
+**Design Insight**: The constraint was solving the wrong problem. Ordered children under mutable operations is just **list maintenance**, not constraint satisfaction. Renumbering on every touch is cheaper than constraint dance.
+
 # ref docs
 
 ## Unknowns:
