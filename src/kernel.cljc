@@ -1,4 +1,4 @@
-(ns kernel-min
+(ns kernel
   (:require [datascript.core :as d]
             [clojure.test :refer [deftest is run-tests]]))
 
@@ -6,7 +6,14 @@
 (def schema
   {:id {:db/unique :db.unique/identity}
    :parent {:db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
-   :pos {:db/cardinality :db.cardinality/one :db/index true}})
+   :pos {:db/cardinality :db.cardinality/one :db/index true}
+   ; Cross-reference placeholder
+   :references {:db/valueType :db.type/ref
+                :db/cardinality :db.cardinality/many}})
+
+(def rules
+  '[[(subtree-member ?a ?d) [?d :parent ?a]]
+    [(subtree-member ?a ?d) [?d :parent ?m] (subtree-member ?a ?m)]])
 
 ;; ---------- Core helpers ----------
 (defn e [db id]
@@ -58,7 +65,9 @@
 
 (defn move! [conn id pos]
   (let [db @conn
-        descendant-ids (set (tree-seq #(seq (children-ids db %)) #(children-ids db %) id))
+        descendant-ids (set (d/q '[:find [?id ...] :in $ % ?p
+                                   :where (subtree-member ?p ?d) [?d :id ?id]]
+                                 db rules [:id id]))
         [p i] (target db pos)]
     (when (contains? descendant-ids p)
       (throw (ex-info "Cycle detected" {:entity id :target p})))
@@ -77,13 +86,24 @@
 (defn delete! [conn entity-id]
   (let [db @conn
         parent-id (:id (:parent (e db entity-id)))
-        siblings (children-ids db parent-id)]
-    (d/transact! conn [[:db.fn/retractEntity [:id entity-id]]])
+        siblings (children-ids db parent-id)
+        descendant-ids (d/q '[:find [?id ...] :in $ % ?p
+                              :where (subtree-member ?p ?d) [?d :id ?id]]
+                            db rules [:id entity-id])]
+    (d/transact! conn (mapv (fn [id] [:db/retractEntity [:id id]]) (cons entity-id descendant-ids)))
     (d/transact! conn (map-indexed (fn [idx id] [:db/add [:id id] :pos idx]) (vec (remove #{entity-id} siblings))))))
 
 (defn update! [conn entity-id attrs]
-  (let [tx (for [[k v] attrs]
-             [:db/add [:id entity-id] k v])]
+  (when (some #{:parent :pos :id} (keys attrs))
+    (throw (ex-info "Cannot modify structural attributes" {:attrs (select-keys attrs [:parent :pos :id])})))
+  (let [entity-id (if (string? entity-id)
+                    (:db/id (e @conn entity-id))
+                    entity-id)
+        tx (for [[k v] attrs
+                 ref (if (= k :references)
+                       (map #(if (vector? %) (:db/id (e @conn (second %))) %) v)
+                       [v])]
+             [:db/add entity-id k ref])]
     (d/transact! conn tx)))
 
 ;; ---------- Test fixtures ----------
@@ -238,5 +258,157 @@
     ; Test using e function in composition
     (let [node-id (->> (children-ids @conn "root") first)]
       (is (= "composed-node" (:id (e @conn node-id)))))))
+
+(deftest cross-reference-relationships-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "form", :type "form"} {:parent "root"})
+    (insert! conn {:id "input", :type "input", :name "email"} {:parent "form"})
+    (insert! conn {:id "validator", :type "validator", :pattern "email"} {:parent "root"})
+    (insert! conn {:id "submit-btn", :type "button"} {:parent "form"})
+    (insert! conn {:id "api-endpoint", :type "service"} {:parent "root"})
+
+    ; Add cross-references using the :references attribute
+    (update! conn "input" {:references [[:id "validator"]]})
+    (update! conn "submit-btn" {:references [[:id "api-endpoint"]]})
+    (update! conn "form" {:references [[:id "input"] [:id "submit-btn"]]})
+
+    ; Verify relationships exist
+    (is (= 1 (count (:references (e @conn "input")))))
+    (is (= 1 (count (:references (e @conn "submit-btn")))))
+    (is (= 2 (count (:references (e @conn "form")))))
+
+    ; Test navigation patterns
+    (let [validator-users (d/q '[:find [?id ...]
+                                 :in $ ?validator-ref
+                                 :where [?e :references ?validator-ref]
+                                 [?e :id ?id]]
+                               @conn [:id "validator"])]
+      (is (= ["input"] validator-users)))))
+
+(deftest referential-integrity-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "dialog", :type "dialog"} {:parent "root"})
+    (insert! conn {:id "button", :type "button"} {:parent "dialog"})
+    (insert! conn {:id "action", :type "action"} {:parent "root"})
+
+    ; Create reference
+    (update! conn "button" {:references [[:id "action"]]})
+    (is (= 1 (count (:references (e @conn "button")))))
+
+    ; Delete referenced entity - DataScript removes all references to deleted entities
+    (delete! conn "action")
+
+    ; References are automatically cleaned up by DataScript
+    (let [button-entity (e @conn "button")
+          refs (:references button-entity)]
+      (is (= 0 (count refs)))) ; References are removed
+
+    ; Test with multiple references
+    (insert! conn {:id "service1", :type "service"} {:parent "root"})
+    (insert! conn {:id "service2", :type "service"} {:parent "root"})
+    (update! conn "button" {:references [[:id "service1"] [:id "service2"]]})
+
+    (delete! conn "service1")
+    ; One reference is removed, other remains
+    (let [refs (:references (e @conn "button"))]
+      (is (= 1 (count refs)))
+      (is (= "service2" (:id (first refs)))))))
+
+(deftest bidirectional-relationships-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "parent-comp", :type "component"} {:parent "root"})
+    (insert! conn {:id "child-comp", :type "component"} {:parent "parent-comp"})
+    (insert! conn {:id "sibling-comp", :type "component"} {:parent "parent-comp"})
+    (insert! conn {:id "external-service", :type "service"} {:parent "root"})
+
+    ; Create bidirectional references using :references
+    (update! conn "child-comp" {:references [[:id "sibling-comp"]]})
+    (update! conn "sibling-comp" {:references [[:id "child-comp"]]})
+    (update! conn "parent-comp" {:references [[:id "external-service"]]})
+    (update! conn "external-service" {:references [[:id "parent-comp"]]})
+
+    ; Test graph traversal patterns
+    (let [; Find all components that reference each other
+          mutual-refs (d/q '[:find ?id1 ?id2
+                             :where [?e1 :id ?id1]
+                             [?e1 :references ?ref]
+                             [?ref :id ?id2]
+                             [?e2 :id ?id2]
+                             [?e2 :references ?back-ref]
+                             [?back-ref :id ?id1]]
+                           @conn)
+          ; Find all reference relationships
+          all-refs (d/q '[:find ?referrer ?referenced
+                          :where [?e1 :id ?referrer]
+                          [?e1 :references ?ref]
+                          [?ref :id ?referenced]]
+                        @conn)]
+      (is (= #{["child-comp" "sibling-comp"] ["sibling-comp" "child-comp"]
+               ["parent-comp" "external-service"] ["external-service" "parent-comp"]}
+             (set mutual-refs)))
+      (is (= 4 (count all-refs))))))
+
+(deftest disconnected-subgraphs-test
+  (let [conn (tree-fixture)]
+    ; Create main tree
+    (insert! conn {:id "app", :type "application"} {:parent "root"})
+    (insert! conn {:id "main-view", :type "view"} {:parent "app"})
+
+    ; Create disconnected entities (floating dialogs, background services)
+    (insert! conn {:id "floating-dialog", :type "dialog", :floating true} {:parent "root"})
+    (insert! conn {:id "background-service", :type "service", :background true} {:parent "root"})
+    (insert! conn {:id "notification-system", :type "system"} {:parent "root"})
+
+    ; These exist outside the main app hierarchy but can reference it
+    (update! conn "floating-dialog" {:references [[:id "main-view"]]})
+    (update! conn "background-service" {:references [[:id "app"]]})
+    (update! conn "notification-system" {:references [[:id "app"] [:id "floating-dialog"]]})
+
+    ; Verify disconnected entities exist
+    (is (= "dialog" (:type (e @conn "floating-dialog"))))
+    (is (= "service" (:type (e @conn "background-service"))))
+
+    ; Test that they're not in main app subtree
+    (let [app-subtree (d/q '[:find [?id ...]
+                             :in $ % ?app-ref
+                             :where (subtree-member ?app-ref ?d)
+                             [?d :id ?id]]
+                           @conn rules [:id "app"])]
+      (is (not (contains? (set app-subtree) "floating-dialog")))
+      (is (not (contains? (set app-subtree) "background-service")))
+      (is (not (contains? (set app-subtree) "notification-system"))))
+
+    ; But they can still reference app components
+    (is (= 1 (count (:references (e @conn "floating-dialog")))))
+    (is (= 1 (count (:references (e @conn "background-service")))))))
+
+(deftest multiple-relationship-types-test
+  (let [conn (tree-fixture)]
+    (insert! conn {:id "ui-component", :type "component"} {:parent "root"})
+    (insert! conn {:id "data-store", :type "store"} {:parent "root"})
+    (insert! conn {:id "validator", :type "validator"} {:parent "root"})
+    (insert! conn {:id "formatter", :type "formatter"} {:parent "root"})
+    (insert! conn {:id "api-client", :type "client"} {:parent "root"})
+
+    ; Add multiple references to same entity
+    (update! conn "ui-component" {:references [[:id "data-store"] [:id "validator"]
+                                               [:id "formatter"] [:id "api-client"]]})
+
+    ; Test that component has multiple references
+    (let [component (e @conn "ui-component")]
+      (is (= 4 (count (:references component)))))
+
+    ; Query by references
+    (let [store-users (d/q '[:find [?id ...]
+                             :in $ ?store-ref
+                             :where [?e :references ?store-ref]
+                             [?e :id ?id]]
+                           @conn [:id "data-store"])
+          all-users (d/q '[:find [?id ...]
+                           :where [?e :references ?v]
+                           [?e :id ?id]]
+                         @conn)]
+      (is (= ["ui-component"] store-users))
+      (is (= ["ui-component"] all-users)))))
 
 (run-tests)
