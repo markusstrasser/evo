@@ -30,6 +30,17 @@ The entire complexity stems from supporting operations like :after and :before.
 
 **Key insight**: Fractional indexing is a solved problem. Use the canonical algorithm rather than reinventing string interpolation logic. The ~25 LOC version is more maintainable and follows established patterns from systems like Jira's LexoRank.
 
+### Functional Naming and Pipeline Architecture (2024)
+**Decision**: Transformed procedural naming and coupled recursion into functional, declarative design.
+
+**Changes**:
+- Renamed functions to describe transformations not temporal roles (`calculate-order` → `resolve-rank`, `prepare-put-tx` → `tree->tx-data`)
+- Replaced mutual recursion with decoupled data pipeline (`linearize-subtree` → `map linearized-node->tx`)
+- Consolidated duplicate logic (added `find-surrounding-orders` helper)
+- Used `reductions` instead of imperative `loop/recur`
+
+**Reasoning**: Functions named after "when they execute" (`prepare-*`, `calculate-*`) reveal procedural thinking. Pure functions should describe **what they transform**, not their temporal role in a sequence. The pipeline separates tree traversal from transaction formatting, making the data flow explicit and each component independently testable.
+
 # ref docs
 
 ## Unknowns:
