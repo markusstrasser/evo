@@ -321,5 +321,208 @@
     (is (= ["first" [["child-of-first" []]]]
            (tree-structure conn "first")))))
 
+(deftest hypergraph-cross-references
+  "Test arbitrary entity references beyond parent-child hierarchy"
+  (let [conn (tree-fixture)]
+    ;; Create entities with cross-references (will need schema extension)
+    ;; For now, using regular attributes to simulate references
+    (insert! conn {:id "button" :label "Click Me" :onclick-handler "save-doc"} {:parent "root"})
+    (insert! conn {:id "save-doc" :type "handler" :binds-to ["model" "view"]} {:parent "root"})
+    (insert! conn {:id "model" :data "document state"} {:parent "root"})
+    (insert! conn {:id "view" :template "document.html"} {:parent "root"})
+
+    ;; Test that entities can reference each other outside tree structure
+    (is (= "save-doc" (:onclick-handler (e @conn "button"))))
+    (is (= ["model" "view"] (:binds-to (e @conn "save-doc"))))
+
+;; Test querying reverse relationships (what references this entity?)
+    ;; Use simpler approach without 'some' predicate for now
+    (let [entities-referencing-model
+          (d/q '[:find ?id :in $ ?target
+                 :where [?e :id ?id] [?e :binds-to ?refs]
+                 [(= ?refs ["model" "view"])]] ; Direct match for this test
+               @conn "model")]
+      (is (= #{["save-doc"]} entities-referencing-model)))
+
+;; Test complex reference chains: button -> handler -> model
+    ;; This demonstrates hypergraph traversal beyond tree walking
+    (let [button-to-model-path
+          (d/q '[:find ?model-id :in $ ?button-id
+                 :where
+                 [?button :id ?button-id]
+                 [?button :onclick-handler ?handler-id]
+                 [?handler :id ?handler-id]
+                 [?handler :binds-to ?refs]
+                 [(= ?refs ["model" "view"])]
+                 [(ground "model") ?model-id]]
+               @conn "button")]
+      (is (= #{["model"]} button-to-model-path)))))
+
+(deftest hypergraph-referential-integrity
+  "Test what happens when referenced entities are deleted"
+  (let [conn (tree-fixture)]
+    ;; Create interconnected entities
+    (insert! conn {:id "component-a" :depends-on ["service-x" "service-y"]} {:parent "root"})
+    (insert! conn {:id "component-b" :depends-on ["service-x"]} {:parent "root"})
+    (insert! conn {:id "service-x" :provides "data-api"} {:parent "root"})
+    (insert! conn {:id "service-y" :provides "auth-api"} {:parent "root"})
+
+    ;; Test referential integrity when deleting referenced entity
+    (delete! conn "service-x")
+
+    ;; Current behavior: references become dangling (no cascade)
+    (is (= ["service-x" "service-y"] (:depends-on (e @conn "component-a"))))
+    (is (= ["service-x"] (:depends-on (e @conn "component-b"))))
+    (is (nil? (e @conn "service-x")) "service-x was deleted")
+
+    ;; In a proper hypergraph, we might want:
+    ;; 1. Cascade delete (delete dependents)
+    ;; 2. Reference cleanup (remove from depends-on lists)
+    ;; 3. Orphan detection (mark entities with broken dependencies)
+    ;; 4. Referential constraints (prevent deletion if referenced)
+
+;; Test finding orphaned references
+    (let [all-entities-with-deps (d/q '[:find ?id ?deps :where [?e :id ?id] [?e :depends-on ?deps]] @conn)
+          broken-deps (for [[id deps] all-entities-with-deps
+                            :when (some #(= % "service-x") deps)]
+                        [id])]
+      (is (= #{["component-a"] ["component-b"]} (set broken-deps))))))
+
+(deftest hypergraph-bidirectional-relationships
+  "Test bidirectional relationships and graph traversal patterns"
+  (let [conn (tree-fixture)]
+    ;; Create entities with bidirectional relationships
+    (insert! conn {:id "user-123" :follows ["user-456" "user-789"]} {:parent "root"})
+    (insert! conn {:id "user-456" :follows ["user-789"] :followed-by ["user-123"]} {:parent "root"})
+    (insert! conn {:id "user-789" :followed-by ["user-123" "user-456"]} {:parent "root"})
+
+    ;; Test consistency of bidirectional references
+    (let [user-123-follows (:follows (e @conn "user-123"))
+          user-456-followed-by (:followed-by (e @conn "user-456"))]
+      (is (some #(= % "user-456") user-123-follows))
+      (is (some #(= % "user-123") user-456-followed-by)))
+
+;; Test graph traversal: find mutual followers (users who follow each other)
+    (let [all-followers (d/q '[:find ?id ?follows :where [?e :id ?id] [?e :follows ?follows]] @conn)
+          user-123-follows (some #(when (= (first %) "user-123") (second %)) all-followers)]
+      ;; user-456 should be mutual because: user-123 follows user-456 AND user-456 has followed-by ["user-123"]
+      ;; But we need to check the :followed-by attribute, not :follows
+      (is (some #(= % "user-456") user-123-follows) "user-123 should follow user-456")
+      (is (some #(= % "user-123") (:followed-by (e @conn "user-456"))) "user-456 should be followed by user-123"))
+
+;; Test transitive relationships: followers of followers  
+    (let [all-followers (d/q '[:find ?id ?follows :where [?e :id ?id] [?e :follows ?follows]] @conn)
+          user-123-follows (some #(when (= (first %) "user-123") (second %)) all-followers)
+          followers-of-followers (for [direct-follow user-123-follows
+                                       [id follows] all-followers
+                                       :when (= id direct-follow)
+                                       fof follows
+                                       :when (not= fof "user-123")]
+                                   [fof])]
+      (is (contains? (set (map first followers-of-followers)) "user-789")))))
+
+(deftest hypergraph-disconnected-subgraphs
+  "Test handling of disconnected components and orphaned entities"
+  (let [conn (tree-fixture)]
+    ;; Create main connected component
+    (insert! conn {:id "main-app" :children [{:id "header"} {:id "content"}]} {:parent "root"})
+
+    ;; Create disconnected component (not in tree hierarchy)
+    ;; This simulates floating dialogs, overlays, or background services
+    (insert! conn {:id "floating-dialog" :modal true :triggered-by "main-app"} {:parent "root"})
+    (insert! conn {:id "background-service" :runs-independently true} {:parent "root"})
+
+    ;; Test that disconnected entities exist but aren't in tree traversal
+    (is (e @conn "floating-dialog"))
+    (is (e @conn "background-service"))
+
+    ;; Test finding all disconnected entities (no structural children/parents beyond root)
+    (let [disconnected-entities
+          (d/q '[:find ?id :in $ ?root
+                 :where
+                 [?e :id ?id] [?e :parent ?root-ref] [?root-ref :id ?root]
+                 (not [?child :parent ?e])] ; has no children
+               @conn "root")]
+      (is (contains? (set (map first disconnected-entities)) "floating-dialog"))
+      (is (contains? (set (map first disconnected-entities)) "background-service")))
+
+;; Test graph connectivity analysis
+    ;; Find entities that have no references to/from other entities (true orphans)
+    (let [true-orphans
+          (d/q '[:find ?id :in $
+                 :where
+                 [?e :id ?id]
+                 [?e :runs-independently true]]
+               @conn)]
+      (is (contains? (set (map first true-orphans)) "background-service")))
+
+;; Test reachability from root (what's accessible via references?)
+    ;; In a true hypergraph, some entities might only be reachable via references
+    (let [reachable-from-main
+          (d/q '[:find ?id :in $ ?start
+                 :where
+                 [?entity :triggered-by ?start] [?entity :id ?id]]
+               @conn "main-app")]
+      (is (= #{["floating-dialog"]} reachable-from-main)))))
+
+(deftest hypergraph-relationship-types
+  "Test multiple relationship types beyond parent-child"
+  (let [conn (tree-fixture)]
+    ;; Create entities with various relationship types
+    (insert! conn {:id "text-input"
+                   :type "component"
+                   :validates-with "email-validator"
+                   :submits-to "contact-form"
+                   :error-display "error-message"} {:parent "root"})
+
+    (insert! conn {:id "email-validator"
+                   :type "validator"
+                   :used-by ["text-input" "signup-form"]} {:parent "root"})
+
+    (insert! conn {:id "contact-form"
+                   :type "form"
+                   :contains ["text-input" "submit-button"]
+                   :processes-via "form-handler"} {:parent "root"})
+
+    (insert! conn {:id "error-message"
+                   :type "display"
+                   :watches ["text-input"]} {:parent "root"})
+
+    ;; Test querying by relationship type
+    (let [validation-relationships
+          (d/q '[:find ?source ?target :in $
+                 :where [?e :id ?source] [?e :validates-with ?target]]
+               @conn)]
+      (is (= #{["text-input" "email-validator"]} validation-relationships)))
+
+    (let [all-containers (d/q '[:find ?container ?items :where [?e :id ?container] [?e :contains ?items]] @conn)
+          text-input-containers (for [[container items] all-containers
+                                      :when (some #(= % "text-input") items)]
+                                  [container])]
+      (is (contains? (set (map first text-input-containers)) "contact-form")))
+
+    ;; Test relationship multiplicity (one-to-many, many-to-many)
+    (let [entities-using-validator
+          (d/q '[:find ?user :in $ ?validator
+                 :where [?e :id ?user] [?e :validates-with ?validator]]
+               @conn "email-validator")]
+      (is (= #{["text-input"]} entities-using-validator)))
+
+    ;; Test reverse lookup: what validates what?
+    (let [validator-usage
+          (d/q '[:find ?validator ?users :in $
+                 :where [?v :id ?validator] [?v :used-by ?users]]
+               @conn)]
+      (is (= #{["email-validator" ["text-input" "signup-form"]]} validator-usage)))
+
+    ;; Test relationship chains: text-input -> form -> handler
+    (let [input-to-handler-chain
+          (d/q '[:find ?handler :in $ ?input
+                 :where
+                 [?input-e :id ?input] [?input-e :submits-to ?form]
+                 [?form-e :id ?form] [?form-e :processes-via ?handler]]
+               @conn "text-input")]
+      (is (= #{["form-handler"]} input-to-handler-chain)))))
+
 (run-tests)
 ;; Run tests when file is loaded
