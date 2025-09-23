@@ -56,13 +56,18 @@
 
 (defn- resolve-rank
   "Policy: Decides *which* ranks to pass to rank-between based on user intent."
-  [db parent-ref {:keys [rel target]}]
+  [db parent-ref {:keys [rel parent sibling]}]
   (let [siblings (get-ordered-siblings db parent-ref)]
-    (case rel
-      :first (rank-between nil (first siblings))
-      :last (rank-between (last siblings) nil)
-      (:after :before) ;; Group related cases
-      (let [t-order (:order (d/entity db [:id target]))
+    (cond
+      ;; :parent key for :first/:last
+      (and parent (#{:first :last} rel))
+      (case rel
+        :first (rank-between nil (first siblings))
+        :last (rank-between (last siblings) nil))
+
+      ;; :sibling key for :before/:after  
+      (and sibling (#{:before :after} rel))
+      (let [t-order (:order (d/entity db [:id sibling]))
             [before after] (find-surrounding-orders siblings t-order)]
         (if (= rel :after)
           (rank-between t-order after)
@@ -92,9 +97,11 @@
 (defn tree->tx-data
   "Generates transaction data for a subtree put via a data pipeline."
   [db entity-map position]
-  (let [parent-id (if (#{:first :last} (:rel position))
-                    (:target position)
-                    (:id (:parent (d/entity db [:id (:target position)]))))
+  (let [{:keys [rel parent sibling]} position
+        parent-id (cond
+                    parent parent
+                    sibling (:id (:parent (d/entity db [:id sibling])))
+                    :else (throw (ex-info "No parent specified" {:position position})))
         parent-ref (when parent-id [:id parent-id])
         root-order (resolve-rank db parent-ref position)]
     (->> (linearize-subtree entity-map parent-ref root-order)
@@ -109,6 +116,16 @@
   (case op
     :apply-txs (:tx-data command)
     :patch (mapv (fn [[k v]] [:db/add [:id (:entity-id command)] k v]) (:attrs command))
+    :move (let [entity-id (:entity-id command)
+                position (:position command)
+                {:keys [rel parent sibling]} position
+                new-parent-ref (cond
+                                 parent [:id parent]
+                                 sibling (:parent (d/entity db [:id sibling]))
+                                 :else (throw (ex-info "No parent specified" {:position position})))
+                new-order (resolve-rank db new-parent-ref position)]
+            [[:db/add [:id entity-id] :parent new-parent-ref]
+             [:db/add [:id entity-id] :order new-order]])
     :delete (let [e-id (:entity-id command)
                   descendants (d/q '[:find [?did ...] :in $ % ?p :where
                                      (subtree-member ?p ?d) [?d :id ?did]]
@@ -123,7 +140,7 @@
 
 ;; ## 5. PUBLIC CONVENIENCE FUNCTIONS ##
 ;; Unchanged. These compose the layers cleanly.
-(defn upsert!
+(defn insert!
   [conn entity-map position]
   (let [tx-data (tree->tx-data @conn entity-map position)]
     (execute! conn {:op :apply-txs :tx-data tx-data})))
@@ -131,8 +148,12 @@
 (defn delete! [conn entity-id]
   (execute! conn {:op :delete :entity-id entity-id}))
 
-(defn patch! [conn entity-id attrs]
+(defn update! [conn entity-id attrs]
   (execute! conn {:op :patch :entity-id entity-id :attrs attrs}))
+
+(defn move! [conn entity-id position]
+  "Move an entity to a new position without changing its attributes or children"
+  (execute! conn {:op :move :entity-id entity-id :position position}))
 
 (defn children-ids
   "Query function to get child IDs in correct order."
@@ -147,14 +168,14 @@
 (deftest subtree-reparenting-test
   (let [conn (d/create-conn schema)]
     (d/transact! conn [{:id "root"}])
-    (upsert! conn {:id "branch1", :children [{:id "leaf1"} {:id "leaf2"}]} {:rel :first, :target "root"})
-    (upsert! conn {:id "branch2", :children [{:id "leaf3"}]} {:rel :last, :target "root"})
+    (insert! conn {:id "branch1", :children [{:id "leaf1"} {:id "leaf2"}]} {:rel :first :parent "root"})
+    (insert! conn {:id "branch2", :children [{:id "leaf3"}]} {:rel :last :parent "root"})
 
     (is (= ["branch1" "branch2"] (children-ids @conn "root")))
     (is (= ["leaf1" "leaf2"] (children-ids @conn "branch1")))
 
     ;; Reparent "branch1" and all its children to be the first child of "branch2"
-    (upsert! conn {:id "branch1"} {:rel :first, :target "branch2"})
+    (insert! conn {:id "branch1"} {:rel :first :parent "branch2"})
 
     (is (= ["branch2"] (children-ids @conn "root")) "Root now has only branch2")
     (is (= ["branch1" "leaf3"] (children-ids @conn "branch2")) "Branch2 now contains branch1")
@@ -166,14 +187,14 @@
     (d/transact! conn [{:id "root"}])
 
     (doseq [i (range 10)]
-      (upsert! conn {:id (str "item" i)} {:rel :last, :target "root"}))
+      (insert! conn {:id (str "item" i)} {:rel :last :parent "root"}))
 
     (let [children (children-ids @conn "root")
           orders (mapv #(:order (d/entity @conn [:id %])) children)]
       (is (= children (mapv #(str "item" %) (range 10))) "Sequential insertion maintains order")
       (is (= orders (sort orders)) "Orders are lexicographically sorted"))
 
-    (upsert! conn {:id "between"} {:rel :after, :target "item4"})
+    (insert! conn {:id "between"} {:rel :after :sibling "item4"})
     (is (= ["item0" "item1" "item2" "item3" "item4" "between" "item5" "item6" "item7" "item8" "item9"]
            (children-ids @conn "root")))
     (let [orders (mapv #(:order (d/entity @conn [:id %])) ["item4" "between" "item5"])]
@@ -193,8 +214,8 @@
   (let [conn (d/create-conn schema)]
     ;; Set up test data
     (d/transact! conn [{:id "root"}])
-    (upsert! conn {:id "parent", :name "Parent Node", :children [{:id "child1", :name "Child 1"} {:id "child2", :name "Child 2"}]} {:rel :first, :target "root"})
-    (upsert! conn {:id "sibling", :name "Sibling Node"} {:rel :last, :target "root"})
+    (insert! conn {:id "parent", :name "Parent Node", :children [{:id "child1", :name "Child 1"} {:id "child2", :name "Child 2"}]} {:rel :first :parent "root"})
+    (insert! conn {:id "sibling", :name "Sibling Node"} {:rel :last :parent "root"})
 
     ;; Test initial state
     (is (= ["parent" "sibling"] (children-ids @conn "root")))
@@ -202,7 +223,7 @@
     (is (= "Parent Node" (:name (d/entity @conn [:id "parent"]))))
 
     ;; Test patch operation
-    (patch! conn "parent" {:name "Updated Parent", :description "New description"})
+    (update! conn "parent" {:name "Updated Parent", :description "New description"})
     (let [updated-parent (d/entity @conn [:id "parent"])]
       (is (= "Updated Parent" (:name updated-parent)) "Name should be updated")
       (is (= "New description" (:description updated-parent)) "Description should be added"))
@@ -223,17 +244,17 @@
   (let [conn (d/create-conn schema)]
     ;; Set up a complex tree structure
     (d/transact! conn [{:id "root"}])
-    (upsert! conn {:id "section-a", :name "Section A",
+    (insert! conn {:id "section-a", :name "Section A",
                    :children [{:id "comp-1", :name "Component 1",
                                :children [{:id "elem-1", :name "Element 1"}
                                           {:id "elem-2", :name "Element 2"}]}
                               {:id "comp-2", :name "Component 2"}]}
-             {:rel :first, :target "root"})
-    (upsert! conn {:id "section-b", :name "Section B",
+             {:rel :first :parent "root"})
+    (insert! conn {:id "section-b", :name "Section B",
                    :children [{:id "comp-3", :name "Component 3"}]}
-             {:rel :last, :target "root"})
-    (upsert! conn {:id "section-c", :name "Section C"}
-             {:rel :last, :target "root"})
+             {:rel :last :parent "root"})
+    (insert! conn {:id "section-c", :name "Section C"}
+             {:rel :last :parent "root"})
 
     ;; Verify initial structure
     (is (= ["section-a" "section-b" "section-c"] (children-ids @conn "root")))
@@ -243,7 +264,7 @@
     (is (= [] (children-ids @conn "section-c")))
 
     ;; Test 1: Move a component with children to a different section
-    (upsert! conn {:id "comp-1"} {:rel :first, :target "section-b"})
+    (insert! conn {:id "comp-1"} {:rel :first :parent "section-b"})
 
     (is (= ["comp-2"] (children-ids @conn "section-a"))
         "comp-1 should be removed from section-a")
@@ -253,7 +274,7 @@
         "comp-1 should retain its children after move")
 
     ;; Test 2: Move an entire section with all its descendants
-    (upsert! conn {:id "section-b"} {:rel :after, :target "section-c"})
+    (insert! conn {:id "section-b"} {:rel :after :sibling "section-c"})
 
     (is (= ["section-a" "section-c" "section-b"] (children-ids @conn "root"))
         "section-b should move after section-c")
@@ -268,18 +289,18 @@
     (d/transact! conn [{:id "app"}])
 
     ;; Create a complex UI-like structure
-    (upsert! conn {:id "header", :type "component",
+    (insert! conn {:id "header", :type "component",
                    :children [{:id "nav", :type "navigation",
                                :children [{:id "home-link", :type "link"}
                                           {:id "about-link", :type "link"}]}
                               {:id "logo", :type "image"}]}
-             {:rel :first, :target "app"})
-    (upsert! conn {:id "main", :type "component",
+             {:rel :first :parent "app"})
+    (insert! conn {:id "main", :type "component",
                    :children [{:id "sidebar", :type "component"}
                               {:id "content", :type "component"}]}
-             {:rel :last, :target "app"})
-    (upsert! conn {:id "footer", :type "component"}
-             {:rel :last, :target "app"})
+             {:rel :last :parent "app"})
+    (insert! conn {:id "footer", :type "component"}
+             {:rel :last :parent "app"})
 
     ;; Verify initial structure
     (is (= ["header" "main" "footer"] (children-ids @conn "app")))
@@ -287,7 +308,7 @@
     (is (= ["home-link" "about-link"] (children-ids @conn "nav")))
 
     ;; Test: Move navigation component to footer (like moving a component in UI editor)
-    (upsert! conn {:id "nav"} {:rel :first, :target "footer"})
+    (insert! conn {:id "nav"} {:rel :first :parent "footer"})
 
     (is (= ["logo"] (children-ids @conn "header"))
         "nav should be removed from header")
