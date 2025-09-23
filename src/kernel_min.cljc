@@ -141,4 +141,102 @@
     ; Try to create a cycle: make "root" a child of "a"
     (is (thrown? Exception (move! conn "root" {:parent "a"})))))
 
+(deftest splice-test
+  (is (= [1 2 99 3 4] (splice [1 2 3 4] 2 99)))
+  (is (= [99 1 2 3 4] (splice [1 2 3 4] 0 99)))
+  (is (= [1 2 3 4 99] (splice [1 2 3 4] 10 99)))
+  (is (= [1 2 3 4 99] (splice [1 2 3 4] nil 99))))
+
+(deftest entity-lookup-test
+  (let [conn (tree-fixture)]
+    (is (= "root" (:id (e @conn "root"))))
+    (is (= "a" (:id (e @conn "a"))))
+    (is (nil? (e @conn "nonexistent")))))
+
+(deftest update-test
+  (let [conn (tree-fixture)]
+    (update! conn "a" {:name "updated-a" :value 42})
+    (let [entity (e @conn "a")]
+      (is (= "updated-a" (:name entity)))
+      (is (= 42 (:value entity))))))
+
+(deftest auto-id-generation-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [[:db/add -1 :id "root"] [:db/add -1 :pos 0]])
+    (insert! conn {:name "auto-node"} {:parent "root"})
+    (let [children (children-ids @conn "root")]
+      (is (= 1 (count children)))
+      (is (.startsWith (first children) "auto-")))))
+
+(deftest threaded-operations-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [[:db/add -1 :id "root"] [:db/add -1 :pos 0]])
+    (doto conn
+      (insert! {:id "a"} {:parent "root"})
+      (insert! {:id "b"} {:parent "root"})
+      (insert! {:id "c"} {:parent "a"}))
+    (is (= '("a" "b") (children-ids @conn "root")))
+    (is (= '("c") (children-ids @conn "a")))
+
+    ; Test threaded move and delete
+    (doto conn
+      (move! "c" {:parent "root"}))
+    (is (= '("a" "b" "c") (children-ids @conn "root")))
+    (is (= '() (children-ids @conn "a")))
+
+    (doto conn
+      (delete! "b"))
+    (is (= '("a" "c") (children-ids @conn "root")))))
+
+(deftest nested-tree-operations-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [[:db/add -1 :id "root"] [:db/add -1 :pos 0]])
+    ; Create a deeply nested tree
+    (insert! conn {:id "level1"} {:parent "root"})
+    (insert! conn {:id "level2"} {:parent "level1"})
+    (insert! conn {:id "level3"} {:parent "level2"})
+    (insert! conn {:id "level4"} {:parent "level3"})
+
+    ; Verify the nested structure
+    (is (= '("level1") (children-ids @conn "root")))
+    (is (= '("level2") (children-ids @conn "level1")))
+    (is (= '("level3") (children-ids @conn "level2")))
+    (is (= '("level4") (children-ids @conn "level3")))
+
+    ; Test moving a deep node
+    (move! conn "level4" {:parent "root"})
+    (is (= '("level1" "level4") (children-ids @conn "root")))
+    (is (= '() (children-ids @conn "level3")))
+
+    ; Test cycle detection in nested tree
+    (is (thrown? Exception (move! conn "level1" {:parent "level2"})))))
+
+(deftest position-edge-cases-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [[:db/add -1 :id "root"] [:db/add -1 :pos 0]])
+    (insert! conn {:id "a"} {:parent "root"})
+
+    ; Test inserting before non-existent sibling (should throw)
+    (is (thrown? Exception (insert! conn {:id "b"} {:sibling "nonexistent" :rel :before})))
+
+    ; Test inserting after non-existent sibling (should throw)
+    (is (thrown? Exception (insert! conn {:id "c"} {:sibling "nonexistent" :rel :after})))
+
+    ; Test moving to invalid position (should not throw, just append)
+    (insert! conn {:id "d"} {:parent "root" :idx 100})
+    (is (= '("a" "d") (children-ids @conn "root")))))
+
+(deftest api-composition-test
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn [[:db/add -1 :id "root"] [:db/add -1 :pos 0]])
+
+    ; Test composing operations
+    (insert! conn {:id "composed-node" :type "test"} {:parent "root"})
+
+    (is (= '("composed-node") (children-ids @conn "root")))
+
+    ; Test using e function in composition
+    (let [node-id (->> (children-ids @conn "root") first)]
+      (is (= "composed-node" (:id (e @conn node-id)))))))
+
 (run-tests)
