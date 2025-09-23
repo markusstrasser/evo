@@ -6,6 +6,7 @@
  [[no.cjohansen/replicant "2025.06.21"]
   [metosin/malli "0.19.1"]
   [datascript "1.7.5"]
+
   [com.rpl/specter "1.1.4"]
   [hiccup/hiccup "2.0.0"]
   [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]]
