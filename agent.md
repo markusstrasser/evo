@@ -361,3 +361,96 @@ This incremental approach helps isolate exactly where failures occur and what Da
 - ✅ Works with arbitrarily deep nesting
 
 **Key Lesson**: Simple, explicit approaches often outperform "clever" database features that have unpredictable edge cases.
+
+## Fractional Ordering Bug Fixes (Latest Debugging Session)
+
+### 26. DataScript Query Variable Binding Bug
+**Error Encountered**: `get-ordered-siblings` returning incorrect order values from unrelated entities
+**Root Cause**: Query used wildcard `_` instead of proper variable binding
+
+**Broken Query**:
+```clojure
+'[:find ?o :in $ ?p :where [_ :parent ?p] [_ :order ?o]]
+```
+**Problem**: The `_` wildcards match different entities, so `?o` can come from any entity with an `:order` attribute, not just children of `?p`.
+
+**Fixed Query**:
+```clojure  
+'[:find ?o :in $ ?p :where [?e :parent ?p] [?e :order ?o]]
+```
+**Solution**: Use the same variable `?e` to ensure we get order values only from entities that are actually children of `?p`.
+
+### 27. Fractional Ordering Edge Cases
+**Error Encountered**: `get-mid-string(nil, "m")` returning "m" instead of a string that comes before "m"
+**Root Cause**: Faulty logic handling empty prefix cases and different string lengths
+
+**Key Fixes Made**:
+1. **Empty prefix case**: When `prev=nil` and `next` exists, return `char(max(int('a'), dec(int(first(next)))))`
+2. **Different length strings**: When strings share a prefix but have different lengths (e.g., "m" vs "mm"), calculate the middle character correctly
+3. **Bounds checking**: Added proper bounds checking for character arithmetic
+
+**Before Fix**: `get-mid-string("m", "mm")` → `"mm"` (incorrect, not between "m" and "mm")
+**After Fix**: `get-mid-string("m", "mm")` → `"mg"` (correct, sorts between "m" and "mm")
+
+### 28. Lazy Sequence Indexing Bug  
+**Error Encountered**: `get` returning `nil` on lazy sequences from `sort-by`
+**Root Cause**: `get` function doesn't work on lazy sequences, only on indexed collections
+
+**Broken Code**:
+```clojure
+(let [siblings (sort-by str (mapv first siblings-raw))  ; Returns lazy seq
+      next-order (get siblings (inc target-idx))]       ; get returns nil!
+```
+
+**Fixed Code**:
+```clojure  
+(let [siblings (sort-by str (mapv first siblings-raw))
+      next-order (when (< (inc target-idx) (count siblings))
+                   (nth siblings (inc target-idx)))]     ; nth works on lazy seqs
+```
+
+### 29. Shadow-cljs REPL vs Build Process State Issues
+**Symptom**: Tests pass in REPL after fixes, but fail until `bun dev` is restarted
+**Root Cause**: Potential state divergence between REPL reloading and Shadow-cljs build process
+
+**Likely Explanations**:
+- Shadow-cljs compilation caching of old JavaScript
+- File watcher compilation timing vs REPL `:reload` 
+- Hot reload state not fully reset with namespace reload
+- Browser caching compiled JavaScript (if serving to browser)
+
+**Debug Commands for Future**:
+```clojure  
+;; Force full recompilation instead of just :reload
+(require '[namespace :as alias] :reload-all)
+
+;; Check what version of code is actually loaded
+(meta #'namespace/function-name)
+```
+
+**Practical Solution**: When in doubt, restart the build process to ensure clean state.
+
+### 30. Systematic Debugging for Fractional Ordering
+**Effective Pattern**: Test fractional ordering functions in isolation before testing full tree operations
+
+```clojure
+;; Test fractional ordering edge cases directly  
+(#'fractional-ordering/get-mid-string nil "m")     ; Should be < "m"
+(#'fractional-ordering/get-mid-string "m" "mm")    ; Should be between "m" and "mm" 
+(#'fractional-ordering/get-mid-string "mm" nil)    ; Should be > "mm"
+
+;; Test query results before using them
+(let [siblings-raw (d/q '[:find ?o :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)]
+  (println "Raw query result:" siblings-raw)
+  (println "After processing:" (sort-by str (mapv first siblings-raw))))
+
+;; Test ordering with actual string comparisons
+(let [result (calculate-order db parent-ref position)]
+  (println "Calculated order sorts correctly:"
+    (= (sort ["existing1" result "existing2"]) 
+       ["existing1" result "existing2"])))
+```
+
+**Key Insight**: Fractional ordering bugs often compound - a small error in string generation gets magnified when used in tree operations. Testing the math functions in isolation catches issues before they become complex tree state problems.
+
+**Key Lesson**: Simple, explicit approaches often outperform "clever" database features that have unpredictable edge cases.

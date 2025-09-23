@@ -14,6 +14,8 @@ Position isn't conflation, it's a requirement. Creating an entity without positi
 Order calculation belongs in the system, not client. The LLM/client should declare intent ({:after "x"}) not implementation details (order strings). This keeps fractional indexing mechanics hidden.
 Manual cascade deletion was the right call. DataScript's :db/isComponent is broken. Explicit descendant collection is more predictable.
 
+The entire complexity stems from supporting operations like :after and :before.
+
 # ref docs
 
 ## Unknowns:
