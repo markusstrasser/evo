@@ -18,7 +18,7 @@ What we learned:
 
 The entire complexity stems from supporting operations like :after and :before.
 
-### Fractional Ordering Implementation (2024)
+### Fractional Ordering Implementation 
 **Decision**: Replaced verbose ~70 LOC fractional indexing with canonical Greenspan-style implementation in ~25 LOC.
 
 **Reasoning**: 
@@ -30,7 +30,7 @@ The entire complexity stems from supporting operations like :after and :before.
 
 **Key insight**: Fractional indexing is a solved problem. Use the canonical algorithm rather than reinventing string interpolation logic. The ~25 LOC version is more maintainable and follows established patterns from systems like Jira's LexoRank.
 
-### Functional Naming and Pipeline Architecture (2024)
+### Functional Naming and Pipeline Architecture 
 **Decision**: Transformed procedural naming and coupled recursion into functional, declarative design.
 
 **Changes**:
