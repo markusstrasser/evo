@@ -39,68 +39,51 @@
 ;; REWRITTEN for semantic clarity. Hierarchy (:parent) and sibling order (:order) are decoupled.
 ;; The `:order` attribute is now purely local to its parent.
 
+(defn- entity-by-id [db id] (d/entity db [:id id]))
+
+(defn- parent-id [db entity-id] (:id (:parent (entity-by-id db entity-id))))
+
 (defn- find-surrounding-orders [siblings target-order]
   (when-let [idx (first (keep-indexed #(when (= %2 target-order) %1) siblings))]
     [(when (pos? idx) (nth siblings (dec idx)))
      (when (< (inc idx) (count siblings)) (nth siblings (inc idx)))]))
 
-(defn- resolve-rank
-  "Policy: Decides *which* ranks to pass to rank-between based on user intent."
-  [db parent-ref {:keys [rel parent sibling]}]
+(defn- resolve-parent-ref [db {:keys [parent sibling] :as position}]
+  (let [parent-id (cond
+                    parent parent
+                    sibling (parent-id db sibling)
+                    :else (throw (ex-info "No parent specified" {:position position})))]
+    (when parent-id [:id parent-id])))
+
+(defn- resolve-rank [db parent-ref {:keys [rel parent sibling]}]
   (let [siblings (->> (d/q '[:find [?o ...]
                              :in $ ?p
                              :where [?e :parent ?p] [?e :order ?o]]
                            db parent-ref)
                       (sort))]
-    (cond
-      ;; :parent key for :first/:last
-      (and parent (#{:first :last} rel))
-      (case rel
-        :first (rank-between nil (first siblings))
-        :last (rank-between (last siblings) nil))
+    (case [rel (boolean parent) (boolean sibling)]
+      [:first true false] (rank-between nil (first siblings))
+      [:last true false] (rank-between (last siblings) nil)
+      [:before false true] (let [t-order (:order (entity-by-id db sibling))
+                                 [before after] (find-surrounding-orders siblings t-order)]
+                             (rank-between before t-order))
+      [:after false true] (let [t-order (:order (entity-by-id db sibling))
+                                [before after] (find-surrounding-orders siblings t-order)]
+                            (rank-between t-order after)))))
 
-      ;; :sibling key for :before/:after  
-      (and sibling (#{:before :after} rel))
-      (let [t-order (:order (d/entity db [:id sibling]))
-            [before after] (find-surrounding-orders siblings t-order)]
-        (if (= rel :after)
-          (rank-between t-order after)
-          (rank-between before t-order))))))
-
-(defn- linearize-subtree
-  "Walks a tree entity-map, producing a lazy sequence of flat nodes.
-  Each node contains its data, tempid, parent-ref, and order key."
-  [entity-map parent-ref order]
+(defn- tree-walk [node parent-ref order]
   (let [tempid (d/tempid :db.part/user)
-        children (:children entity-map)
-        child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))
-        this-node {:node-data entity-map
-                   :tempid tempid
-                   :parent-ref parent-ref
-                   :order order}]
-    (cons this-node
-          (mapcat linearize-subtree children (repeat tempid) child-orders))))
+        children (:children node [])
+        this-tx (-> node (dissoc :children)
+                    (assoc :db/id tempid :parent parent-ref :order order))
+        child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))]
+    (concat [this-tx]
+            (mapcat tree-walk children (repeat tempid) child-orders))))
 
-(defn- linearized-node->tx
-  "Transforms a single flat node from the sequence into a transaction map."
-  [{:keys [node-data tempid parent-ref order]}]
-  (-> node-data
-      (dissoc :children)
-      (assoc :db/id tempid :parent parent-ref :order order)))
-
-(defn tree->tx-data
-  "Generates transaction data for a subtree put via a data pipeline."
-  [db entity-map position]
-  (let [{:keys [rel parent sibling]} position
-        parent-id (cond
-                    parent parent
-                    sibling (:id (:parent (d/entity db [:id sibling])))
-                    :else (throw (ex-info "No parent specified" {:position position})))
-        parent-ref (when parent-id [:id parent-id])
+(defn tree->tx-data [db entity-map position]
+  (let [parent-ref (resolve-parent-ref db position)
         root-order (resolve-rank db parent-ref position)]
-    (->> (linearize-subtree entity-map parent-ref root-order)
-         (map linearized-node->tx)
-         (vec))))
+    (tree-walk entity-map parent-ref root-order)))
 
 ;; ## 4. HIGH-LEVEL API: COMMAND INTERPRETER ##
 ;; Unchanged. This abstraction correctly separates command definition from execution.
@@ -112,18 +95,11 @@
     :patch (mapv (fn [[k v]] [:db/add [:id (:entity-id command)] k v]) (:attrs command))
     :move (let [entity-id (:entity-id command)
                 position (:position command)
-                {:keys [rel parent sibling]} position
-                new-parent-ref (cond
-                                 parent [:id parent]
-                                 sibling (let [parent-entity-ref (:parent (d/entity db [:id sibling]))]
-                                           [:id (:id (d/entity db (:db/id parent-entity-ref)))])
-                                 :else (throw (ex-info "No parent specified" {:position position})))
+                new-parent-ref (resolve-parent-ref db position)
                 new-order (resolve-rank db new-parent-ref position)
-                entity (d/entity db [:id entity-id])
-                old-parent-ref (let [old-parent-entity-ref (:parent entity)]
-                                 [:id (:id (d/entity db (:db/id old-parent-entity-ref)))])
+                entity (entity-by-id db entity-id)
+                old-parent-ref [:id (:id (:parent entity))]
                 old-order (:order entity)]
-            ;; Retract old values first, then add new ones
             [[:db/retract [:id entity-id] :parent old-parent-ref]
              [:db/retract [:id entity-id] :order old-order]
              [:db/add [:id entity-id] :parent new-parent-ref]
@@ -145,10 +121,9 @@
 (defn insert!
   "Insert new entities into the tree. Throws if any ID already exists."
   [conn entity-map position]
-  ;; Check if any ID in the entity-map already exists
   (letfn [(collect-ids [em]
             (cons (:id em) (mapcat collect-ids (:children em []))))]
-    (when-let [existing-ids (seq (filter #(d/entity @conn [:id %]) (collect-ids entity-map)))]
+    (when-let [existing-ids (seq (filter #(entity-by-id @conn %) (collect-ids entity-map)))]
       (throw (ex-info "Cannot insert: IDs already exist"
                       {:existing-ids existing-ids
                        :hint "Use move! to relocate existing entities"}))))
@@ -165,14 +140,13 @@
 
 (defn move! [conn entity-id position]
   "Move an entity to a new position without changing its attributes or children"
-  ;; Prevent cycles
   (let [descendants (d/q '[:find [?id ...] :in $ % ?p :where
                            (subtree-member ?p ?d) [?d :id ?id]]
                          @conn rules [:id entity-id])
         {:keys [parent sibling]} position
         target-parent (cond
                         parent parent
-                        sibling (:id (:parent (d/entity @conn [:id sibling]))))]
+                        sibling (parent-id @conn sibling))]
     (when (contains? (set descendants) target-parent)
       (throw (ex-info "Cycle detected" {:entity entity-id :target target-parent}))))
   (execute! conn {:op :move :entity-id entity-id :position position}))
