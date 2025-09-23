@@ -40,10 +40,14 @@
 ;; The `:order` attribute is now purely local to its parent.
 
 (defn- get-ordered-siblings
-  "Data Access: Fetches sibling order strings for a given parent."
+  "Data Access: Fetches and sorts sibling order strings for a given parent."
   [db parent-ref]
-  (->> (d/q '[:find ?o :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)
-       (mapv first) (remove nil?) (sort-by str)))
+  ;; Use :find [?o ...] to get a vector of scalars, then sort.
+  (->> (d/q '[:find [?o ...]
+              :in $ ?p
+              :where [?e :parent ?p] [?e :order ?o]]
+            db parent-ref)
+       (sort)))
 
 (defn- find-surrounding-orders [siblings target-order]
   (when-let [idx (first (keep-indexed #(when (= %2 target-order) %1) siblings))]
@@ -55,43 +59,47 @@
   [db parent-ref {:keys [rel target]}]
   (let [siblings (get-ordered-siblings db parent-ref)]
     (case rel
-      :first (rank-between nil (first siblings))
-      :last (rank-between (last siblings) nil)
-      :after (let [t-order (:order (d/entity db [:id target]))
-                   [_ after] (find-surrounding-orders siblings t-order)]
-               (rank-between t-order after))
-      :before (let [t-order (:order (d/entity db [:id target]))
-                    [before _] (find-surrounding-orders siblings t-order)]
-                (rank-between before t-order)))))
+      :first  (rank-between nil (first siblings))
+      :last   (rank-between (last siblings) nil)
+      (:after :before) ;; Group related cases
+      (let [t-order    (:order (d/entity db [:id target]))
+            [before after] (find-surrounding-orders siblings t-order)]
+        (if (= rel :after)
+          (rank-between t-order after)
+          (rank-between before t-order))))))
 
-(declare prep-tx-for-subtree)
-
-(defn- prep-tx-for-children [children parent-tempid]
-  "Generates local orders and full transaction data for a set of children."
-  (let [child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))]
-    (mapcat prep-tx-for-subtree children (repeat parent-tempid) child-orders)))
-
-(defn- prep-tx-for-subtree [entity-map parent-ref order]
-  "Transforms a single node and its children into transaction data.
-  The `order` is local and not derived from the parent's order."
-  (let [temp-id (d/tempid :db.part/user)
+(defn- linearize-subtree
+  "Walks a tree entity-map, producing a lazy sequence of flat nodes.
+  Each node contains its data, tempid, parent-ref, and order key."
+  [entity-map parent-ref order]
+  (let [tempid (d/tempid :db.part/user)
         children (:children entity-map)
-        root-tx (-> entity-map
-                    (dissoc :children)
-                    (assoc :db/id temp-id :parent parent-ref :order order))
-        children-txs (when (seq children)
-                       (prep-tx-for-children children temp-id))]
-    (cons root-tx children-txs)))
+        child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))
+        this-node {:node-data entity-map
+                   :tempid tempid
+                   :parent-ref parent-ref
+                   :order order}]
+    (cons this-node
+          (mapcat linearize-subtree children (repeat tempid) child-orders))))
+
+(defn- linearized-node->tx
+  "Transforms a single flat node from the sequence into a transaction map."
+  [{:keys [node-data tempid parent-ref order]}]
+  (-> node-data
+      (dissoc :children)
+      (assoc :db/id tempid :parent parent-ref :order order)))
 
 (defn tree->tx-data
-  "Public Preparation Function: Top-level call to generate all tx data for a subtree put."
+  "Generates transaction data for a subtree put via a data pipeline."
   [db entity-map position]
   (let [parent-id (if (#{:first :last} (:rel position))
                     (:target position)
                     (:id (:parent (d/entity db [:id (:target position)]))))
         parent-ref (when parent-id [:id parent-id])
-        order (resolve-rank db parent-ref position)]
-    (vec (flatten (prep-tx-for-subtree entity-map parent-ref order)))))
+        root-order (resolve-rank db parent-ref position)]
+    (->> (linearize-subtree entity-map parent-ref root-order)
+         (map linearized-node->tx)
+         (vec))))
 
 ;; ## 4. HIGH-LEVEL API: COMMAND INTERPRETER ##
 ;; Unchanged. This abstraction correctly separates command definition from execution.
