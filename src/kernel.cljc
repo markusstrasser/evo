@@ -24,8 +24,7 @@
 ;; They are concerned with calculating and transacting state changes.
 
 (defn- calculate-order
-  "Calculates a fractional order using targeted Datalog aggregate queries.
-   This is a private implementation detail of the write model."
+  "Calculates a fractional order using targeted Datalog aggregate queries."
   [db {:keys [rel target]}]
   (let [target-ref [:id target]]
     (case rel
@@ -39,17 +38,15 @@
         (inc max-order)
         1.0)
 
-      :before
+      (:before :after)
       (let [parent-ref (ffirst (d/q '[:find ?p :in $ ?s :where [?s :parent ?p]] db target-ref))
-            s-order (ffirst (d/q '[:find ?o :in $ ?s :where [?s :order ?o]] db target-ref))
-            prev-order (d/q '[:find (max ?o) . :in $ ?p ?s-order :where [_ :parent ?p] [_ :order ?o] [(< ?o ?s-order)]] db parent-ref s-order)]
-        (/ (+ (or prev-order 0.0) s-order) 2.0))
-
-      :after
-      (let [parent-ref (ffirst (d/q '[:find ?p :in $ ?s :where [?s :parent ?p]] db target-ref))
-            s-order (ffirst (d/q '[:find ?o :in $ ?s :where [?s :order ?o]] db target-ref))
-            next-order (d/q '[:find (min ?o) . :in $ ?p ?s-order :where [_ :parent ?p] [_ :order ?o] [(> ?o ?s-order)]] db parent-ref s-order)]
-        (/ (+ s-order (or next-order (+ s-order 2.0))) 2.0)))))
+            s-order (ffirst (d/q '[:find ?o :in $ ?s :where [?s :order ?o]] db target-ref))]
+        (if (= rel :before)
+          (let [prev-order (d/q '[:find (max ?o) . :in $ ?p ?s-order :where [_ :parent ?p] [_ :order ?o] [(< ?o ?s-order)]] db parent-ref s-order)]
+            (/ (+ (or prev-order 0.0) s-order) 2.0))
+          ;; else :after
+          (let [next-order (d/q '[:find (min ?o) . :in $ ?p ?s-order :where [_ :parent ?p] [_ :order ?o] [(> ?o ?s-order)]] db parent-ref s-order)]
+            (/ (+ s-order (or next-order (+ s-order 2.0))) 2.0)))))))
 
 (defn position!
   "Upserts an entity map to a specified relational position."
@@ -113,12 +110,21 @@
 
 (deftest kernel-api-tests
   (let [conn (d/create-conn schema)]
-    ;; Populate with initial data
+    ;; Create entities first
     (d/transact! conn
-                 [{:id "root", :order 0.0, :children [[:id "header"] [:id "main"]]}
-                  {:id "header", :parent [:id "root"], :order 1.0, :text "Header", :children [[:id "nav"]]}
-                  {:id "main", :parent [:id "root"], :order 2.0, :text "Content"}
-                  {:id "nav", :parent [:id "header"], :order 1.0, :text "Nav"}])
+                 [{:id "root", :order 0.0}
+                  {:id "header", :order 1.0, :text "Header"}
+                  {:id "main", :order 2.0, :text "Content"}
+                  {:id "nav", :order 1.0, :text "Nav"}])
+
+    ;; Then establish relationships
+    (d/transact! conn
+                 [[:db/add [:id "root"] :children [:id "header"]]
+                  [:db/add [:id "root"] :children [:id "main"]]
+                  [:db/add [:id "header"] :children [:id "nav"]]
+                  [:db/add [:id "header"] :parent [:id "root"]]
+                  [:db/add [:id "main"] :parent [:id "root"]]
+                  [:db/add [:id "nav"] :parent [:id "header"]]])
 
     ;; --- Initial State ---
     (is (= ["header" "main"] (children-ids @conn "root")))
