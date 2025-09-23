@@ -204,3 +204,5 @@
                                @conn [:id "validator"])]
       (is (= ["input"] validator-users)))))
 
+
+(run-tests)
