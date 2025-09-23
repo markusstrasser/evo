@@ -7,11 +7,11 @@
 ;; Defines the data model and declarative rules for subtree queries.
 ;; This section is unchanged; the schema and rule are fundamentally correct.
 (def schema
-  {:id           {:db/unique :db.unique/identity}
-   :parent       {:db/valueType :db.type/ref}
-   :order        {:db/index true}
+  {:id {:db/unique :db.unique/identity}
+   :parent {:db/valueType :db.type/ref}
+   :order {:db/index true}
    :parent+order {:db/tupleAttrs [:parent :order]
-                  :db/unique     :db.unique/value}})
+                  :db/unique :db.unique/value}})
 
 (def rules
   '[[(subtree-member ?ancestor ?descendant) [?descendant :parent ?ancestor]]
@@ -45,7 +45,12 @@
   (->> (d/q '[:find ?o :in $ ?p :where [?e :parent ?p] [?e :order ?o]] db parent-ref)
        (mapv first) (remove nil?) (sort-by str)))
 
-(defn- calculate-order
+(defn- find-surrounding-orders [siblings target-order]
+  (when-let [idx (first (keep-indexed #(when (= %2 target-order) %1) siblings))]
+    [(when (pos? idx) (nth siblings (dec idx)))
+     (when (< (inc idx) (count siblings)) (nth siblings (inc idx)))]))
+
+(defn- resolve-rank
   "Policy: Decides *which* ranks to pass to rank-between based on user intent."
   [db parent-ref {:keys [rel target]}]
   (let [siblings (get-ordered-siblings db parent-ref)]
@@ -53,20 +58,17 @@
       :first (rank-between nil (first siblings))
       :last (rank-between (last siblings) nil)
       :after (let [t-order (:order (d/entity db [:id target]))
-                   t-idx (first (keep-indexed #(when (= %2 t-order) %1) siblings))]
-               (rank-between t-order (when (and t-idx (< (inc t-idx) (count siblings))) (nth siblings (inc t-idx)))))
+                   [_ after] (find-surrounding-orders siblings t-order)]
+               (rank-between t-order after))
       :before (let [t-order (:order (d/entity db [:id target]))
-                    t-idx (first (keep-indexed #(when (= %2 t-order) %1) siblings))]
-                (rank-between (when (and t-idx (pos? t-idx)) (nth siblings (dec t-idx))) t-order)))))
+                    [before _] (find-surrounding-orders siblings t-order)]
+                (rank-between before t-order)))))
 
 (declare prep-tx-for-subtree)
 
 (defn- prep-tx-for-children [children parent-tempid]
   "Generates local orders and full transaction data for a set of children."
-  (let [child-orders (loop [orders [], prev nil, rem-count (count children)]
-                       (if (zero? rem-count) orders
-                                             (let [next-order (rank-between prev nil)]
-                                               (recur (conj orders next-order) next-order (dec rem-count)))))]
+  (let [child-orders (rest (reductions (fn [prev _] (rank-between prev nil)) nil children))]
     (mapcat prep-tx-for-subtree children (repeat parent-tempid) child-orders)))
 
 (defn- prep-tx-for-subtree [entity-map parent-ref order]
@@ -81,14 +83,14 @@
                        (prep-tx-for-children children temp-id))]
     (cons root-tx children-txs)))
 
-(defn prepare-put-tx
+(defn tree->tx-data
   "Public Preparation Function: Top-level call to generate all tx data for a subtree put."
   [db entity-map position]
   (let [parent-id (if (#{:first :last} (:rel position))
                     (:target position)
                     (:id (:parent (d/entity db [:id (:target position)]))))
         parent-ref (when parent-id [:id parent-id])
-        order (calculate-order db parent-ref position)]
+        order (resolve-rank db parent-ref position)]
     (vec (flatten (prep-tx-for-subtree entity-map parent-ref order)))))
 
 ;; ## 4. HIGH-LEVEL API: COMMAND INTERPRETER ##
@@ -115,7 +117,7 @@
 ;; Unchanged. These compose the layers cleanly.
 (defn create!
   [conn entity-map position]
-  (let [tx-data (prepare-put-tx @conn entity-map position)]
+  (let [tx-data (tree->tx-data @conn entity-map position)]
     (execute! conn {:op :apply-txs :tx-data tx-data})))
 
 (defn delete! [conn entity-id]
@@ -169,5 +171,43 @@
     (let [orders (mapv #(:order (d/entity @conn [:id %])) ["item4" "between" "item5"])]
       (is (< (compare (nth orders 0) (nth orders 1)) 0) "Fractional rank is greater than predecessor")
       (is (< (compare (nth orders 1) (nth orders 2)) 0) "Fractional rank is less than successor"))))
+
+(deftest find-surrounding-orders-test
+  ;; Test helper function behavior
+  (is (= [nil "b"] (find-surrounding-orders ["a" "b" "c"] "a")) "First element")
+  (is (= ["a" "c"] (find-surrounding-orders ["a" "b" "c"] "b")) "Middle element")
+  (is (= ["b" nil] (find-surrounding-orders ["a" "b" "c"] "c")) "Last element")
+  (is (= nil (find-surrounding-orders ["a" "b" "c"] "d")) "Missing element")
+  (is (= [nil nil] (find-surrounding-orders ["a"] "a")) "Single element")
+  (is (= nil (find-surrounding-orders [] "a")) "Empty list"))
+
+(deftest delete-and-patch-operations-test
+  (let [conn (d/create-conn schema)]
+    ;; Set up test data
+    (d/transact! conn [{:id "root"}])
+    (create! conn {:id "parent", :name "Parent Node", :children [{:id "child1", :name "Child 1"} {:id "child2", :name "Child 2"}]} {:rel :first, :target "root"})
+    (create! conn {:id "sibling", :name "Sibling Node"} {:rel :last, :target "root"})
+
+    ;; Test initial state
+    (is (= ["parent" "sibling"] (children-ids @conn "root")))
+    (is (= ["child1" "child2"] (children-ids @conn "parent")))
+    (is (= "Parent Node" (:name (d/entity @conn [:id "parent"]))))
+
+    ;; Test patch operation
+    (patch! conn "parent" {:name "Updated Parent", :description "New description"})
+    (let [updated-parent (d/entity @conn [:id "parent"])]
+      (is (= "Updated Parent" (:name updated-parent)) "Name should be updated")
+      (is (= "New description" (:description updated-parent)) "Description should be added"))
+
+    ;; Test that patch doesn't affect children
+    (is (= ["child1" "child2"] (children-ids @conn "parent")) "Children should remain unchanged after patch")
+
+    ;; Test delete operation (should cascade to children)
+    (delete! conn "parent")
+    (is (= ["sibling"] (children-ids @conn "root")) "Parent should be deleted from root children")
+    (is (nil? (d/entity @conn [:id "parent"])) "Parent entity should not exist")
+    (is (nil? (d/entity @conn [:id "child1"])) "Child1 should be deleted (cascade)")
+    (is (nil? (d/entity @conn [:id "child2"])) "Child2 should be deleted (cascade)")
+    (is (not (nil? (d/entity @conn [:id "sibling"]))) "Sibling should still exist")))
 
 (run-tests)
