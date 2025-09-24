@@ -7,8 +7,12 @@
   },
   "scripts": {
     "start": "shadow-cljs watch frontend",
+    "test": "shadow-cljs compile test && bun run out/test.js",
+    "test:watch": "shadow-cljs watch test",
+    "test:repl": "shadow-cljs cljs-repl test",
     "mcp": "clojure -M:nrepl",
-    "dev": "concurrently --kill-others \"npm start\" \"npm run mcp\""
+    "dev": "concurrently --kill-others \"npm start\" \"npm run mcp\"",
+    "test:notify": "shadow-cljs watch test | grep -E '(FAIL|ERROR|PASS|Testing)'"
   },
   "dependencies": {
     "concurrently": "^9.2.1"
