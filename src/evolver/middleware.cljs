@@ -6,13 +6,13 @@
   "Execute pipeline with early exit on error"
   [initial-ctx steps]
   (reduce
-    (fn [ctx step-fn]
-      (let [next-ctx (step-fn ctx)]
-        (if (seq (:errors next-ctx))
-          (reduced next-ctx)
-          next-ctx)))
-    initial-ctx
-    steps))
+   (fn [ctx step-fn]
+     (let [next-ctx (step-fn ctx)]
+       (if (seq (:errors next-ctx))
+         (reduced next-ctx)
+         next-ctx)))
+   initial-ctx
+   steps))
 
 (defn validate-cmd-step
   "Validate command structure"
@@ -31,10 +31,10 @@
   ctx)
 
 (defn apply-command-step
-  "Apply the command"
+  "Apply the command directly through multimethod"
   [ctx]
   (try
-    (let [new-db (kernel/execute-command (:db ctx) (:cmd ctx))]
+    (let [new-db (kernel/apply-command (:db ctx) (:cmd ctx))]
       (assoc ctx :db new-db))
     (catch js/Error e
       (assoc ctx :errors [(str "Command execution failed: " (.-message e))]))))
