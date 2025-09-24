@@ -1,11 +1,12 @@
 (ns evolver.middleware-test
   (:require [cljs.test :refer [deftest is testing]]
             [evolver.middleware :as middleware]
-            [evolver.kernel :as kernel]))
+            [evolver.kernel :as kernel]
+            [evolver.constants :as constants]))
 
 (deftest test-middleware-pipeline
   (testing "Individual middleware step functions work"
-    (let [db kernel/db
+    (let [db constants/initial-db-base
           command {:op :insert
                    :parent-id "root"
                    :node-id "test-node"
@@ -23,7 +24,7 @@
         (is (seq (:errors result)) "Invalid command should produce errors"))))
 
   (testing "Pipeline execution works end-to-end"
-    (let [db kernel/db
+    (let [db constants/initial-db-base
           command {:op :insert
                    :parent-id "root"
                    :node-id "test-node"
@@ -36,7 +37,7 @@
       (is (= {:type :div :props {:text "Test"}} (get-in result [:nodes "test-node"])))))
 
   (testing "Pipeline handles commands that don't break structure"
-    (let [db kernel/db
+    (let [db constants/initial-db-base
           command {:op :insert
                    :parent-id "nonexistent"
                    :node-id "test-node"
@@ -60,14 +61,14 @@
                         (swap! execution-order conj :step-3)
                         ctx)
           pipeline [test-step-1 test-step-2 test-step-3]
-          initial-ctx {:db kernel/db :cmd {:op :undo} :log [] :errors [] :effects []}
+          initial-ctx {:db constants/initial-db-base :cmd {:op :undo} :log [] :errors [] :effects []}
           result (middleware/run-pipeline initial-ctx pipeline)]
 
       (is (= [:step-1 :step-2 :step-3] @execution-order)))))
 
 (deftest test-operation-logging
   (testing "Operations are processed in the pipeline"
-    (let [db kernel/db
+    (let [db constants/initial-db-base
           command {:op :insert
                    :parent-id "root"
                    :node-id "test-log"
@@ -80,7 +81,7 @@
 
 (deftest test-validation-middleware
   (testing "Result validation step works"
-    (let [db kernel/db
+    (let [db constants/initial-db-base
           command {:op :undo}
           ctx {:db db :cmd command :log [] :errors [] :effects []}]
 
