@@ -330,3 +330,110 @@ Using large negative numbers (-1000, -1001, etc.) ensures no collision with real
 - Explain performance characteristics
 
 This comprehensive analysis represents the complete journey from a broken DataScript tree system to a mostly functional one, with clear paths forward for resolving the remaining edge cases.
+
+## Development Workflow & Best Practices
+
+### Testing Setup
+The project uses a robust ClojureScript testing environment with the following tools:
+
+**Core Testing Stack:**
+- **shadow-cljs** with `:node-test` target for fast, isolated unit testing
+- **Bun** runtime for ~3x faster test execution than Node.js
+- **cljs.test** framework with conditional CLJ/CLJS compatibility
+- **Comprehensive test suite** covering tree operations, constraints, and edge cases
+
+**Test Organization:**
+```
+test/evolver/
+├── core_test.cljs      # Main app tests
+├── kernel_test.cljc    # Tree management tests (CLJ/CLJS compatible)
+└── test_runner.cljs    # Test execution orchestrator
+```
+
+**Running Tests:**
+```bash
+# One-off test run
+npm test
+
+# Continuous testing during development
+npm run test:watch
+
+# Interactive REPL for test debugging
+npm run test:repl
+```
+
+**Test Categories:**
+- **Unit Tests:** Individual function behavior
+- **Integration Tests:** Complete operation workflows
+- **Constraint Tests:** DataScript schema validation
+- **Edge Case Tests:** Empty trees, cycles, complex operations
+
+### REPL-Driven Development
+The project supports multiple REPL configurations for different development needs:
+
+**Available REPLs:**
+- `npm run mcp` - nREPL server for external connections (port 55449)
+- `npm run test:repl` - Test-specific REPL for debugging test failures
+- `npm start` - Development server with hot-reload
+
+**REPL Workflow:**
+1. Start the appropriate REPL server
+2. Connect from your editor (Cursive, Calva, etc.)
+3. Load namespaces: `(require '[evolver.core :as app] '[kernel-min :as k])`
+4. Test functions interactively: `(k/insert! conn {:id "test"} {:parent "root"})`
+5. Run tests: `(cljs.test/run-tests 'evolver.core-test)`
+
+### Code Organization Best Practices
+
+**Namespace Structure:**
+- `evolver.core` - Main application logic and UI
+- `kernel-min` - Pure tree management functions (no side effects)
+- `evolver.core-test` - Unit tests for main app
+- `evolver.kernel-test` - Comprehensive tree operation tests
+
+**Function Design:**
+- Pure functions in `kernel-min` for testability
+- Side-effecting functions in `evolver.core` for UI integration
+- Clear separation between data transformation and I/O
+
+**Testing Strategy:**
+- Write tests before implementation for new features
+- Use generative testing for complex data structures
+- Test both happy paths and error conditions
+- Validate DataScript constraints in tests
+
+### Performance Optimization Tips
+
+**DataScript Query Optimization:**
+- Use lookup references `[:id value]` instead of manual joins
+- Leverage Datalog rules for recursive operations
+- Index frequently queried attributes (`:db/index true`)
+
+**Transaction Batching:**
+- Group related operations in single transactions
+- Use temporary IDs for bulk insertions
+- Minimize transaction count for better performance
+
+**Development Speed:**
+- Use `npm run test:watch` for instant feedback
+- Keep test suites fast (< 2 seconds)
+- Use REPL for rapid prototyping
+
+### Debugging DataScript Issues
+
+**Common Patterns:**
+1. **Constraint Violations:** Check intermediate transaction states
+2. **Empty Query Results:** Verify lookup reference syntax
+3. **Performance Issues:** Profile query execution with `(d/explain ...)`
+
+**Debug Tools:**
+- `(d/datoms db :eavt)` - Inspect raw database contents
+- `(d/q '[:find ?e ?a ?v :where [?e ?a ?v]] db)` - View all datoms
+- `(cljs.test/run-tests)` - Run tests in REPL for debugging
+
+**Constraint Debugging:**
+- Add temporary logging in transaction functions
+- Use `(d/transact! conn tx-data)` with small, isolated transactions
+- Verify schema constraints match expected data shapes
+
+This development setup provides a solid foundation for building and maintaining complex ClojureScript applications with DataScript, emphasizing testability, performance, and developer experience.
