@@ -3,6 +3,8 @@
             [evolver.kernel :as kernel]
             [evolver.renderer :as renderer]
             [evolver.state :as state]
+            [evolver.commands :as commands]
+            [evolver.keyboard :as keyboard]
             [evolver.schemas :as schemas]))
 
 (defonce store (state/create-store-atom
@@ -11,16 +13,20 @@
                 (js/document.getElementById "root")))
 
 (defn handle-event [event-data actions]
-  (state/dispatch-event! store event-data actions))
+  (commands/dispatch-commands store event-data actions))
 
 (defn handle-keyboard-event [event]
-  (state/handle-keyboard! store event))
+  (when-let [action (keyboard/handle-keyboard-event store event)]
+    (commands/dispatch-commands store {:keyboard-event event} [action])))
 
 (defn ^:export main []
   (r/set-dispatch!
    (fn [event-data handler-data]
      (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
        (handle-event event-data handler-data))))
+
+  ;; Remove any existing keyboard event listener to prevent duplicates
+  (.removeEventListener js/window "keydown" handle-keyboard-event)
 
   ;; Add keyboard event listener
   (js/console.log "Attaching keyboard event listener to window")
