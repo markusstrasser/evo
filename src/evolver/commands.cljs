@@ -1,6 +1,5 @@
 (ns evolver.commands
   (:require [evolver.kernel :as kernel]
-            [evolver.keyboard-commands :as kb]
             [evolver.middleware :as middleware]))
 
 (defn- get-selection-context [store]
@@ -120,18 +119,121 @@
    :undo undo-command
    :redo redo-command
 
-   ;; Keyboard commands
-   :clear-selection kb/clear-selection-command
-   :select-all-blocks kb/select-all-blocks-command
-   :navigate-sibling kb/navigate-sibling-command
-   :select-parent kb/select-parent-command
-   :create-child-block kb/create-child-block-command
-   :create-sibling-above kb/create-sibling-above-command
-   :delete-selected-blocks kb/delete-selected-blocks-command
-   :indent-block kb/indent-block-command
-   :outdent-block kb/outdent-block-command
-   :move-block kb/move-block-command
-   :toggle-collapse kb/toggle-collapse-command})
+   ;; Keyboard commands - proper implementations
+   :clear-selection (fn [store _event-data _params]
+                      (swap! store assoc-in [:view :selected] #{}))
+
+   :select-all-blocks (fn [store _event-data _params]
+                        (let [all-nodes (keys (:nodes @store))]
+                          (swap! store assoc-in [:view :selected] (set all-nodes))))
+
+   :navigate-sibling (fn [store _event-data {:keys [direction]}]
+                       (let [selected (first (get-in @store [:view :selected]))]
+                         (when selected
+                           (let [pos (kernel/node-position @store selected)
+                                 parent-id (:parent pos)
+                                 siblings (get-in @store [:children-by-parent parent-id])
+                                 current-idx (.indexOf siblings selected)
+                                 new-idx (case direction
+                                           :up (dec current-idx)
+                                           :down (inc current-idx))]
+                             (when (and (>= new-idx 0) (< new-idx (count siblings)))
+                               (let [target-node (nth siblings new-idx)]
+                                 (swap! store assoc-in [:view :selected] #{target-node})))))))
+
+   :select-parent (fn [store _event-data _params]
+                    (let [selected (first (get-in @store [:view :selected]))]
+                      (when selected
+                        (let [pos (kernel/node-position @store selected)
+                              parent-id (:parent pos)]
+                          (when (not= parent-id "root")
+                            (swap! store assoc-in [:view :selected] #{parent-id}))))))
+
+   :create-child-block (fn [store _event-data _params]
+                         (let [selected (first (get-in @store [:view :selected]))]
+                           (when selected
+                             (let [command {:op :insert
+                                            :parent-id selected
+                                            :node-id (kernel/gen-new-id)
+                                            :node-data {:type :div :props {:text "New child"}}
+                                            :position nil}]
+                               (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                                 (reset! store result))))))
+
+   :create-sibling-above (fn [store _event-data _params]
+                           (let [selected (first (get-in @store [:view :selected]))]
+                             (when selected
+                               (let [pos (kernel/node-position @store selected)]
+                                 (let [command {:op :insert
+                                                :parent-id (:parent pos)
+                                                :node-id (kernel/gen-new-id)
+                                                :node-data {:type :div :props {:text "New sibling"}}
+                                                :position (:index pos)}]
+                                   (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                                     (reset! store result)))))))
+
+   :delete-selected-blocks (fn [store _event-data _params]
+                             (let [selected (get-in @store [:view :selected])]
+                               (when (seq selected)
+                                 (doseq [node-id selected]
+                                   (let [command {:op :delete :node-id node-id :recursive true}]
+                                     (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                                       (reset! store result))))
+                                 (swap! store assoc-in [:view :selected] #{}))))
+
+   :indent-block (fn [store _event-data _params]
+                   (let [selected (first (get-in @store [:view :selected]))]
+                     (when selected
+                       (let [pos (kernel/node-position @store selected)]
+                         (when (> (:index pos) 0)
+                           (let [siblings (get-in @store [:children-by-parent (:parent pos)])
+                                 new-parent-id (nth siblings (dec (:index pos)))
+                                 command {:op :move
+                                          :node-id selected
+                                          :new-parent-id new-parent-id
+                                          :position nil}]
+                             (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                               (reset! store result))))))))
+
+   :outdent-block (fn [store _event-data _params]
+                    (let [selected (first (get-in @store [:view :selected]))]
+                      (when selected
+                        (let [pos (kernel/node-position @store selected)]
+                          (when (not= (:parent pos) "root")
+                            (let [parent-pos (kernel/node-position @store (:parent pos))
+                                  command {:op :move
+                                           :node-id selected
+                                           :new-parent-id (:parent parent-pos)
+                                           :position (inc (:index parent-pos))}]
+                              (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                                (reset! store result))))))))
+
+   :move-block (fn [store _event-data {:keys [direction]}]
+                 (let [selected (first (get-in @store [:view :selected]))]
+                   (when selected
+                     (let [pos (kernel/node-position @store selected)
+                           siblings (get-in @store [:children-by-parent (:parent pos)])
+                           current-idx (:index pos)
+                           new-idx (case direction
+                                     :up (max 0 (dec current-idx))
+                                     :down (min (dec (count siblings)) (inc current-idx)))]
+                       (when (not= current-idx new-idx)
+                         (let [command {:op :reorder
+                                        :node-id selected
+                                        :parent-id (:parent pos)
+                                        :from-index current-idx
+                                        :to-index new-idx}]
+                           (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                             (reset! store result))))))))
+
+   :toggle-collapse (fn [store _event-data _params]
+                      (let [selected (first (get-in @store [:view :selected]))]
+                        (when selected
+                          (let [current-collapsed (get-in @store [:view :collapsed] #{})
+                                new-collapsed (if (contains? current-collapsed selected)
+                                                (disj current-collapsed selected)
+                                                (conj current-collapsed selected))]
+                            (swap! store assoc-in [:view :collapsed] new-collapsed)))))})
 
 (defn dispatch-command
   "Dispatch a command through the registry"
