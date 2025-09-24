@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "shadow-cljs watch frontend",
-    "test": "shadow-cljs compile test && bun run out/test.js",
+    "test": "shadow-cljs compile test && bun out/tests.js",
     "test:watch": "shadow-cljs watch test",
     "test:repl": "shadow-cljs cljs-repl test",
     "mcp": "clojure -M:nrepl",

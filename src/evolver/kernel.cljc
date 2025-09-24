@@ -1,6 +1,7 @@
 (ns evolver.kernel
-  (:require [clojure.set :as set]
-            [evolver.schemas :as schemas]))
+   (:require [clojure.set :as set]
+             [evolver.schemas :as schemas]
+             [evolver.constants :as constants]))
 
 (declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation add-reference remove-reference initial-db-base)
 
@@ -51,11 +52,10 @@
     (update db :tx-log conj tx)))
 
 (defn log-message
-  "Add message to log history based on log level"
-  [db level message & [data]]
-  (let [current-level (:log-level db :info)
-        level-priority {:debug 0 :info 1 :warn 2 :error 3}
-        should-log (>= (level-priority level 0) (level-priority current-level 1))]
+   "Add message to log history based on log level"
+   [db level message & [data]]
+   (let [current-level (:log-level db :info)
+         should-log (>= (constants/log-levels level 0) (constants/log-levels current-level 1))]
     (if should-log
       (let [timestamp #?(:clj (System/currentTimeMillis)
                          :cljs (.now js/Date))
@@ -66,24 +66,48 @@
         (update db :log-history conj log-entry))
       db)))
 
+(defmulti apply-command
+  "Apply command based on operation type"
+  (fn [db command] (:op command)))
+
+(defmethod apply-command :insert [db command]
+  (insert-node db command))
+
+(defmethod apply-command :move [db command]
+  (move-node db command))
+
+(defmethod apply-command :patch [db command]
+  (patch-node db command))
+
+(defmethod apply-command :delete [db command]
+  (delete-node db command))
+
+(defmethod apply-command :reorder [db command]
+  (reorder-node db command))
+
+(defmethod apply-command :add-reference [db command]
+  (add-reference db command))
+
+(defmethod apply-command :remove-reference [db command]
+  (remove-reference db command))
+
+(defmethod apply-command :undo [db command]
+  (undo-last-operation db))
+
+(defmethod apply-command :redo [db command]
+  (redo-last-operation db))
+
+(defmethod apply-command :default [db command]
+  (log-message db :warn (str "Unknown command op: " (:op command)))
+  db)
+
 (defn safe-apply-command
-  "Apply command with validation and error handling"
-  [db command]
+   "Apply command with validation and error handling"
+   [db command]
   (try
     (schemas/validate-command command) ; Validate command structure
     (log-message db :debug (str "Applying command: " (:op command)) command)
-    (let [new-db (case (:op command)
-                   :insert (insert-node db command)
-                   :move (move-node db command)
-                   :patch (patch-node db command)
-                   :delete (delete-node db command)
-                   :reorder (reorder-node db command)
-                   :add-reference (add-reference db command)
-                   :remove-reference (remove-reference db command)
-                   :undo (undo-last-operation db)
-                   :redo (redo-last-operation db)
-                   (do (log-message db :warn (str "Unknown command op: " (:op command)))
-                       db))]
+     (let [new-db (apply-command db command)]
       (validate-db-state new-db)
       ;; Don't log undo/redo operations themselves
       (if (#{:undo :redo} (:op command))
@@ -96,44 +120,9 @@
         (throw (ex-info "Command execution failed" {:error (ex-message e) :command command} e))))))
 
 (defn undo-last-operation
-  "Undo the last operation by inverting it"
-  [db]
-  (if-let [last-tx (last (:tx-log db))]
-    (let [tx-log (pop (:tx-log db))
-          undo-stack (conj (or (:undo-stack db) []) last-tx)
-
-          inverted-db (case (:op last-tx)
-                        :insert (let [args (:args last-tx)]
-                                  (delete-node db {:node-id (:node-id args) :recursive true}))
-                        :delete (let [args (:args last-tx)]
-                                  ;; For delete, we'd need to store the deleted data - for now, just log
-                                  (log-message db :warn "Delete undo not fully implemented")
-                                  db)
-                        :move (let [args (:args last-tx)]
-                                ;; Move back to original position - this is complex, for now just log
-                                (log-message db :warn "Move undo not fully implemented")
-                                db)
-                        :patch (let [args (:args last-tx)]
-                                 ;; For patch, we'd need to store old values - for now, just log
-                                 (log-message db :warn "Patch undo not fully implemented")
-                                 db)
-                        :reorder (let [args (:args last-tx)]
-                                    ;; For reorder, swap from/to indices
-                                   (reorder-node db (assoc args :to-index (:from-index args) :from-index (:to-index args))))
-                        :add-reference (let [args (:args last-tx)]
-                                          ;; Remove the reference that was added
-                                         (remove-reference db args))
-                        :remove-reference (let [args (:args last-tx)]
-                                             ;; Add back the reference that was removed
-                                            (add-reference db args))
-                        db)
-          inverted-db (assoc inverted-db :undo-stack undo-stack)]
-      (let [final-db (-> inverted-db
-                         (assoc :tx-log tx-log)
-                         (assoc :undo-stack undo-stack)
-                         (update-derived))]
-        (log-message final-db :info "Undid last operation" last-tx)))
-    db))
+   "Update history index for undo"
+   [db]
+   (update db :history-index (fn [idx] (max 0 (dec (or idx 0))))))
 
 (defn redo-last-operation
   "Redo the last undone operation"
@@ -165,38 +154,7 @@
           idx (.indexOf children node-id)]
       {:parent parent :index idx :children children})))
 
-(def initial-db-base
-  {:nodes
-   {"root" {:type :div}
-    "title" {:type :h1, :props {:text "Declarative Components, Procedural Styles"}}
-    "p1-select" {:type :p, :props {:text "This paragraph is selected. Click to deselect."
-                                   :on/click [[:toggle-selection {:target-id "p1-select"}]]}}
-    "p2-high" {:type :p, :props {:text "This is highlighted but NOT selected. No style should apply."}}
-    "p3-both" {:type :p, :props {:text "This is selected AND highlighted. Click to deselect."
-                                 :on/click [[:toggle-selection {:target-id "p3-both"}]]}}
-
-    "div1" {:type :div, :props {:text "This is a div containing a paragraph."}}
-    "p4-click" {:type :p, :props {:text "Click this paragraph to select it."
-                                  :on/click [[:toggle-selection {:target-id "p4-click"}]]}}}
-
-   :children-by-parent
-   {"root" ["title" "p1-select" "p2-high" "p3-both" "div1"]
-    "div1" ["p4-click"]}
-
-   :view
-   {:selected #{"p1-select"} ; sets ARE the index
-    :highlighted #{"p2-high"}
-    :collapsed #{"p4-click"}
-    :hovered-referencers #{}}
-
-   :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
-
-   :tx-log []
-   :undo-stack []
-   :log-level :info
-   :log-history []})
-
-(def db (update-derived initial-db-base))
+(def db (update-derived constants/initial-db-base))
 
 (defn insert-at-position
   [v thing position-spec]
@@ -268,8 +226,8 @@
                                   (drop to-index siblings-without-node)))]
     (update-derived (assoc-in db [:children-by-parent parent-id] new-siblings))))
 
-(defn apply-command [db command]
-  (safe-apply-command db command))
+(defn execute-command [db command]
+   (safe-apply-command db command))
 
 ;; Structural editor operations
 
