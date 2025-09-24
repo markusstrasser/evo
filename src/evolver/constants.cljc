@@ -1,6 +1,5 @@
 (ns evolver.constants
-  "Constants and initial state for the evolver system."
-  (:require [evolver.schemas :as schemas]))
+   "Constants and initial state for the evolver system.")
 
 ;; Operation types
 (def operation-types
@@ -39,7 +38,7 @@
 
     :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
 
-    :tx-log []
-    :undo-stack []
+    :history []
+    :history-index 0
     :log-level :info
     :log-history []})

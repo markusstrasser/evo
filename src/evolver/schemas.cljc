@@ -1,6 +1,7 @@
 (ns evolver.schemas
   (:require [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me]
+            [evolver.constants :as constants]))
 
 ;; Node schema
 (def node-schema
@@ -37,6 +38,9 @@
 (def references-schema
   [:map-of string? [:set string?]]) ; node-id -> set of nodes that reference it
 
+;; Forward declaration for command-schema (defined later)
+(declare command-schema)
+
 ;; Main database schema
 (def db-schema
   [:map
@@ -45,15 +49,15 @@
    [:view view-schema]
    [:derived derived-schema]
    [:references {:optional true} references-schema]
-   [:tx-log {:optional true} [:vector transaction-schema]]
-   [:undo-stack {:optional true} [:vector transaction-schema]]
+   [:history {:optional true} [:vector any?]] ; Changed from command-schema to any? to avoid forward declaration issues
+   [:history-index {:optional true} int?]
    [:selected-op {:optional true} [:maybe keyword?]]
    [:log-level {:optional true} [:enum :debug :info :warn :error]]
-    [:log-history {:optional true} [:sequential [:map
-                                                      [:level keyword?]
-                                                      [:message string?]
-                                                      [:timestamp number?]
-                                                      [:data {:optional true} any?]]]]])
+   [:log-history {:optional true} [:sequential [:map
+                                                [:level keyword?]
+                                                [:message string?]
+                                                [:timestamp number?]
+                                                [:data {:optional true} any?]]]]])
 
 ;; Validation functions
 (defn validate-db
@@ -64,6 +68,11 @@
       (let [errors (me/humanize (m/explain db-schema db))]
         (throw (ex-info "Database validation failed" {:errors errors :db db}))))
     result))
+
+(defn validate-db-state
+  "Alias for validate-db for backward compatibility"
+  [db]
+  (validate-db db))
 
 (defn validate-node
   "Validate a single node"
@@ -88,13 +97,9 @@
   "Required top-level keys in the database"
   #{:nodes :children-by-parent :view :derived :tx-log})
 
-(def log-levels
-  "Available log levels in priority order"
-  {:debug 0 :info 1 :warn 2 :error 3})
+;; Log levels moved to constants.cljc
 
-(def operation-types
-  "Supported operation types"
-  #{:insert :move :patch :delete :reorder :undo :redo})
+;; Operation types moved to constants.cljc
 
 ;; Command schemas
 (def command-op-schema
@@ -325,16 +330,16 @@
 ;; Schema registry for runtime validation
 (def registry
   (merge
-    (m/default-schemas)
-    {:node node-schema
-     :children-by-parent children-by-parent-schema
-     :view view-schema
-     :transaction transaction-schema
-     :derived derived-schema
-     :db db-schema
-     :namespace-health namespace-health-schema
-     :db-structure db-structure-schema
-     :db-diff db-diff-schema
-     :operation-result operation-result-schema
-     :command command-schema
-     :ui-command ui-command-schema}))
+   (m/default-schemas)
+   {:node node-schema
+    :children-by-parent children-by-parent-schema
+    :view view-schema
+    :transaction transaction-schema
+    :derived derived-schema
+    :db db-schema
+    :namespace-health namespace-health-schema
+    :db-structure db-structure-schema
+    :db-diff db-diff-schema
+    :operation-result operation-result-schema
+    :command command-schema
+    :ui-command ui-command-schema}))

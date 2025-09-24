@@ -2,25 +2,24 @@
  {:source-paths
   ["src" "test" "agent"]
 
- :dependencies
- [[no.cjohansen/replicant "2025.06.21"]
-  [metosin/malli "0.19.1"]
-  [datascript "1.7.5"]
+  :dependencies
+  [[no.cjohansen/replicant "2025.06.21"]
+   [metosin/malli "0.19.1"]
+   [datascript "1.7.5"]
 
-  [com.rpl/specter "1.1.4"]
-  [hiccup/hiccup "2.0.0"]
-  [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]]
+   [com.rpl/specter "1.1.4"]
+   [hiccup/hiccup "2.0.0"]
+   [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]]
 
- :dev-http {8080 "public"}
+  :dev-http {8080 "public"}
 
-   :nrepl {:port 55449}
- :compiler-options {:externs ["datascript/externs.js"]}
+  :nrepl {:port 55449}
+  :compiler-options {:externs ["datascript/externs.js"]}
   :builds
   {:frontend
-   {:target  :browser
-     :modules {:main {:init-fn evolver.core/main}}}
-    :test
-    {:target :node-test
-     :output-to "out/test.js"
-     :main evolver.test-runner/main!
-       :devtools {:autotest true}}}}
+   {:target :browser
+    :modules {:main {:init-fn evolver.core/main}}}
+   :test
+   {:target :node-test
+    :output-to "out/tests.js"
+    :ns-regexp "-test$"}}}

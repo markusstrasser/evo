@@ -1,5 +1,6 @@
 (ns evolver.renderer
-  (:require [evolver.kernel :as kernel]))
+  (:require [evolver.kernel :as kernel]
+            [evolver.registry :as registry]))
 
 (defn render-references [db node-id]
   "Render a references section for a node that has references"
@@ -40,16 +41,13 @@
               referenced? (conj (render-references db node-id)))))))
 
 (defn render-ops-dropdown [selected-op]
-  [:select {:value (if selected-op (name selected-op) "")
-            :on {:change [[:set-selected-op]]}}
-   [:option {:replicant/key "none" :value ""} "Select operation"]
-   [:option {:replicant/key "child" :value "create-child-block"} "Create child block"]
-   [:option {:replicant/key "above" :value "create-sibling-above"} "Create sibling above"]
-   [:option {:replicant/key "below" :value "create-sibling-below"} "Create sibling below"]
-   [:option {:replicant/key "indent" :value "indent"} "Indent"]
-   [:option {:replicant/key "outdent" :value "outdent"} "Outdent"]
-   [:option {:replicant/key "add-ref" :value "add-reference"} "Add reference to selected"]
-   [:option {:replicant/key "remove-ref" :value "remove-reference"} "Remove reference from selected"]])
+   [:select {:value (if selected-op (name selected-op) "")
+             :on {:change [[:set-selected-op]]}}
+    [:option {:replicant/key "none" :value ""} "Select operation"]
+    (for [cmd (registry/get-ui-commands)]
+      [:option {:replicant/key (name (:id cmd))
+                :value (name (:id cmd))}
+       (:label cmd)])])
 
 (defn render-log-history [log-history]
   (when (seq log-history)

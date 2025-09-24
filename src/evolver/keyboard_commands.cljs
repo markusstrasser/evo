@@ -38,9 +38,9 @@
                      :parent-id selected
                      :node-id (kernel/gen-new-id)
                      :node-data {:type :div :props {:text "New block"}}
-                     :position nil}
-            result (middleware/safe-apply-command-with-middleware @store command)]
-        (reset! store result)))))
+                     :position nil}]
+        (let [result (middleware/safe-apply-command-with-middleware @store command)]
+          (reset! store result))))))
 
 (defn create-sibling-above-command [store _event-data _params]
   (let [selected (first (get-in @store [:view :selected]))]
@@ -50,20 +50,18 @@
                      :parent-id (:parent pos)
                      :node-id (kernel/gen-new-id)
                      :node-data {:type :div :props {:text "New sibling above"}}
-                     :position (:index pos)}
-            result (middleware/safe-apply-command-with-middleware @store command)]
-        (reset! store result)))))
+                     :position (:index pos)}]
+        (let [result (middleware/safe-apply-command-with-middleware @store command)]
+          (reset! store result))))))
 
 (defn delete-selected-blocks-command [store _event-data _params]
   (let [selected-set (get-in @store [:view :selected])]
     (when (seq selected-set)
-      (let [final-result
-            (reduce (fn [current-store node-id]
-                      (let [command {:op :delete :node-id node-id :recursive false}]
-                        (middleware/safe-apply-command-with-middleware current-store command)))
-                    @store
-                    selected-set)]
-        (reset! store (assoc-in final-result [:view :selected] #{}))))))
+      (doseq [node-id selected-set]
+        (let [command {:op :delete :node-id node-id :recursive false}]
+          (let [result (middleware/safe-apply-command-with-middleware @store command)]
+            (reset! store result))))
+      (swap! store assoc-in [:view :selected] #{}))))
 
 (defn indent-block-command [store _event-data _params]
   (let [selected (first (get-in @store [:view :selected]))]
@@ -73,9 +71,9 @@
           (let [command {:op :move
                          :node-id selected
                          :new-parent-id (get (:children pos) (dec (:index pos)))
-                         :position nil}
-                result (middleware/safe-apply-command-with-middleware @store command)]
-            (reset! store result)))))))
+                         :position nil}]
+            (let [result (middleware/safe-apply-command-with-middleware @store command)]
+              (reset! store result))))))))
 
 (defn outdent-block-command [store _event-data _params]
   (let [selected (first (get-in @store [:view :selected]))]
@@ -85,9 +83,9 @@
           (let [command {:op :move
                          :node-id selected
                          :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
-                         :position {:type :after :sibling-id (:parent pos)}}
-                result (middleware/safe-apply-command-with-middleware @store command)]
-            (reset! store result)))))))
+                         :position {:type :after :sibling-id (:parent pos)}}]
+            (let [result (middleware/safe-apply-command-with-middleware @store command)]
+              (reset! store result))))))))
 
 (defn move-block-command [store _event-data {:keys [direction]}]
   (let [selected (first (get-in @store [:view :selected]))]
@@ -103,9 +101,9 @@
                          :node-id selected
                          :parent-id (:parent pos)
                          :from-index current-idx
-                         :to-index new-idx}
-                result (middleware/safe-apply-command-with-middleware @store command)]
-            (reset! store result)))))))
+                         :to-index new-idx}]
+            (let [result (middleware/safe-apply-command-with-middleware @store command)]
+              (reset! store result))))))))
 
 (defn toggle-collapse-command [store _event-data _params]
   (let [selected (first (get-in @store [:view :selected]))]
