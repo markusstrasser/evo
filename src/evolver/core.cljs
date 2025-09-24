@@ -1,11 +1,10 @@
 (ns evolver.core
-  (:require [replicant.dom :as r]
-            [evolver.kernel :as kernel]
-            [evolver.renderer :as renderer]
-            [evolver.state :as state]
-            [evolver.commands :as commands]
-            [evolver.keyboard :as keyboard]
-            [evolver.schemas :as schemas]))
+   (:require [replicant.dom :as r]
+             [evolver.kernel :as kernel]
+             [evolver.renderer :as renderer]
+             [evolver.state :as state]
+             [evolver.commands :as commands]
+             [evolver.keyboard :as keyboard]))
 
 (defonce store (state/create-store-atom
                 kernel/db
