@@ -1,14 +1,14 @@
 (ns evolver.kernel
-   (:require [clojure.set :as set]
-             [evolver.schemas :as schemas]
-             [evolver.constants :as constants]))
+  (:require [clojure.set :as set]
+            [evolver.schemas :as schemas]
+            [evolver.constants :as constants]))
 
 (declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation add-reference remove-reference initial-db-base)
 
 ;; Derive ALL metadata after ANY operation:
 (defn derive-tree-metadata
   "Return {:depth {id depth} :paths {id [parent ...]}} from a :children-by-parent adjacency map."
-  [{:keys [children-by-parent nodes]}]
+  [{:keys [children-by-parent]}]
   (letfn
    [(walker [node-id depth path acc]
       (let [node-children (get children-by-parent node-id []) ;;lookup node in the children-by-parent map; if it's not there, use []
@@ -52,10 +52,10 @@
     (update db :tx-log conj tx)))
 
 (defn log-message
-   "Add message to log history based on log level"
-   [db level message & [data]]
-   (let [current-level (:log-level db :info)
-         should-log (>= (constants/log-levels level 0) (constants/log-levels current-level 1))]
+  "Add message to log history based on log level"
+  [db level message & [data]]
+  (let [current-level (:log-level db :info)
+        should-log (>= (constants/log-levels level 0) (constants/log-levels current-level 1))]
     (if should-log
       (let [timestamp #?(:clj (System/currentTimeMillis)
                          :cljs (.now js/Date))
@@ -68,7 +68,7 @@
 
 (defmulti apply-command
   "Apply command based on operation type"
-  (fn [db command] (:op command)))
+  (fn [_ command] (:op command)))
 
 (defmethod apply-command :insert [db command]
   (insert-node db command))
@@ -102,51 +102,37 @@
   db)
 
 (defn safe-apply-command
-   "Apply command with validation and error handling"
-   [db command]
+  "Apply command with validation and error handling"
+  [db command]
   (try
     (schemas/validate-command command) ; Validate command structure
     (log-message db :debug (str "Applying command: " (:op command)) command)
-     (let [new-db (apply-command db command)]
+    (let [new-db (apply-command db command)]
       (validate-db-state new-db)
       ;; Don't log undo/redo operations themselves
       (if (#{:undo :redo} (:op command))
         new-db
         (log-operation new-db command)))
     (catch #?(:clj Exception :cljs js/Error) e
-      (let [error-db (try
-                       (log-message db :error (str "Command failed: " (:op command)) {:error (ex-message e) :command command})
-                       (catch #?(:clj Exception :cljs js/Error) _ db))] ; If logging fails, return original db
-        (throw (ex-info "Command execution failed" {:error (ex-message e) :command command} e))))))
+      (try
+        (log-message db :error (str "Command failed: " (:op command)) {:error (ex-message e) :command command})
+        (catch #?(:clj Exception :cljs js/Error) _ nil)) ; If logging fails, ignore
+      (throw (ex-info "Command execution failed" {:error (ex-message e) :command command} e)))))
 
 (defn undo-last-operation
-   "Update history index for undo"
-   [db]
-   (update db :history-index (fn [idx] (max 0 (dec (or idx 0))))))
+  "Update history index for undo"
+  [db]
+  (update db :history-index (fn [idx] (max 0 (dec (or idx 0))))))
 
 (defn redo-last-operation
-  "Redo the last undone operation"
+  "Update history index for redo"
   [db]
-  (if-let [last-undone-tx (last (:undo-stack db))]
-    (let [undo-stack (pop (:undo-stack db))
-          tx-log (conj (or (:tx-log db) []) last-undone-tx)
-          redone-db (let [cmd (assoc (:args last-undone-tx) :op (:op last-undone-tx))]
-                      (case (:op last-undone-tx)
-                        :insert (insert-node db cmd)
-                        :delete (delete-node db cmd)
-                        :move (move-node db cmd)
-                        :patch (patch-node db cmd)
-                        :reorder (reorder-node db cmd)
-                        :add-reference (add-reference db cmd)
-                        :remove-reference (remove-reference db cmd)
-                        db))
-          redone-db (assoc redone-db :undo-stack undo-stack)]
-      (let [final-db (-> redone-db
-                         (assoc :tx-log tx-log)
-                         (assoc :undo-stack undo-stack)
-                         (update-derived))]
-        (log-message final-db :info "Redid last operation" last-undone-tx)))
-    db))
+  (let [history (:history db)
+        history-index (:history-index db)
+        max-index (count history)]
+    (if (< history-index max-index)
+      (update db :history-index inc)
+      db)))
 
 (defn node-position [db node-id]
   (when-let [parent (find-parent (:children-by-parent db) node-id)]
@@ -198,7 +184,7 @@
                               #(insert-at-position % node-id position)))]
     (update-derived new-db)))
 
-(defn delete-node [db {:keys [node-id recursive]}]
+ (defn delete-node [db {:keys [node-id]}]
   (let [descendants (set (tree-seq #(get-in db [:children-by-parent %])
                                    #(get-in db [:children-by-parent %])
                                    node-id))
@@ -218,7 +204,7 @@
                                                        refs)))))]
     (update-derived new-db)))
 
-(defn reorder-node [db {:keys [node-id parent-id from-index to-index]}]
+ (defn reorder-node [db {:keys [node-id parent-id to-index]}]
   (let [siblings (get (:children-by-parent db) parent-id [])
         siblings-without-node (vec (remove #{node-id} siblings))
         new-siblings (vec (concat (take to-index siblings-without-node)
@@ -226,8 +212,10 @@
                                   (drop to-index siblings-without-node)))]
     (update-derived (assoc-in db [:children-by-parent parent-id] new-siblings))))
 
+;; NOTE: execute-command is redundant - use apply-command directly or go through middleware/state pipeline
+
 (defn execute-command [db command]
-   (safe-apply-command db command))
+  (safe-apply-command db command))
 
 ;; Structural editor operations
 
@@ -238,14 +226,12 @@
   (str "node-" (rand-int 10000)))
 
 (defn create-child-block [db]
-  "Create a new block as child of current node"
   (let [current (current-node-id db)
         new-id (gen-new-id)
         new-node {:type :div :props {:text (str "Child of " current)}}]
     (insert-node db {:parent-id current :node-id new-id :node-data new-node :position nil})))
 
 (defn create-sibling-above [db]
-  "Create a new sibling above the current node"
   (let [current (current-node-id db)
         {:keys [parent index]} (node-position db current)
         new-id (gen-new-id)
@@ -253,7 +239,6 @@
     (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position index})))
 
 (defn create-sibling-below [db]
-  "Create a new sibling below the current node"
   (let [current (current-node-id db)
         {:keys [parent index]} (node-position db current)
         new-id (gen-new-id)
@@ -263,25 +248,22 @@
 (defn indent [db]
   "Move current block under the previous sibling (make it a child)"
   (let [current (current-node-id db)
-        {:keys [parent index children]} (node-position db current)]
+        {:keys [index children]} (node-position db current)]
     (if (> index 0)
       (let [prev-sib (get children (dec index))]
         (move-node db {:node-id current :new-parent-id prev-sib :position nil}))
       db)))
 
 (defn outdent [db]
-  "Move current block up one level (promote)"
   (let [current (current-node-id db)
         {:keys [parent]} (node-position db current)]
     (if (not= parent "root")
-      (let [grandparent-pos (node-position db parent)
-            grandparent (:parent grandparent-pos)
-            parent-idx (:index grandparent-pos)]
+       (let [grandparent-pos (node-position db parent)
+             grandparent (:parent grandparent-pos)]
         (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
       db)))
 
 (defn add-reference [db {:keys [from-node-id to-node-id]}]
-  "Add a reference from one node to another"
   (if (and (contains? (:nodes db) from-node-id)
            (contains? (:nodes db) to-node-id))
     (update-in db [:references to-node-id] (fnil conj #{}) from-node-id)
@@ -291,7 +273,6 @@
                      :existing-nodes (keys (:nodes db))}))))
 
 (defn remove-reference [db {:keys [from-node-id to-node-id]}]
-  "Remove a reference from one node to another"
   (if (and (contains? (:nodes db) from-node-id)
            (contains? (:nodes db) to-node-id))
     (update-in db [:references to-node-id] (fnil disj #{}) from-node-id)
@@ -301,11 +282,9 @@
       db)))
 
 (defn get-references [db node-id]
-  "Get all nodes that reference the given node"
   (get (:references db) node-id #{}))
 
 (defn get-referenced-by [db node-id]
-  "Get all nodes that the given node references"
   (set (for [[to-node-id referencers] (:references db)
              :when (contains? referencers node-id)]
          to-node-id)))
