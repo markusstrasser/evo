@@ -1,11 +1,15 @@
-(ns kernel-min
+(ns kernel
   (:require [datascript.core :as d]))
 
+;; Constants
+(def temp-pos-base -1000000)
+(def cycle-detect-pos -999999999)
+
 (def schema
-  {:id {:db/unique :db.unique/identity}
-   :parent {:db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
-   :pos {:db/cardinality :db.cardinality/one :db/index true}
-   :references {:db/valueType :db.type/ref
+  {:id         {:db/unique :db.unique/identity}
+   :parent     {:db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
+   :pos        {:db/cardinality :db.cardinality/one :db/index true}
+   :references {:db/valueType   :db.type/ref
                 :db/cardinality :db.cardinality/many}})
 
 (def rules
@@ -26,20 +30,22 @@
   (let [i (min (max 0 (or idx (count v))) (count v))]
     (into (subvec v 0 i) (cons x (subvec v i)))))
 
+(defn- find-sibling-index [siblings sibling]
+  (let [idx (.indexOf siblings sibling)]
+    (if (neg? idx) (count siblings) idx)))
+
 (defn resolve-position [db {:keys [parent sibling rel idx] :as pos}]
   (let [parent-id (or parent
                       (:id (:parent (entity-by-id db sibling)))
                       (throw (ex-info "No parent specified" {:position pos})))
-        children-ids (children-ids db parent-id)
-        relation-function (case rel
-                            :first (constantly 0)
-                            :last #(count %)
-                            :before #(let [sibling-index (.indexOf % sibling)]
-                                       (if (neg? sibling-index) (count %) sibling-index))
-                            :after #(let [sibling-index (.indexOf % sibling)]
-                                      (if (neg? sibling-index) (count %) (inc sibling-index)))
-                            (fn [children] (min (or idx (count children)) (count children))))]
-    [parent-id (relation-function children-ids)]))
+        children-ids (children-ids db parent-id)]
+    [parent-id
+     (case rel
+       :first 0
+       :last (count children-ids)
+       :before (find-sibling-index children-ids sibling)
+       :after (inc (find-sibling-index children-ids sibling))
+       (min (or idx (count children-ids)) (count children-ids)))]))
 
 (def auto-id-counter (atom 0))
 
@@ -50,7 +56,7 @@
   (d/transact! conn (mapv #(vector :db/add [:id %2] :pos %1) (range) siblings)))
 
 (defn- reorder! [conn parent-id ids]
-  (let [temp-positions (map-indexed (fn [i id] [:db/add [:id id] :pos (- -1000000 i)]) ids)
+  (let [temp-positions (map-indexed (fn [i id] [:db/add [:id id] :pos (- temp-pos-base i)]) ids)
         final-positions (map-indexed (fn [i id] [:db/add [:id id] :pos i]) ids)]
     (d/transact! conn temp-positions)
     (d/transact! conn final-positions)))
@@ -58,12 +64,15 @@
 (defn generate-auto-id []
   (str "auto-" (swap! auto-id-counter inc)))
 
+(defn- parent-id-query [db entity-id]
+  (d/q '[:find ?p-id . :in $ ?e-id :where [?e :id ?e-id] [?e :parent ?p] [?p :id ?p-id]] db entity-id))
+
 (defn insert! [conn entity pos]
   (let [db @conn
         entity-id (or (:id entity) (generate-auto-id))
         [parent-id position-index] (resolve-position db pos)
         temp-id (- (swap! auto-id-counter inc))
-        temp-pos temp-id ; unique negative pos
+        temp-pos temp-id                                    ; unique negative pos
         new-entity-tx (-> entity
                           (assoc :db/id temp-id :id entity-id :parent [:id parent-id] :pos temp-pos)
                           (dissoc :children))
@@ -78,28 +87,27 @@
         [target-parent-id target-idx] (resolve-position db pos)]
     (when (contains? (set (find-descendants db entity-id)) target-parent-id)
       (throw (ex-info "Cycle detected" {:entity entity-id :target target-parent-id})))
-    (let [current-parent-id (d/q '[:find ?p-id . :in $ ?e-id :where [?e :id ?e-id] [?e :parent ?p] [?p :id ?p-id]] db entity-id)
+    (let [current-parent-id (parent-id-query db entity-id)
           same-parent? (= current-parent-id target-parent-id)]
       (if same-parent?
-        ;; Case 1: Reorder within the same parent
+        ;; Reorder within the same parent
         (let [siblings (children-ids db current-parent-id)
               reordered-siblings (-> (vec (remove #{entity-id} siblings))
                                      (splice target-idx entity-id))]
           (reorder! conn current-parent-id reordered-siblings))
-        ;; Case 2: Move to a different parent
+        ;; Move to a different parent
         (let [current-siblings (children-ids db current-parent-id)
               target-siblings (children-ids db target-parent-id)
-              temp-pos -999999999
               updated-current-siblings (vec (remove #{entity-id} current-siblings))
               updated-target-siblings (splice (vec target-siblings) target-idx entity-id)]
           (d/transact! conn [[:db/add [:id entity-id] :parent [:id target-parent-id]]
-                             [:db/add [:id entity-id] :pos temp-pos]])
+                             [:db/add [:id entity-id] :pos cycle-detect-pos]])
           (reorder! conn current-parent-id updated-current-siblings)
           (reorder! conn target-parent-id updated-target-siblings))))))
 
 (defn delete! [conn entity-id]
   (let [db @conn
-        parent-id (d/q '[:find ?p-id . :in $ ?e-id :where [?e :id ?e-id] [?e :parent ?p] [?p :id ?p-id]] db entity-id)
+        parent-id (parent-id-query db entity-id)
         siblings (when parent-id (children-ids db parent-id))
         descendants (find-descendants db entity-id)
         entity-retractions (map #(vector :db/retractEntity [:id %]) (cons entity-id descendants))
