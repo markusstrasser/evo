@@ -36,7 +36,7 @@
 
 (defn resolve-position [db {:keys [parent sibling rel idx] :as pos}]
   (let [parent-id (or parent
-                      (:id (:parent (entity-by-id db sibling)))
+                      (->> (entity-by-id db sibling) :parent :id)
                       (throw (ex-info "No parent specified" {:position pos})))
         children-ids (children-ids db parent-id)]
     [parent-id
@@ -72,9 +72,8 @@
         entity-id (or (:id entity) (generate-auto-id))
         [parent-id position-index] (resolve-position db pos)
         temp-id (- (swap! auto-id-counter inc))
-        temp-pos temp-id                                    ; unique negative pos
         new-entity-tx (-> entity
-                          (assoc :db/id temp-id :id entity-id :parent [:id parent-id] :pos temp-pos)
+                          (assoc :db/id temp-id :id entity-id :parent [:id parent-id] :pos temp-id)
                           (dissoc :children))
         current-siblings (children-ids db parent-id)
         reordered-siblings (splice (vec current-siblings) position-index entity-id)]
@@ -108,13 +107,12 @@
 (defn delete! [conn entity-id]
   (let [db @conn
         parent-id (parent-id-query db entity-id)
-        siblings (when parent-id (children-ids db parent-id))
         descendants (find-descendants db entity-id)
-        entity-retractions (map #(vector :db/retractEntity [:id %]) (cons entity-id descendants))
-        remaining-siblings (vec (remove #{entity-id} siblings))]
+        entity-retractions (->> (cons entity-id descendants)
+                                (map #(vector :db/retractEntity [:id %])))]
     (d/transact! conn entity-retractions)
     (when parent-id
-      (reorder! conn parent-id remaining-siblings))))
+      (reorder! conn parent-id (vec (remove #{entity-id} (children-ids db parent-id)))))))
 
 (defn update! [conn entity-id attrs]
   (when (some #{:parent :pos :id} (keys attrs))
