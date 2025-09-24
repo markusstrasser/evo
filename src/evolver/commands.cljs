@@ -98,8 +98,7 @@
 
                       nil)]
         (when command
-          (let [result (middleware/safe-apply-command-with-middleware @store command)]
-            (reset! store result)))))))
+                            (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))
 
 (defn- undo-command [store _event-data _params]
   (let [result (middleware/safe-apply-command-with-middleware @store {:op :undo})]
@@ -157,28 +156,24 @@
                                             :node-id (kernel/gen-new-id)
                                             :node-data {:type :div :props {:text "New child"}}
                                             :position nil}]
-                               (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                                 (reset! store result))))))
+                                    (reset! store (middleware/safe-apply-command-with-middleware @store command))))))
 
    :create-sibling-above (fn [store _event-data _params]
                            (let [selected (first (get-in @store [:view :selected]))]
                              (when selected
-                               (let [pos (kernel/node-position @store selected)]
-                                 (let [command {:op :insert
-                                                :parent-id (:parent pos)
-                                                :node-id (kernel/gen-new-id)
-                                                :node-data {:type :div :props {:text "New sibling"}}
-                                                :position (:index pos)}]
-                                   (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                                     (reset! store result)))))))
+                                (let [pos (kernel/node-position @store selected)]
+                                  (reset! store (middleware/safe-apply-command-with-middleware @store {:op :insert
+                                                                                                   :parent-id (:parent pos)
+                                                                                                   :node-id (kernel/gen-new-id)
+                                                                                                   :node-data {:type :div :props {:text "New sibling"}}
+                                                                                                   :position (:index pos)}))))))
 
    :delete-selected-blocks (fn [store _event-data _params]
                              (let [selected (get-in @store [:view :selected])]
                                (when (seq selected)
                                  (doseq [node-id selected]
-                                   (let [command {:op :delete :node-id node-id :recursive true}]
-                                     (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                                       (reset! store result))))
+                                    (let [command {:op :delete :node-id node-id :recursive true}]
+                                      (reset! store (middleware/safe-apply-command-with-middleware @store command))))
                                  (swap! store assoc-in [:view :selected] #{}))))
 
    :indent-block (fn [store _event-data _params]
@@ -205,8 +200,7 @@
                                            :node-id selected
                                            :new-parent-id (:parent parent-pos)
                                            :position (inc (:index parent-pos))}]
-                              (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                                (reset! store result))))))))
+                              (reset! store (middleware/safe-apply-command-with-middleware @store command))))))))
 
    :move-block (fn [store _event-data {:keys [direction]}]
                  (let [selected (first (get-in @store [:view :selected]))]
