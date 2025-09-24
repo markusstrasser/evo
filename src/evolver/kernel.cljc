@@ -1,5 +1,7 @@
 (ns evolver.kernel
   (:require [clojure.set :as set]
+            [malli.core :as m]
+            [malli.error :as me]
             [evolver.schemas :as schemas]
             [evolver.constants :as constants]))
 
@@ -102,17 +104,27 @@
   db)
 
 (defn safe-apply-command
-  "Apply command with validation and error handling"
+  "Apply command with proper error handling and validation"
   [db command]
+  ;; Validate command structure first
+  (schemas/validate-command command)
+  ;; Validate db state before operation
+  (when-not (m/validate schemas/db-schema db)
+    (throw (ex-info "Invalid database state before command"
+                    {:errors (me/humanize (m/explain schemas/db-schema db))
+                     :command command})))
   (try
-    (schemas/validate-command command) ; Validate command structure
-    (log-message db :debug (str "Applying command: " (:op command)) command)
-    (let [new-db (apply-command db command)]
-      (validate-db-state new-db)
-      ;; Don't log undo/redo operations themselves
-      (if (#{:undo :redo} (:op command))
-        new-db
-        (log-operation new-db command)))
+    (let [new-db (apply-command db command)
+          new-db (if (#{:insert :delete :move :patch :reorder :add-reference :remove-reference} (:op command))
+                   (log-operation new-db command)
+                   new-db)]
+      ;; Validate db state after operation
+      (when-not (m/validate schemas/db-schema new-db)
+        (throw (ex-info "Invalid database state after command"
+                        {:errors (me/humanize (m/explain schemas/db-schema new-db))
+                         :command command
+                         :before-db db})))
+      new-db)
     (catch #?(:clj Exception :cljs js/Error) e
       (try
         (log-message db :error (str "Command failed: " (:op command)) {:error (ex-message e) :command command})
@@ -184,7 +196,7 @@
                               #(insert-at-position % node-id position)))]
     (update-derived new-db)))
 
- (defn delete-node [db {:keys [node-id]}]
+(defn delete-node [db {:keys [node-id]}]
   (let [descendants (set (tree-seq #(get-in db [:children-by-parent %])
                                    #(get-in db [:children-by-parent %])
                                    node-id))
@@ -204,7 +216,7 @@
                                                        refs)))))]
     (update-derived new-db)))
 
- (defn reorder-node [db {:keys [node-id parent-id to-index]}]
+(defn reorder-node [db {:keys [node-id parent-id to-index]}]
   (let [siblings (get (:children-by-parent db) parent-id [])
         siblings-without-node (vec (remove #{node-id} siblings))
         new-siblings (vec (concat (take to-index siblings-without-node)
@@ -213,9 +225,6 @@
     (update-derived (assoc-in db [:children-by-parent parent-id] new-siblings))))
 
 ;; NOTE: execute-command is redundant - use apply-command directly or go through middleware/state pipeline
-
-(defn execute-command [db command]
-  (safe-apply-command db command))
 
 ;; Structural editor operations
 
@@ -258,8 +267,8 @@
   (let [current (current-node-id db)
         {:keys [parent]} (node-position db current)]
     (if (not= parent "root")
-       (let [grandparent-pos (node-position db parent)
-             grandparent (:parent grandparent-pos)]
+      (let [grandparent-pos (node-position db parent)
+            grandparent (:parent grandparent-pos)]
         (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
       db)))
 
