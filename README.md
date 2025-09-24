@@ -135,6 +135,54 @@ The entire complexity stems from supporting operations like :after and :before.
 
 **Design Principle**: **Test what you don't have yet.** The hypergraph tests serve as both specification and acceptance criteria for future development, ensuring architectural decisions are driven by actual requirements rather than theoretical possibilities.
 
+### ClojureScript Testing Infrastructure
+**Decision**: Implemented comprehensive testing with shadow-cljs + Bun for fast, reliable development.
+
+**Key Components:**
+- **shadow-cljs node-test**: Isolated unit testing without browser overhead
+- **Bun runtime**: 3x faster than Node.js for test execution
+- **cljs.test framework**: CLJ/CLJS compatible with conditional reader macros
+- **Watch mode**: Continuous testing during development
+- **REPL integration**: Interactive test debugging
+
+**Benefits:**
+- ✅ **Speed**: Sub-second test execution
+- ✅ **Reliability**: Isolated testing prevents browser-specific issues
+- ✅ **Developer Experience**: Hot-reload + instant feedback
+- ✅ **Compatibility**: Same tests run in CLJ/CLJS environments
+
+### Code Organization & Naming Improvements
+**Decision**: Restructured codebase with consistent naming and proper namespace hierarchy.
+
+**Changes:**
+- Renamed `app` → `evolver.core` for project-specific naming
+- Moved to `src/evolver/` directory structure for namespace clarity
+- Updated test structure to mirror source: `test/evolver/`
+- Improved variable names: `store` → `app-state`
+- Removed dead code and cleaned up formatting
+
+**Benefits:**
+- ✅ **Clarity**: Namespace structure reflects functionality
+- ✅ **Maintainability**: Consistent naming conventions
+- ✅ **Scalability**: Easy to add new modules in organized structure
+- ✅ **IDE Support**: Better autocomplete and navigation
+
+### Development Workflow Optimization
+**Decision**: Streamlined development with multiple REPL configurations and automated testing.
+
+**Workflow Components:**
+- `npm run test` - One-off testing with Bun
+- `npm run test:watch` - Continuous testing
+- `npm run test:repl` - Test-specific REPL for debugging
+- `npm run mcp` - nREPL server for editor connections
+- `npm start` - Development server with hot-reload
+
+**Benefits:**
+- ✅ **Productivity**: Fast feedback loops
+- ✅ **Debugging**: Multiple REPL entry points
+- ✅ **Integration**: Works with editors (VS Code, IntelliJ)
+- ✅ **Automation**: Watch mode prevents regressions
+
 ### Kernel Minimalism Refactoring (kernel-min.cljc)
 **Decision**: Eliminate uniqueness constraint complexity by treating order as soft metadata that can be renumbered whenever touching a sibling list.
 

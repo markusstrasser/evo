@@ -138,3 +138,42 @@
 5. **Schema drives implementation:** Well-designed constraints prevent entire classes of bugs
 
 This represents a complete debugging journey from broken to functional DataScript tree management, with clear patterns for similar systems.
+
+## Best Use of This Setup
+
+### Testing Workflow
+```bash
+# Fast one-off testing with Bun
+npm test
+
+# Continuous testing during development
+npm run test:watch
+
+# Debug tests in REPL
+npm run test:repl
+```
+
+### Development Environment
+- **shadow-cljs** + **Bun** for 3x faster test execution
+- **cljs.test** with CLJ/CLJS compatibility
+- **REPL-first development** with nREPL server
+- **Hot-reload** for UI development
+
+### Code Organization
+- `kernel-min.cljc` - Pure tree operations (testable, side-effect free)
+- `evolver.core` - UI integration and side effects
+- Tests mirror source structure in `test/evolver/`
+
+### Key Patterns
+- **Lookup references:** `[:id value]` not manual joins
+- **Constraint-aware transactions:** Avoid intermediate violations
+- **Datalog rules:** Declarative tree traversal over imperative recursion
+- **Test-driven:** Write tests for desired behavior first
+
+### Performance Tips
+- Batch transactions for related operations
+- Use indexed attributes for frequent queries
+- Keep test suites under 2 seconds
+- Profile with `(d/explain query db)`
+
+This setup enables rapid, reliable ClojureScript development with DataScript, emphasizing testability and developer productivity.
