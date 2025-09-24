@@ -6,6 +6,52 @@ A ClojureScript tree editor with a command-driven architecture for AI-assisted d
 Your mistake was thinking you were building a UI framework. You're building an interpreter for a tree-manipulation DSL, and the LLM is the programmer.
 
 
+
+## Block Editing JTBD - UX
+
+### Editor Mode (JTBD)
+
+-  As a writer, I want typing to always insert text into the focused block so I can stay in flow without switching modes.
+-  As a power user, I want navigation and structural commands to be triggered via keyboard shortcuts so I can operate quickly without leaving the keyboard.
+
+### Block Navigation (Sequential Movement) 🗺️
+
+-  Moving Down:
+    - As a user, I want pressing “down” to take me to the next block in the visual order so I can read and edit naturally from top to bottom.
+    - If the current block has a next sibling, go there.
+    - If not, traverse upward to the nearest ancestor that has a next sibling and go there, continuing until a next block is found.
+    - Respect collapsed blocks: when configured, skip the children of collapsed blocks and move directly to the next visible block.
+
+-  Moving Up:
+    - As a user, I want pressing “up” to take me to the block that appears visually above the current one so navigation feels intuitive.
+    - If there is a previous sibling and it is expanded with visible children, move to its deepest, last visible descendant so the cursor lands on the visually adjacent block above.
+    - If the previous sibling is collapsed or has no children, move directly to that sibling.
+    - If there is no previous sibling, move to the parent block.
+
+## #Structural Operations (Hierarchical Changes) 🌳
+
+-  Moving to Parent:
+    - As a user, I want to jump to a block’s parent so I can quickly change context or restructure higher-level content.
+
+-  Moving to Children:
+    - As a user, I want to jump to a block’s first child to dive into details quickly.
+    - As a user, I want to jump to a block’s last immediate child to access the most recently added or deepest sibling-level detail.
+
+-  Indenting:
+    - As a user, I want to indent a block to make it a child of its previous sibling so I can create subpoints and group related ideas beneath a header or parent block.
+    - The indented block should become the last child under the new parent to preserve reading order.
+
+-  Outdenting:
+    - As a user, I want to outdent a block to promote it one level up so I can pull items out of a group and place them alongside their former parent.
+    - The outdented block should appear immediately after its former parent in the new sibling list.
+
+-  Multi-Select Operations:
+    - As a user, I want to select multiple blocks and apply structural changes in one action so I can reorganize sections efficiently.
+    - The relative hierarchy and internal order of the selection must be preserved. For example, if a parent and its two children are selected and indented together, they move as a unit under the new parent, and the children remain children of their original parent within that moved group.
+
+
+
+
 ### Phase 2: Command Architecture Refactor (Current)
 - **Problem**: 150+ line event handling case statement mixing UI events with business logic
 - **Solution**: Command-driven CQRS-style architecture with middleware pipeline
