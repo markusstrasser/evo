@@ -1,6 +1,6 @@
 ;; shadow-cljs configuration
 {:source-paths
- ["src" "src/test"]
+ ["src" "test"]
 
  :dependencies
  [[no.cjohansen/replicant "2025.06.21"]
@@ -15,8 +15,12 @@
 
    :nrepl {:port 55449}
  :compiler-options {:externs ["datascript/externs.js"]}
- :builds
- {:frontend
-  {:target  :browser
-   :modules {:main {:init-fn app/main}}}}}
-
+  :builds
+  {:frontend
+   {:target  :browser
+     :modules {:main {:init-fn evolver.core/main}}}
+    :test
+    {:target :node-test
+     :output-to "out/test.js"
+     :main evolver.test-runner/main!
+       :devtools {:autotest true}}}}
