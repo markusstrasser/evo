@@ -2,7 +2,8 @@
 ;; Helps avoid dead ends by providing structural insights
 
 (ns agent.code-analysis
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [agent.schemas :as schemas]))
 
 ;; Analyze namespace dependencies and identify potential issues
 (defn analyze-namespace-health
@@ -28,7 +29,7 @@
            :public-fns (count publics)
            :dependencies (count aliases)
            :potential-issues (when (seq undefined-refs)
-                              {:undefined-refs undefined-refs})})
+                               {:undefined-refs undefined-refs})})
         {:namespace ns-name :status :not-found :error "Namespace not loaded or does not exist"}))
     (catch Exception e
       {:namespace ns-name :status :error
@@ -69,7 +70,7 @@
   Returns:
     Map with :valid?, :missing-keys, :extra-keys, :node-count, :tx-count."
   [db]
-  (let [required-keys evolver.schemas/required-db-keys
+  (let [required-keys schemas/required-db-keys
         present-keys (set (keys db))
         missing-keys (clojure.set/difference required-keys present-keys)
         extra-keys (clojure.set/difference present-keys required-keys)]
@@ -99,6 +100,6 @@
      :avg-time-ms (/ duration iterations)
      :results-summary (frequencies (map :status results))
      :performance-metadata {:min-time (apply min (map :duration results))
-                           :max-time (apply max (map :duration results))
-                           :median-time (nth (sort (map :duration results)) (quot iterations 2))
-                           :p95-time (nth (sort (map :duration results)) (int (* 0.95 iterations)))}}))
+                            :max-time (apply max (map :duration results))
+                            :median-time (nth (sort (map :duration results)) (quot iterations 2))
+                            :p95-time (nth (sort (map :duration results)) (int (* 0.95 iterations)))}}))
