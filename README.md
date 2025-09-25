@@ -1,8 +1,15 @@
 # Evolver
 
+## Open Questions
+* derived state in DB or memoized? (level/depth, children etc)
+
 ## Design: Semantic UI REPL
 You're designing a conversational interface canvas. The product is a tool where a user sculpts a fully reactive application by issuing natural language commands to an AI. Its core design principle moves beyond static layout tools by treating the interface not as a rigid tree of visual elements, but as a dynamic graph of interconnected components. A user can direct the AI to forge not just structural parent-child relationships, but also behavioral triggers, data-binding links, and semantic connections. This enables the rapid, iterative construction of both complex application logic and visual appearance from a single, unified conversational prompt, creating a fluid and deeply inspectable design environment.
 
+it will have style attributes and references , citations, transclusions, backlinks.
+The access pattern should drive the schema, not some abstract notion of "completeness."
+
+It will use many components ... it will allow an AI/LLM to patch in or query the db and use the transaction API to change the view.
 ## Design Decisions
 
 ### Tree Operations in DataScript
@@ -14,6 +21,19 @@ What we learned:
 - Manual cascade deletion was the right call. DataScript's :db/isComponent is broken. Explicit descendant collection is more predictable.
 
 The entire complexity stems from supporting operations like :after and :before.
+
+## Why datascript
+The key insight: outliner editors are trees with frequent hierarchy queries + positional mutations. Datascript's strength here isn't the hierarchy walking (that's simple) but handling the complex constraint propagation when you move subtrees around.
+The real win: use rules for queries, transaction functions for consistency, reverse refs for navigation. You might not need to store derived props at all - compute them efficiently at query time.
+Why store :ancestors when (ancestor ?child ?anc) is fast and always correct?
+
+## Why not datascript (sept 25 2025)
+
+After fighting it for a day+ : it's not worth the complexity. 
+Just use a tree. Have structural relations as "refs-in", "refs-out". 
+Have :parent on the node or :parents in the derived. 
+Derive the state and be done with it.
+
 
 ### Fractional Ordering Implementation 
 **Decision**: Replaced verbose ~70 LOC fractional indexing with canonical Greenspan-style implementation in ~25 LOC.
