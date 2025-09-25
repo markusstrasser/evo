@@ -1,4 +1,5 @@
-(ns evolver.kernel)
+(ns evolver.kernel
+  (:require [clojure.set :as set]))
 (def db
   {:nodes
    {"root"      {:type :div}
@@ -15,7 +16,7 @@
 
    :children-by-parent
    {"root" ["title" "p1" "div1"]
-    "div1" ["p4"]}
+    "div1" ["p4-click"]}
 
    :view
    {:selected    #{"p1-select"}                             ; sets ARE the index
@@ -56,12 +57,37 @@
     (walker "root" 0 [] {})))
 
 
-(def derived-state (rebuild-derived db))
+(defn get-descendants [children-by-parent node-id]
+  (tree-seq
+    #(contains? children-by-parent %)
+    #(get children-by-parent % [])
+    node-id))
 
-(defn id:level [conn])
-"arrow up/down"
-(defn move-vertical [])
-"shift-tab ..."
-(defn move-up [])
-"tab"
-(defn move-down [])
+(defn remove-from-parent [children-by-parent node-id]
+  (into {}
+        (map (fn [[parent children]]
+               [parent (remove #{node-id} children)]))
+        children-by-parent))
+
+(defn delete-subtree [db node-id]
+  (let [to-delete (set (get-descendants (:children-by-parent db) node-id))]
+    (-> db
+        (update :nodes #(apply dissoc % to-delete))
+        (update :children-by-parent
+                #(as-> % m
+                       (remove-from-parent m node-id)
+                       (apply dissoc m to-delete)))
+        (update :view update-vals #(set/difference % to-delete)))))
+
+
+(delete-subtree db "div1")
+
+(defn delete-node [db node-id]
+  ;;delete the node
+  (dissoc db :nodes node-id)
+  (dissoc (:nodes db) node-id)
+  ()
+  ;;delete children-refs
+  ;;delete views
+
+  )
