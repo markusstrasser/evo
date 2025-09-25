@@ -1,6 +1,12 @@
 node_modules/
 public/js
 
+
+.clojure-mcp
+
+out
+/out
+./out
 /target
 /checkouts
 /src/gen
