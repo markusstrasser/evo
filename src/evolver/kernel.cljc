@@ -2,7 +2,7 @@
    (:require [clojure.set :as set]
              [evolver.schemas :as schemas]))
 
-(declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation initial-db-base)
+(declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation add-reference remove-reference initial-db-base)
 
 ;; Derive ALL metadata after ANY operation:
 (defn derive-tree-metadata
@@ -71,16 +71,18 @@
   [db command]
   (try
     (log-message db :debug (str "Applying command: " (:op command)) command)
-    (let [new-db (case (:op command)
-                   :insert (insert-node db command)
-                   :move (move-node db command)
-                   :patch (patch-node db command)
-                   :delete (delete-node db command)
-                   :reorder (reorder-node db command)
-                   :undo (undo-last-operation db)
-                   :redo (redo-last-operation db)
-                   (do (log-message db :warn (str "Unknown command op: " (:op command)))
-                       db))]
+     (let [new-db (case (:op command)
+                    :insert (insert-node db command)
+                    :move (move-node db command)
+                    :patch (patch-node db command)
+                    :delete (delete-node db command)
+                    :reorder (reorder-node db command)
+                    :add-reference (add-reference db command)
+                    :remove-reference (remove-reference db command)
+                    :undo (undo-last-operation db)
+                    :redo (redo-last-operation db)
+                    (do (log-message db :warn (str "Unknown command op: " (:op command)))
+                        db))]
       (validate-db-state new-db)
       ;; Don't log undo/redo operations themselves
       (if (#{:undo :redo} (:op command))
@@ -98,7 +100,7 @@
   (if-let [last-tx (last (:tx-log db))]
     (let [tx-log (pop (:tx-log db))
           undo-stack (conj (or (:undo-stack db) []) last-tx)
-          _ (println "UNDO: undo-stack =" undo-stack)
+
           inverted-db (case (:op last-tx)
                         :insert (let [args (:args last-tx)]
                                   (delete-node db {:node-id (:node-id args) :recursive true}))
@@ -114,10 +116,16 @@
                                  ;; For patch, we'd need to store old values - for now, just log
                                  (log-message db :warn "Patch undo not fully implemented")
                                  db)
-                        :reorder (let [args (:args last-tx)]
-                                   ;; For reorder, swap from/to indices
-                                   (reorder-node db (assoc args :to-index (:from-index args) :from-index (:to-index args))))
-                        db)
+                         :reorder (let [args (:args last-tx)]
+                                    ;; For reorder, swap from/to indices
+                                    (reorder-node db (assoc args :to-index (:from-index args) :from-index (:to-index args))))
+                         :add-reference (let [args (:args last-tx)]
+                                          ;; Remove the reference that was added
+                                          (remove-reference db args))
+                         :remove-reference (let [args (:args last-tx)]
+                                             ;; Add back the reference that was removed
+                                             (add-reference db args))
+                         db)
           inverted-db (assoc inverted-db :undo-stack undo-stack)]
       (let [final-db (-> inverted-db
                          (assoc :tx-log tx-log)
@@ -133,13 +141,15 @@
     (let [undo-stack (pop (:undo-stack db))
           tx-log (conj (or (:tx-log db) []) last-undone-tx)
           redone-db (let [cmd (assoc (:args last-undone-tx) :op (:op last-undone-tx))]
-                      (case (:op last-undone-tx)
-                        :insert (insert-node db cmd)
-                        :delete (delete-node db cmd)
-                        :move (move-node db cmd)
-                        :patch (patch-node db cmd)
-                        :reorder (reorder-node db cmd)
-                        db))
+                       (case (:op last-undone-tx)
+                         :insert (insert-node db cmd)
+                         :delete (delete-node db cmd)
+                         :move (move-node db cmd)
+                         :patch (patch-node db cmd)
+                         :reorder (reorder-node db cmd)
+                         :add-reference (add-reference db cmd)
+                         :remove-reference (remove-reference db cmd)
+                         db))
           redone-db (assoc redone-db :undo-stack undo-stack)]
       (let [final-db (-> redone-db
                          (assoc :tx-log tx-log)
@@ -172,15 +182,18 @@
    {"root" ["title" "p1-select" "p2-high" "p3-both" "div1"]
     "div1" ["p4-click"]}
 
-   :view
-   {:selected #{"p1-select"} ; sets ARE the index
-    :highlighted #{"p2-high"}
-    :collapsed #{"p4-click"}}
+    :view
+    {:selected #{"p1-select"} ; sets ARE the index
+     :highlighted #{"p2-high"}
+     :collapsed #{"p4-click"}
+     :hovered-referencers #{}}
 
-    :tx-log []
-    :undo-stack []
-   :log-level :info
-   :log-history []})
+    :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
+
+     :tx-log []
+     :undo-stack []
+    :log-level :info
+    :log-history []})
 
 (def db (update-derived initial-db-base))
 
@@ -300,3 +313,33 @@
             parent-idx (:index grandparent-pos)]
         (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
       db)))
+
+(defn add-reference [db {:keys [from-node-id to-node-id]}]
+  "Add a reference from one node to another"
+  (if (and (contains? (:nodes db) from-node-id)
+           (contains? (:nodes db) to-node-id))
+    (update-in db [:references to-node-id] (fnil conj #{}) from-node-id)
+    (do
+      (log-message db :warn "Cannot add reference: nodes do not exist"
+                   {:from-node-id from-node-id :to-node-id to-node-id :existing-nodes (keys (:nodes db))})
+      db)))
+
+(defn remove-reference [db {:keys [from-node-id to-node-id]}]
+  "Remove a reference from one node to another"
+  (if (and (contains? (:nodes db) from-node-id)
+           (contains? (:nodes db) to-node-id))
+    (update-in db [:references to-node-id] (fnil disj #{}) from-node-id)
+    (do
+      (log-message db :warn "Cannot remove reference: nodes do not exist"
+                   {:from-node-id from-node-id :to-node-id to-node-id :existing-nodes (keys (:nodes db))})
+      db)))
+
+(defn get-references [db node-id]
+  "Get all nodes that reference the given node"
+  (get (:references db) node-id #{}))
+
+(defn get-referenced-by [db node-id]
+  "Get all nodes that the given node references"
+  (set (for [[to-node-id referencers] (:references db)
+             :when (contains? referencers node-id)]
+         to-node-id)))
