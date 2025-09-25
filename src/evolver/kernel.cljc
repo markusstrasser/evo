@@ -64,10 +64,10 @@
     node-id))
 
 (defn remove-from-parent [children-by-parent node-id]
-  (into {}
-        (map (fn [[parent children]]
-               [parent (remove #{node-id} children)]))
-        children-by-parent))
+  (into
+    {}
+    (map (fn [[parent children]] [parent (remove #{node-id} children)]))
+    children-by-parent))
 
 (defn delete-subtree [db node-id]
   (let [to-delete (set (get-descendants (:children-by-parent db) node-id))]
@@ -81,13 +81,3 @@
 
 
 (delete-subtree db "div1")
-
-(defn delete-node [db node-id]
-  ;;delete the node
-  (dissoc db :nodes node-id)
-  (dissoc (:nodes db) node-id)
-  ()
-  ;;delete children-refs
-  ;;delete views
-
-  )
