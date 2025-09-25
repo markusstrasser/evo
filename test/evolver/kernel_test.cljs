@@ -1,6 +1,6 @@
 (ns evolver.kernel-test
-  (:require [clojure.test :refer :all]
-            [evolver.kernel :as kernel]))
+   (:require [cljs.test :refer [deftest is testing]]
+             [evolver.kernel :as kernel]))
 
 (deftest test-basic-db-structure
   (testing "Database has expected initial structure"
@@ -97,5 +97,36 @@
 (deftest test-apply-command
   (testing "Apply command wrapper"
     (let [new-db (kernel/apply-command kernel/db {:op :patch :node-id "title"
-                                                 :updates {:props {:text "Command Updated"}}})]
+                                                  :updates {:props {:text "Command Updated"}}})]
       (is (= "Command Updated" (:text (:props (get (:nodes new-db) "title")))) "apply-command should work"))))
+
+(deftest test-schema-validation
+  (testing "Database schema validation"
+    (is (true? (kernel/validate-db-state kernel/db)) "Initial db should be valid")
+    (is (thrown? js/Error (kernel/validate-db-state {})) "Empty db should be invalid")))
+
+(deftest test-transaction-logging
+  (testing "Transaction logging"
+    (let [db-with-log (kernel/log-operation kernel/db {:op :test :args {:data "test"}})]
+      (is (= 1 (count (:tx-log db-with-log))) "Should have one transaction")
+      (is (= :test (:op (first (:tx-log db-with-log)))) "Transaction should have correct op"))))
+
+(deftest test-logging
+  (testing "Log message functionality"
+    (let [db-with-logs (-> kernel/db
+                           (kernel/log-message :info "Test info message")
+                           (kernel/log-message :error "Test error message" {:details "test"}))]
+      (is (= 2 (count (:log-history db-with-logs))) "Should have two log entries")
+      (is (= :info (:level (first (:log-history db-with-logs)))) "First log should be info")
+      (is (= :error (:level (second (:log-history db-with-logs)))) "Second log should be error"))))
+
+(deftest test-undo-redo
+  (testing "Undo functionality"
+    (let [db-after-insert (kernel/apply-command kernel/db {:op :insert
+                                                           :parent-id "root"
+                                                           :node-id "undo-test"
+                                                           :node-data {:type :p :props {:text "Undo Test"}}
+                                                           :position 0})
+          db-after-undo (kernel/apply-command db-after-insert {:op :undo})]
+      (is (some? (get (:nodes db-after-insert) "undo-test")) "Node should exist after insert")
+      (is (nil? (get (:nodes db-after-undo) "undo-test")) "Node should be removed after undo"))))
