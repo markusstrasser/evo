@@ -91,6 +91,14 @@ Typically uses atoms with action dispatching systems like Nexus:
 {:on {:click [:action/do-something arg1 arg2]}}
 ```
 
+### Preventing Event Bubbling
+When multiple nested elements have click handlers, stop propagation to prevent parent selection:
+```clojure
+;; In event handler, access DOM event and stop bubbling:
+(when-let [dom-event (:replicant/dom-event event-data)]
+  (.stopPropagation dom-event))
+```
+
 ### Conditional Classes
 ```clojure
 ;; Instead of string concatenation:
@@ -98,6 +106,18 @@ Typically uses atoms with action dispatching systems like Nexus:
 
 ;; Use collections:
 {:class (cond-> [:base] active (conj :active))}
+```
+
+### CSS with Class Collections
+Replicant converts keyword classes to CSS classes. Update CSS selectors accordingly:
+```css
+/* Old way (string classes) */
+.selected { background-color: lightblue; }
+
+/* New way (keyword classes) */
+.selected { background-color: lightblue; }
+.collapsed { opacity: 0.6; }
+.collapsed::before { content: "▶ "; }
 ```
 
 ### Routing Integration
@@ -119,6 +139,8 @@ Use aliases for declarative routing:
 - Log dispatch calls to verify event handling
 - Ensure `:replicant/key` is used appropriately for lists
 - Verify alias functions are registered before use
+- **DOM Inspection**: Use `document.querySelectorAll('.selected')` to verify which elements are actually selected
+- **Event Bubbling**: Check if clicking child elements selects parent elements - fix with `.stopPropagation()`
 
 ## Integration with Current Codebase
 

@@ -81,13 +81,28 @@ evolver.renderer.render_node(state, "root"); // Test specific nodes
 - **Event handlers**: Ensure proper vector format `[[:action-name {:data "value"}]]`
 - Check browser console for replicant-specific warnings
 
+### DOM Inspection & Event Debugging
+
+Use `chrome-devtools_evaluate_script` to inspect actual DOM elements:
+```javascript
+// Check which elements have CSS classes
+document.querySelectorAll('.selected')
+
+// Inspect element attributes and handlers
+document.querySelectorAll('.node').forEach(el => console.log(el.className, el.attributes))
+
+// Debug event bubbling - check if events propagate to parent elements
+// Use chrome-devtools_click then inspect which element gets selected class
+```
+
 ## Testing Integration Flows
 
 1. **Browser Setup**: Open `http://localhost:8080` first
 2. **State Inspection**: Use browser console with proper CLJS accessors
 3. **User Actions**: Test clicks/interactions via chrome-devtools
-4. **State Verification**: Check atom state after each action
-5. **Render Verification**: Ensure UI updates reflect state changes
+4. **DOM Verification**: Check actual CSS classes and element selection
+5. **State Verification**: Check atom state after each action
+6. **Render Verification**: Ensure UI updates reflect state changes
 
 ## Key Failure Modes
 
