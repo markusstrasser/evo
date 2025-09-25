@@ -4,9 +4,13 @@
     <meta charset="utf-8"/>
     <title>Evolver</title>
     <style>
-        .selected { background-color: lightblue; }
+        .node { display: block; margin-left: 20px; padding: 2px 4px; border-left: 2px solid #ccc; }
+        .selected { background-color: lightblue; border-left-color: blue; }
+        .collapsed { opacity: 0.6; }
+        .collapsed::before { content: "▶ "; }
         .tree { font-family: monospace; }
         .controls { margin-top: 20px; }
+        .app { max-width: 800px; margin: 0 auto; padding: 20px; }
     </style>
 </head>
 <body>
