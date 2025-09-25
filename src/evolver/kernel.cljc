@@ -129,7 +129,7 @@
   "Create a new block as child of current node"
   (let [current (current-node-id db)
         new-id (gen-new-id)
-        new-node {:type :div :props {:text ""}}]
+        new-node {:type :div :props {:text (str "Child of " current)}}]
     (insert-node db {:parent-id current :node-id new-id :node-data new-node :position nil})))
 
 (defn create-sibling-above [db]
@@ -137,7 +137,7 @@
   (let [current (current-node-id db)
         {:keys [parent index]} (node-position db current)
         new-id (gen-new-id)
-        new-node {:type :div :props {:text ""}}]
+        new-node {:type :div :props {:text (str "Sibling above " current)}}]
     (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position index})))
 
 (defn create-sibling-below [db]
@@ -145,7 +145,7 @@
   (let [current (current-node-id db)
         {:keys [parent index]} (node-position db current)
         new-id (gen-new-id)
-        new-node {:type :div :props {:text ""}}]
+        new-node {:type :div :props {:text (str "Sibling below " current)}}]
     (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position (inc index)})))
 
 (defn indent [db]
