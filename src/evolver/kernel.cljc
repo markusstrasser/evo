@@ -23,12 +23,14 @@
     :collapsed   #{"p4-click"}}
 
    ; if you’ll have split panes: :views {view-id {:selected #{…} …}}
+
+   :derived
    {:depth    {}
 
-    :paths    {} ;;ie. ancestors
-    :refs-out {} ;; refs-in, refs-out only for easy show
+    :paths    {}                                            ;;ie. ancestors
+    :refs-out {}                                            ;; refs-in, refs-out only for easy show
     :refs-in  {}}
-   :derived})
+   })
 
 ;; derivation vs transpiling of [[Some Page]] into an actual Link-Component(PagePath)?
 ;; But then it changes source truth ... I guess that split should happen at ...
