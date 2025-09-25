@@ -30,11 +30,55 @@
    [:option {:replicant/key "indent" :value "indent"} "Indent"]
    [:option {:replicant/key "outdent" :value "outdent"} "Outdent"]])
 
+(defn render-log-history [log-history]
+   (when (seq log-history)
+     [:div {:class [:log-history]}
+      [:h3 "Recent Logs"]
+      [:div {:class [:log-entries]}
+       (for [entry (take-last 5 log-history)]
+         [:div {:class [:log-entry (:level entry)]}
+          [:span {:class [:log-timestamp]} (str (js/Date. (:timestamp entry)))]
+          [:span {:class [:log-level]} (name (:level entry))]
+          [:span {:class [:log-message]} (:message entry)]])]]))
+
+(defn render-error-boundary [db]
+   (when-let [error-log (some #(when (= (:level %) :error) %) (:log-history db))]
+     [:div {:class [:error-boundary]}
+      [:h3 "⚠️ Error Occurred"]
+      [:p (:message error-log)]
+      [:details
+       [:summary "Error Details"]
+       [:pre (pr-str (:data error-log))]]]))
+
+(defn render-hotkeys-footer []
+  [:footer {:class [:hotkeys-footer]}
+   [:h4 "Keyboard Shortcuts"]
+   [:div {:class [:hotkeys-grid]}
+    [:div {:class [:hotkey-item]}
+     [:kbd "Enter"] [:span "Create child block"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Shift"] [:kbd "Enter"] [:span "Create sibling above"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Enter"] [:span "(at end of line) Create sibling below"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Tab"] [:span "Indent (make child)"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Shift"] [:kbd "Tab"] [:span "Outdent (promote)"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Alt"] [:kbd "Shift"] [:kbd "↑↓"] [:span "Move block up/down"]]
+    [:div {:class [:hotkey-item]}
+     [:kbd "Cmd"] [:kbd "."] [:span "Toggle collapse/expand"]]]])
+
 (defn render [db]
-  [:div {:class [:app]}
-   [:h1 "Tree Editor"]
-   [:div {:class [:tree]}
-    (render-node db "root")]
-   [:div {:class [:controls]}
-    (render-ops-dropdown (:selected-op db))
-    [:button {:on {:click [[:apply-selected-op]]}} "Apply Op"]]])
+   [:div {:class [:app]}
+    [:h1 "Tree Editor"]
+    (render-error-boundary db)
+    [:div {:class [:tree]}
+     (render-node db "root")]
+    [:div {:class [:controls]}
+     (render-ops-dropdown (:selected-op db))
+     [:button {:on {:click [[:apply-selected-op]]}} "Apply Op"]
+     [:button {:on {:click [[:undo]]}} "Undo"]
+     [:button {:on {:click [[:redo]]}} "Redo"]]
+    (render-log-history (:log-history db))
+    (render-hotkeys-footer)])

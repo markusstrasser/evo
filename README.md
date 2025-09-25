@@ -173,6 +173,24 @@ Derive the state and be done with it.
 - ✅ **Developer Experience**: Hot-reload + instant feedback
 - ✅ **Compatibility**: Same tests run in CLJ/CLJS environments
 
+### Compilation Warning Fixes
+**Issue**: ClojureScript compilation warnings for undeclared variables when functions are called before definition.
+
+**Solution**: Added forward declarations using `(declare ...)` at the top of namespaces.
+
+**Example**:
+```clojure
+(ns evolver.kernel
+  (:require ...)
+  (declare insert-node move-node patch-node delete-node undo-last-operation redo-last-operation initial-db-base)
+  ...)
+```
+
+**Benefits**:
+- ✅ **Clean Compilation**: Eliminates warnings and ensures functions are recognized
+- ✅ **Maintainability**: Prevents runtime issues from forward references
+- ✅ **Best Practice**: Standard ClojureScript idiom for mutual recursion or forward calls
+
 ### Code Organization & Naming Improvements
 **Decision**: Restructured codebase with consistent naming and proper namespace hierarchy.
 
