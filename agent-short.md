@@ -2,6 +2,9 @@
 
 ## Major Issues Fixed
 
+* USE bun instead of npm by default (for example bun test)
+
+
 ### 1. Lookup Reference Query Bug (CRITICAL)
 **Problem:** `children-ids` function completely broken - returned empty results for all queries.
 
