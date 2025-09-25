@@ -2,6 +2,8 @@
 
 ## Open Questions
 * derived state in DB or memoized? (level/depth, children etc)
+:children on :nodes directly? Or normalized?
+* This is the classic adjacency list vs nested set vs materialized path problem from 40+ years of hierarchical data modeling. normalized adjacency list vs embedding children directly is literally the Entity-Attribute-Value antipattern debate from database theory.
 
 ## Design: Semantic UI REPL
 You're designing a conversational interface canvas. The product is a tool where a user sculpts a fully reactive application by issuing natural language commands to an AI. Its core design principle moves beyond static layout tools by treating the interface not as a rigid tree of visual elements, but as a dynamic graph of interconnected components. A user can direct the AI to forge not just structural parent-child relationships, but also behavioral triggers, data-binding links, and semantic connections. This enables the rapid, iterative construction of both complex application logic and visual appearance from a single, unified conversational prompt, creating a fluid and deeply inspectable design environment.
