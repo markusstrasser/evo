@@ -10,10 +10,11 @@
     (into [(if (keyword? node-type)
              node-type
              (keyword (str node-type)))
-           {:on {:click [[:select-node {:node-id node-id}]]}
-            :class (cond-> ""
-                     selected? (str " selected")
-                     collapsed? (str " collapsed"))}
+           {:class (cond-> []
+                      selected? (conj "selected")
+                      collapsed? (conj "collapsed"))
+            :on (when-not (= node-id "root")  ;; Don't make root clickable
+                  {:click [[:select-node {:node-id node-id}]]})}
            (or (:text (:props node)) "")]
           (when-not collapsed?
             (map #(render-node db %) children)))))
