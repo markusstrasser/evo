@@ -123,137 +123,151 @@
         shift? (.-shiftKey event)
         ctrl? (.-ctrlKey event)
         alt? (.-altKey event)
-        meta? (.-metaKey event)
-        selected-set (:selected (:view @store))
-        selected (first selected-set)]
-    (cond
-      ;; Escape - Clear selection
-      (= key "Escape")
-      (do (.preventDefault event)
-          (swap! store assoc-in [:view :selected] #{}))
-
-      ;; Delete operations (Backspace or Delete) - Delete selected blocks
-      (and (or (= key "Backspace") (= key "Delete"))
-           (not-empty selected-set))
-      (do (.preventDefault event)
-          (doseq [node-id selected-set]
-            (let [command {:op :delete :node-id node-id :recursive false}]
-              (swap! store kernel/safe-apply-command command)))
-          ;; Clear selection after deletion
-          (swap! store assoc-in [:view :selected] #{}))
-
-      ;; Enter - Edit selected block (for now, just create child - later we can add inline editing)
-      (and (= key "Enter") (not shift?) selected (not ctrl?) (not alt?) (not meta?))
-      (do (.preventDefault event)
-          (let [command {:op :insert
-                         :parent-id selected
-                         :node-id (kernel/gen-new-id)
-                         :node-data {:type :div :props {:text "New block"}}
-                         :position nil}]
-            (swap! store kernel/safe-apply-command command)))
-
-      ;; Cmd+Shift+A - Select all blocks
-      (and (= key "A") shift? (or meta? ctrl?))
-      (do (.preventDefault event)
-          (let [all-nodes (set (keys (:nodes @store)))]
-            (swap! store assoc-in [:view :selected] (disj all-nodes "root"))))
-
-      ;; Alt+Down - Select block below
-      (and (= key "ArrowDown") alt? selected (not shift?))
-      (do (.preventDefault event)
-          (let [pos (kernel/node-position @store selected)
-                parent-id (:parent pos)
-                siblings (get-in @store [:children-by-parent parent-id])
-                current-idx (.indexOf siblings selected)
-                next-idx (inc current-idx)]
-            (when (< next-idx (count siblings))
-              (let [next-node (nth siblings next-idx)]
-                (swap! store assoc-in [:view :selected] #{next-node})))))
-
-      ;; Alt+Up - Select block above  
-      (and (= key "ArrowUp") alt? selected (not shift?))
-      (do (.preventDefault event)
-          (let [pos (kernel/node-position @store selected)
-                parent-id (:parent pos)
-                siblings (get-in @store [:children-by-parent parent-id])
-                current-idx (.indexOf siblings selected)
-                prev-idx (dec current-idx)]
-            (when (>= prev-idx 0)
-              (let [prev-node (nth siblings prev-idx)]
-                (swap! store assoc-in [:view :selected] #{prev-node})))))
-
-      ;; Cmd+A - Select parent block
-      (and (= key "a") (or meta? ctrl?) (not shift?) selected)
-      (do (.preventDefault event)
-          (let [pos (kernel/node-position @store selected)
-                parent-id (:parent pos)]
-            (when (and parent-id (not= parent-id "root"))
-              (swap! store assoc-in [:view :selected] #{parent-id}))))
-
-      ;; Existing hotkeys - only apply when we have a selection
-      (and selected (not-empty selected-set))
+        meta? (.-metaKey event)]
+    (js/console.log "Keyboard event:" {:key key :shift shift? :ctrl ctrl? :alt alt? :meta meta?})
+    (let [current-selected-set (:selected (:view @store))
+          current-selected (first current-selected-set)]
+      (js/console.log "Current selection state:" {:selected-set current-selected-set :selected current-selected})
       (cond
-        ;; Shift+Enter - Create sibling above
-        (and (= key "Enter") shift?)
+        ;; Escape - Clear selection
+        (= key "Escape")
         (do (.preventDefault event)
-            (let [pos (kernel/node-position @store selected)
-                  command {:op :insert
-                           :parent-id (:parent pos)
+            (js/console.log "Clearing selection")
+            (swap! store assoc-in [:view :selected] #{}))
+
+        ;; Delete operations (Backspace or Delete) - Delete selected blocks
+        (and (or (= key "Backspace") (= key "Delete"))
+             (not-empty current-selected-set))
+        (do (.preventDefault event)
+            (js/console.log "Deleting selected blocks:" current-selected-set)
+            (doseq [node-id current-selected-set]
+              (let [command {:op :delete :node-id node-id :recursive false}]
+                (swap! store kernel/safe-apply-command command)))
+            ;; Clear selection after deletion
+            (swap! store assoc-in [:view :selected] #{}))
+
+        ;; Enter - Edit selected block (for now, just create child - later we can add inline editing)
+        (and (= key "Enter") (not shift?) current-selected (not ctrl?) (not alt?) (not meta?))
+        (do (.preventDefault event)
+            (js/console.log "Creating child block for:" current-selected)
+            (let [command {:op :insert
+                           :parent-id current-selected
                            :node-id (kernel/gen-new-id)
-                           :node-data {:type :div :props {:text "New sibling above"}}
-                           :position (:index pos)}]
+                           :node-data {:type :div :props {:text "New block"}}
+                           :position nil}]
               (swap! store kernel/safe-apply-command command)))
 
-        ;; Tab - Indent (make child)
-        (and (= key "Tab") (not shift?))
+        ;; Cmd+Shift+A - Select all blocks
+        (and (= key "A") shift? (or meta? ctrl?))
         (do (.preventDefault event)
-            (let [pos (kernel/node-position @store selected)
-                  command (when (> (:index pos) 0)
-                            {:op :move
-                             :node-id selected
-                             :new-parent-id (get (:children pos) (dec (:index pos)))
-                             :position nil})]
-              (when command
-                (swap! store kernel/safe-apply-command command))))
+            (let [all-nodes (set (keys (:nodes @store)))]
+              (js/console.log "Selecting all blocks:" (disj all-nodes "root"))
+              (swap! store assoc-in [:view :selected] (disj all-nodes "root"))))
 
-        ;; Shift+Tab - Outdent (promote)
-        (and (= key "Tab") shift?)
+        ;; Alt+Down - Select block below
+        (and (= key "ArrowDown") alt? current-selected (not shift?))
         (do (.preventDefault event)
-            (let [pos (kernel/node-position @store selected)
-                  command (when (not= (:parent pos) "root")
-                            {:op :move
-                             :node-id selected
-                             :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
-                             :position {:type :after :sibling-id (:parent pos)}})]
-              (when command
-                (swap! store kernel/safe-apply-command command))))
+            (let [pos (kernel/node-position @store current-selected)
+                  parent-id (:parent pos)
+                  siblings (get-in @store [:children-by-parent parent-id])
+                  current-idx (.indexOf siblings current-selected)
+                  next-idx (inc current-idx)]
+              (js/console.log "Navigating down:" {:current current-selected :pos pos :siblings siblings :next-idx next-idx})
+              (when (< next-idx (count siblings))
+                (let [next-node (nth siblings next-idx)]
+                  (js/console.log "Selecting next node:" next-node)
+                  (swap! store assoc-in [:view :selected] #{next-node})))))
 
-        ;; Alt+Shift+Up/Down - Move block up/down
-        (and alt? shift? (or (= key "ArrowUp") (= key "ArrowDown")))
+        ;; Alt+Up - Select block above
+        (and (= key "ArrowUp") alt? current-selected (not shift?))
         (do (.preventDefault event)
-            (let [pos (kernel/node-position @store selected)
-                  siblings (:children pos)
-                  current-idx (:index pos)
-                  new-idx (if (= key "ArrowUp")
-                            (max 0 (dec current-idx))
-                            (min (dec (count siblings)) (inc current-idx)))]
-              (when (not= current-idx new-idx)
-                (let [new-siblings (vec (remove #{selected} siblings))
-                      final-siblings (vec (concat (take new-idx new-siblings) [selected] (drop new-idx new-siblings)))
-                      command {:op :reorder
-                               :node-id selected
-                               :parent-id (:parent pos)
-                               :from-index current-idx
-                               :to-index new-idx}]
-                  (swap! store kernel/safe-apply-command command)))))
+            (let [pos (kernel/node-position @store current-selected)
+                  parent-id (:parent pos)
+                  siblings (get-in @store [:children-by-parent parent-id])
+                  current-idx (.indexOf siblings current-selected)
+                  prev-idx (dec current-idx)]
+              (js/console.log "Navigating up:" {:current current-selected :pos pos :siblings siblings :prev-idx prev-idx})
+              (when (>= prev-idx 0)
+                (let [prev-node (nth siblings prev-idx)]
+                  (js/console.log "Selecting previous node:" prev-node)
+                  (swap! store assoc-in [:view :selected] #{prev-node})))))
 
-        ;; Cmd+. / Ctrl+. - Toggle collapse/expand
-        (and (= key ".") (or meta? ctrl?))
+        ;; Cmd+A - Select parent block
+        (and (= key "a") (or meta? ctrl?) (not shift?) current-selected)
         (do (.preventDefault event)
-            (let [collapsed? (contains? (:collapsed (:view @store)) selected)]
-              (if collapsed?
-                (swap! store update-in [:view :collapsed] disj selected)
-                (swap! store update-in [:view :collapsed] conj selected))))))))
+            (let [pos (kernel/node-position @store current-selected)
+                  parent-id (:parent pos)]
+              (js/console.log "Selecting parent:" {:current current-selected :parent parent-id})
+              (when (and parent-id (not= parent-id "root"))
+                (swap! store assoc-in [:view :selected] #{parent-id}))))
+
+        ;; Existing hotkeys - only apply when we have a selection
+        current-selected
+        (cond
+          ;; Shift+Enter - Create sibling above
+          (and (= key "Enter") shift?)
+          (do (.preventDefault event)
+              (js/console.log "Creating sibling above for:" current-selected)
+              (let [pos (kernel/node-position @store current-selected)
+                    command {:op :insert
+                             :parent-id (:parent pos)
+                             :node-id (kernel/gen-new-id)
+                             :node-data {:type :div :props {:text "New sibling above"}}
+                             :position (:index pos)}]
+                (swap! store kernel/safe-apply-command command)))
+
+          ;; Tab - Indent (make child)
+          (and (= key "Tab") (not shift?))
+          (do (.preventDefault event)
+              (js/console.log "Indenting block:" current-selected)
+              (let [pos (kernel/node-position @store current-selected)
+                    command (when (> (:index pos) 0)
+                              {:op :move
+                               :node-id current-selected
+                               :new-parent-id (get (:children pos) (dec (:index pos)))
+                               :position nil})]
+                (when command
+                  (swap! store kernel/safe-apply-command command))))
+
+          ;; Shift+Tab - Outdent (promote)
+          (and (= key "Tab") shift?)
+          (do (.preventDefault event)
+              (js/console.log "Outdenting block:" current-selected)
+              (let [pos (kernel/node-position @store current-selected)
+                    command (when (not= (:parent pos) "root")
+                              {:op :move
+                               :node-id current-selected
+                               :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
+                               :position {:type :after :sibling-id (:parent pos)}})]
+                (when command
+                  (swap! store kernel/safe-apply-command command))))
+
+          ;; Alt+Shift+Up/Down - Move block up/down
+          (and alt? shift? (or (= key "ArrowUp") (= key "ArrowDown")))
+          (do (.preventDefault event)
+              (js/console.log "Moving block:" {:direction key :node current-selected})
+              (let [pos (kernel/node-position @store current-selected)
+                    siblings (:children pos)
+                    current-idx (:index pos)
+                    new-idx (if (= key "ArrowUp")
+                              (max 0 (dec current-idx))
+                              (min (dec (count siblings)) (inc current-idx)))]
+                (when (not= current-idx new-idx)
+                  (let [command {:op :reorder
+                                 :node-id current-selected
+                                 :parent-id (:parent pos)
+                                 :from-index current-idx
+                                 :to-index new-idx}]
+                    (swap! store kernel/safe-apply-command command)))))
+
+          ;; Cmd+. / Ctrl+. - Toggle collapse/expand
+          (and (= key ".") (or meta? ctrl?))
+          (do (.preventDefault event)
+              (js/console.log "Toggling collapse for:" current-selected)
+              (let [collapsed? (contains? (:collapsed (:view @store)) current-selected)]
+                (if collapsed?
+                  (swap! store update-in [:view :collapsed] disj current-selected)
+                  (swap! store update-in [:view :collapsed] conj current-selected)))))))))
 
 (defn ^:export main []
   (r/set-dispatch!
