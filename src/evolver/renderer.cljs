@@ -17,7 +17,7 @@
         children (get-in db [:children-by-parent node-id] [])
         selected? (contains? (get-in db [:view :selected]) node-id)
         collapsed? (contains? (get-in db [:view :collapsed]) node-id)
-        referenced? (seq (kernel/get-references db node-id))
+        referenced? (contains? (get-in db [:computed :referenced-nodes]) node-id)
         hovered-referencers (get-in db [:view :hovered-referencers] #{})
         is-referencer-highlighted? (contains? hovered-referencers node-id)
         node-type (:type node)]
@@ -30,7 +30,7 @@
                      collapsed? (conj :collapsed)
                      referenced? (conj :referenced)
                      is-referencer-highlighted? (conj :referencer-highlighted))
-            :on (when-not (= node-id "root") ;; Don't make root clickable
+            :on (when-not (= node-id "root")
                   {:click [[:select-node {:node-id node-id}]]
                    :mouseenter [[:hover-node {:node-id node-id}]]
                    :mouseleave [[:unhover-node {:node-id node-id}]]})}
