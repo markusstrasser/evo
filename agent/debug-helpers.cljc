@@ -101,3 +101,123 @@
      :issues (cond-> []
                (seq orphan-children) (conj (str "Orphaned children: " orphan-children))
                (seq missing-parents) (conj (str "Missing parents: " missing-parents)))}))
+
+;; Keyboard event debugging helpers
+(defn debug-keyboard-mapping
+  "Debug a specific keyboard mapping to see if it matches an event
+
+  Args:
+    mapping: Keyboard mapping from evolver.keyboard/keyboard-mappings
+    event-props: Map with :key, :shiftKey, :ctrlKey, :altKey, :metaKey
+
+  Returns:
+    Map with :matches?, :reason, :mapping-details"
+  [mapping event-props]
+  (let [key-matches (= (:key event-props) (:key (:keys mapping)))
+        shift-matches (= (:shiftKey event-props) (:shift (:keys mapping)))
+        ctrl-matches (= (:ctrlKey event-props) (:ctrl (:keys mapping)))
+        alt-matches (= (:altKey event-props) (:alt (:keys mapping)))
+        meta-matches (= (:metaKey event-props) (:meta (:keys mapping)))
+        all-match (and key-matches shift-matches ctrl-matches alt-matches meta-matches)]
+    {:matches? all-match
+     :reason (if all-match
+               "All modifiers match"
+               (str "Mismatch: "
+                    (cond-> []
+                      (not key-matches) (conj "key")
+                      (not shift-matches) (conj "shift")
+                      (not ctrl-matches) (conj "ctrl")
+                      (not alt-matches) (conj "alt")
+                      (not meta-matches) (conj "meta"))
+                    " don't match"))
+     :mapping-details {:action (:action mapping)
+                       :requires-selection (:requires-selection mapping)
+                       :expected-keys (:keys mapping)
+                       :actual-keys event-props}}))
+
+(defn debug-keyboard-event
+  "Debug why a keyboard event was or wasn't handled
+
+  Args:
+    event-props: Map with :key, :shiftKey, :ctrlKey, :altKey, :metaKey
+    db: Current database state
+
+  Returns:
+    Map with :handled?, :matching-mappings, :selection-state, :debug-info"
+  [event-props db]
+  (let [selection-state {:selected-set (:selected (:view db))
+                         :selected-count (count (:selected (:view db)))}
+        mappings (eval '(evolver.keyboard/keyboard-mappings)) ; This would need to be available
+        matching-mappings (filter #(and ((:key-matches evolver.keyboard/key-matches) % event-props)
+                                       (or (not (:requires-selection %))
+                                           (not-empty (:selected-set selection-state))))
+                                 mappings)]
+    {:handled? (seq matching-mappings)
+     :matching-mappings (map #(select-keys % [:action :keys :requires-selection]) matching-mappings)
+     :selection-state selection-state
+     :debug-info {:total-mappings (count mappings)
+                  :event-props event-props
+                  :has-selection? (not-empty (:selected-set selection-state))}}))
+
+(defn trace-keyboard-operation
+  "Trace the execution of a keyboard operation
+
+  Args:
+    operation: Keyword like :delete, :create-child, etc.
+    db-before: Database state before operation
+    db-after: Database state after operation
+
+  Returns:
+    Map with operation analysis and state changes"
+  [operation db-before db-after]
+  (let [diff (db-diff db-before db-after)
+        selection-before (:selected (:view db-before))
+        selection-after (:selected (:view db-after))
+        selection-changed? (not= selection-before selection-after)]
+    {:operation operation
+     :success? (case operation
+                 :delete (> (:nodes-added diff) 0) ; Negative growth means nodes removed
+                 :create-child (> (:nodes-added diff) 0)
+                 :create-sibling (> (:nodes-added diff) 0)
+                 :navigation selection-changed?
+                 :undo (and (> (:tx-log-growth diff) 0) selection-changed?)
+                 :redo (and (> (:tx-log-growth diff) 0) selection-changed?)
+                 false)
+     :state-changes {:selection-changed selection-changed?
+                     :selection-before selection-before
+                     :selection-after selection-after
+                     :db-diff diff}
+     :prerequisites-met? (case operation
+                           :delete (not-empty selection-before)
+                           :create-child (= (count selection-before) 1)
+                           :create-sibling (= (count selection-before) 1)
+                           :add-reference (= (count selection-before) 2)
+                           :remove-reference (= (count selection-before) 2)
+                           true)}))
+
+(defn keyboard-debug-summary
+  "Generate a comprehensive keyboard debugging summary
+
+  Args:
+    db: Current database state
+
+  Returns:
+    Map with keyboard system status and potential issues"
+  [db]
+  (let [selection (:selected (:view db))
+        mappings-count (count (eval '(evolver.keyboard/keyboard-mappings)))
+        undo-available (seq (:undo-stack db))
+        redo-available (seq (:redo-stack db))]
+    {:selection-status {:has-selection (not-empty selection)
+                        :selection-count (count selection)
+                        :selected-nodes selection}
+     :keyboard-system {:mappings-loaded mappings-count
+                       :system-active (> mappings-count 0)}
+     :undo-redo-status {:can-undo undo-available
+                        :can-redo redo-available
+                        :undo-count (count (:undo-stack db))
+                        :redo-count (count (:redo-stack db))}
+     :potential-issues (cond-> []
+                         (empty? selection) (conj "No nodes selected - some operations unavailable")
+                         (not undo-available) (conj "No undo history available")
+                         (zero? mappings-count) (conj "Keyboard mappings not loaded"))}))
