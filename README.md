@@ -1,5 +1,26 @@
 # Evolver
 
+A ClojureScript tree editor with a command-driven architecture for AI-assisted development.
+
+## Project Evolution
+
+### Phase 1: DataScript Foundation
+- Built hierarchical tree operations on DataScript EAV store
+- Overcame position management complexity through canonical list maintenance
+- Eliminated constraint-solving in favor of simple renumbering on mutations
+
+### Phase 2: Command Architecture Refactor (Current)
+- **Problem**: 150+ line event handling case statement mixing UI events with business logic
+- **Solution**: Command-driven CQRS-style architecture with middleware pipeline
+- **Result**: Scalable system where adding features is exponentially easier
+
+**Architecture**: `UI Events → Command Registry → Middleware Pipeline → Pure Kernel → State Updates → Reactive Rendering`
+
+### Testing Evolution  
+- **Before**: 26 tests, 108 assertions - missed critical parameter contract bugs
+- **After**: 30 tests, 115 assertions + property-based fuzzy testing + Chrome DevTools automation framework
+- **Added**: Contract validation, integration testing, UI state invariant checking
+
 * The agent tools provide structural awareness
 ## Open Questions
 * derived state in DB or memoized? (level/depth, children etc)
