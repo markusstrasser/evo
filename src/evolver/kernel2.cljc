@@ -113,6 +113,94 @@
     :delete (delete-node db command)
     db))
 
+;; Structural editor operations
+
+(defn current-node-id [db]
+  (first (:selected (:view db))))
+
+(defn gen-new-id []
+  (str "node-" (rand-int 10000)))
+
+(defn create-child-block [db]
+  "Create a new block as child of current node"
+  (let [current (current-node-id db)
+        new-id (gen-new-id)
+        new-node {:type :div :props {:text ""}}]
+    (insert-node db {:parent-id current :node-id new-id :node-data new-node :position nil})))
+
+(defn create-sibling-above [db]
+  "Create a new sibling above the current node"
+  (let [current (current-node-id db)
+        parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db))
+        children (get (:children-by-parent db) parent [])
+        idx (.indexOf children current)
+        new-id (gen-new-id)
+        new-node {:type :div :props {:text ""}}]
+    (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position idx})))
+
+(defn create-sibling-below [db]
+  "Create a new sibling below the current node"
+  (let [current (current-node-id db)
+        parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db))
+        children (get (:children-by-parent db) parent [])
+        idx (.indexOf children current)
+        new-id (gen-new-id)
+        new-node {:type :div :props {:text ""}}]
+    (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position (inc idx)})))
+
+(defn indent [db]
+  "Move current block under the previous sibling (make it a child)"
+  (let [current (current-node-id db)
+        parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db))
+        children (get (:children-by-parent db) parent [])
+        idx (.indexOf children current)]
+    (if (> idx 0)
+      (let [prev-sib (get children (dec idx))]
+        (move-node db {:node-id current :new-parent-id prev-sib :position nil}))
+      db)))
+
+(defn outdent [db]
+  "Move current block up one level (promote)"
+  (let [current (current-node-id db)
+        parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db))]
+    (if (not= parent "root")
+      (let [grandparent (some (fn [[p children]] (when (some #{parent} children) p)) (:children-by-parent db))
+            parent-children (get (:children-by-parent db) grandparent [])
+            parent-idx (.indexOf parent-children parent)]
+        (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
+      db)))
+
+;; Light tests
+
+;; Test create-child-block
+(let [db-with-child (create-child-block db)
+      current (current-node-id db)
+      children (get (:children-by-parent db-with-child) current)]
+  (assert (= 1 (count children)) "Should have one child")
+  (assert (string? (first children)) "Child id should be string"))
+
+;; Test create-sibling-above
+(let [db-with-sib (create-sibling-above db)
+      parent "root"
+      children (get (:children-by-parent db-with-sib) parent)
+      current-idx (.indexOf children (current-node-id db))]
+  (assert (= 6 (count children)) "Should have 6 children")
+  (assert (= 2 current-idx) "Current should be at index 2"))
+
+;; Test indent (assuming current is not first)
+(let [db-indented (indent db)
+      current (current-node-id db)
+      new-parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db-indented))]
+  (assert (= "title" new-parent) "Should be child of title"))
+
+;; Test outdent (current is child of div1)
+(let [db-outdented (-> db
+                       (assoc-in [:view :selected] #{"p4-click"})
+                       outdent)
+      current "p4-click"
+      new-parent (some (fn [[p children]] (when (some #{current} children) p)) (:children-by-parent db-outdented))]
+  (assert (= "root" new-parent) "Should be child of root"))
+
 ;; Use like:
 (-> db
     (apply-command {:op :insert :parent-id "root" :node-id "new-p" :node-data {:type :p :props {:text "Hello"}} :position 1})
