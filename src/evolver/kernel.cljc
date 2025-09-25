@@ -199,6 +199,65 @@
       new-parent (find-parent (:children-by-parent db-outdented) current)]
   (assert (= "root" new-parent) "Should be child of root"))
 
+;; Additional comprehensive tests
+
+;; Test node insertion
+(let [new-db (insert-node db {:parent-id "root" :node-id "test-node" :node-data {:type :p :props {:text "Test"}} :position 0})
+      children (get (:children-by-parent new-db) "root")]
+  (assert (= "test-node" (first children)) "Should insert at position 0")
+  (assert (= (:text (:props (get (:nodes new-db) "test-node"))) "Test") "Should have correct node data"))
+
+;; Test node patching
+(let [new-db (patch-node db {:node-id "title" :updates {:props {:text "Updated Title"}}})]
+  (assert (= (:text (:props (get (:nodes new-db) "title"))) "Updated Title") "Should update node properties"))
+
+;; Test node deletion
+(let [new-db (delete-node db {:node-id "p2-high" :recursive false})
+      nodes (:nodes new-db)]
+  (assert (nil? (get nodes "p2-high")) "Should remove deleted node")
+  (assert (not (contains? (:selected (:view new-db)) "p2-high")) "Should remove from selection"))
+
+;; Test tree metadata derivation
+(let [metadata (derive-tree-metadata db)]
+  (assert (= 1 (get (:depth metadata) "title")) "Title should be at depth 1")
+  (assert (= 2 (get (:depth metadata) "p4-click")) "p4-click should be at depth 2")
+  (assert (= ["root"] (get (:paths metadata) "title")) "Title path should be [root]")
+  (assert (= ["root" "div1"] (get (:paths metadata) "p4-click")) "p4-click path should be [root div1]"))
+
+;; Test create-sibling-below
+(let [db-with-sib (create-sibling-below db)
+      parent "root"
+      children (get (:children-by-parent db-with-sib) parent)
+      current-idx (.indexOf children (current-node-id db))]
+  (assert (= 6 (count children)) "Should have 6 children")
+  (assert (= 1 current-idx) "Current should stay at original position (index 1)"))
+
+;; Test indent with first child (should do nothing)
+(let [db-indented (-> db
+                      (assoc-in [:view :selected] #{"title"})  ; title is first child
+                      indent)
+      current-parent (find-parent (:children-by-parent db-indented) "title")]
+  (assert (= "root" current-parent) "First child should not indent"))
+
+;; Test outdent with root child (should do nothing)
+(let [db-outdented (-> db
+                       (assoc-in [:view :selected] #{"title"})  ; title is direct child of root
+                       outdent)
+      current-parent (find-parent (:children-by-parent db-outdented) "title")]
+  (assert (= "root" current-parent) "Root child should not outdent"))
+
+;; Test apply-command wrapper
+(let [new-db (apply-command db {:op :patch :node-id "title" :updates {:props {:text "Command Updated"}}})]
+  (assert (= (:text (:props (get (:nodes new-db) "title"))) "Command Updated") "apply-command should work"))
+
+;; Test current-node-id with no selection
+(let [db-no-selection (assoc-in db [:view :selected] #{})]
+  (assert (nil? (current-node-id db-no-selection)) "Should return nil when no selection"))
+
+;; Test current-node-id with multiple selection (returns first)
+(let [db-multi-selection (assoc-in db [:view :selected] #{"title" "p1-select"})]
+  (assert (= "title" (current-node-id db-multi-selection)) "Should return first selected node"))
+
 ;; Use like:
 (-> db
     (apply-command {:op :insert :parent-id "root" :node-id "new-p" :node-data {:type :p :props {:text "Hello"}} :position 1})
