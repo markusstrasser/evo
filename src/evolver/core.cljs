@@ -28,17 +28,21 @@
                    :outdent kernel/outdent
                    identity)))
 
-        nil))))
+        nil))
+    ;; Force re-render after handling events
+    (when-let [root (.getElementById js/document "root")]
+      (r/render root (renderer/render @store)))))
 
 (defn ^:export main []
   (r/set-dispatch!
-    (fn [event-data handler-data]
-      (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-        (handle-event event-data handler-data))))
+     (fn [event-data handler-data]
+       (handle-event event-data handler-data)))
   ;; Initial render
   (let [root (.getElementById js/document "root")]
     (r/render root (renderer/render @store))
 
+    ;; Remove existing watch if it exists
+    (remove-watch store :render)
     (add-watch store :render
-               (fn [_ _ _ new-state]
-                 (r/render root (renderer/render new-state))))))
+                (fn [_ _ _ new-state]
+                  (r/render root (renderer/render new-state))))))
