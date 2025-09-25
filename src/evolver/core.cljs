@@ -13,65 +13,105 @@
        (js/console.log "Processing action:" action)
        (try
          (case (first action)
-           :select-node
-           (let [{:keys [node-id]} (second action)]
-             (js/console.log "Selecting node:" node-id)
-             ;; Stop event propagation to prevent bubbling to parent elements
-             (when-let [dom-event (:replicant/dom-event event-data)]
-               (.stopPropagation dom-event))
-             (let [tx {:op :select-node :node-id node-id}]
-               (swap! store kernel/log-operation tx)
-               (swap! store assoc-in [:view :selected] #{node-id})))
+            :select-node
+            (let [{:keys [node-id]} (second action)]
+              (js/console.log "Selecting node:" node-id)
+              ;; Stop event propagation to prevent bubbling to parent elements
+              (when-let [dom-event (:replicant/dom-event event-data)]
+                (.stopPropagation dom-event))
+              (let [dom-event (:replicant/dom-event event-data)
+                    current-selected (:selected (:view @store))
+                    new-selected (if (and dom-event
+                                         (or (.getModifierState dom-event "Shift")
+                                             (.getModifierState dom-event "Control")
+                                             (.getModifierState dom-event "Meta")
+                                             (> (count current-selected) 0))) ; Allow multiple selection if already have selection
+                                   (if (contains? current-selected node-id)
+                                     (disj current-selected node-id)
+                                     (conj current-selected node-id))
+                                   #{node-id})
+                    tx {:op :select-node :node-id node-id}]
+                (swap! store kernel/log-operation tx)
+                (swap! store assoc-in [:view :selected] new-selected)))
 
-           :set-selected-op
-           (let [value (.. (:replicant/dom-event event-data) -target -value)]
-             (js/console.log "Setting selected-op to:" value)
-             (swap! store assoc :selected-op (when (not= value "") (keyword value))))
+            :set-selected-op
+            (let [value (.. (:replicant/dom-event event-data) -target -value)]
+              (js/console.log "Setting selected-op to:" value)
+              (swap! store assoc :selected-op (when (not= value "") (keyword value))))
 
-           :apply-selected-op
-           (let [op (:selected-op @store)
-                 selected (first (:selected (:view @store)))]
-             (js/console.log "Applying op:" op "on selected:" selected "store selected-op:" (:selected-op @store))
-             (when (and op selected)
-               (let [command (case op
-                               :create-child-block {:op :insert
-                                                    :parent-id selected
-                                                    :node-id (kernel/gen-new-id)
-                                                    :node-data {:type :div :props {:text (str "Child of " selected)}}
-                                                    :position nil}
-                               :create-sibling-above (let [pos (kernel/node-position @store selected)]
-                                                       {:op :insert
-                                                        :parent-id (:parent pos)
-                                                        :node-id (kernel/gen-new-id)
-                                                        :node-data {:type :div :props {:text (str "Sibling above " selected)}}
-                                                        :position (:index pos)})
-                               :create-sibling-below (let [pos (kernel/node-position @store selected)]
-                                                       {:op :insert
-                                                        :parent-id (:parent pos)
-                                                        :node-id (kernel/gen-new-id)
-                                                        :node-data {:type :div :props {:text (str "Sibling below " selected)}}
-                                                        :position (inc (:index pos))})
-                                :indent (let [pos (kernel/node-position @store selected)]
-                                          (when (> (:index pos) 0)
-                                            {:op :move
-                                             :node-id selected
-                                             :new-parent-id (get (:children pos) (dec (:index pos)))
-                                             :position nil}))
-                                :outdent (let [pos (kernel/node-position @store selected)]
-                                           (when (not= (:parent pos) "root")
+            :hover-node
+            (let [{:keys [node-id]} (second action)]
+              (js/console.log "Hovering node:" node-id)
+              (let [referencers (kernel/get-references @store node-id)]
+                (swap! store assoc-in [:view :hovered-referencers] referencers)))
+
+            :unhover-node
+            (let [{:keys [node-id]} (second action)]
+              (js/console.log "Unhovering node:" node-id)
+              (swap! store assoc-in [:view :hovered-referencers] #{}))
+
+             :apply-selected-op
+             (let [op (:selected-op @store)
+                   selected (first (:selected (:view @store)))
+                   selected-nodes (:selected (:view @store))]
+               (js/console.log "Apply selected op:" {:op op :selected selected :selected-nodes selected-nodes})
+               (when op
+                 (let [command (case op
+                                :create-child-block {:op :insert
+                                                     :parent-id selected
+                                                     :node-id (kernel/gen-new-id)
+                                                     :node-data {:type :div :props {:text (str "Child of " selected)}}
+                                                     :position nil}
+                                :create-sibling-above (let [pos (kernel/node-position @store selected)]
+                                                        {:op :insert
+                                                         :parent-id (:parent pos)
+                                                         :node-id (kernel/gen-new-id)
+                                                         :node-data {:type :div :props {:text (str "Sibling above " selected)}}
+                                                         :position (:index pos)})
+                                :create-sibling-below (let [pos (kernel/node-position @store selected)]
+                                                        {:op :insert
+                                                         :parent-id (:parent pos)
+                                                         :node-id (kernel/gen-new-id)
+                                                         :node-data {:type :div :props {:text (str "Sibling below " selected)}}
+                                                         :position (inc (:index pos))})
+                                 :indent (let [pos (kernel/node-position @store selected)]
+                                           (when (> (:index pos) 0)
                                              {:op :move
                                               :node-id selected
-                                              :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
-                                              :position {:type :after :sibling-id (:parent pos)}}))
-                               nil)]
-                 (when command
-                   (swap! store kernel/safe-apply-command command)))))
+                                              :new-parent-id (get (:children pos) (dec (:index pos)))
+                                              :position nil}))
+                                  :outdent (let [pos (kernel/node-position @store selected)]
+                                             (when (not= (:parent pos) "root")
+                                               {:op :move
+                                                :node-id selected
+                                                :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
+                                                :position {:type :after :sibling-id (:parent pos)}}))
+                                   :add-reference (let [selected-nodes (:selected (:view @store))]
+                                                    (when (= (count selected-nodes) 2)
+                                                      (let [[from to] (vec selected-nodes)]
+                                                        (js/console.log "Creating add-reference command:" {:from from :to to})
+                                                        {:op :add-reference :from-node-id from :to-node-id to})))
+                                  :remove-reference (let [selected-nodes (:selected (:view @store))]
+                                                      (when (= (count selected-nodes) 2)
+                                                        (let [[from to] (vec selected-nodes)]
+                                                          (js/console.log "Creating remove-reference command:" {:from from :to to})
+                                                          {:op :remove-reference :from-node-id from :to-node-id to})))
+                                 nil)]
+                  (js/console.log "Command created:" command)
+                  (when command
+                    (let [result (kernel/safe-apply-command @store command)]
+                      (js/console.log "Command result:" (pr-str result))
+                      (reset! store result))))))
 
-           :undo
-           (swap! store kernel/safe-apply-command {:op :undo})
+             :undo
+            (let [result (kernel/safe-apply-command @store {:op :undo})]
+              (js/console.log "Undo result:" (pr-str result))
+              (reset! store result))
 
-           :redo
-           (swap! store kernel/safe-apply-command {:op :redo})
+            :redo
+            (let [result (kernel/safe-apply-command @store {:op :redo})]
+              (js/console.log "Redo result:" (pr-str result))
+              (reset! store result))
 
            (js/console.log "Unknown action:" action))
          (catch js/Error e
