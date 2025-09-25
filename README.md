@@ -1,5 +1,6 @@
 # Evolver
 
+* The agent tools provide structural awareness
 ## Open Questions
 * derived state in DB or memoized? (level/depth, children etc)
 :children on :nodes directly? Or normalized?

@@ -1428,6 +1428,8 @@ SHADOW_IMPORT("malli.error.js");
 SHADOW_IMPORT("evolver.schemas.js");
 SHADOW_IMPORT("evolver.kernel.js");
 SHADOW_IMPORT("evolver.kernel_test.js");
+SHADOW_IMPORT("evolver.reference_test.js");
+SHADOW_IMPORT("evolver.ui_integration_test.js");
 SHADOW_IMPORT("evolver.test_runner.js");
 SHADOW_IMPORT("shadow.module.main.append.js");
 
