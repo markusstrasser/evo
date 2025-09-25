@@ -1,0 +1,39 @@
+(ns agent.debug-helpers-test
+  (:require [cljs.test :refer-macros [deftest testing is]]
+            [agent.debug-helpers :as dh]))
+
+(deftest db-diff-test
+  (testing "calculates differences between db states"
+    (let [before {:nodes {} :children-by-parent {} :view {} :tx-log []}
+          after {:nodes {:a 1} :children-by-parent {:root [:a]} :view {:root {}} :tx-log [{}]}
+          result (dh/db-diff before after)]
+      (is (= (:nodes-added result) 1))
+      (is (= (:children-changed result) 1))
+      (is (= (:view-changed result) 1))
+      (is (= (:tx-log-growth result) 1))
+      (is (string? (:summary result))))))
+
+(deftest check-operation-result-test
+  (testing "checks operation success"
+    (let [before {:nodes {} :children-by-parent {} :view {} :tx-log []}
+          after {:nodes {:a 1} :children-by-parent {:root [:a]} :view {} :tx-log [{}]}
+          result (dh/check-operation-result before after :insert)]
+      (is (:success? result))
+      (is (= (:status result) :success)))))
+
+(deftest scan-for-errors-test
+  (testing "scans for errors in db"
+    (let [db {:nodes {:a {:type :div}} :children-by-parent {:root [:a]} :view {:selected #{}} :log-history []}
+          result (dh/scan-for-errors db)]
+      (is (boolean? (:healthy? result)))
+      (is (number? (:error-count result)))
+      (is (vector? (:issues result))))))
+
+(deftest check-consistency-test
+  (testing "checks db consistency"
+    (let [db {:nodes {:root {:type :div} :a {:type :div}}
+              :children-by-parent {:root [:a]}}
+          result (dh/check-consistency db)]
+      (is (boolean? (:consistent? result)))
+      (is (number? (:orphaned-children result)))
+      (is (vector? (:issues result))))))
