@@ -5,12 +5,6 @@ A ClojureScript tree editor with a command-driven architecture for AI-assisted d
 
 Your mistake was thinking you were building a UI framework. You're building an interpreter for a tree-manipulation DSL, and the LLM is the programmer.
 
-## Project Evolution
-
-### Phase 1: DataScript Foundation
-- Built hierarchical tree operations on DataScript EAV store
-- Overcame position management complexity through canonical list maintenance
-- Eliminated constraint-solving in favor of simple renumbering on mutations
 
 ### Phase 2: Command Architecture Refactor (Current)
 - **Problem**: 150+ line event handling case statement mixing UI events with business logic
