@@ -70,6 +70,7 @@
   "Apply command with validation and error handling"
   [db command]
   (try
+    (schemas/validate-command command) ; Validate command structure
     (log-message db :debug (str "Applying command: " (:op command)) command)
     (let [new-db (case (:op command)
                    :insert (insert-node db command)
