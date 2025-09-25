@@ -96,6 +96,133 @@
   "Supported operation types"
   #{:insert :move :patch :delete :reorder :undo :redo})
 
+;; Command schemas
+(def command-op-schema
+  "Schema for command operation type"
+  keyword?)
+
+(def node-id-schema
+  "Schema for node identifier"
+  string?)
+
+(def parent-id-schema
+  "Schema for parent node identifier"
+  string?)
+
+(def position-schema
+  "Schema for position specification in commands"
+  [:or int? map? nil?])
+
+(def node-type-schema
+  "Schema for node type"
+  keyword?)
+
+(def node-text-schema
+  "Schema for node text content"
+  string?)
+
+(def node-props-schema
+  "Schema for node properties"
+  [:map-of keyword? any?])
+
+(def node-data-schema
+  "Schema for node data structure"
+  [:map
+   [:type node-type-schema]
+   [:props {:optional true} node-props-schema]])
+
+;; Individual command schemas
+(def insert-command-schema
+  "Schema for insert command"
+  [:map
+   [:op [:= :insert]]
+   [:parent-id parent-id-schema]
+   [:node-id node-id-schema]
+   [:node-data node-data-schema]
+   [:position {:optional true} position-schema]])
+
+(def delete-command-schema
+  "Schema for delete command"
+  [:map
+   [:op [:= :delete]]
+   [:node-id node-id-schema]
+   [:recursive {:optional true} boolean?]])
+
+(def move-command-schema
+  "Schema for move command"
+  [:map
+   [:op [:= :move]]
+   [:node-id node-id-schema]
+   [:new-parent-id parent-id-schema]
+   [:position {:optional true} position-schema]])
+
+(def patch-command-schema
+  "Schema for patch command"
+  [:map
+   [:op [:= :patch]]
+   [:node-id node-id-schema]
+   [:updates [:map-of keyword? any?]]])
+
+(def reorder-command-schema
+  "Schema for reorder command"
+  [:map
+   [:op [:= :reorder]]
+   [:node-id node-id-schema]
+   [:parent-id parent-id-schema]
+   [:from-index int?]
+   [:to-index int?]])
+
+(def add-reference-command-schema
+  "Schema for add-reference command"
+  [:map
+   [:op [:= :add-reference]]
+   [:from-node-id node-id-schema]
+   [:to-node-id node-id-schema]])
+
+(def remove-reference-command-schema
+  "Schema for remove-reference command"
+  [:map
+   [:op [:= :remove-reference]]
+   [:from-node-id node-id-schema]
+   [:to-node-id node-id-schema]])
+
+(def undo-command-schema
+  "Schema for undo command"
+  [:map
+   [:op [:= :undo]]])
+
+(def redo-command-schema
+  "Schema for redo command"
+  [:map
+   [:op [:= :redo]]])
+
+;; Combined command schema
+(def command-schema
+  "Schema for all valid commands"
+  [:or
+   insert-command-schema
+   delete-command-schema
+   move-command-schema
+   patch-command-schema
+   reorder-command-schema
+   add-reference-command-schema
+   remove-reference-command-schema
+   undo-command-schema
+   redo-command-schema])
+
+;; UI command schemas (for the command registry)
+(def ui-command-name-schema
+  "Schema for UI command name"
+  keyword?)
+
+(def ui-command-params-schema
+  "Schema for UI command parameters"
+  map?)
+
+(def ui-command-schema
+  "Schema for UI command tuple"
+  [:tuple ui-command-name-schema ui-command-params-schema])
+
 ;; Agent function input/output schemas
 (def namespace-health-schema
   "Schema for analyze-namespace-health results"
@@ -174,17 +301,40 @@
                        :result result})))
     result))
 
+;; Command validation functions
+(defn validate-command
+  "Validate a command against its schema"
+  [command]
+  (let [result (m/validate command-schema command)]
+    (when-not result
+      (let [errors (me/humanize (m/explain command-schema command))]
+        (throw (ex-info "Invalid command"
+                        {:errors errors :command command}))))
+    command))
+
+(defn validate-ui-command
+  "Validate a UI command against its schema"
+  [ui-command]
+  (let [result (m/validate ui-command-schema ui-command)]
+    (when-not result
+      (let [errors (me/humanize (m/explain ui-command-schema ui-command))]
+        (throw (ex-info "Invalid UI command"
+                        {:errors errors :ui-command ui-command}))))
+    ui-command))
+
 ;; Schema registry for runtime validation
 (def registry
   (merge
-   (m/default-schemas)
-   {:node node-schema
-    :children-by-parent children-by-parent-schema
-    :view view-schema
-    :transaction transaction-schema
-    :derived derived-schema
-    :db db-schema
-    :namespace-health namespace-health-schema
-    :db-structure db-structure-schema
-    :db-diff db-diff-schema
-    :operation-result operation-result-schema}))
+    (m/default-schemas)
+    {:node node-schema
+     :children-by-parent children-by-parent-schema
+     :view view-schema
+     :transaction transaction-schema
+     :derived derived-schema
+     :db db-schema
+     :namespace-health namespace-health-schema
+     :db-structure db-structure-schema
+     :db-diff db-diff-schema
+     :operation-result operation-result-schema
+     :command command-schema
+     :ui-command ui-command-schema}))
