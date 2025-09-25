@@ -2,6 +2,9 @@
 
 A ClojureScript tree editor with a command-driven architecture for AI-assisted development.
 
+
+Your mistake was thinking you were building a UI framework. You're building an interpreter for a tree-manipulation DSL, and the LLM is the programmer.
+
 ## Project Evolution
 
 ### Phase 1: DataScript Foundation
