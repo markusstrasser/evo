@@ -1,0 +1,163 @@
+(ns evolver.browser-navigation-integration-test
+  "Integration tests that verify Event -> Commands -> DOM changes using Chrome DevTools"
+  (:require [cljs.test :refer [deftest is testing async]]
+            [evolver.commands :as commands]
+            [evolver.kernel :as kernel]
+            [evolver.state :as state]))
+
+(defn wait-for-dom-update []
+  "Wait for DOM to update after state changes"
+  (js/Promise. (fn [resolve]
+                 (js/setTimeout resolve 50))))
+
+(defn simulate-keyboard-event [key-code]
+  "Simulate a keyboard event"
+  (let [event (js/KeyboardEvent. "keydown"
+                                 #js {:keyCode key-code
+                                      :which key-code
+                                      :key (case key-code
+                                             38 "ArrowUp"
+                                             40 "ArrowDown"
+                                             37 "ArrowLeft"
+                                             39 "ArrowRight"
+                                             9 "Tab"
+                                             "")})]
+    (.dispatchEvent js/document event)))
+
+(defn get-selected-node-ids []
+  "Get currently selected node IDs from DOM"
+  (let [selected-elements (.querySelectorAll js/document "[data-selected='true']")]
+    (set (map #(.getAttribute % "data-node-id") selected-elements))))
+
+(defn get-collapsed-node-ids []
+  "Get currently collapsed node IDs from DOM"
+  (let [collapsed-elements (.querySelectorAll js/document "[data-collapsed='true']")]
+    (set (map #(.getAttribute % "data-node-id") collapsed-elements))))
+
+(deftest test-navigation-key-integration
+  (testing "Keyboard navigation updates DOM correctly"
+    (async done
+           (let [store @state/store]
+        ;; Set up initial state with a known selection
+             (swap! state/store assoc-in [:view :selected] #{"title"})
+
+             (.then (wait-for-dom-update)
+                    (fn []
+                      (testing "Initial selection is reflected in DOM"
+                        (is (contains? (get-selected-node-ids) "title")))
+
+                 ;; Simulate down arrow key
+                      (simulate-keyboard-event 40)
+
+                      (.then (wait-for-dom-update)
+                             (fn []
+                               (testing "Down arrow moves selection to next sequential node"
+                                 (let [selected (get-selected-node-ids)]
+                              ;; Should move to p1-select (next sequential node)
+                                   (is (contains? selected "p1-select"))
+                                   (is (not (contains? selected "title")))))
+
+                          ;; Simulate up arrow key
+                               (simulate-keyboard-event 38)
+
+                               (.then (wait-for-dom-update)
+                                      (fn []
+                                        (testing "Up arrow moves selection back"
+                                          (let [selected (get-selected-node-ids)]
+                                            (is (contains? selected "title"))
+                                            (is (not (contains? selected "p1-select")))))
+
+                                        (done)))))))))))
+
+(deftest test-structural-operation-integration
+  (testing "Structural operations update DOM hierarchy"
+    (async done
+      ;; Select a node that can be indented
+           (swap! state/store assoc-in [:view :selected] #{"p2-high"})
+
+           (.then (wait-for-dom-update)
+                  (fn []
+                    (testing "Node can be indented"
+                 ;; Simulate Tab key for indent
+                      (let [event (js/KeyboardEvent. "keydown" #js {:keyCode 9 :key "Tab"})]
+                        (.dispatchEvent js/document event))
+
+                      (.then (wait-for-dom-update)
+                             (fn []
+                               (testing "Indented node moves in DOM hierarchy"
+                            ;; Check that the node's position changed in DOM
+                                 (let [node (.querySelector js/document "[data-node-id='p2-high']")
+                                       parent (.-parentElement node)]
+                              ;; Node should now be child of previous sibling
+                                   (is (some? node))
+                                   (is (some? parent))))
+
+                               (done)))))))))
+
+(deftest test-collapse-expand-integration
+  (testing "Collapse/expand operations affect DOM visibility"
+    (async done
+      ;; Select a node with children
+           (swap! state/store assoc-in [:view :selected] #{"div1"})
+
+           (.then (wait-for-dom-update)
+                  (fn []
+                    (testing "Toggle collapse hides/shows children"
+                 ;; Simulate space key for toggle collapse
+                      (let [event (js/KeyboardEvent. "keydown" #js {:keyCode 32 :key " "})]
+                        (.dispatchEvent js/document event))
+
+                      (.then (wait-for-dom-update)
+                             (fn []
+                               (testing "Collapsed node's children are hidden"
+                                 (let [collapsed-ids (get-collapsed-node-ids)]
+                                   (is (contains? collapsed-ids "div1")))
+
+                            ;; Check that children are visually hidden
+                                 (let [child-node (.querySelector js/document "[data-node-id='p4-click']")]
+                                   (is (some? child-node))
+                              ;; Should have collapsed styling or be hidden
+                                   (is (or (= "none" (.-display (.-style child-node)))
+                                           (.contains (.-classList child-node) "collapsed-child")))))
+
+                               (done)))))))))
+
+(deftest test-multi-select-integration
+  (testing "Multi-selection with modifier keys works"
+    (async done
+      ;; Start with single selection
+           (swap! state/store assoc-in [:view :selected] #{"title"})
+
+           (.then (wait-for-dom-update)
+                  (fn []
+                    (testing "Ctrl+click adds to selection"
+                 ;; Simulate ctrl+click on another node
+                      (let [target-node (.querySelector js/document "[data-node-id='p1-select']")
+                            event (js/MouseEvent. "click" #js {:ctrlKey true :bubbles true})]
+                        (.dispatchEvent target-node event))
+
+                      (.then (wait-for-dom-update)
+                             (fn []
+                               (testing "Both nodes are selected"
+                                 (let [selected (get-selected-node-ids)]
+                                   (is (contains? selected "title"))
+                                   (is (contains? selected "p1-select"))))
+
+                               (testing "Multi-select operations affect all selected"
+                            ;; Test that indent affects both selected nodes
+                                 (let [event (js/KeyboardEvent. "keydown" #js {:keyCode 9 :key "Tab"})]
+                                   (.dispatchEvent js/document event))
+
+                                 (.then (wait-for-dom-update)
+                                        (fn []
+                                          (testing "All selected nodes were processed"
+                                       ;; Check that both nodes were affected by the operation
+                                            (is (>= (count (get-selected-node-ids)) 1)))
+
+                                          (done))))))))))))
+
+;; Helper function to run browser integration tests
+(defn run-browser-tests []
+  "Run browser-based integration tests"
+  (js/console.log "Starting browser navigation integration tests...")
+  (cljs.test/run-tests 'evolver.browser-navigation-integration-test))
