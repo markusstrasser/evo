@@ -1,6 +1,7 @@
 (ns evolver.commands
   (:require [evolver.kernel :as K]
-            [evolver.middleware :as MW]))
+            [evolver.middleware :as MW]
+            [evolver.history :as history]))
 
 ;; ---------- 0) Tiny utilities ----------
 (defn db [store] (:present @store)) ; Extract present state from history ring
@@ -19,8 +20,15 @@
   (->> ids (sort-by #(-> (K/node-position db %) :index))))
 
 (defn apply! [store cmd]
+  "Applies a command via the middleware pipeline and pushes the new state onto the history ring."
   (when cmd
-    (reset! store (MW/safe-apply-command-with-middleware @store cmd))))
+    (let [current-history-ring @store
+          current-db (:present current-history-ring)
+          ;; The middleware pipeline expects the DB state, not the whole ring
+          new-db (MW/safe-apply-command-with-middleware current-db cmd)]
+      (when (not= new-db current-db) ; Only update if something changed
+        (let [new-history-ring (history/push-snapshot current-history-ring new-db)]
+          (reset! store new-history-ring))))))
 
 (defn modifiers [event]
   (when-let [e (:replicant/dom-event event)]
@@ -256,8 +264,8 @@
 (defn unhover-node [store _event {:keys [node-id]}]
   (swap! store assoc-in [:present :view :hovered-referencers] #{}))
 
-(defn undo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :undo})))
-(defn redo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :redo})))
+(defn undo! [store _ _] (swap! store history/undo))
+(defn redo! [store _ _] (swap! store history/redo))
 
 ;; Navigation helpers that update selection
 (defn navigate-to [store target-node]

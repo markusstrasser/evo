@@ -113,12 +113,6 @@
 (defmethod apply-command :remove-reference [db command]
   (remove-reference db command))
 
-(defmethod apply-command :undo [db command]
-  (undo-last-operation db))
-
-(defmethod apply-command :redo [db command]
-  (redo-last-operation db))
-
 (defmethod apply-command :transaction [db command]
   (apply-transaction db (:commands command)))
 
@@ -155,21 +149,6 @@
         (log-message db :error (str "Command failed: " (:op command)) {:error (ex-message e) :command command})
         (catch #?(:clj Exception :cljs :default) _ nil)) ; If logging fails, ignore
       (throw (ex-info "Command execution failed" {:error (ex-message e) :command command} e)))))
-
-(defn undo-last-operation
-  "Update history index for undo"
-  [db]
-  (update db :history-index (fn [idx] (max 0 (dec (or idx 0))))))
-
-(defn redo-last-operation
-  "Update history index for redo"
-  [db]
-  (let [history (:history db)
-        history-index (:history-index db)
-        max-index (count history)]
-    (if (< history-index max-index)
-      (update db :history-index inc)
-      db)))
 
 (defn node-position [db node-id]
   (when-let [parent (parent-of db node-id)]
@@ -211,7 +190,11 @@
     (update-derived new-db)))
 
 (defn patch-node [db {:keys [node-id updates]}]
-  (let [new-db (update-in db [:nodes node-id] merge updates)]
+  (let [new-db (update-in db [:nodes node-id]
+                          (fn [node]
+                            (merge-with (fn [old new] (if (and (map? old) (map? new)) (merge old new) new))
+                                        node
+                                        updates)))]
     (update-derived new-db)))
 
 (defn move-node [db {:keys [node-id new-parent-id position]}]
@@ -227,7 +210,7 @@
         ;; Convert new parent to div if it's not already and now has children
         final-db (if (and (not= (:type (get-in new-db [:nodes new-parent-id])) :div)
                           (seq (get-in new-db [:children-by-parent new-parent-id])))
-                   (assoc-in new-db [:nodes new-parent-id :type] :div)
+                   (update-in new-db [:nodes new-parent-id] assoc :type :div)
                    new-db)]
     (update-derived final-db)))
 
