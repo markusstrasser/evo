@@ -21,6 +21,9 @@
 - **Event Conflicts**: Multiple handlers on same elements
 - **Watch Failures**: Reactive updates not triggering renders
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
+- **Preload Failures**: Shadow-cljs preloads fragile; manual REPL loading more reliable
+- **Malli Dev Tools**: ClojureScript compatibility issues; manual validation helpers preferred
+- **Console Message Visibility**: Chrome DevTools console messages may not refresh automatically
 
 ## Debugging Patterns
 
@@ -30,6 +33,8 @@
 - **Chrome DevTools**: Use click simulation and snapshot inspection for UI state
 - **DOM Inspection**: Check element attributes and event bubbling with `document.querySelectorAll`
 - **Render Testing**: Test individual render functions with `evolver.renderer.render_node(state, "root")`
+- **Function Validation**: Use `(validate-call #'function-var args...)` to test Malli schemas manually
+- **Schema Inspection**: Check `(meta #'function-var)` for `:malli/schema` metadata
 
 ## Agent Tool Usage
 
@@ -268,6 +273,12 @@ test/evolver/chrome_integration_test.cljs: **ENABLED** - Chrome DevTools integra
 ### Build System Safety
 - `agent/detect-cache-corruption`: Detects cache corruption symptoms and suggests cleanup
 - `agent/validate-build-target-compatibility`: Validates .cljc files for target compatibility
+
+### Malli Function Validation
+- Manual validation approach preferred over automatic instrumentation in ClojureScript
+- Schema metadata pattern: `{:malli/schema [:=> [:cat ...] ...]}` in function metadata
+- Runtime validation: `(validate-call #'function-var arg1 arg2)` for interactive testing
+- Schema inspection: `(meta #'function-var)` to view attached schemas
 
 ## Chrome DevTools Integration
 
