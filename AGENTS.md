@@ -2,17 +2,25 @@
 
 ## Common Errors & Failure Modes
 
+### ✅ ELIMINATED by Guardrails
+
+- **Unknown command errors**: Command registry validation now provides helpful error messages with available commands
+- **Environment mismatches**: Environment detection prevents browser/node confusion with clear error messages
+- **Schema validation failures**: Pre-execution schema validation catches invalid parameters before dispatch
+- **Namespace/filename mismatches**: File edit tools now validate namespace alignment to prevent shadow-cljs compilation errors
+- **JS-style data access**: Pattern validation detects incorrect property access on CLJS data structures
+- **Nil dereferencing**: Safe wrapper functions prevent common nil-related crashes
+- **Event handler format**: Validation ensures replicant action vectors follow correct format
+- **Cache corruption**: Health monitoring detects and suggests cleanup for mysterious errors
+- **CLJC compatibility**: Build target validation prevents browser APIs in node-test targets
+
+### Still Active (Inherent to Environment)
+
 - **No JS Runtime**: Browser not connected to shadow-cljs REPL (open http://localhost:8080 first)
 - **Compilation Errors**: Syntax prevents hot reload
-- **Data Access**: Using JS patterns on immutable CLJS data (use CLJS accessors instead)
 - **Event Conflicts**: Multiple handlers on same elements
 - **Watch Failures**: Reactive updates not triggering renders
-- **Nil Dereferencing**: Functions like `name` failing on nil values
-- **Event Handler Format**: Incorrect replicant action vector format
-- **Filename/Namespace Mismatch**: shadow-cljs requires exact match - `some_file.cljc` must contain `(ns some_file)`, not `(ns some-file)`
 - **Source Path Build Targets**: Files in global `:source-paths` don't auto-compile into build targets (use `src/agent/` not `./agent/`)
-- **Cache Corruption**: Mysterious namespace errors persist after fixes (`npx shadow-cljs stop && rm -rf .shadow-cljs out target`)
-- **CLJC Compatibility**: .cljc files may not compile in node-test targets (test in browser context first)
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
 
 ## Debugging Patterns
@@ -275,15 +283,45 @@ npx shadow-cljs stop  # Stop shadow-cljs server
 
 src/agent/agent-docs.md: Comprehensive documentation for agent tools, listing purposes and public functions for each namespace with brief descriptions.
 
-src/agent/core.cljc: Simple agent utilities for the evolver app that provides unified access to store inspection, reference tools, and schema validation functions.
+src/agent/core.cljc: **NEW GUARDRAILS ADDED** - Agent utilities with environment detection, command validation, schema validation, and namespace alignment checks. Provides unified access to store inspection, reference tools, and schema validation functions.
 
 src/agent/doc-replicant.md: Documentation summary for the Replicant library covering data-driven event handling, hiccup format with specific features, reactive rendering with atoms, keys for optimization, state management patterns, and common usage patterns.
 
 src/agent/reference_tools.cljc: Tools for debugging and inspecting the reference system, including functions to inspect all references, find orphaned references, validate reference integrity, simulate reference hover effects, get reference statistics, test reference operations, and perform comprehensive reference health checks.
 
-src/agent/schemas.cljc: Agent-specific schemas for development tooling and analysis, defining schemas for transactions, namespace health results, database structure, database diffs, operation results, and providing validation helpers for agent functions.
+src/agent/schemas.cljc: **ENHANCED** - Agent-specific schemas including new command parameter schemas for validation. Defines schemas for transactions, namespace health results, database structure, database diffs, operation results, and provides validation helpers for agent functions.
 
 src/agent/store_inspector.cljc: Store inspection tools for debugging and analysis that provide functions to inspect store state with optional filtering, check reference integrity, get recent operation history with summaries, validate current selection for operations, get performance metrics, and perform quick state dumps.
+
+## New Guardrail Functions
+
+### Environment Detection
+- `agent/detect-environment`: Detects current runtime (browser/node/store-accessible)
+- `agent/validate-environment-for-operation`: Validates environment supports requested operation
+
+### Command Validation
+- `agent/safe-command-dispatch`: Validates command exists before dispatch
+- `agent/safe-schema-validated-dispatch`: Full validation (environment + registry + schema)
+
+### Schema Validation
+- `agent/validate-operation-schema`: Validates data against Malli schemas
+- `agent/validate-command-params`: Validates command parameters before execution
+
+### File Safety
+- `agent/validate-file-namespace-alignment`: Prevents namespace/filename mismatches
+
+### Data Access Safety
+- `agent/validate-data-access-pattern`: Detects JS-style property access in CLJS code
+- `agent/safe-name`: Nil-safe version of name function
+- `agent/safe-first`: Nil-safe version of first function
+- `agent/safe-get-in`: Nil-safe version of get-in with better error messages
+
+### Event Handler Validation
+- `agent/validate-replicant-action-vector`: Validates replicant action vector format
+
+### Build System Safety
+- `agent/detect-cache-corruption`: Detects cache corruption symptoms and suggests cleanup
+- `agent/validate-build-target-compatibility`: Validates .cljc files for target compatibility
 
 ## Chrome DevTools Integration
 
