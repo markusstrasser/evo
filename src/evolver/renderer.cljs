@@ -16,7 +16,7 @@
 (defn render-node [db node-id]
   (let [node (get-in db [:nodes node-id])
         children (get-in db [:children-by-parent node-id] [])
-        selected? (contains? (get-in db [:view :selection-set] #{}) node-id)
+        selected? (contains? (set (get-in db [:view :selection] [])) node-id)
         collapsed? (contains? (get-in db [:view :collapsed]) node-id)
         referenced? (contains? (get-in db [:computed :referenced-nodes]) node-id)
         hovered-referencers (get-in db [:view :hovered-referencers] #{})
@@ -47,7 +47,7 @@
    (for [cmd (registry/get-ui-commands)]
      [:option {:replicant/key (name (:id cmd))
                :value (name (:id cmd))}
-      (:label cmd)])])
+      (:doc cmd)])])
 
 (defn render-log-history [log-history]
   (when (seq log-history)

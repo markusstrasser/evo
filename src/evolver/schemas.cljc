@@ -19,8 +19,6 @@
 (def view-schema
   [:map
    [:selection [:vector string?]]
-   [:selection-set [:set string?]]
-   [:cursor [:maybe string?]]
    [:highlighted {:optional true} [:set string?]]
    [:collapsed {:optional true} [:set string?]]
    [:hovered-referencers {:optional true} [:set string?]]])
@@ -28,8 +26,9 @@
 ;; Derived metadata schema
 (def derived-schema
   [:map
-   [:depth [:map-of string? number?]]
-   [:paths [:map-of string? [:vector string?]]]])
+   [:depth [:map-of string? [:maybe number?]]]
+   [:paths [:map-of string? [:maybe [:vector string?]]]]
+   [:parent-of [:map-of string? string?]]])
 
 ;; References schema - tracks which nodes reference which other nodes
 (def references-schema
@@ -43,8 +42,6 @@
    [:view view-schema]
    [:derived derived-schema]
    [:references {:optional true} references-schema]
-   [:history {:optional true} [:vector any?]]
-   [:history-index {:optional true} int?]
    [:selected-op {:optional true} [:maybe keyword?]]
    [:log-level {:optional true} [:enum :debug :info :warn :error]]
    [:log-history {:optional true} [:sequential [:map
@@ -118,6 +115,12 @@
 (def redo-command-schema
   [:map [:op [:= :redo]]])
 
+;; Forward declare for transaction schema
+(def transaction-command-schema
+  [:map
+   [:op [:= :transaction]]
+   [:commands [:vector any?]]])
+
 ;; Combined command schema
 (def command-schema
   [:or
@@ -129,7 +132,8 @@
    add-reference-command-schema
    remove-reference-command-schema
    undo-command-schema
-   redo-command-schema])
+   redo-command-schema
+   transaction-command-schema])
 
 ;; UI command schemas
 (def ui-command-name-schema keyword?)

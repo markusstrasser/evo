@@ -3,22 +3,17 @@
             [evolver.middleware :as MW]))
 
 ;; ---------- 0) Tiny utilities ----------
-(defn db [store] @store)
+(defn db [store] (:present @store)) ; Extract present state from history ring
 (defn selv [store] (get-in (db store) [:view :selection] []))
-(defn selset [store] (get-in (db store) [:view :selection-set] #{}))
-(defn cursor [store] (get-in (db store) [:view :cursor]))
+(defn selset [store] (set (selv store)))
+(defn cursor [store] (peek (selv store)))
 (defn pos-of [store id] (K/node-position (db store) id))
 
 (defn set-selection! [store v]
-  (swap! store assoc-in [:view :selection] v)
-  (swap! store assoc-in [:view :selection-set] (set v))
-  (swap! store assoc-in [:view :cursor] (peek v))) ; last clicked = primary
+  (swap! store assoc-in [:present :view :selection] v)) ; last clicked = primary
 
 (defn toggle-in-ordered [v x]
   (if (some #{x} v) (vec (remove #{x} v)) (conj v x)))
-
-(defn toggle-in-set [s x]
-  (if (contains? s x) (disj s x) (conj s x)))
 
 (defn- sort-by-index [db ids]
   (->> ids (sort-by #(-> (K/node-position db %) :index))))
@@ -69,6 +64,73 @@
          {:op :insert :parent-id parent :node-id (K/gen-new-id)
           :node-data {:type :div :props {:text "New sibling"}}
           :position (inc index)})))
+
+   ;; ENTER key behavior - context-sensitive block creation
+   :enter-new-block
+   (fn [{:keys [cursor pos cursor-position block-content]}]
+     (when cursor
+       (let [{:keys [parent index]} (pos cursor)]
+         (if (or (nil? cursor-position) (= cursor-position (count (or block-content ""))))
+           ;; Cursor at end - create new sibling
+           {:op :insert :parent-id parent :node-id (K/gen-new-id)
+            :node-data {:type :div :props {:text ""}}
+            :position (inc index)}
+           ;; Cursor in middle - split block
+           (let [content-before (subs (or block-content "") 0 cursor-position)
+                 content-after (subs (or block-content "") cursor-position)]
+             {:op :transaction
+              :commands [{:op :patch :node-id cursor :updates {:props {:text content-before}}}
+                         {:op :insert :parent-id parent :node-id (K/gen-new-id)
+                          :node-data {:type :div :props {:text content-after}}
+                          :position (inc index)}]})))))
+
+   ;; SHIFT+ENTER behavior - line break within block
+   :enter-line-break
+   (fn [{:keys [cursor cursor-position block-content]}]
+     (when cursor
+       (let [content (or block-content "")
+             new-content (str (subs content 0 (or cursor-position 0))
+                              "\n"
+                              (subs content (or cursor-position 0)))]
+         {:op :patch :node-id cursor :updates {:props {:text new-content}}})))
+
+   ;; Backspace at start - merge with previous block
+   :backspace-merge-up
+   (fn [{:keys [cursor pos db cursor-position]}]
+     (when (and cursor (= cursor-position 0))
+       (let [prev-node (K/get-prev db cursor)]
+         (when prev-node
+           (let [current-node (get-in db [:nodes cursor])
+                 prev-node-data (get-in db [:nodes prev-node])
+                 current-text (get-in current-node [:props :text] "")
+                 prev-text (get-in prev-node-data [:props :text] "")
+                 merged-text (str prev-text current-text)
+                 current-children (get-in db [:children-by-parent cursor] [])]
+             {:op :transaction
+              :commands (concat
+                         [{:op :patch :node-id prev-node :updates {:props {:text merged-text}}}]
+                         (for [child current-children]
+                           {:op :move :node-id child :new-parent-id prev-node :position nil})
+                         [{:op :delete :node-id cursor}])})))))
+
+   ;; Delete at end - merge with next block  
+   :delete-merge-down
+   (fn [{:keys [cursor pos db cursor-position block-content]}]
+     (when (and cursor (= cursor-position (count (or block-content ""))))
+       (let [next-node (K/get-next db cursor)]
+         (when next-node
+           (let [current-node (get-in db [:nodes cursor])
+                 next-node-data (get-in db [:nodes next-node])
+                 current-text (get-in current-node [:props :text] "")
+                 next-text (get-in next-node-data [:props :text] "")
+                 merged-text (str current-text next-text)
+                 next-children (get-in db [:children-by-parent next-node] [])]
+             {:op :transaction
+              :commands (concat
+                         [{:op :patch :node-id cursor :updates {:props {:text merged-text}}}]
+                         (for [child next-children]
+                           {:op :move :node-id child :new-parent-id cursor :position nil})
+                         [{:op :delete :node-id next-node}])})))))
 
    ;; structure moves
    :indent
@@ -176,11 +238,11 @@
         v (selv store)
         next (if chord? (toggle-in-ordered v node-id) [node-id])]
     (set-selection! store next)
-    (swap! store K/log-operation {:op :select-node :node-id node-id})))
+    (swap! store update :present K/log-operation {:op :select-node :node-id node-id})))
 
 (defn set-selected-op [store event _]
   (let [v (some-> event :replicant/dom-event .-target .-value)]
-    (swap! store assoc :selected-op (when (not= v "") (keyword v)))))
+    (swap! store assoc-in [:present :selected-op] (when (not= v "") (keyword v)))))
 
 (defn apply-selected-op [store _ _]
   (when-let [op (:selected-op (db store))]
@@ -188,11 +250,11 @@
       (apply! store (build (ctx store))))))
 
 (defn hover-node [store _event {:keys [node-id]}]
-  (let [referencers (K/get-references @store node-id)]
-    (swap! store assoc-in [:view :hovered-referencers] referencers)))
+  (let [referencers (K/get-references (:present @store) node-id)]
+    (swap! store assoc-in [:present :view :hovered-referencers] referencers)))
 
 (defn unhover-node [store _event {:keys [node-id]}]
-  (swap! store assoc-in [:view :hovered-referencers] #{}))
+  (swap! store assoc-in [:present :view :hovered-referencers] #{}))
 
 (defn undo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :undo})))
 (defn redo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :redo})))
@@ -205,6 +267,7 @@
 ;; ---------- 3) Registry (now tiny & consistent) ----------
 (def command-registry
   {:select-node select-node
+   :toggle-selection select-node ; Same as select-node for now
    :set-selected-op set-selected-op
    :apply-selected-op apply-selected-op
    :hover-node hover-node
@@ -216,14 +279,26 @@
    :clear-selection (fn [s _ _] (set-selection! s []))
    :select-all-blocks (fn [s _ _] (set-selection! s (vec (keys (:nodes (db s))))))
 
-    ;; navigation commands (use nav helpers from intent->nav)
+   ;; navigation commands (use nav helpers from intent->nav)
    :navigate-sequential (fn [s _ {:keys [direction]}]
                           (let [build (intent->nav (case direction :up :nav-up :down :nav-down))]
                             (navigate-to s (build (ctx s)))))
 
+   :navigate-sequential-up (fn [s _ params]
+                             (navigate-to s ((intent->nav :nav-up) (ctx s))))
+
+   :navigate-sequential-down (fn [s _ params]
+                               (navigate-to s ((intent->nav :nav-down) (ctx s))))
+
    :navigate-sibling (fn [s _ {:keys [direction]}]
                        (let [build (intent->nav (case direction :up :nav-sibling-up :down :nav-sibling-down))]
                          (navigate-to s (build (ctx s)))))
+
+   :navigate-sibling-up (fn [s _ params]
+                          (navigate-to s ((intent->nav :nav-sibling-up) (ctx s))))
+
+   :navigate-sibling-down (fn [s _ params]
+                            (navigate-to s ((intent->nav :nav-sibling-down) (ctx s))))
 
    :select-parent (fn [s _ _]
                     (navigate-to s ((intent->nav :nav-parent) (ctx s))))
@@ -241,6 +316,31 @@
    :move-block (fn [s _ {:keys [direction]}]
                  (let [k (case direction :up :move-up :down :move-down)]
                    (apply! s ((intent->command k) (ctx s)))))
+
+   :move-up (fn [s _ _]
+              (apply! s ((intent->command :move-up) (ctx s))))
+
+   :move-down (fn [s _ _]
+                (apply! s ((intent->command :move-down) (ctx s))))
+
+    ;; ENTER key behaviors
+   :enter-new-block (fn [s _ _] (apply! s ((intent->command :enter-new-block) (ctx s))))
+
+   :enter-line-break (fn [s event {:keys [cursor-position block-content]}]
+                       (let [context (assoc (ctx s) :cursor-position cursor-position :block-content block-content)]
+                         (when-let [cmd ((intent->command :enter-line-break) context)]
+                           (apply! s cmd))))
+
+    ;; Content merging operations
+   :backspace-merge-up (fn [s event {:keys [cursor-position]}]
+                         (let [context (assoc (ctx s) :cursor-position cursor-position)]
+                           (when-let [cmd ((intent->command :backspace-merge-up) context)]
+                             (apply! s cmd))))
+
+   :delete-merge-down (fn [s event {:keys [cursor-position block-content]}]
+                        (let [context (assoc (ctx s) :cursor-position cursor-position :block-content block-content)]
+                          (when-let [cmd ((intent->command :delete-merge-down) context)]
+                            (apply! s cmd))))
 
     ;; multi-node structural operations
    :indent-block (fn [s _ _]
@@ -266,17 +366,19 @@
    :toggle-collapse (fn [s _ _]
                       (let [selected (cursor s)]
                         (when selected
-                          (let [current-collapsed (get-in @s [:view :collapsed] #{})
-                                new-collapsed (toggle-in-set current-collapsed selected)]
-                            (swap! s assoc-in [:view :collapsed] new-collapsed)))))})
+                          (let [current-collapsed (get-in @s [:present :view :collapsed] #{})
+                                new-collapsed (if (contains? current-collapsed selected)
+                                                (disj current-collapsed selected)
+                                                (conj current-collapsed selected))]
+                            (swap! s assoc-in [:present :view :collapsed] new-collapsed)))))})
 
 (defn dispatch-command [store event [k params]]
   (if-let [h (command-registry k)]
     (try (h store event params)
          (catch js/Error e
-           (swap! store K/log-message :error (str "Command failed: " k)
+           (swap! store update :present K/log-message :error (str "Command failed: " k)
                   {:command k :params params :error (.-message e)})))
-    (swap! store K/log-message :error (str "Unknown command: " k)
+    (swap! store update :present K/log-message :error (str "Unknown command: " k)
            {:command k :params params})))
 
 (defn dispatch-commands [store event actions]

@@ -1,10 +1,10 @@
 (ns evolver.constants
-   "Constants and initial state for the evolver system.")
+  "Constants and initial state for the evolver system.")
 
 ;; Operation types
 (def operation-types
   "Supported operation types"
-  #{:insert :move :patch :delete :reorder :add-reference :remove-reference :undo :redo})
+  #{:insert :move :patch :delete :reorder :add-reference :remove-reference :undo :redo :transaction})
 
 ;; Log levels with priorities
 (def log-levels
@@ -30,15 +30,13 @@
    {"root" ["title" "p1-select" "p2-high" "p3-both" "div1"]
     "div1" ["p4-click"]}
 
-    :view
-    {:selected #{"p1-select"}
-     :highlighted #{"p2-high"}
-     :collapsed #{"p4-click"}
-     :hovered-referencers #{}}
+   :view
+   {:selection ["p1-select"]
+    :highlighted #{"p2-high"}
+    :collapsed #{"p4-click"}
+    :hovered-referencers #{}}
 
-    :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
+   :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
 
-    :history []
-    :history-index 0
-    :log-level :info
-    :log-history []})
+   :log-level :info
+   :log-history []})

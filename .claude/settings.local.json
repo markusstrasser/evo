@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__clojure-shadow-cljs__read_file",
+      "mcp__clojure-shadow-cljs__clojure_edit"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
