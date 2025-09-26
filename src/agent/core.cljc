@@ -1,6 +1,7 @@
 (ns agent.core
   "Simple agent utilities for the evolver app"
-  (:require [agent.schemas :as schemas]))
+  (:require [agent.schemas :as schemas]
+            [malli.core :as m]))
 
 (defn detect-environment
   "Detect current runtime environment to prevent environment mismatches"
@@ -316,12 +317,75 @@
        :else
        ["Environment looks healthy" "Ready for development"])}))
 
+(defn safe-repl-connect
+  "Safely validate environment for ClojureScript REPL connection"
+  []
+  #?(:cljs
+     (let [env (detect-environment)]
+       (cond
+         (not (:browser? env))
+         (do (js/console.error "❌ Browser not detected. Open http://localhost:8080 first")
+             {:success false :issue "no-browser"})
+         
+         (not (exists? js/shadow))
+         (do (js/console.error "❌ Shadow-cljs not available. Ensure shadow-cljs watch is running")
+             {:success false :issue "no-shadow"})
+         
+         :else
+         (do (js/console.log "✅ Environment ready for ClojureScript REPL")
+             (js/console.log "💡 Connect with: (shadow.cljs.devtools.api/repl :frontend)")
+             {:success true :message "Environment validated - ready for REPL connection"})))
+     :clj
+     (do (println "⚠️ safe-repl-connect validation only works in ClojureScript context")
+         {:success false :issue "not-cljs"})))
+
+(defn list-known-schemas
+  "List known functions with Malli schemas (simplified approach)"
+  []
+  {"Known schema-enabled functions:"
+  ["evolver.kernel/add-reference - validates db and reference params"
+  "evolver.kernel/remove-reference - validates db and reference params"
+  "agent.core/safe-command-dispatch - validates store, event data, and command"]
+   "Usage:" "Use (meta #'function-name) to inspect schemas directly"
+   "Example:" "(meta #'evolver.kernel/add-reference)"})
+
+(defn quick-schema-check
+  "Quick check of schema availability for key functions"
+  []
+  (let [checks [["evolver.kernel/add-reference" 
+                 (try (some? (get (meta #'evolver.kernel/add-reference) :malli/schema))
+                      (catch :default _ false))]
+                ["evolver.kernel/remove-reference"
+                 (try (some? (get (meta #'evolver.kernel/remove-reference) :malli/schema))
+                      (catch :default _ false))]
+]]
+    (into {} checks)))
+
+(defn validate-call
+  "Manually validate function call with its Malli schema - requires (require '[malli.core :as m])"
+  [fn-var & args]
+  (if-let [schema (get (meta fn-var) :malli/schema)]
+    (let [input-schema (second schema)]  ; [:=> [:cat ...] ...]
+      (if (= 2 (count schema))
+        {:valid? true :message "Schema has no input validation"}
+        (try 
+          {:valid? (m/validate input-schema (vec args))
+           :schema input-schema
+           :args args}
+          (catch :default e
+            {:error "malli.core not available - require it first" :exception e}))))
+    {:error "No Malli schema found for function"}))
+
 (defn help
   "Show available agent functions"
   []
   (println "Agent utilities:")
   (println "  (detect-environment) - Check current runtime environment")
-  (println "  (validate-dev-environment) - Validate development setup")
+  (println "  (validate-dev-environment) - Validate development setup") 
   (println "  (check-development-environment) - Full environment health check")
+  (println "  (safe-repl-connect) - Validate environment for ClojureScript REPL")
+  (println "  (list-known-schemas) - Show all known Malli schema functions")
+  (println "  (quick-schema-check) - Check schema availability for key functions")
+  (println "  (validate-call #'fn-var arg1 arg2) - Manually test function schemas")
   (println "  (validate-transaction tx) - Validate transaction format")
   (println "  Run 'npm run check-env' to check for shadow-cljs conflicts"))
