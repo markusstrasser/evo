@@ -218,15 +218,26 @@
    :select-last-child (fn [s _ _]
                         (navigate-to s ((intent->cmd :nav-last-child) (ctx s))))
 
-   ;; direct intents (reuse table)
+   ;; direct intents (single node operations)
    :create-child-block (fn [s _ _] (apply! s ((intent->cmd :create-child-block) (ctx s))))
    :create-sibling-above (fn [s _ _] (apply! s ((intent->cmd :create-sibling-above) (ctx s))))
    :create-sibling-below (fn [s _ _] (apply! s ((intent->cmd :create-sibling-below) (ctx s))))
-   :indent-block (fn [s _ _] (apply! s ((intent->cmd :indent) (ctx s))))
-   :outdent-block (fn [s _ _] (apply! s ((intent->cmd :outdent) (ctx s))))
    :move-block (fn [s _ {:keys [direction]}]
                  (let [k (case direction :up :move-up :down :move-down)]
                    (apply! s ((intent->cmd k) (ctx s)))))
+
+   ;; multi-node structural operations
+   :indent-block (fn [s _ _]
+                   (doseq [id (sel s)]
+                     (let [build (intent->cmd :indent)
+                           cmd (build (assoc (ctx s) :selected1 id))]
+                       (when cmd (apply! s cmd)))))
+
+   :outdent-block (fn [s _ _]
+                    (doseq [id (sel s)]
+                      (let [build (intent->cmd :outdent)
+                            cmd (build (assoc (ctx s) :selected1 id))]
+                        (when cmd (apply! s cmd)))))
 
    ;; multi-node operations
    :delete-selected-blocks
