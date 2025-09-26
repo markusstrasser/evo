@@ -1,10 +1,12 @@
 (ns evolver.core
-   (:require [replicant.dom :as r]
-             [evolver.kernel :as kernel]
-             [evolver.renderer :as renderer]
-             [evolver.state :as state]
-             [evolver.commands :as commands]
-             [evolver.keyboard :as keyboard]))
+  (:require [replicant.dom :as r]
+            [evolver.kernel :as kernel]
+            [evolver.renderer :as renderer]
+            [evolver.state :as state]
+            [evolver.commands :as commands]
+            [evolver.keyboard :as keyboard]
+            [agent.core :as agent]
+            [agent.store-inspector :as inspector]))
 
 (defonce store (state/create-store-atom
                 kernel/db
@@ -44,3 +46,8 @@
                  (when (not= old-state new-state)
                    (js/console.log "Reactive render triggered")
                    (r/render root (renderer/render new-state)))))))
+
+(defn load-agent-tools!
+  "Load agent tools for REPL development"
+  []
+  (js/console.log "Agent tools would be loaded here"))
