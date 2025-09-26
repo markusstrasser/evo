@@ -2,6 +2,8 @@
   "Simple agent utilities for the evolver app"
   (:require [agent.schemas :as schemas]
             [malli.core :as m]
+            [clojure.data :as data]
+            [clojure.set :as set]
             #?(:clj [clojure.java.io :as io]
                :cljs [clojure.string :as str])
             #?(:clj [clojure.string :as str])))
@@ -26,11 +28,11 @@
       ;; Check for browser connectivity for ClojureScript development
       (and (:cljs-repl? env) (not (:browser? env)))
       (conj "ClojureScript REPL detected but browser not connected. Open http://localhost:8080")
-      
+
       ;; Check for store accessibility in browser context
       (and (:browser? env) (not (:store-accessible? env)))
       (conj "Browser detected but store not accessible. Ensure app is loaded")
-      
+
       ;; Warn about node context for UI operations
       (and (:node? env) (not (:browser? env)))
       (conj "Node.js environment detected. Browser required for UI operations"))))
@@ -38,17 +40,17 @@
 (defn check-shadow-cljs-conflicts
   "Detect potential shadow-cljs process conflicts (ClojureScript only)"
   []
-  #?(:cljs 
+  #?(:cljs
      (let [issues []]
        ;; In browser, we can check for compilation issues indirectly
        (cond-> issues
          ;; Check if hot reload seems broken (this is heuristic)
-         (try 
+         (try
            (let [build-id js/shadow.cljs.devtools.client.env.build-id]
              (and build-id (< (count (str build-id)) 5))) ; Normal build IDs are longer
            (catch :default _ false))
          (conj "Possible compilation/hot-reload issues. Check for process conflicts")
-         
+
          ;; Check for multiple nREPL connections (another heuristic)
          false ; placeholder - hard to detect from browser
          (conj "Multiple development processes may be running")))
@@ -308,18 +310,18 @@
     {:environment env
      :issues all-issues
      :healthy? (empty? all-issues)
-     :recommendations 
+     :recommendations
      (cond
        (not (:browser? env))
        ["Open browser at http://localhost:8080" "Connect ClojureScript REPL"]
-       
+
        (not (:store-accessible? env))
        ["Ensure app is fully loaded" "Check browser console for errors"]
-       
+
        (seq shadow-issues)
        ["Run 'npm run check-env' to detect process conflicts"
         "Use 'npm dev' instead of manual shadow-cljs commands"]
-       
+
        :else
        ["Environment looks healthy" "Ready for development"])}))
 
@@ -332,11 +334,11 @@
          (not (:browser? env))
          (do (js/console.error "❌ Browser not detected. Open http://localhost:8080 first")
              {:success false :issue "no-browser"})
-         
+
          (not (exists? js/shadow))
          (do (js/console.error "❌ Shadow-cljs not available. Ensure shadow-cljs watch is running")
              {:success false :issue "no-shadow"})
-         
+
          :else
          (do (js/console.log "✅ Environment ready for ClojureScript REPL")
              (js/console.log "💡 Connect with: (shadow.cljs.devtools.api/repl :frontend)")
@@ -349,16 +351,16 @@
   "List known functions with Malli schemas (simplified approach)"
   []
   {"Known schema-enabled functions:"
-  ["evolver.kernel/add-reference - validates db and reference params"
-  "evolver.kernel/remove-reference - validates db and reference params"
-  "agent.core/safe-command-dispatch - validates store, event data, and command"]
+   ["evolver.kernel/add-reference - validates db and reference params"
+    "evolver.kernel/remove-reference - validates db and reference params"
+    "agent.core/safe-command-dispatch - validates store, event data, and command"]
    "Usage:" "Use (meta #'function-name) to inspect schemas directly"
    "Example:" "(meta #'evolver.kernel/add-reference)"})
 
 (defn quick-schema-check
   "Quick check of schema availability for key functions"
   []
-  (let [checks [["evolver.kernel/add-reference" 
+  (let [checks [["evolver.kernel/add-reference"
                  (try
                    (when-let [fn-var (resolve 'evolver.kernel/add-reference)]
                      (some? (get (meta fn-var) :malli/schema)))
@@ -367,18 +369,17 @@
                  (try
                    (when-let [fn-var (resolve 'evolver.kernel/remove-reference)]
                      (some? (get (meta fn-var) :malli/schema)))
-                   (catch #?(:cljs :default :clj Exception) _ false))]
-]]
+                   (catch #?(:cljs :default :clj Exception) _ false))]]]
     (into {} checks)))
 
 (defn validate-call
   "Manually validate function call with its Malli schema - requires (require '[malli.core :as m])"
   [fn-var & args]
   (if-let [schema (get (meta fn-var) :malli/schema)]
-    (let [input-schema (second schema)]  ; [:=> [:cat ...] ...]
+    (let [input-schema (second schema)] ; [:=> [:cat ...] ...]
       (if (= 2 (count schema))
         {:valid? true :message "Schema has no input validation"}
-        (try 
+        (try
           {:valid? (m/validate input-schema (vec args))
            :schema input-schema
            :args args}
@@ -386,16 +387,168 @@
             {:error "malli.core not available - require it first" :exception e}))))
     {:error "No Malli schema found for function"}))
 
+;; Selection State Validation (for the specific triple-field issue)
+(defn validate-selection-consistency
+  "Validates that selection, selection-set, and cursor are consistent"
+  [view-state]
+  (let [{:keys [selection selection-set cursor]} view-state
+        selection-vec (or selection [])
+        selection-s (or selection-set #{})
+        cursor-id cursor]
+    {:valid? (and (= (set selection-vec) selection-s)
+                  (or (nil? cursor-id) (contains? selection-s cursor-id)))
+     :issues (cond-> []
+               (not= (set selection-vec) selection-s)
+               (conj {:type :selection-mismatch
+                      :selection-vector selection-vec
+                      :selection-set selection-s
+                      :diff {:only-in-vector (set/difference (set selection-vec) selection-s)
+                             :only-in-set (set/difference selection-s (set selection-vec))}})
+
+               (and cursor-id (not (contains? selection-s cursor-id)))
+               (conj {:type :cursor-not-selected
+                      :cursor cursor-id
+                      :selection-set selection-s}))
+     :selection-vector selection-vec
+     :selection-set selection-s
+     :cursor cursor-id}))
+
+;; Mock Event Utilities for Testing
+(defn create-mock-dom-event
+  "Creates a mock DOM event for testing UI commands"
+  [& {:keys [type target modifiers]
+      :or {type "click" target nil modifiers #{}}}]
+  #?(:cljs
+     (let [event #js {:type type
+                      :target target
+                      :ctrlKey (contains? modifiers :ctrl)
+                      :shiftKey (contains? modifiers :shift)
+                      :metaKey (contains? modifiers :meta)
+                      :altKey (contains? modifiers :alt)
+                      :preventDefault (fn [])
+                      :stopPropagation (fn [])}]
+       event)
+     :clj
+     {:type type
+      :target target
+      :modifiers modifiers
+      :preventDefault (fn [])
+      :stopPropagation (fn [])}))
+
+(defn create-mock-target
+  "Creates a mock DOM target element"
+  [node-id & {:keys [dataset] :or {dataset {}}}]
+  #?(:cljs
+     (let [merged-dataset (merge {"nodeId" node-id} dataset)]
+       #js {:dataset (clj->js merged-dataset)
+            :id node-id})
+     :clj
+     {:dataset (merge {"nodeId" node-id} dataset)
+      :id node-id}))
+
+;; Navigation Validation
+(defn validate-navigation-prerequisites
+  "Validates that navigation commands have required context"
+  [db operation-type & {:keys [target-id]}]
+  (let [cursor (get-in db [:view :cursor])
+        selection (get-in db [:view :selection] [])
+        selection-set (get-in db [:view :selection-set] #{})]
+    (case operation-type
+      (:nav-up :nav-down :nav-in :nav-out)
+      (when (nil? cursor)
+        {:warning :missing-cursor
+         :operation-type operation-type
+         :suggestion "Navigation requires :cursor field in :view state"
+         :current-selection selection})
+
+      (:select-node :toggle-selection)
+      (when-not target-id
+        {:error :missing-target-id
+         :operation-type operation-type
+         :suggestion "Selection operations require :target-id parameter"})
+
+      nil))) ; No validation needed for other operations
+
+;; Unified Test Context Creator
+(defn create-test-context
+  "Creates a complete test context that mirrors UI behavior"
+  [initial-state & {:keys [selection cursor] :or {selection [] cursor nil}}]
+  (let [consistent-selection-set (set selection)
+        final-cursor (or cursor (first selection))]
+    (-> initial-state
+        (assoc-in [:view :selection] selection)
+        (assoc-in [:view :selection-set] consistent-selection-set)
+        (assoc-in [:view :cursor] final-cursor))))
+
+;; Command Execution Tracer
+(def ^:dynamic *command-trace* (atom []))
+
+(defn trace-command-execution
+  "Traces command execution from dispatch to state change"
+  [command-name params before-state after-state]
+  (let [trace-entry {:timestamp #?(:cljs (js/Date.now) :clj (System/currentTimeMillis))
+                     :command command-name
+                     :params params
+                     :state-changes (when (and before-state after-state)
+                                      (let [[removed added _] (data/diff before-state after-state)]
+                                        {:removed removed
+                                         :added added
+                                         :summary (str "Changed: "
+                                                       (count (tree-seq coll? seq removed)) " removed, "
+                                                       (count (tree-seq coll? seq added)) " added")}))}]
+    (swap! *command-trace* conj trace-entry)
+    ;; Keep only last 20 traces to prevent memory bloat
+    (when (> (count @*command-trace*) 20)
+      (swap! *command-trace* #(vec (take-last 20 %))))
+    trace-entry))
+
+(defn get-command-trace
+  "Get recent command execution trace"
+  []
+  @*command-trace*)
+
+(defn clear-command-trace
+  "Clear command execution trace"
+  []
+  (reset! *command-trace* []))
+
+(defn traced-dispatch
+  "Dispatch command with execution tracing"
+  [store event-data [cmd-name params]]
+  (let [before-state @store
+        result (safe-command-dispatch store event-data [cmd-name params])
+        after-state @store]
+    (trace-command-execution cmd-name params before-state after-state)
+    result))
+
 (defn help
   "Show available agent functions"
   []
   (println "Agent utilities:")
   (println "  (detect-environment) - Check current runtime environment")
-  (println "  (validate-dev-environment) - Validate development setup") 
+  (println "  (validate-dev-environment) - Validate development setup")
   (println "  (check-development-environment) - Full environment health check")
   (println "  (safe-repl-connect) - Validate environment for ClojureScript REPL")
   (println "  (list-known-schemas) - Show all known Malli schema functions")
   (println "  (quick-schema-check) - Check schema availability for key functions")
   (println "  (validate-call #'fn-var arg1 arg2) - Manually test function schemas")
   (println "  (validate-transaction tx) - Validate transaction format")
+  (println "")
+  (println "DX Tools (fixes from agent session failures):")
+  (println "  (validate-selection-consistency view-state) - Check selection/cursor consistency")
+  (println "  (create-mock-dom-event) - Create mock events for testing UI commands")
+  (println "  (create-mock-target node-id) - Create mock DOM targets")
+  (println "  (validate-navigation-prerequisites db op-type) - Check if navigation will work")
+  (println "  (create-test-context state :selection [] :cursor nil) - Create UI-like test state")
+  (println "")
+  (println "Command tracing:")
+  (println "  (traced-dispatch store event [cmd params]) - Dispatch with execution tracing")
+  (println "  (get-command-trace) - View recent command execution trace")
+  (println "  (clear-command-trace) - Clear command execution trace")
+  (println "")
+  (println "Store inspection (agent.store-inspector):")
+  (println "  (track-watch-update :store-key) - Monitor for watch loops")
+  (println "  (clear-watch-tracking) - Clear watch loop detection history")
+  (println "")
+  (println "Environment checks:")
   (println "  Run 'npm run check-env' to check for shadow-cljs conflicts"))
