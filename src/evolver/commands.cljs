@@ -268,7 +268,7 @@
       (js/console.error "Unknown command:" cmd-name)
       (swap! store kernel/log-message :error
              (str "Unknown command: " cmd-name)
-             {:command cmd-name :params params}))))
+             {:command cmd-name :params params :available-commands (keys command-registry)}))))
 
 (defn dispatch-commands
   "Dispatch multiple commands"
