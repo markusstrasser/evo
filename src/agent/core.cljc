@@ -37,6 +37,7 @@
 
 (defn safe-command-dispatch
   "Dispatch command with environment and registry validation"
+  {:malli/schema [:=> [:cat any? map? [:tuple keyword? map?]] any?]}
   [store event-data [cmd-name params]]
   (validate-environment-for-operation :store-access)
   (if-let [handler (get (resolve 'evolver.commands/command-registry) cmd-name)]
