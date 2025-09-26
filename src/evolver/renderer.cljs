@@ -16,7 +16,7 @@
 (defn render-node [db node-id]
   (let [node (get-in db [:nodes node-id])
         children (get-in db [:children-by-parent node-id] [])
-        selected? (contains? (get-in db [:view :selected]) node-id)
+        selected? (contains? (get-in db [:view :selection-set] #{}) node-id)
         collapsed? (contains? (get-in db [:view :collapsed]) node-id)
         referenced? (contains? (get-in db [:computed :referenced-nodes]) node-id)
         hovered-referencers (get-in db [:view :hovered-referencers] #{})
@@ -31,7 +31,7 @@
                      collapsed? (conj :collapsed)
                      referenced? (conj :referenced)
                      is-referencer-highlighted? (conj :referencer-highlighted))
-            :on (when-not (= node-id "root")
+            :on (when-not (= node-id kernel/root-id)
                   {:click [[:select-node {:node-id node-id}]]
                    :mouseenter [[:hover-node {:node-id node-id}]]
                    :mouseleave [[:unhover-node {:node-id node-id}]]})}
@@ -41,13 +41,13 @@
               referenced? (conj (render-references db node-id)))))))
 
 (defn render-ops-dropdown [selected-op]
-   [:select {:value (if selected-op (name selected-op) "")
-             :on {:change [[:set-selected-op]]}}
-    [:option {:replicant/key "none" :value ""} "Select operation"]
-    (for [cmd (registry/get-ui-commands)]
-      [:option {:replicant/key (name (:id cmd))
-                :value (name (:id cmd))}
-       (:label cmd)])])
+  [:select {:value (if selected-op (name selected-op) "")
+            :on {:change [[:set-selected-op]]}}
+   [:option {:replicant/key "none" :value ""} "Select operation"]
+   (for [cmd (registry/get-ui-commands)]
+     [:option {:replicant/key (name (:id cmd))
+               :value (name (:id cmd))}
+      (:label cmd)])])
 
 (defn render-log-history [log-history]
   (when (seq log-history)
@@ -136,7 +136,7 @@
    [:h1 "Tree Editor"]
    (render-error-boundary db)
    [:div {:class [:tree]}
-    (render-node db "root")]
+    (render-node db kernel/root-id)]
    [:div {:class [:controls]}
     (render-ops-dropdown (:selected-op db))
     [:button {:on {:click [[:apply-selected-op]]}} "Apply Op"]
