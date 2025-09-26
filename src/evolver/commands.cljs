@@ -98,7 +98,7 @@
 
                       nil)]
         (when command
-                            (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))
+          (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))
 
 (defn- undo-command [store _event-data _params]
   (let [result (middleware/safe-apply-command-with-middleware @store {:op :undo})]
@@ -126,6 +126,15 @@
                         (let [all-nodes (keys (:nodes @store))]
                           (swap! store assoc-in [:view :selected] (set all-nodes))))
 
+   :navigate-sequential (fn [store _event-data {:keys [direction]}]
+                          (let [selected (first (get-in @store [:view :selected]))]
+                            (when selected
+                              (let [target-node (case direction
+                                                  :up (kernel/get-prev @store selected)
+                                                  :down (kernel/get-next @store selected))]
+                                (when target-node
+                                  (swap! store assoc-in [:view :selected] #{target-node}))))))
+
    :navigate-sibling (fn [store _event-data {:keys [direction]}]
                        (let [selected (first (get-in @store [:view :selected]))]
                          (when selected
@@ -143,10 +152,23 @@
    :select-parent (fn [store _event-data _params]
                     (let [selected (first (get-in @store [:view :selected]))]
                       (when selected
-                        (let [pos (kernel/node-position @store selected)
-                              parent-id (:parent pos)]
-                          (when (not= parent-id "root")
+                        (let [parent-id (kernel/get-parent @store selected)]
+                          (when (and parent-id (not= parent-id "root"))
                             (swap! store assoc-in [:view :selected] #{parent-id}))))))
+
+   :select-first-child (fn [store _event-data _params]
+                         (let [selected (first (get-in @store [:view :selected]))]
+                           (when selected
+                             (let [first-child (kernel/get-first-child @store selected)]
+                               (when first-child
+                                 (swap! store assoc-in [:view :selected] #{first-child}))))))
+
+   :select-last-child (fn [store _event-data _params]
+                        (let [selected (first (get-in @store [:view :selected]))]
+                          (when selected
+                            (let [last-child (kernel/get-last-child @store selected)]
+                              (when last-child
+                                (swap! store assoc-in [:view :selected] #{last-child}))))))
 
    :create-child-block (fn [store _event-data _params]
                          (let [selected (first (get-in @store [:view :selected]))]
@@ -156,51 +178,53 @@
                                             :node-id (kernel/gen-new-id)
                                             :node-data {:type :div :props {:text "New child"}}
                                             :position nil}]
-                                    (reset! store (middleware/safe-apply-command-with-middleware @store command))))))
+                               (reset! store (middleware/safe-apply-command-with-middleware @store command))))))
 
    :create-sibling-above (fn [store _event-data _params]
                            (let [selected (first (get-in @store [:view :selected]))]
                              (when selected
-                                (let [pos (kernel/node-position @store selected)]
-                                  (reset! store (middleware/safe-apply-command-with-middleware @store {:op :insert
-                                                                                                   :parent-id (:parent pos)
-                                                                                                   :node-id (kernel/gen-new-id)
-                                                                                                   :node-data {:type :div :props {:text "New sibling"}}
-                                                                                                   :position (:index pos)}))))))
+                               (let [pos (kernel/node-position @store selected)]
+                                 (reset! store (middleware/safe-apply-command-with-middleware @store {:op :insert
+                                                                                                      :parent-id (:parent pos)
+                                                                                                      :node-id (kernel/gen-new-id)
+                                                                                                      :node-data {:type :div :props {:text "New sibling"}}
+                                                                                                      :position (:index pos)}))))))
 
    :delete-selected-blocks (fn [store _event-data _params]
                              (let [selected (get-in @store [:view :selected])]
                                (when (seq selected)
                                  (doseq [node-id selected]
-                                    (let [command {:op :delete :node-id node-id :recursive true}]
-                                      (reset! store (middleware/safe-apply-command-with-middleware @store command))))
+                                   (let [command {:op :delete :node-id node-id :recursive true}]
+                                     (reset! store (middleware/safe-apply-command-with-middleware @store command))))
                                  (swap! store assoc-in [:view :selected] #{}))))
 
    :indent-block (fn [store _event-data _params]
-                   (let [selected (first (get-in @store [:view :selected]))]
-                     (when selected
-                       (let [pos (kernel/node-position @store selected)]
-                         (when (> (:index pos) 0)
-                           (let [siblings (get-in @store [:children-by-parent (:parent pos)])
-                                 new-parent-id (nth siblings (dec (:index pos)))
-                                 command {:op :move
-                                          :node-id selected
-                                          :new-parent-id new-parent-id
-                                          :position nil}]
-                             (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                               (reset! store result))))))))
+                   (let [selected-set (get-in @store [:view :selected])]
+                     (when (seq selected-set)
+                       (doseq [node-id selected-set]
+                         (let [pos (kernel/node-position @store node-id)]
+                           (when (and pos (> (:index pos) 0))
+                             (let [siblings (get-in @store [:children-by-parent (:parent pos)])
+                                   new-parent-id (nth siblings (dec (:index pos)))
+                                   command {:op :move
+                                            :node-id node-id
+                                            :new-parent-id new-parent-id
+                                            :position nil}]
+                               (let [result (middleware/safe-apply-command-with-middleware @store command)]
+                                 (reset! store result)))))))))
 
    :outdent-block (fn [store _event-data _params]
-                    (let [selected (first (get-in @store [:view :selected]))]
-                      (when selected
-                        (let [pos (kernel/node-position @store selected)]
-                          (when (not= (:parent pos) "root")
-                            (let [parent-pos (kernel/node-position @store (:parent pos))
-                                  command {:op :move
-                                           :node-id selected
-                                           :new-parent-id (:parent parent-pos)
-                                           :position (inc (:index parent-pos))}]
-                              (reset! store (middleware/safe-apply-command-with-middleware @store command))))))))
+                    (let [selected-set (get-in @store [:view :selected])]
+                      (when (seq selected-set)
+                        (doseq [node-id selected-set]
+                          (let [pos (kernel/node-position @store node-id)]
+                            (when (and pos (not= (:parent pos) "root"))
+                              (let [parent-pos (kernel/node-position @store (:parent pos))
+                                    command {:op :move
+                                             :node-id node-id
+                                             :new-parent-id (:parent parent-pos)
+                                             :position (inc (:index parent-pos))}]
+                                (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))))
 
    :move-block (fn [store _event-data {:keys [direction]}]
                  (let [selected (first (get-in @store [:view :selected]))]
