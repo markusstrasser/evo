@@ -9,7 +9,9 @@
 - **Watch Failures**: Reactive updates not triggering renders
 - **Nil Dereferencing**: Functions like `name` failing on nil values
 - **Event Handler Format**: Incorrect replicant action vector format
-- **Namespace Availability**: Agent namespaces may not be available in test builds (ensure source-paths include agent directory)
+- **Filename/Namespace Mismatch**: shadow-cljs requires exact match - `some_file.cljc` must contain `(ns some_file)`, not `(ns some-file)`
+- **Source Path Build Targets**: Files in global `:source-paths` don't auto-compile into build targets (use `src/agent/` not `./agent/`)
+- **Cache Corruption**: Mysterious namespace errors persist after fixes (`npx shadow-cljs stop && rm -rf .shadow-cljs out target`)
 - **CLJC Compatibility**: .cljc files may not compile in node-test targets (test in browser context first)
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
 
@@ -17,23 +19,24 @@
 
 - **Console Logging**: Use `(js/console.log ...)` in event handlers and operations
 - **Selection State**: Verify `(:selected (:view @store))` before operations
-- **Store Inspection**: Use browser console with `evolver.core.store.cljs$core$IDeref$_deref$arity$1()`
+- **Store Inspection**: Use `(require '[agent.core :as agent])` in ClojureScript REPL or `evo.inspectStore()` in browser console
 - **Chrome DevTools**: Use click simulation and snapshot inspection for UI state
 - **DOM Inspection**: Check element attributes and event bubbling with `document.querySelectorAll`
 - **Render Testing**: Test individual render functions with `evolver.renderer.render_node(state, "root")`
 
 ## Agent Tool Usage
 
-- **Reference Tools**: `agent/reference_tools.cljc` for inspecting reference graphs and validating integrity
-- **Store Inspector**: `agent/store-inspector.cljc` for comprehensive state analysis and performance metrics
-- **Dev Tools**: `agent/dev-tools.cljc` for debugging helpers and state manipulation
+- **ClojureScript REPL**: `(require '[agent.core :as agent])` - Available after moving to `src/agent/`
+- **Browser Console**: `evo.inspectStore()`, `evo.checkIntegrity()`, `evo.performance()` - Injected via Chrome DevTools
+- **Automated Testing**: `test/evolver/agent_integration_test.cljs` - Chrome DevTools integration hooks
 
 ## ClojureScript REPL Setup
 
-### Connection Requirements
-- JS runtime required: Open browser at http://localhost:8080 first
-- Connect with `(shadow/repl :frontend)`
+### Connection Requirements  
+- **CRITICAL**: Open browser at http://localhost:8080 first (agent tools won't load without JS runtime)
+- Connect with `(shadow/repl :frontend)` or use ClojureScript REPL
 - Confirm with `(js/console.log "test")`
+- Load agent tools: `(require '[agent.core :as agent] :reload)`
 
 ### Data Access Patterns
 - ❌ Wrong: `store.state.view.selected` (CLJS ≠ JS objects)
