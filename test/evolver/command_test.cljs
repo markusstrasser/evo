@@ -25,7 +25,7 @@
     (let [store (create-test-store)]
       ;; Just test that dispatch doesn't throw and store gets updated properly
       (commands/dispatch-command store {} [:select-node {:node-id "p2-high"}])
-      (is (= #{"p2-high"} (get-in @store [:view :selected])))))
+      (is (= #{"p2-high"} (get-in @store [:view :selection-set])))))
 
   (testing "Invalid command handling"
     (let [store (create-test-store)
@@ -39,18 +39,19 @@
 (deftest test-selection-commands
   (testing "Select node command updates selection"
     (let [store (create-test-store)]
-      (is (= #{"p1-select"} (get-in @store [:view :selected])))
+      (is (= #{"p1-select"} (get-in @store [:view :selection-set])))
 
       (commands/dispatch-command store {} [:select-node {:node-id "p2-high"}])
-      (is (= #{"p2-high"} (get-in @store [:view :selected])))))
+      (is (= #{"p2-high"} (get-in @store [:view :selection-set])))))
 
   (testing "Clear selection command works"
     (let [store (create-test-store)]
-      (swap! store assoc-in [:view :selected] #{"p1-select" "p2-high"})
-      (is (= #{"p1-select" "p2-high"} (get-in @store [:view :selected])))
+      (do (swap! store assoc-in [:view :selection] ["p1-select" "p2-high"])
+          (swap! store assoc-in [:view :selection-set] #{"p1-select" "p2-high"}))
+      (is (= #{"p1-select" "p2-high"} (get-in @store [:view :selection-set])))
 
       (commands/dispatch-command store {} [:clear-selection {}])
-      (is (= #{} (get-in @store [:view :selected]))))))
+      (is (= #{} (get-in @store [:view :selection-set]))))))
 
 (deftest test-keyboard-command-integration
   (testing "Keyboard commands are registered"
@@ -61,9 +62,10 @@
   (testing "Keyboard commands work with store"
     (let [store (create-test-store)]
       ;; Test navigation
-      (swap! store assoc-in [:view :selected] #{"p1-select"})
+      (do (swap! store assoc-in [:view :selection] ["p1-select"])
+          (swap! store assoc-in [:view :selection-set] #{"p1-select"}))
       (commands/dispatch-command store {} [:navigate-sibling {:direction :down}])
-      (is (= #{"p2-high"} (get-in @store [:view :selected]))))))
+      (is (= #{"p2-high"} (get-in @store [:view :selection-set]))))))
 
 ;; Duplicate test removed - keeping only the self-documenting version
 
@@ -79,14 +81,15 @@
                                          (test-with-agent-validation
                                           (let [store (create-test-store)]
                                             (commands/dispatch-command store {} [:select-node {:node-id "p2-high"}])
-                                            (is (= #{"p2-high"} (get-in @store [:view :selected]))))))
+                                            (is (= #{"p2-high"} (get-in @store [:view :selection-set]))))))
 
                     (acceptance-criteria "Clear selection removes all selected nodes"
                                          (test-with-agent-validation
                                           (let [store (create-test-store)]
-                                            (swap! store assoc-in [:view :selected] #{"p1-select" "p2-high"})
+                                            (do (swap! store assoc-in [:view :selection] ["p1-select" "p2-high"])
+                                                (swap! store assoc-in [:view :selection-set] #{"p1-select" "p2-high"}))
                                             (commands/dispatch-command store {} [:clear-selection {}])
-                                            (is (= #{} (get-in @store [:view :selected])))))))
+                                            (is (= #{} (get-in @store [:view :selection-set])))))))
 
         (user-story "Handle multiple commands in sequence"
                     (acceptance-criteria "Batch command execution maintains state consistency"
@@ -95,4 +98,4 @@
                                             (commands/dispatch-commands store {}
                                                                         [[:select-node {:node-id "p2-high"}]
                                                                          [:clear-selection {}]])
-                                            (is (= #{} (get-in @store [:view :selected])))))))))
+                                            (is (= #{} (get-in @store [:view :selection-set])))))))))
