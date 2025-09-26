@@ -272,7 +272,10 @@
         (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
       db)))
 
-(defn add-reference [db {:keys [from-node-id to-node-id]}]
+(defn add-reference
+  "Adds a reference from one node to another"
+  {:malli/schema [:=> [:cat map? map?] map?]}
+  [db {:keys [from-node-id to-node-id]}]
   (if (and (contains? (:nodes db) from-node-id)
            (contains? (:nodes db) to-node-id))
     (update-in db [:references to-node-id] (fnil conj #{}) from-node-id)
@@ -281,7 +284,10 @@
                      :to-node-id to-node-id
                      :existing-nodes (keys (:nodes db))}))))
 
-(defn remove-reference [db {:keys [from-node-id to-node-id]}]
+(defn remove-reference
+  "Removes a reference from one node to another"
+  {:malli/schema [:=> [:cat map? map?] map?]}
+  [db {:keys [from-node-id to-node-id]}]
   (if (and (contains? (:nodes db) from-node-id)
            (contains? (:nodes db) to-node-id))
     (update-in db [:references to-node-id] (fnil disj #{}) from-node-id)

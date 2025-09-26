@@ -13,7 +13,10 @@
                 (fn [element db] (r/render element (renderer/render db)))
                 (js/document.getElementById "root")))
 
-(defn handle-event [event-data actions]
+(defn handle-event
+  "Handles DOM events by dispatching commands to the store"
+  {:malli/schema [:=> [:cat map? vector?] any?]}
+  [event-data actions]
   (commands/dispatch-commands store event-data actions))
 
 (defn handle-keyboard-event [event]
