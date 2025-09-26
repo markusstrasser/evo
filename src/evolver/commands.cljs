@@ -1,278 +1,257 @@
 (ns evolver.commands
-  (:require [evolver.kernel :as kernel]
-            [evolver.middleware :as middleware]))
+  (:require [evolver.kernel :as K]
+            [evolver.middleware :as MW]))
 
-(defn- get-selection-context [store]
-  (let [view (:view @store)
-        selected (:selected view)
-        selected-set (set selected)
-        selected-single (first selected)]
-    {:selected selected
-     :selected-set selected-set
-     :selected-single selected-single
-     :has-selection? (seq selected)
-     :multi-selection? (> (count selected) 1)}))
+;; ---------- 0) Tiny utilities ----------
+(defn db [store] @store)
+(defn sel [store] (or (get-in (db store) [:view :selected]) #{}))
+(defn sel1 [store] (first (sel store)))
+(defn pos-of [store id] (K/node-position (db store) id))
+(defn set-sel! [store s] (swap! store assoc-in [:view :selected] s))
+(defn toggle-in-set [S x] ((if (contains? S x) disj conj) S x))
 
-(defn- select-node-command [store event-data {:keys [node-id]}]
-  (when-let [dom-event (:replicant/dom-event event-data)]
-    (.stopPropagation dom-event))
+(defn apply! [store cmd]
+  (when cmd
+    (reset! store (MW/safe-apply-command-with-middleware @store cmd))))
 
-  (let [current-selected (get-in @store [:view :selected])
-        has-modifiers? (when-let [dom-event (:replicant/dom-event event-data)]
-                         (or (.getModifierState dom-event "Shift")
-                             (.getModifierState dom-event "Control")
-                             (.getModifierState dom-event "Meta")))
-        new-selected (if has-modifiers?
-                       (if (contains? current-selected node-id)
-                         (disj current-selected node-id)
-                         (conj current-selected node-id))
-                       #{node-id})
-        tx {:op :select-node :node-id node-id}]
-    (swap! store kernel/log-operation tx)
-    (swap! store assoc-in [:view :selected] new-selected)))
+(defn modifiers [event]
+  (when-let [e (:replicant/dom-event event)]
+    {:shift? (.getModifierState e "Shift")
+     :ctrl? (.getModifierState e "Control")
+     :meta? (.getModifierState e "Meta")
+     :stop! #(.stopPropagation e)}))
 
-(defn- set-selected-op-command [store event-data _params]
-  (let [value (.. (:replicant/dom-event event-data) -target -value)]
-    (swap! store assoc :selected-op (when (not= value "") (keyword value)))))
+(defn ctx [store]
+  (let [s (sel store)]
+    {:db (db store)
+     :selected s
+     :selected1 (first s)
+     :pos (fn [id] (K/node-position (db store) id))}))
 
-(defn- hover-node-command [store _event-data {:keys [node-id]}]
-  (let [referencers (kernel/get-references @store node-id)]
+;; ---------- 1) Pure intent → command builders ----------
+(def intent->cmd
+  {;; creation
+   :create-child-block
+   (fn [{:keys [selected1]}]
+     (when selected1
+       {:op :insert
+        :parent-id selected1
+        :node-id (K/gen-new-id)
+        :node-data {:type :div :props {:text "New child"}}
+        :position nil}))
+
+   :create-sibling-above
+   (fn [{:keys [selected1 pos]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)]
+         {:op :insert :parent-id parent :node-id (K/gen-new-id)
+          :node-data {:type :div :props {:text "New sibling"}}
+          :position index})))
+
+   :create-sibling-below
+   (fn [{:keys [selected1 pos]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)]
+         {:op :insert :parent-id parent :node-id (K/gen-new-id)
+          :node-data {:type :div :props {:text "New sibling"}}
+          :position (inc index)})))
+
+   ;; structure moves
+   :indent
+   (fn [{:keys [selected1 pos]}]
+     (when selected1
+       (let [{:keys [index parent children]} (pos selected1)]
+         (when (> index 0)
+           {:op :move :node-id selected1
+            :new-parent-id (nth children (dec index))
+            :position nil}))))
+
+   :outdent
+   (fn [{:keys [selected1 pos]}]
+     (when selected1
+       (let [{:keys [parent]} (pos selected1)]
+         (when (not= parent "root")
+           (let [{p2 :parent i2 :index} (pos parent)]
+             {:op :move :node-id selected1
+              :new-parent-id p2
+              :position (inc i2)})))))
+
+   ;; references (requires exactly 2 selected)
+   :add-reference
+   (fn [{:keys [selected]}]
+     (when (= 2 (count selected))
+       (let [[from to] (vec selected)]
+         {:op :add-reference :from-node-id from :to-node-id to})))
+
+   :remove-reference
+   (fn [{:keys [selected]}]
+     (when (= 2 (count selected))
+       (let [[from to] (vec selected)]
+         {:op :remove-reference :from-node-id from :to-node-id to})))
+
+   ;; reorder within parent
+   :move-up
+   (fn [{:keys [selected1 pos db]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)
+             new (max 0 (dec index))]
+         (when (not= index new)
+           {:op :reorder :node-id selected1 :parent-id parent
+            :from-index index :to-index new}))))
+
+   :move-down
+   (fn [{:keys [selected1 pos db]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)
+             sibs (get-in db [:children-by-parent parent])
+             new (min (dec (count sibs)) (inc index))]
+         (when (not= index new)
+           {:op :reorder :node-id selected1 :parent-id parent
+            :from-index index :to-index new}))))
+
+   ;; navigation helpers that return navigation info instead of commands
+   :nav-up
+   (fn [{:keys [selected1 db]}]
+     (when selected1
+       (K/get-prev db selected1)))
+
+   :nav-down
+   (fn [{:keys [selected1 db]}]
+     (when selected1
+       (K/get-next db selected1)))
+
+   :nav-sibling-up
+   (fn [{:keys [selected1 pos db]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)]
+         (when (> index 0)
+           (let [siblings (get-in db [:children-by-parent parent])]
+             (nth siblings (dec index)))))))
+
+   :nav-sibling-down
+   (fn [{:keys [selected1 pos db]}]
+     (when selected1
+       (let [{:keys [parent index]} (pos selected1)
+             siblings (get-in db [:children-by-parent parent])]
+         (when (< (inc index) (count siblings))
+           (nth siblings (inc index))))))
+
+   :nav-parent
+   (fn [{:keys [selected1 db]}]
+     (when selected1
+       (let [parent-id (K/get-parent db selected1)]
+         (when (and parent-id (not= parent-id "root"))
+           parent-id))))
+
+   :nav-first-child
+   (fn [{:keys [selected1 db]}]
+     (when selected1
+       (K/get-first-child db selected1)))
+
+   :nav-last-child
+   (fn [{:keys [selected1 db]}]
+     (when selected1
+       (K/get-last-child db selected1)))})
+
+;; ---------- 2) Thin UI handlers (effects kept here on purpose) ----------
+(defn select-node [store event {:keys [node-id]}]
+  (when-let [{:keys [shift? ctrl? meta? stop!]} (modifiers event)] (stop!))
+  (let [cur (sel store)
+        chord? (let [{:keys [shift? ctrl? meta?]} (modifiers event)] (or shift? ctrl? meta?))
+        next (if chord? (toggle-in-set cur node-id) #{node-id})]
+    (swap! store assoc-in [:view :selected] next)
+    (swap! store K/log-operation {:op :select-node :node-id node-id})))
+
+(defn set-selected-op [store event _]
+  (let [v (some-> event :replicant/dom-event .-target .-value)]
+    (swap! store assoc :selected-op (when (not= v "") (keyword v)))))
+
+(defn apply-selected-op [store _ _]
+  (when-let [op (:selected-op (db store))]
+    (when-let [build (intent->cmd op)]
+      (apply! store (build (ctx store))))))
+
+(defn hover-node [store _event {:keys [node-id]}]
+  (let [referencers (K/get-references @store node-id)]
     (swap! store assoc-in [:view :hovered-referencers] referencers)))
 
-(defn- unhover-node-command [store _event-data {:keys [node-id]}]
+(defn unhover-node [store _event {:keys [node-id]}]
   (swap! store assoc-in [:view :hovered-referencers] #{}))
 
-(defn- apply-selected-op-command [store _event-data _params]
-  (let [op (:selected-op @store)
-        {:keys [selected-single selected-set]} (get-selection-context store)]
-    (when op
-      (let [command (case op
-                      :create-child-block
-                      {:op :insert
-                       :parent-id selected-single
-                       :node-id (kernel/gen-new-id)
-                       :node-data {:type :div :props {:text (str "Child of " selected-single)}}
-                       :position nil}
+(defn undo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :undo})))
+(defn redo! [store _ _] (reset! store (MW/safe-apply-command-with-middleware @store {:op :redo})))
 
-                      :create-sibling-above
-                      (let [pos (kernel/node-position @store selected-single)]
-                        {:op :insert
-                         :parent-id (:parent pos)
-                         :node-id (kernel/gen-new-id)
-                         :node-data {:type :div :props {:text (str "Sibling above " selected-single)}}
-                         :position (:index pos)})
+;; Navigation helpers that update selection
+(defn navigate-to [store target-node]
+  (when target-node
+    (set-sel! store #{target-node})))
 
-                      :create-sibling-below
-                      (let [pos (kernel/node-position @store selected-single)]
-                        {:op :insert
-                         :parent-id (:parent pos)
-                         :node-id (kernel/gen-new-id)
-                         :node-data {:type :div :props {:text (str "Sibling below " selected-single)}}
-                         :position (inc (:index pos))})
-
-                      :indent
-                      (let [pos (kernel/node-position @store selected-single)]
-                        (when (> (:index pos) 0)
-                          {:op :move
-                           :node-id selected-single
-                           :new-parent-id (get (:children pos) (dec (:index pos)))
-                           :position nil}))
-
-                      :outdent
-                      (let [pos (kernel/node-position @store selected-single)]
-                        (when (not= (:parent pos) "root")
-                          {:op :move
-                           :node-id selected-single
-                           :new-parent-id (:parent (kernel/node-position @store (:parent pos)))
-                           :position {:type :after :sibling-id (:parent pos)}}))
-
-                      :add-reference
-                      (when (= (count selected-set) 2)
-                        (let [[from to] (vec selected-set)]
-                          {:op :add-reference :from-node-id from :to-node-id to}))
-
-                      :remove-reference
-                      (when (= (count selected-set) 2)
-                        (let [[from to] (vec selected-set)]
-                          {:op :remove-reference :from-node-id from :to-node-id to}))
-
-                      nil)]
-        (when command
-          (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))
-
-(defn- undo-command [store _event-data _params]
-  (let [result (middleware/safe-apply-command-with-middleware @store {:op :undo})]
-    (reset! store result)))
-
-(defn- redo-command [store _event-data _params]
-  (let [result (middleware/safe-apply-command-with-middleware @store {:op :redo})]
-    (reset! store result)))
-
+;; ---------- 3) Registry (now tiny & consistent) ----------
 (def command-registry
-  "Registry mapping command names to handler functions"
-  {:select-node select-node-command
-   :set-selected-op set-selected-op-command
-   :hover-node hover-node-command
-   :unhover-node unhover-node-command
-   :apply-selected-op apply-selected-op-command
-   :undo undo-command
-   :redo redo-command
+  {:select-node select-node
+   :set-selected-op set-selected-op
+   :apply-selected-op apply-selected-op
+   :hover-node hover-node
+   :unhover-node unhover-node
+   :undo undo!
+   :redo redo!
 
-   ;; Keyboard commands - proper implementations
-   :clear-selection (fn [store _event-data _params]
-                      (swap! store assoc-in [:view :selected] #{}))
+   ;; view-only helpers
+   :clear-selection (fn [s _ _] (set-sel! s #{}))
+   :select-all-blocks (fn [s _ _] (set-sel! s (set (keys (:nodes (db s))))))
 
-   :select-all-blocks (fn [store _event-data _params]
-                        (let [all-nodes (keys (:nodes @store))]
-                          (swap! store assoc-in [:view :selected] (set all-nodes))))
+   ;; navigation commands (use nav helpers from intent->cmd)
+   :navigate-sequential (fn [s _ {:keys [direction]}]
+                          (let [build (intent->cmd (case direction :up :nav-up :down :nav-down))]
+                            (navigate-to s (build (ctx s)))))
 
-   :navigate-sequential (fn [store _event-data {:keys [direction]}]
-                          (let [selected (first (get-in @store [:view :selected]))]
-                            (when selected
-                              (let [target-node (case direction
-                                                  :up (kernel/get-prev @store selected)
-                                                  :down (kernel/get-next @store selected))]
-                                (when target-node
-                                  (swap! store assoc-in [:view :selected] #{target-node}))))))
+   :navigate-sibling (fn [s _ {:keys [direction]}]
+                       (let [build (intent->cmd (case direction :up :nav-sibling-up :down :nav-sibling-down))]
+                         (navigate-to s (build (ctx s)))))
 
-   :navigate-sibling (fn [store _event-data {:keys [direction]}]
-                       (let [selected (first (get-in @store [:view :selected]))]
-                         (when selected
-                           (let [pos (kernel/node-position @store selected)
-                                 parent-id (:parent pos)
-                                 siblings (get-in @store [:children-by-parent parent-id])
-                                 current-idx (.indexOf siblings selected)
-                                 new-idx (case direction
-                                           :up (dec current-idx)
-                                           :down (inc current-idx))]
-                             (when (and (>= new-idx 0) (< new-idx (count siblings)))
-                               (let [target-node (nth siblings new-idx)]
-                                 (swap! store assoc-in [:view :selected] #{target-node})))))))
+   :select-parent (fn [s _ _]
+                    (navigate-to s ((intent->cmd :nav-parent) (ctx s))))
 
-   :select-parent (fn [store _event-data _params]
-                    (let [selected (first (get-in @store [:view :selected]))]
-                      (when selected
-                        (let [parent-id (kernel/get-parent @store selected)]
-                          (when (and parent-id (not= parent-id "root"))
-                            (swap! store assoc-in [:view :selected] #{parent-id}))))))
+   :select-first-child (fn [s _ _]
+                         (navigate-to s ((intent->cmd :nav-first-child) (ctx s))))
 
-   :select-first-child (fn [store _event-data _params]
-                         (let [selected (first (get-in @store [:view :selected]))]
-                           (when selected
-                             (let [first-child (kernel/get-first-child @store selected)]
-                               (when first-child
-                                 (swap! store assoc-in [:view :selected] #{first-child}))))))
+   :select-last-child (fn [s _ _]
+                        (navigate-to s ((intent->cmd :nav-last-child) (ctx s))))
 
-   :select-last-child (fn [store _event-data _params]
-                        (let [selected (first (get-in @store [:view :selected]))]
-                          (when selected
-                            (let [last-child (kernel/get-last-child @store selected)]
-                              (when last-child
-                                (swap! store assoc-in [:view :selected] #{last-child}))))))
+   ;; direct intents (reuse table)
+   :create-child-block (fn [s _ _] (apply! s ((intent->cmd :create-child-block) (ctx s))))
+   :create-sibling-above (fn [s _ _] (apply! s ((intent->cmd :create-sibling-above) (ctx s))))
+   :create-sibling-below (fn [s _ _] (apply! s ((intent->cmd :create-sibling-below) (ctx s))))
+   :indent-block (fn [s _ _] (apply! s ((intent->cmd :indent) (ctx s))))
+   :outdent-block (fn [s _ _] (apply! s ((intent->cmd :outdent) (ctx s))))
+   :move-block (fn [s _ {:keys [direction]}]
+                 (let [k (case direction :up :move-up :down :move-down)]
+                   (apply! s ((intent->cmd k) (ctx s)))))
 
-   :create-child-block (fn [store _event-data _params]
-                         (let [selected (first (get-in @store [:view :selected]))]
-                           (when selected
-                             (let [command {:op :insert
-                                            :parent-id selected
-                                            :node-id (kernel/gen-new-id)
-                                            :node-data {:type :div :props {:text "New child"}}
-                                            :position nil}]
-                               (reset! store (middleware/safe-apply-command-with-middleware @store command))))))
+   ;; multi-node operations
+   :delete-selected-blocks
+   (fn [s _ _]
+     (doseq [id (sel s)]
+       (apply! s {:op :delete :node-id id :recursive true}))
+     (set-sel! s #{}))
 
-   :create-sibling-above (fn [store _event-data _params]
-                           (let [selected (first (get-in @store [:view :selected]))]
-                             (when selected
-                               (let [pos (kernel/node-position @store selected)]
-                                 (reset! store (middleware/safe-apply-command-with-middleware @store {:op :insert
-                                                                                                      :parent-id (:parent pos)
-                                                                                                      :node-id (kernel/gen-new-id)
-                                                                                                      :node-data {:type :div :props {:text "New sibling"}}
-                                                                                                      :position (:index pos)}))))))
-
-   :delete-selected-blocks (fn [store _event-data _params]
-                             (let [selected (get-in @store [:view :selected])]
-                               (when (seq selected)
-                                 (doseq [node-id selected]
-                                   (let [command {:op :delete :node-id node-id :recursive true}]
-                                     (reset! store (middleware/safe-apply-command-with-middleware @store command))))
-                                 (swap! store assoc-in [:view :selected] #{}))))
-
-   :indent-block (fn [store _event-data _params]
-                   (let [selected-set (get-in @store [:view :selected])]
-                     (when (seq selected-set)
-                       (doseq [node-id selected-set]
-                         (let [pos (kernel/node-position @store node-id)]
-                           (when (and pos (> (:index pos) 0))
-                             (let [siblings (get-in @store [:children-by-parent (:parent pos)])
-                                   new-parent-id (nth siblings (dec (:index pos)))
-                                   command {:op :move
-                                            :node-id node-id
-                                            :new-parent-id new-parent-id
-                                            :position nil}]
-                               (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                                 (reset! store result)))))))))
-
-   :outdent-block (fn [store _event-data _params]
-                    (let [selected-set (get-in @store [:view :selected])]
-                      (when (seq selected-set)
-                        (doseq [node-id selected-set]
-                          (let [pos (kernel/node-position @store node-id)]
-                            (when (and pos (not= (:parent pos) "root"))
-                              (let [parent-pos (kernel/node-position @store (:parent pos))
-                                    command {:op :move
-                                             :node-id node-id
-                                             :new-parent-id (:parent parent-pos)
-                                             :position (inc (:index parent-pos))}]
-                                (reset! store (middleware/safe-apply-command-with-middleware @store command)))))))))
-
-   :move-block (fn [store _event-data {:keys [direction]}]
-                 (let [selected (first (get-in @store [:view :selected]))]
-                   (when selected
-                     (let [pos (kernel/node-position @store selected)
-                           siblings (get-in @store [:children-by-parent (:parent pos)])
-                           current-idx (:index pos)
-                           new-idx (case direction
-                                     :up (max 0 (dec current-idx))
-                                     :down (min (dec (count siblings)) (inc current-idx)))]
-                       (when (not= current-idx new-idx)
-                         (let [command {:op :reorder
-                                        :node-id selected
-                                        :parent-id (:parent pos)
-                                        :from-index current-idx
-                                        :to-index new-idx}]
-                           (let [result (middleware/safe-apply-command-with-middleware @store command)]
-                             (reset! store result))))))))
-
-   :toggle-collapse (fn [store _event-data _params]
-                      (let [selected (first (get-in @store [:view :selected]))]
+   ;; toggle view state
+   :toggle-collapse (fn [s _ _]
+                      (let [selected (sel1 s)]
                         (when selected
-                          (let [current-collapsed (get-in @store [:view :collapsed] #{})
-                                new-collapsed (if (contains? current-collapsed selected)
-                                                (disj current-collapsed selected)
-                                                (conj current-collapsed selected))]
-                            (swap! store assoc-in [:view :collapsed] new-collapsed)))))})
+                          (let [current-collapsed (get-in @s [:view :collapsed] #{})
+                                new-collapsed (toggle-in-set current-collapsed selected)]
+                            (swap! s assoc-in [:view :collapsed] new-collapsed)))))})
 
-(defn dispatch-command
-  "Dispatch a command through the registry"
-  [store event-data [cmd-name params]]
-  (if-let [handler (command-registry cmd-name)]
-    (try
-      (handler store event-data params)
-      (catch js/Error e
-        (js/console.error "Error executing command:" cmd-name "Error:" e)
-        (swap! store kernel/log-message :error
-               (str "Command failed: " cmd-name)
-               {:command cmd-name :params params :error (.-message e)})))
-    (do
-      (js/console.error "Unknown command:" cmd-name)
-      (swap! store kernel/log-message :error
-             (str "Unknown command: " cmd-name)
-             {:command cmd-name :params params :available-commands (keys command-registry)}))))
+(defn dispatch-command [store event [k params]]
+  (if-let [h (command-registry k)]
+    (try (h store event params)
+         (catch js/Error e
+           (swap! store K/log-message :error (str "Command failed: " k)
+                  {:command k :params params :error (.-message e)})))
+    (swap! store K/log-message :error (str "Unknown command: " k)
+           {:command k :params params})))
 
-(defn dispatch-commands
-  "Dispatch multiple commands"
-  [store event-data actions]
-  (let [actions (if (sequential? (first actions)) actions [actions])]
-    (doseq [action actions]
-      (dispatch-command store event-data action))))
+(defn dispatch-commands [store event actions]
+  (doseq [a (if (sequential? (first actions)) actions [actions])]
+    (dispatch-command store event a)))
