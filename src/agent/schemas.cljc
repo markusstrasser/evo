@@ -103,6 +103,24 @@
         (throw (ex-info "Transaction validation failed" {:errors errors :transaction tx}))))
     result))
 
+;; Command parameter schemas for validation
+(def select-node-params
+  "Schema for select-node command parameters"
+  [:map
+   [:node-id string?]])
+
+(def hover-node-params
+  "Schema for hover-node command parameters"
+  [:map
+   [:node-id string?]])
+
+(def navigation-params
+  "Schema for navigation command parameters"
+  [:map
+   [:direction [:enum :up :down]]])
+
+;; Schema registry for agent development tools
+
 ;; Schema registry for agent development tools
 (def registry
   (merge
@@ -111,4 +129,7 @@
     :namespace-health namespace-health-schema
     :db-structure db-structure-schema
     :db-diff db-diff-schema
-    :operation-result operation-result-schema}))
+    :operation-result operation-result-schema
+    :select-node-params select-node-params
+    :hover-node-params hover-node-params
+    :navigation-params navigation-params}))
