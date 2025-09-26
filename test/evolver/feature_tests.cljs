@@ -3,7 +3,7 @@
   (:require [cljs.test :refer [deftest is testing]]
             [agent.core :as agent]
             [evolver.test-helpers :as helpers]
-            [evolver.test-macros :refer-macros [user-story acceptance-criteria jtbd feature]]))
+            [evolver.test-macros :refer-macros [user-story acceptance-criteria jtbd feature test-with-agent-validation]]))
 
 ;; Macros moved to test-helpers.cljs
 
@@ -14,15 +14,6 @@
 ;; Feature macro moved to test-helpers.cljs
 
 ;; Agent observation wrapper moved to test-helpers.cljs
-
-(defmacro test-with-agent-validation [& body]
-  `(helpers/with-agent-observation
-     (fn []
-       ~@body
-       ;; Post-test validation using agent tools
-       (when ((resolve 'agent.core/detect-environment) :store-accessible?)
-         ;; Add validation checks here as agent tools are enhanced
-         true))))
 
 ;; Example Feature Test Structure
 (deftest document-navigation-feature

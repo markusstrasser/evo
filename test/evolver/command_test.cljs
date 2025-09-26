@@ -6,7 +6,7 @@
             [evolver.test-macros :refer-macros [jtbd user-story acceptance-criteria test-with-agent-validation]]))
 
 (defn create-test-store []
-  (atom kernel/db))
+  (helpers/create-test-store kernel/db))
 
 (deftest test-command-registry
   (testing "Command registry contains expected commands"
