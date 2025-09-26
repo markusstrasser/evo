@@ -77,7 +77,7 @@
       (try
         (let [store ((resolve 'evolver.core/store))
               state @store
-              selected (:selected (:view state))
+              selected (:selection-set (:view state))
               nodes (:nodes state)]
           ;; All selected nodes should exist
           (every? #(contains? nodes %) selected))
@@ -94,7 +94,7 @@
   {:nodes {"root" {:id "root" :type :div :children ["p1" "p2"]}
            "p1" {:id "p1" :type :p :content "First paragraph"}
            "p2" {:id "p2" :type :p :content "Second paragraph"}}
-   :view {:selected #{"p1"}}
+   :view {:selection ["p1"] :selection-set #{"p1"} :cursor "p1"}
    :references {}})
 
 ;; Mock interaction helpers

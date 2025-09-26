@@ -19,7 +19,7 @@
     (reset! store (assoc kernel/db
                          :nodes {"root" {:type :div}}
                          :children-by-parent {"root" []}
-                         :view {:selected #{} :collapsed #{} :highlighted #{} :hovered-referencers #{}}))
+                         :view {:selection [] :selection-set #{} :cursor nil :collapsed #{} :highlighted #{} :hovered-referencers #{}}))
 
     ;; Insert nodes to create the tree structure
     (let [commands [{:op :insert :parent-id "root" :node-id "node-a"
@@ -93,7 +93,8 @@
 
       (testing "indent operation"
         ;; Select node-b and indent it (should become child of node-a)
-        (swap! store assoc-in [:view :selected] #{"node-b"})
+        (do (swap! store assoc-in [:view :selection] ["node-b"])
+            (swap! store assoc-in [:view :selection-set] #{"node-b"}))
         (commands/dispatch-command store {} [:indent-block {}])
 
         ;; Verify node-b is now child of node-a
@@ -105,7 +106,8 @@
 
       (testing "outdent operation"
         ;; Outdent node-a2 (should become sibling of node-a)
-        (swap! store assoc-in [:view :selected] #{"node-a2"})
+        (do (swap! store assoc-in [:view :selection] ["node-a2"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a2"}))
         (commands/dispatch-command store {} [:outdent-block {}])
 
         ;; Verify node-a2 is now child of root
@@ -121,7 +123,8 @@
 
       (testing "multi-select indent"
         ;; Select node-a1 and node-a2
-        (swap! store assoc-in [:view :selected] #{"node-a1" "node-a2"})
+        (do (swap! store assoc-in [:view :selection] ["node-a1" "node-a2"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a1" "node-a2"}))
         ;; This should fail since we need a previous sibling, but let's test the code handles it gracefully
         (commands/dispatch-command store {} [:indent-block {}])
 
@@ -136,7 +139,8 @@
       (testing "multi-select outdent"
         ;; Reset and select multiple nodes for outdent
         (let [fresh-store (create-test-tree)]
-          (swap! fresh-store assoc-in [:view :selected] #{"node-a1" "node-a2"})
+          (do (swap! fresh-store assoc-in [:view :selection] ["node-a1" "node-a2"])
+              (swap! fresh-store assoc-in [:view :selection-set] #{"node-a1" "node-a2"}))
           (commands/dispatch-command fresh-store {} [:outdent-block {}])
 
           ;; Both should become children of root
@@ -150,19 +154,25 @@
     (let [store (create-test-tree)]
 
       (testing "select-parent command"
-        (swap! store assoc-in [:view :selected] #{"node-a2-child"})
-        (commands/dispatch-command store {} [:select-parent {}])
-        (is (= #{"node-a2"} (get-in @store [:view :selected]))))
+        (do (swap! store assoc-in [:view :selection] ["node-a2-child"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a2-child"})
+            (swap! store assoc-in [:view :cursor] "node-a2-child"))
+        (commands/dispatch-commands store {} [[:select-parent {}]])
+        (is (= #{"node-a2"} (get-in @store [:view :selection-set]))))
 
       (testing "select-first-child command"
-        (swap! store assoc-in [:view :selected] #{"node-a"})
-        (commands/dispatch-command store {} [:select-first-child {}])
-        (is (= #{"node-a1"} (get-in @store [:view :selected]))))
+        (do (swap! store assoc-in [:view :selection] ["node-a"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a"})
+            (swap! store assoc-in [:view :cursor] "node-a"))
+        (commands/dispatch-commands store {} [[:select-first-child {}]])
+        (is (= #{"node-a1"} (get-in @store [:view :selection-set]))))
 
       (testing "select-last-child command"
-        (swap! store assoc-in [:view :selected] #{"node-a"})
-        (commands/dispatch-command store {} [:select-last-child {}])
-        (is (= #{"node-a2"} (get-in @store [:view :selected])))))))
+        (do (swap! store assoc-in [:view :selection] ["node-a"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a"})
+            (swap! store assoc-in [:view :cursor] "node-a"))
+        (commands/dispatch-commands store {} [[:select-last-child {}]])
+        (is (= #{"node-a2"} (get-in @store [:view :selection-set])))))))
 
 (deftest test-collapsed-aware-navigation
   (testing "Navigation respects collapsed state"
@@ -187,14 +197,18 @@
     (let [store (create-test-tree)]
 
       (testing "navigate-sequential down"
-        (swap! store assoc-in [:view :selected] #{"node-a"})
-        (commands/dispatch-command store {} [:navigate-sequential {:direction :down}])
-        (is (= #{"node-a1"} (get-in @store [:view :selected]))))
+        (do (swap! store assoc-in [:view :selection] ["node-a"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a"})
+            (swap! store assoc-in [:view :cursor] "node-a"))
+        (commands/dispatch-commands store {} [[:navigate-sequential {:direction :down}]])
+        (is (= #{"node-a1"} (get-in @store [:view :selection-set]))))
 
       (testing "navigate-sequential up"
-        (swap! store assoc-in [:view :selected] #{"node-a2"})
-        (commands/dispatch-command store {} [:navigate-sequential {:direction :up}])
-        (is (= #{"node-a1"} (get-in @store [:view :selected])))))))
+        (do (swap! store assoc-in [:view :selection] ["node-a2"])
+            (swap! store assoc-in [:view :selection-set] #{"node-a2"})
+            (swap! store assoc-in [:view :cursor] "node-a2"))
+        (commands/dispatch-commands store {} [[:navigate-sequential {:direction :up}]])
+        (is (= #{"node-a1"} (get-in @store [:view :selection-set])))))))
 
 ;; Function to run all navigation tests
 (defn run-navigation-tests []
