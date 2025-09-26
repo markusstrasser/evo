@@ -1,6 +1,7 @@
 (ns evolver.agent-integration-test
   "Integration tests using agent utilities with Chrome DevTools"
   (:require [cljs.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [agent.core :as agent]))
 
 (defn browser-store-inspector

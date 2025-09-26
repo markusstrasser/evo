@@ -1,6 +1,6 @@
 (ns agent.store-inspector
   (:require [clojure.set]
-            [clojure.string]))
+            [clojure.string :as str]))
 
 (defn inspect-store
   "Inspect the current store state with optional filtering"
@@ -23,5 +23,5 @@
         selected (:selected (:view db))
         references (:references db)]
     (str "Nodes: " (count (:nodes db))
-         ", Selected: " (count selected) " (" (clojure.string/join ", " selected) ")"
+         ", Selected: " (count selected) " (" (str/join ", " selected) ")"
          ", References: " (count references) " entries")))
