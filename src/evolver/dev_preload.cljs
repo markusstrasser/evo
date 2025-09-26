@@ -1,7 +1,6 @@
 (ns evolver.dev-preload
-  {:dev/always true} ; Ensures the compiler never caches this file
+  {:dev/always true}
   (:require
-   [evolver.core :as core] ; IMPORTANT: Require app's main entry namespace
    [malli.core :as m]
    [malli.error :as me]))
 
@@ -57,7 +56,10 @@
 (set! (.-evo js/window)
       (js-obj
        "validateCall" validateCall
-       "inspectStore" (fn [] (js/console.log "Store:" @core/store))
+       "inspectStore" (fn []
+                        (if-let [store (resolve 'evolver.core/store)]
+                          (js/console.log "Store:" @store)
+                          (js/console.error "Store not yet available")))
        "checkIntegrity" (fn [] (js/console.log "Reference integrity check - feature to be implemented"))
        "performance" (fn [] (js/console.log "Performance metrics - feature to be implemented"))))
 
