@@ -1,7 +1,9 @@
 (ns evolver.command-test
   (:require [cljs.test :refer [deftest is testing]]
             [evolver.commands :as commands]
-            [evolver.kernel :as kernel]))
+            [evolver.kernel :as kernel]
+            [evolver.test-helpers :as helpers]
+            [evolver.test-macros :refer-macros [jtbd user-story acceptance-criteria test-with-agent-validation]]))
 
 (defn create-test-store []
   (atom kernel/db))
@@ -63,10 +65,34 @@
       (commands/dispatch-command store {} [:navigate-sibling {:direction :down}])
       (is (= #{"p2-high"} (get-in @store [:view :selected]))))))
 
-(deftest test-multiple-command-dispatch
-  (testing "Multiple commands can be dispatched"
-    (let [store (create-test-store)]
-      (commands/dispatch-commands store {}
-                                  [[:select-node {:node-id "p2-high"}]
-                                   [:clear-selection {}]])
-      (is (= #{} (get-in @store [:view :selected]))))))
+;; Duplicate test removed - keeping only the self-documenting version
+
+;; Keeping only the self-documenting version in command-system-feature
+
+;; Self-documenting feature test example
+(deftest command-system-feature
+  "Command system enables structured document manipulation"
+
+  (jtbd "Execute structured operations on document content"
+        (user-story "Dispatch individual commands to modify document state"
+                    (acceptance-criteria "Select node command updates selection correctly"
+                                         (test-with-agent-validation
+                                          (let [store (create-test-store)]
+                                            (commands/dispatch-command store {} [:select-node {:node-id "p2-high"}])
+                                            (is (= #{"p2-high"} (get-in @store [:view :selected]))))))
+
+                    (acceptance-criteria "Clear selection removes all selected nodes"
+                                         (test-with-agent-validation
+                                          (let [store (create-test-store)]
+                                            (swap! store assoc-in [:view :selected] #{"p1-select" "p2-high"})
+                                            (commands/dispatch-command store {} [:clear-selection {}])
+                                            (is (= #{} (get-in @store [:view :selected])))))))
+
+        (user-story "Handle multiple commands in sequence"
+                    (acceptance-criteria "Batch command execution maintains state consistency"
+                                         (test-with-agent-validation
+                                          (let [store (create-test-store)]
+                                            (commands/dispatch-commands store {}
+                                                                        [[:select-node {:node-id "p2-high"}]
+                                                                         [:clear-selection {}]])
+                                            (is (= #{} (get-in @store [:view :selected])))))))))
