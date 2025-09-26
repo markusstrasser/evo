@@ -1,6 +1,7 @@
 (ns agent.schemas
   (:require [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me]
+            [clojure.set :as set]))
 
 ;; Agent-specific schemas for development tooling and analysis
 
@@ -21,6 +22,34 @@
    [:dependencies {:optional true} number?]
    [:potential-issues {:optional true} [:map-of keyword? any?]]
    [:error {:optional true} string?]])
+
+(def node-schema
+  "Schema for individual node"
+  [:map
+   [:type keyword?]
+   [:props {:optional true} [:map-of keyword? any?]]])
+
+(def view-schema
+  "Schema for view state"
+  [:map
+   [:cursor {:optional true} string?]
+   [:selection [:vector string?]]
+   [:selection-set set?]
+   [:highlighted set?]
+   [:collapsed set?]
+   [:hovered-referencers set?]])
+
+(def complete-db-schema
+  "Complete database structure schema"
+  [:map
+   [:nodes [:map-of string? node-schema]]
+   [:children-by-parent [:map-of string? [:vector string?]]]
+   [:view view-schema]
+   [:references [:map-of string? set?]]
+   [:history [:vector any?]]
+   [:history-index number?]
+   [:log-level keyword?]
+   [:log-history [:vector any?]]])
 
 (def db-structure-schema
   "Schema for validate-db-structure results"
@@ -73,6 +102,27 @@
                       {:errors (me/humanize (m/explain db-structure-schema result))
                        :result result})))
     result))
+
+(defn validate-complete-db [db]
+  "Validates the complete database structure against schema"
+  (m/validate complete-db-schema db))
+
+(defn validate-db-integrity [db]
+  "Validates database integrity (referential consistency, etc.)"
+  (let [nodes (:nodes db)
+        children-by-parent (:children-by-parent db)
+        references (:references db)
+        all-node-ids (set (keys nodes))
+        all-child-ids (set (mapcat second children-by-parent))
+        all-reference-ids (set (mapcat seq (vals references)))
+        orphaned-children (set/difference all-child-ids all-node-ids)
+        orphaned-references (set/difference all-reference-ids all-node-ids)]
+    {:valid? (and (empty? orphaned-children) (empty? orphaned-references))
+     :orphaned-children orphaned-children
+     :orphaned-references orphaned-references
+     :total-nodes (count nodes)
+     :total-children (count all-child-ids)
+     :total-references (count all-reference-ids)}))
 
 (defn validate-db-diff-result
   "Validate result from db-diff"
