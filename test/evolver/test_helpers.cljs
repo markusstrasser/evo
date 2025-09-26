@@ -12,21 +12,21 @@
         ;; Enhanced testing with agent tools
         (let [initial-state (try
                               ((resolve 'agent.store-inspector/quick-state-dump)
-                               ((resolve 'evolver.core/store)))
+                               @((resolve 'evolver.core/store)))
                               (catch :default _ "State unavailable"))]
           (js/console.log "Test starting with state:" initial-state)
           (try
             (test-fn)
             (let [final-state (try
                                 ((resolve 'agent.store-inspector/quick-state-dump)
-                                 ((resolve 'evolver.core/store)))
+                                 @((resolve 'evolver.core/store)))
                                 (catch :default _ "State unavailable"))]
               (js/console.log "Test completed with state:" final-state))
             (catch :default e
               (try
                 (js/console.error "Test failed, final state:"
                                   ((resolve 'agent.store-inspector/inspect-store)
-                                   ((resolve 'evolver.core/store))))
+                                   @((resolve 'evolver.core/store))))
                 (catch :default _ (js/console.error "Could not inspect final state")))
               (throw e)))))
       ;; Fallback for non-browser environments
@@ -131,7 +131,7 @@
     (when (:store-accessible? env)
       (try
         (let [state ((resolve 'agent.store-inspector/quick-state-dump)
-                     ((resolve 'evolver.core/store)))]
+                     @((resolve 'evolver.core/store)))]
           (js/console.log (str message ": " state)))
         (catch :default _ nil)))))
 
@@ -147,19 +147,16 @@
 (defn test-dispatch-commands
   "Test helper that uses dispatch-commands (plural) like UI, not dispatch-command (singular)"
   [store event-data commands]
-  ;; This mirrors the exact UI behavior by using dispatch-commands (plural)
+  ;; This mirrors the exact UI behavior by using the unified dispatch-commands entry point
   ;; which properly handles command arrays vs single commands
-  (when (exists? js/evolver)
-    (if (array? commands)
-      ;; Multiple commands - use the plural version like UI
-      (.dispatchCommands js/evolver store event-data commands)
-      ;; Single command - wrap in array and use plural version
-      (.dispatchCommands js/evolver store event-data (clj->js [commands]))))
-  ;; Fallback for non-browser tests
+  (let [cmds (if (sequential? commands) commands [commands])]
+    ;; Use the unified command entry point from commands.cljs
+    ((resolve 'evolver.commands/dispatch-commands) store event-data cmds))
+  ;; Return info for test verification
   {:dispatched-commands commands
    :event-data event-data
    :type :dispatch-commands
-   :note "UI behavior mirrored - use this instead of dispatch-command in tests"})
+   :note "Unified command entry point used - dispatch-commands from commands.cljs"})
 
 (defn create-proper-test-event
   "Creates a test event with proper DOM context like UI generates"

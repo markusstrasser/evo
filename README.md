@@ -5,7 +5,8 @@ A ClojureScript tree editor with a command-driven architecture for AI-assisted d
 
 Your mistake was thinking you were building a UI framework. You're building an interpreter for a tree-manipulation DSL, and the LLM is the programmer.
 
-
+* The indirection was done so that every step is data driven and can be tested and inspected separately... maybe it's not needed for this?
+* There should be plugins later on ... it's an editor but also later a chatbot and genui thing where the LLM REPL-s in commands and forms
 
 ## Block Editing JTBD - UX
 

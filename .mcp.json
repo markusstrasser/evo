@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mcp-shadow-dual": {
+      "type": "local",
+      "enabled": true,
+      "command": "/opt/homebrew/bin/bash",
+      "args": [
+        "-c",
+        "clojure -X:mcp-shadow-dual"
+      ]
+    }
+  }
+}

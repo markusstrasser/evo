@@ -7,6 +7,9 @@
 
 (declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation add-reference remove-reference initial-db-base)
 
+;; Constants
+(def root-id "root")
+
 ;; Derive ALL metadata after ANY operation:
 (defn derive-tree-metadata
   "Return {:depth {id depth} :paths {id [parent ...]} :parent-of {id parent}} from a :children-by-parent adjacency map."
@@ -25,7 +28,7 @@
                  (fn [acc child] (walker child (inc depth) (conj path node-id) acc new-visited))
                  acc
                  node-children))))]
-    (let [reachable-metadata (walker "root" 0 [] {:depth {} :paths {} :parent-of {}} #{})
+    (let [reachable-metadata (walker root-id 0 [] {:depth {} :paths {} :parent-of {}} #{})
           all-node-ids (set (keys nodes))
           reachable-ids (set (keys (:depth reachable-metadata)))
           orphaned-ids (set/difference all-node-ids reachable-ids)]
@@ -83,6 +86,12 @@
   "Apply command based on operation type"
   (fn [_ command] (:op command)))
 
+(defn apply-transaction
+  "Applies a vector of command maps to a db state, returning the new state.
+   This is a pure reduction over the apply-command multimethod."
+  [db commands]
+  (reduce apply-command db commands))
+
 (defmethod apply-command :insert [db command]
   (insert-node db command))
 
@@ -109,6 +118,9 @@
 
 (defmethod apply-command :redo [db command]
   (redo-last-operation db))
+
+(defmethod apply-command :transaction [db command]
+  (apply-transaction db (:commands command)))
 
 (defmethod apply-command :default [db command]
   (log-message db :warn (str "Unknown command op: " (:op command)))
@@ -205,10 +217,19 @@
 (defn move-node [db {:keys [node-id new-parent-id position]}]
   (let [old-parent (parent-of db node-id)
         new-db (-> db
+                   ;; Remove from old parent
                    (update-in [:children-by-parent old-parent] #(vec (remove #{node-id} %)))
+                   ;; Also remove from new parent if it's already there (prevents duplicates)
+                   (update-in [:children-by-parent new-parent-id] #(vec (remove #{node-id} %)))
+                   ;; Add to new parent at specified position
                    (update-in [:children-by-parent new-parent-id]
-                              #(insert-at-position % node-id position)))]
-    (update-derived new-db)))
+                              #(insert-at-position % node-id position)))
+        ;; Convert new parent to div if it's not already and now has children
+        final-db (if (and (not= (:type (get-in new-db [:nodes new-parent-id])) :div)
+                          (seq (get-in new-db [:children-by-parent new-parent-id])))
+                   (assoc-in new-db [:nodes new-parent-id :type] :div)
+                   new-db)]
+    (update-derived final-db)))
 
 (defn delete-node [db {:keys [node-id]}]
   (let [descendants (set (tree-seq #(get-in db [:children-by-parent %])
@@ -247,9 +268,10 @@
 (defn current-node-id [db]
   (first (:selected (:view db))))
 
+;; Monotonic ID generation for better debugging
+(defonce !id-counter (atom 0))
 (defn gen-new-id []
-  (str "node-" #?(:clj (java.util.UUID/randomUUID)
-                  :cljs (random-uuid))))
+  (str "node-" (swap! !id-counter inc)))
 
 (defn create-child-block [db]
   (let [current (current-node-id db)
@@ -283,7 +305,7 @@
 (defn outdent [db]
   (let [current (current-node-id db)
         {:keys [parent]} (node-position db current)]
-    (if (not= parent "root")
+    (if (not= parent root-id)
       (let [grandparent-pos (node-position db parent)
             grandparent (:parent grandparent-pos)]
         (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
@@ -346,7 +368,7 @@
               (if (< (inc current-idx) (count siblings))
                 (nth siblings (inc current-idx))
                 ;; No next sibling, try parent's next sibling
-                (when (not= parent-id "root")
+                (when (not= parent-id root-id)
                   (recur parent-id))))))))))
 
 (defn get-prev
@@ -378,7 +400,7 @@
                 (get-deepest-last-child prev-sibling))
 
               ;; No previous sibling, go to parent (unless it's root)
-              (not= parent-id "root")
+              (not= parent-id root-id)
               parent-id
 
               ;; At root level, no previous
@@ -406,6 +428,6 @@
   (loop [current-id node-id
          parents []]
     (let [parent-id (get-parent db current-id)]
-      (if (or (nil? parent-id) (= parent-id "root"))
+      (if (or (nil? parent-id) (= parent-id root-id))
         parents
         (recur parent-id (conj parents parent-id))))))
