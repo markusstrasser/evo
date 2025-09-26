@@ -27,18 +27,18 @@
     (add-watch store ::render
                (fn [_key _ref old-state new-state]
                  (when (not= old-state new-state)
-                   (let [derived-state (derive-view-state new-state)]
-                     (when (not= derived-state new-state)
-                       (reset! store derived-state))
-                     (render-fn root-element derived-state)))))
+                   (js/console.log "Reactive render triggered")
+                   (render-fn root-element new-state))))
 
     ;; Add logging watch for debugging
     (add-watch store ::log-changes
                (fn [_key _ref old-state new-state]
                  (when (not= old-state new-state)
                    (js/console.log "Store updated:"
-                                   {:old-selected (get-in old-state [:view :selected])
-                                    :new-selected (get-in new-state [:view :selected])
+                                   {:old-selection (get-in old-state [:view :selection])
+                                    :new-selection (get-in new-state [:view :selection])
+                                    :old-cursor (get-in old-state [:view :cursor])
+                                    :new-cursor (get-in new-state [:view :cursor])
                                     :operation-count (count (:operation-history new-state))}))))
 
     store))
