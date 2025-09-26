@@ -2,12 +2,15 @@
 
 ## Common Errors & Failure Modes
 
-### ✅ ELIMINATED by Guardrails
+### ✅ ELIMINATED by DX Tools
 
-- **Unknown command errors**: Command registry validation now provides helpful error messages with available commands
+- **Selection state inconsistency**: Triple-field validation (selection/selection-set/cursor) prevents silent failures
+- **Test context mismatches**: Mock DOM events and UI-mirroring test utilities fix test/UI dispatch differences  
+- **Navigation silent failures**: Prerequisite validation warns when cursor missing before navigation commands
+- **Watch loop crashes**: Automatic detection of infinite update cycles with configurable thresholds
+- **Command execution opacity**: Full dispatch→command→state change tracing for debugging
 - **Environment mismatches**: Environment detection prevents browser/node confusion with clear error messages
 - **Schema validation failures**: Pre-execution schema validation catches invalid parameters before dispatch
-- **Namespace/filename mismatches**: File edit tools now validate namespace alignment to prevent shadow-cljs compilation errors
 - **JS-style data access**: Pattern validation detects incorrect property access on CLJS data structures
 - **Nil dereferencing**: Safe wrapper functions prevent common nil-related crashes
 - **Event handler format**: Validation ensures replicant action vectors follow correct format
@@ -18,45 +21,122 @@
 
 - **No JS Runtime**: Browser not connected to shadow-cljs REPL (open http://localhost:8080 first)
 - **Compilation Errors**: Syntax prevents hot reload
+- **Missing Requires**: Unqualified imports (`set/difference` without `[clojure.set :as set]`) cause compilation failures
+- **JS Literal Syntax**: Can't merge Clojure data directly in `#js` literals - use intermediate bindings
+- **Malli Function Calls**: Must use `(m/validate)` not `(validate)` in CLJC files
+- **Process Conflicts**: Multiple shadow-cljs processes break compilation (auto-detected by `npm run check-env`)
 - **Event Conflicts**: Multiple handlers on same elements
 - **Watch Failures**: Reactive updates not triggering renders
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
-- **Preload Failures**: Shadow-cljs preloads fragile; manual REPL loading more reliable
-- **Malli Dev Tools**: ClojureScript compatibility issues; manual validation helpers preferred
-- **Console Message Visibility**: Chrome DevTools console messages may not refresh automatically
-- **Dual Shadow-cljs Processes**: `npm dev` runs shadow-cljs; avoid manual `npx shadow-cljs` commands
-- **Process Conflicts**: Always check if `npm dev` is running before starting manual shadow-cljs
 
-## Debugging Patterns
+## DX Debugging Workflow
 
-- **Console Logging**: Use `(js/console.log ...)` in event handlers and operations
-- **Selection State**: Verify `(:selected (:view @store))` before operations
-- **Store Inspection**: Use `(require '[agent.core :as agent])` in ClojureScript REPL or `evo.inspectStore()` in browser console
-- **Chrome DevTools**: Use click simulation and snapshot inspection for UI state
-- **DOM Inspection**: Check element attributes and event bubbling with `document.querySelectorAll`
-- **Render Testing**: Test individual render functions with `evolver.renderer.render_node(state, "root")`
-- **Function Validation**: Use `(validate-call #'function-var args...)` to test Malli schemas manually
-- **Schema Inspection**: Check `(meta #'function-var)` for `:malli/schema` metadata
+### State Validation
+- **Selection Consistency**: `(agent/validate-selection-consistency (:view @store))` - Check triple-field synchronization
+- **Navigation Prerequisites**: `(agent/validate-navigation-prerequisites @store :nav-down)` - Verify cursor is set
+- **Store Integrity**: `(agent.store-inspector/check-reference-integrity store)` - Find orphaned references
 
-## Agent Tool Usage
+### Command Tracing  
+- **Execution Trace**: `(agent/traced-dispatch store event [:cmd params])` - Full dispatch→state change tracking
+- **Watch Loops**: `(agent.store-inspector/track-watch-update :store)` - Detect infinite update cycles
+- **Command History**: `(agent/get-command-trace)` - View recent command execution with timing
 
-- **ClojureScript REPL**: `(require '[agent.core :as agent])` - Available after moving to `src/agent/`
-- **Browser Console**: `evo.inspectStore()`, `evo.checkIntegrity()`, `evo.performance()` - Injected via Chrome DevTools
-- **Automated Testing**: `test/evolver/agent_integration_test.cljs` - Chrome DevTools integration hooks
-- **Self-Documenting Tests**: `test/evolver/feature_tests.cljs` - User story macros for living specifications
-- **Test Helpers**: `test/evolver/test_helpers.cljs` - Environment-aware testing with agent validation
+### Test Context Setup
+- **Mock Events**: `(agent/create-mock-dom-event :target (agent/create-mock-target "node-id"))` - Proper DOM context
+- **UI Test State**: `(agent/create-test-context initial-state :selection ["node"] :cursor "node")` - Consistent selection fields
+- **Test Dispatch**: `(test-dispatch-commands store event commands)` - Use plural dispatch like UI
+
+### Environment Validation
+- **REPL Health**: `(agent/safe-repl-connect)` - Validate browser connection and shadow-cljs
+- **Environment Check**: `(agent/check-development-environment)` - Comprehensive health check
+- **Process Conflicts**: `npm run check-env` - Auto-detect shadow-cljs conflicts
+
+## Agent Tool Quick Reference
+
+### Core DX Functions (`agent.core`)
+```clojure
+(agent/help)                                     ; Complete function inventory
+(agent/validate-selection-consistency view)     ; Fix triple-field issues
+(agent/create-mock-dom-event :target target)    ; Mock events for tests
+(agent/validate-navigation-prerequisites db op) ; Check cursor before nav
+(agent/traced-dispatch store event cmd)         ; Command execution tracing
+(agent/create-test-context state :cursor "id")  ; UI-consistent test state
+```
+
+### Store Inspection (`agent.store-inspector`)
+```clojure
+(agent.store-inspector/track-watch-update :key) ; Watch loop detection
+(agent.store-inspector/check-reference-integrity store) ; Find orphans
+(agent.store-inspector/inspect-store store :include-keys #{:view}) ; Filtered inspection
+```
+
+### Test Utilities (`test.evolver.test-helpers`)
+```clojure
+(test-dispatch-commands store event cmds)       ; UI-mirroring dispatch
+(assert-selection-state-valid db)               ; Validate triple-field rule
+(test-with-ui-context state test-fn)            ; Execute with proper context
+```
 
 ## ClojureScript REPL Setup
 
-### Connection Requirements  
-- **CRITICAL**: Open browser at http://localhost:8080 first (agent tools won't load without JS runtime)
-- Connect with `(shadow/repl :frontend)` or use ClojureScript REPL
-- Confirm with `(js/console.log "test")`
-- Load agent tools: `(require '[agent.core :as agent] :reload)`
+### Step-by-Step Connection
+```bash
+# 1. Start development environment
+npm run dev                          # Starts shadow-cljs + nREPL
+# Wait for: "HTTP server available at http://localhost:8080"
 
-### Data Access Patterns
-- ❌ Wrong: `store.state.view.selected` (CLJS ≠ JS objects)
-- ✅ Right: `(let [state @store view (:view state) selected (:selected view)] selected)`
+# 2. Open browser (CRITICAL - no browser = no JS runtime)
+open http://localhost:8080           # Must be open before REPL connection
+```
+
+```clojure
+;; 3. Connect to ClojureScript REPL
+(shadow.cljs.devtools.api/repl :frontend)
+
+;; 4. Verify connection works
+(js/console.log "REPL connected successfully")
+;; Check browser console for output
+
+;; 5. Load agent tools
+(require '[agent.core :as agent] :reload)
+(agent/help)                         ; View available functions
+```
+
+### REPL Workflow
+```clojure
+;; Environment validation
+(agent/safe-repl-connect)            ; Check browser connection
+(agent/detect-environment)           ; Runtime capabilities
+
+;; Store access patterns  
+@evolver.core/store                  ; Full store state
+(:view @evolver.core/store)          ; View state only
+(get-in @evolver.core/store [:nodes "p1-select"]) ; Specific node
+
+;; Live debugging
+(add-watch evolver.core/store :debug
+  (fn [k atom old new]
+    (when (not= (:view old) (:view new))
+      (js/console.log "View changed:" (clj->js (:view new))))))
+
+;; Reload changes
+(require '[evolver.core :as core] :reload)
+(require '[agent.core :as agent] :reload)
+```
+
+### Browser Console Integration
+```javascript
+// Alternative access via browser console
+evo.inspectStore()      // Quick store dump
+evo.checkIntegrity()    // Reference integrity check  
+evo.performance()       // Performance metrics
+```
+
+### REPL Constraints
+- **Browser tab must stay open** - closing breaks connection
+- **Shadow-cljs server must keep running** - stopping kills REPL
+- **Use full namespaces**: `agent.store-inspector/inspect-store` not `inspect-store`
+- **Agent tools work in `:frontend` target only** - not in node tests
 
 ## Testing Architecture & Strategies
 
@@ -110,20 +190,16 @@ Tests automatically adapt based on runtime environment:
 "test": "shadow-cljs compile test && node out/tests.js"
 ```
 
-### Command System Reality Check
+### New Failure Modes (September 2025)
 
-#### Command Registry vs UI Integration Gap
-- Core data operations (kernel functions) work perfectly
-- UI tries to dispatch commands that DON'T EXIST in command registry
-- Error messages are misleading - suggest commands called but not working, when commands don't exist
+#### Compilation & Import Issues
+- **Malli Unqualified Calls**: `(validate schema data)` → `(m/validate schema data)` in CLJC files
+- **Missing Set Imports**: `set/difference` requires `[clojure.set :as set]` - auto-linting recommended
+- **JS Literal Merging**: `#js (merge {...})` fails → use `(let [data (merge ...)] #js {:key (clj->js data)})`
 
-```clojure
-;; ❌ Command doesn't exist in registry
-[:select-node {:node-id "p1-select"}]  ; Results in "Unknown command"
-
-;; ✅ Underlying function works fine
-(kernel/some-operation db params)      ; Works perfectly
-```
+#### Process Management
+- **Shadow-cljs Conflicts**: Multiple processes break compilation - `npm run check-env` detects automatically
+- **REPL Connection Issues**: Browser must be open first - `agent/safe-repl-connect` validates environment
 
 ### Implemented Testing Architecture
 
@@ -218,21 +294,41 @@ npm run clean         # Full reset: stop processes + clean cache
 npm dev               # Restart clean
 ```
 
-## Tool Commands That Work
+## Development Commands
 
+### Environment Management
 ```bash
-npm run clean          # Full clean and reinstall  
-npm dev               # Start development (shadow-cljs + nREPL)
+npm run dev           # Start development (shadow-cljs + nREPL)
+npm run check-env     # Check for process conflicts and environment issues  
+npm run clean         # Full reset: stop processes + clean cache + reinstall
 npm test              # Run complete test suite with environment detection
-npm run check-env     # Check for process conflicts and environment issues
-npm run shadow-cljs    # Safe shadow-cljs wrapper with conflict detection
+npm run lint          # Run clj-kondo linting
+npm run validate      # Run lint + test together
 ```
 
-### Test Commands
-
+### Safe Development Workflow
 ```bash
-npm test              # Full test suite (node + browser enhancements when available)
-# Open http://localhost:8080 first for enhanced browser testing
+# 1. Always check environment first
+npm run check-env
+
+# 2. Start development (handles process conflicts automatically)
+npm run dev
+
+# 3. Open browser BEFORE connecting REPL
+open http://localhost:8080
+
+# 4. Connect ClojureScript REPL and load agent tools
+```
+
+### Process Conflict Recovery
+```bash
+# If mysterious compilation failures:
+npm run clean         # Nuclear option: full reset
+npm run dev           # Restart clean
+
+# If quick fix needed:
+pkill -f 'shadow-cljs.*watch'  # Kill conflicting processes
+npm run dev                    # Restart development
 ```
 
 ## Key Takeaway
@@ -279,48 +375,31 @@ test/evolver/chrome_integration_test.cljs: **ENABLED** - Chrome DevTools integra
 
 @MCP-REPL-GUIDE.md: Complete ClojureScript REPL setup guide covering connection requirements, agent tool usage patterns, development workflows, browser console integration, and common debugging scenarios.
 
-## New Guardrail Functions
+## Complete Agent Function Inventory
 
-### Environment Detection
+### DX Tools (September 2025 - Failure Mode Fixes)
+- `agent/validate-selection-consistency`: Fix selection/selection-set/cursor triple-field inconsistencies  
+- `agent/create-mock-dom-event`: Proper DOM events for testing UI commands
+- `agent/create-mock-target`: Mock DOM targets with dataset properties
+- `agent/validate-navigation-prerequisites`: Check cursor before navigation commands
+- `agent/create-test-context`: Create UI-consistent test state with synchronized selection fields
+- `agent/traced-dispatch`: Command execution tracing with full dispatch→state change tracking
+- `agent/track-watch-update`: Watch loop detection with configurable thresholds
+- `agent/get-command-trace`: View recent command execution history with timing
+
+### Environment & Safety (Existing)
 - `agent/detect-environment`: Detects current runtime (browser/node/store-accessible)
-- `agent/validate-environment-for-operation`: Validates environment supports requested operation
-
-### Command Validation
-- `agent/safe-command-dispatch`: Validates command exists before dispatch
-- `agent/safe-schema-validated-dispatch`: Full validation (environment + registry + schema)
-
-### Schema Validation
-- `agent/validate-operation-schema`: Validates data against Malli schemas
-- `agent/validate-command-params`: Validates command parameters before execution
-
-### File Safety
+- `agent/safe-repl-connect`: Validates browser connection before REPL operations
+- `agent/check-development-environment`: Comprehensive health check with recommendations
 - `agent/validate-file-namespace-alignment`: Prevents namespace/filename mismatches
-
-### Data Access Safety
 - `agent/validate-data-access-pattern`: Detects JS-style property access in CLJS code
-- `agent/safe-name`: Nil-safe version of name function
-- `agent/safe-first`: Nil-safe version of first function
-- `agent/safe-get-in`: Nil-safe version of get-in with better error messages
+- `agent/safe-name`, `agent/safe-first`, `agent/safe-get-in`: Nil-safe wrapper functions
 
-### Event Handler Validation
+### Command & Schema Validation (Existing)
+- `agent/safe-command-dispatch`: Validates command exists before dispatch
+- `agent/validate-operation-schema`: Validates data against Malli schemas
 - `agent/validate-replicant-action-vector`: Validates replicant action vector format
-
-### Build System Safety
-- `agent/detect-cache-corruption`: Detects cache corruption symptoms and suggests cleanup
-- `agent/validate-build-target-compatibility`: Validates .cljc files for target compatibility
-
-### Malli Function Validation
-- Manual validation approach preferred over automatic instrumentation in ClojureScript
-- Schema metadata pattern: `{:malli/schema [:=> [:cat ...] ...]}` in function metadata
-- Runtime validation: `(validate-call #'function-var arg1 arg2)` for interactive testing
-- Schema inspection: `(meta #'function-var)` to view attached schemas
-
-### Development Environment Validation
-- `agent/detect-environment`: Detects browser/node/store accessibility  
-- `agent/validate-dev-environment`: Validates development setup
-- `agent/check-development-environment`: Comprehensive environment health check
-- `agent/check-shadow-cljs-conflicts`: Detects compilation/process issues
-- Process conflict detection via `npm run check-env` script
+- `agent/validate-call`: Manual function schema validation for interactive testing
 
 ## Chrome DevTools Integration
 
@@ -350,3 +429,26 @@ npm test
 
 # With browser open at http://localhost:8080 for enhanced testing
 # Tests automatically detect environment and enhance accordingly
+```
+
+## Summary: Key Agent Development Insights
+
+### What Works Well (September 2025)
+- ✅ **DX Tools**: Solve real failure modes from actual development sessions
+- ✅ **Environment Detection**: Prevents browser/node context confusion
+- ✅ **Process Management**: Automated conflict detection with `npm run check-env`
+- ✅ **Test Framework**: Self-documenting tests with user story macros
+- ✅ **REPL Workflow**: Reliable when following browser-first connection order
+
+### Critical Success Factors
+1. **Browser First**: Always open http://localhost:8080 before REPL connection
+2. **Process Hygiene**: Use `npm run dev` not manual shadow-cljs commands
+3. **State Validation**: Check selection consistency before operations
+4. **Environment Validation**: Use `agent/check-development-environment` first
+5. **Imports**: Explicit requires for `clojure.set`, `malli.core` in CLJC files
+
+### Agent Tool Philosophy
+- **Fix Real Problems**: Tools address actual development session failures
+- **Environment Aware**: Adapt to browser vs node context automatically
+- **Self-Documenting**: Functions include usage examples and suggestions
+- **Non-Intrusive**: Integrate with existing workflow without breaking changes
