@@ -142,3 +142,54 @@
      (log-test-state ~(str "Starting: " message))
      ~@body
      (log-test-state ~(str "Completed: " message))))
+
+;; Unified Test Utilities for UI/Test Dispatch Consistency
+(defn test-dispatch-commands
+  "Test helper that uses dispatch-commands (plural) like UI, not dispatch-command (singular)"
+  [store event-data commands]
+  ;; This mirrors the exact UI behavior by using dispatch-commands (plural)
+  ;; which properly handles command arrays vs single commands
+  (when (exists? js/evolver)
+    (if (array? commands)
+      ;; Multiple commands - use the plural version like UI
+      (.dispatchCommands js/evolver store event-data commands)
+      ;; Single command - wrap in array and use plural version
+      (.dispatchCommands js/evolver store event-data (clj->js [commands]))))
+  ;; Fallback for non-browser tests
+  {:dispatched-commands commands
+   :event-data event-data
+   :type :dispatch-commands
+   :note "UI behavior mirrored - use this instead of dispatch-command in tests"})
+
+(defn create-proper-test-event
+  "Creates a test event with proper DOM context like UI generates"
+  [node-id & {:keys [modifiers] :or {modifiers {}}}]
+  (let [target (agent/create-mock-target node-id)
+        event (agent/create-mock-dom-event :target target :modifiers (set (keys modifiers)))]
+    {:event event
+     :data {:target target
+            :modifiers modifiers
+            :node-id node-id}}))
+
+(defn test-with-ui-context
+  "Executes test with proper UI context that mirrors real browser environment"
+  [test-state test-fn]
+  ;; Ensure the test state has all three selection fields consistent
+  (let [prepared-state (agent/create-test-context test-state)]
+    (test-fn prepared-state)))
+
+(defn assert-selection-state-valid
+  "Asserts that selection state follows the triple-field rule"
+  [db]
+  (let [validation (agent/validate-selection-consistency (:view db))]
+    (is (:valid? validation)
+        (str "Selection state invalid: " (:issues validation)))
+    validation))
+
+(defn assert-navigation-possible
+  "Asserts that navigation commands will work (cursor must be set)"
+  [db direction]
+  (let [validation (agent/validate-navigation-prerequisites db direction)]
+    (is (nil? validation)
+        (str "Navigation not possible: " (:suggestion validation)))
+    (nil? validation)))
