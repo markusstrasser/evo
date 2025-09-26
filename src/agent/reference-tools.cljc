@@ -1,4 +1,4 @@
-(ns agent.reference_tools
+(ns agent.reference-tools
   "Tools for debugging and inspecting the reference system")
 
 (defn inspect-references

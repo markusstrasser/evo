@@ -1,15 +1,21 @@
 (ns agent.core
   "Simple agent utilities for the evolver app"
   (:require [agent.schemas :as schemas]
-            [malli.core :as m]))
+            [malli.core :as m]
+            #?(:clj [clojure.java.io :as io]
+               :cljs [clojure.string :as str])
+            #?(:clj [clojure.string :as str])))
 
 (defn detect-environment
   "Detect current runtime environment to prevent environment mismatches"
   []
-  {:browser? (try (boolean js/window) (catch :default _ false))
-   :node? (try (boolean js/process) (catch :default _ false))
-   :store-accessible? (try (some? (resolve 'evolver.core/store)) (catch :default _ false))
-   :cljs-repl? (try (some? (resolve 'cljs.repl/*repl-env*)) (catch :default _ false))})
+  {:browser? #?(:cljs (try (boolean js/window) (catch :default _ false))
+                :clj false)
+   :node? #?(:cljs (try (boolean js/process) (catch :default _ false))
+             :clj (try (boolean (resolve 'clojure.java.shell/sh)) (catch Exception _ false)))
+   :store-accessible? (try (some? (resolve 'evolver.core/store)) (catch #?(:cljs :default :clj Exception) _ false))
+   :cljs-repl? #?(:cljs (try (some? (resolve 'cljs.repl/*repl-env*)) (catch :default _ false))
+                  :clj false)})
 
 (defn validate-dev-environment
   "Comprehensive development environment validation"
@@ -96,23 +102,23 @@
   [file-path namespace-form]
   (when (and file-path namespace-form)
     (let [;; Extract path relative to src/ and convert to namespace
-          relative-path (if (clojure.string/includes? file-path "src/")
-                          (subs file-path (+ (clojure.string/index-of file-path "src/") 4))
+          relative-path (if (str/includes? file-path "src/")
+                          (subs file-path (+ (str/index-of file-path "src/") 4))
                           file-path)
           ;; Remove file extension
           expected-ns-str (cond
-                            (clojure.string/ends-with? relative-path ".cljc")
-                            (clojure.string/replace relative-path #"\.cljc$" "")
+                            (str/ends-with? relative-path ".cljc")
+                            (str/replace relative-path #"\.cljc$" "")
 
-                            (clojure.string/ends-with? relative-path ".cljs")
-                            (clojure.string/replace relative-path #"\.cljs$" "")
+                            (str/ends-with? relative-path ".cljs")
+                            (str/replace relative-path #"\.cljs$" "")
 
-                            (clojure.string/ends-with? relative-path ".clj")
-                            (clojure.string/replace relative-path #"\.clj$" "")
+                            (str/ends-with? relative-path ".clj")
+                            (str/replace relative-path #"\.clj$" "")
 
                             :else relative-path)
           ;; Convert path separators to dots
-          expected-ns (symbol (clojure.string/replace expected-ns-str #"/" "."))
+          expected-ns (symbol (str/replace expected-ns-str #"/" "."))
           actual-ns (second namespace-form)]
       (when-not (= expected-ns actual-ns)
         (throw (ex-info "Namespace/filename mismatch (shadow-cljs requirement)"
@@ -194,7 +200,7 @@
   []
   #?(:clj
      ;; JVM version with file system access
-     (let [cache-dir (clojure.java.io/file ".shadow-cljs")
+     (let [cache-dir (io/file ".shadow-cljs")
            symptoms {:cache-dir-exists (.exists cache-dir)
                      :cache-dir-size (when (.exists cache-dir)
                                        (->> (file-seq cache-dir)
@@ -218,7 +224,7 @@
   [file-path target]
   #?(:clj
      ;; JVM version with file access
-     (when (and (clojure.string/ends-with? file-path ".cljc")
+     (when (and (str/ends-with? file-path ".cljc")
                 (= target :node-test))
        (let [content (slurp file-path)]
          (when (or (re-find #"js/document" content)
