@@ -7,7 +7,7 @@
   []
   {:browser? (try (boolean js/window) (catch :default _ false))
    :node? (try (boolean js/process) (catch :default _ false))
-   :store-accessible? (try (some? (resolve 'evolver.state/store)) (catch :default _ false))
+   :store-accessible? (try (some? (resolve 'evolver.core/store)) (catch :default _ false))
    :cljs-repl? (try (some? (resolve 'cljs.repl/*repl-env*)) (catch :default _ false))})
 
 (defn validate-environment-for-operation
