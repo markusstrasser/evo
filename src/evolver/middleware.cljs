@@ -78,7 +78,6 @@
    apply-command-step
    validate-result-step
    update-derived-step
-   operation-log-step
    log-after-step])
 
 (defn safe-apply-command-with-middleware
