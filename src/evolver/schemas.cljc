@@ -18,7 +18,9 @@
 ;; View schema
 (def view-schema
   [:map
-   [:selected [:set string?]]
+   [:selection [:vector string?]]
+   [:selection-set [:set string?]]
+   [:cursor [:maybe string?]]
    [:highlighted {:optional true} [:set string?]]
    [:collapsed {:optional true} [:set string?]]
    [:hovered-referencers {:optional true} [:set string?]]])
