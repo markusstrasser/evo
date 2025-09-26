@@ -201,9 +201,13 @@ npm test              # Run complete test suite
 npx shadow-cljs watch frontend  # Creates process conflicts!
 ```
 
-**Detection**:
+**Automated Detection**:
 ```bash
-# Check if npm dev is running
+npm run check-env     # Automated process conflict detection
+```
+
+**Manual Detection**:
+```bash
 ps aux | grep "npm.*dev"
 lsof -i :8080         # Check what's using the port
 ```
@@ -220,6 +224,8 @@ npm dev               # Restart clean
 npm run clean          # Full clean and reinstall  
 npm dev               # Start development (shadow-cljs + nREPL)
 npm test              # Run complete test suite with environment detection
+npm run check-env     # Check for process conflicts and environment issues
+npm run shadow-cljs    # Safe shadow-cljs wrapper with conflict detection
 ```
 
 ### Test Commands
@@ -308,6 +314,13 @@ test/evolver/chrome_integration_test.cljs: **ENABLED** - Chrome DevTools integra
 - Schema metadata pattern: `{:malli/schema [:=> [:cat ...] ...]}` in function metadata
 - Runtime validation: `(validate-call #'function-var arg1 arg2)` for interactive testing
 - Schema inspection: `(meta #'function-var)` to view attached schemas
+
+### Development Environment Validation
+- `agent/detect-environment`: Detects browser/node/store accessibility  
+- `agent/validate-dev-environment`: Validates development setup
+- `agent/check-development-environment`: Comprehensive environment health check
+- `agent/check-shadow-cljs-conflicts`: Detects compilation/process issues
+- Process conflict detection via `npm run check-env` script
 
 ## Chrome DevTools Integration
 

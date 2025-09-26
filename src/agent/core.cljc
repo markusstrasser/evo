@@ -10,6 +10,43 @@
    :store-accessible? (try (some? (resolve 'evolver.core/store)) (catch :default _ false))
    :cljs-repl? (try (some? (resolve 'cljs.repl/*repl-env*)) (catch :default _ false))})
 
+(defn validate-dev-environment
+  "Comprehensive development environment validation"
+  []
+  (let [env (detect-environment)
+        issues []]
+    (cond-> issues
+      ;; Check for browser connectivity for ClojureScript development
+      (and (:cljs-repl? env) (not (:browser? env)))
+      (conj "ClojureScript REPL detected but browser not connected. Open http://localhost:8080")
+      
+      ;; Check for store accessibility in browser context
+      (and (:browser? env) (not (:store-accessible? env)))
+      (conj "Browser detected but store not accessible. Ensure app is loaded")
+      
+      ;; Warn about node context for UI operations
+      (and (:node? env) (not (:browser? env)))
+      (conj "Node.js environment detected. Browser required for UI operations"))))
+
+(defn check-shadow-cljs-conflicts
+  "Detect potential shadow-cljs process conflicts (ClojureScript only)"
+  []
+  #?(:cljs 
+     (let [issues []]
+       ;; In browser, we can check for compilation issues indirectly
+       (cond-> issues
+         ;; Check if hot reload seems broken (this is heuristic)
+         (try 
+           (let [build-id js/shadow.cljs.devtools.client.env.build-id]
+             (and build-id (< (count (str build-id)) 5))) ; Normal build IDs are longer
+           (catch :default _ false))
+         (conj "Possible compilation/hot-reload issues. Check for process conflicts")
+         
+         ;; Check for multiple nREPL connections (another heuristic)
+         false ; placeholder - hard to detect from browser
+         (conj "Multiple development processes may be running")))
+     :clj []))
+
 (defn validate-environment-for-operation
   "Validate that current environment supports the requested operation"
   [operation-type]
@@ -254,8 +291,37 @@
 ;; Schema validation
 (def validate-transaction schemas/validate-transaction)
 
+(defn check-development-environment
+  "Comprehensive development environment health check"
+  []
+  (let [env (detect-environment)
+        env-issues (validate-dev-environment)
+        shadow-issues (check-shadow-cljs-conflicts)
+        all-issues (concat env-issues shadow-issues)]
+    {:environment env
+     :issues all-issues
+     :healthy? (empty? all-issues)
+     :recommendations 
+     (cond
+       (not (:browser? env))
+       ["Open browser at http://localhost:8080" "Connect ClojureScript REPL"]
+       
+       (not (:store-accessible? env))
+       ["Ensure app is fully loaded" "Check browser console for errors"]
+       
+       (seq shadow-issues)
+       ["Run 'npm run check-env' to detect process conflicts"
+        "Use 'npm dev' instead of manual shadow-cljs commands"]
+       
+       :else
+       ["Environment looks healthy" "Ready for development"])}))
+
 (defn help
   "Show available agent functions"
   []
   (println "Agent utilities:")
-  (println "  (validate-transaction tx) - Validate transaction format"))
+  (println "  (detect-environment) - Check current runtime environment")
+  (println "  (validate-dev-environment) - Validate development setup")
+  (println "  (check-development-environment) - Full environment health check")
+  (println "  (validate-transaction tx) - Validate transaction format")
+  (println "  Run 'npm run check-env' to check for shadow-cljs conflicts"))
