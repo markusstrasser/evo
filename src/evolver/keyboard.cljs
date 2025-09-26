@@ -55,6 +55,16 @@
       {:key "A" :shift true :ctrl true
        :command [:select-all-blocks]}
 
+      ;; Sequential navigation (main navigation keys)
+      {:key "ArrowDown"
+       :requires-selection true
+       :command [:navigate-sequential {:direction :down}]}
+
+      {:key "ArrowUp"
+       :requires-selection true
+       :command [:navigate-sequential {:direction :up}]}
+
+      ;; Sibling navigation (with Alt modifier)
       {:key "ArrowDown" :alt true
        :requires-selection true
        :command [:navigate-sibling {:direction :down}]}
@@ -62,6 +72,19 @@
       {:key "ArrowUp" :alt true
        :requires-selection true
        :command [:navigate-sibling {:direction :up}]}
+
+      ;; Parent/child navigation
+      {:key "ArrowLeft"
+       :requires-selection true
+       :command [:select-parent]}
+
+      {:key "ArrowRight"
+       :requires-selection true
+       :command [:select-first-child]}
+
+      {:key "ArrowRight" :shift true
+       :requires-selection true
+       :command [:select-last-child]}
 
       {:key "a" :meta true
        :requires-selection true

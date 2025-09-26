@@ -297,3 +297,92 @@
   (set (for [[to-node-id referencers] (:references db)
              :when (contains? referencers node-id)]
          to-node-id)))
+
+(defn get-next
+  "Find the next block in sequential navigation order.
+   First tries to move to first child (if expanded), then to next sibling, 
+   then up to parent's next sibling recursively.
+   Respects collapsed blocks - if a block is collapsed, skips its children."
+  [db node-id & {:keys [respect-collapsed?] :or {respect-collapsed? true}}]
+  (let [collapsed (get-in db [:view :collapsed] #{})
+        children-by-parent (:children-by-parent db)
+        children (get children-by-parent node-id [])]
+    (if (and (seq children)
+             (or (not respect-collapsed?)
+                 (not (contains? collapsed node-id))))
+      ;; Has children and not collapsed, go to first child
+      (first children)
+      ;; No accessible children, try next sibling or up
+      (loop [current-id node-id]
+        (let [pos (node-position db current-id)]
+          (when pos
+            (let [parent-id (:parent pos)
+                  siblings (:children pos)
+                  current-idx (:index pos)]
+              ;; Try to move to next sibling
+              (if (< (inc current-idx) (count siblings))
+                (nth siblings (inc current-idx))
+                ;; No next sibling, try parent's next sibling
+                (when (not= parent-id "root")
+                  (recur parent-id))))))))))
+
+(defn get-prev
+  "Find the previous block in sequential navigation order.
+   Complex logic to ensure intuitive upward navigation:
+   1. Look for previous sibling
+   2. If previous sibling is expanded and has children, go to deepest last visible child
+   3. If previous sibling is collapsed or has no children, go to that sibling
+   4. If no previous sibling, go to parent"
+  [db node-id & {:keys [respect-collapsed?] :or {respect-collapsed? true}}]
+  (let [collapsed (get-in db [:view :collapsed] #{})
+        children-by-parent (:children-by-parent db)]
+    (letfn [(get-deepest-last-child [id]
+              (let [children (get children-by-parent id [])]
+                (if (and (seq children)
+                         (or (not respect-collapsed?)
+                             (not (contains? collapsed id))))
+                  (get-deepest-last-child (last children))
+                  id)))]
+      (let [pos (node-position db node-id)]
+        (when pos
+          (let [parent-id (:parent pos)
+                siblings (:children pos)
+                current-idx (:index pos)]
+            (cond
+              ;; Has previous sibling
+              (> current-idx 0)
+              (let [prev-sibling (nth siblings (dec current-idx))]
+                (get-deepest-last-child prev-sibling))
+
+              ;; No previous sibling, go to parent (unless it's root)
+              (not= parent-id "root")
+              parent-id
+
+              ;; At root level, no previous
+              :else
+              nil)))))))
+
+(defn get-first-child
+  "Get the first child of a node, if any"
+  [db node-id]
+  (first (get-in db [:children-by-parent node-id])))
+
+(defn get-last-child
+  "Get the last immediate child of a node, if any"
+  [db node-id]
+  (last (get-in db [:children-by-parent node-id])))
+
+(defn get-parent
+  "Get the parent of a node"
+  [db node-id]
+  (find-parent (:children-by-parent db) node-id))
+
+(defn get-block-parents
+  "Get the entire chain of ancestors for a given block"
+  [db node-id]
+  (loop [current-id node-id
+         parents []]
+    (let [parent-id (get-parent db current-id)]
+      (if (or (nil? parent-id) (= parent-id "root"))
+        parents
+        (recur parent-id (conj parents parent-id))))))
