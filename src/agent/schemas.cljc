@@ -103,6 +103,22 @@
         (throw (ex-info "Transaction validation failed" {:errors errors :transaction tx}))))
     result))
 
+;; Basic malli wrapper functions for agent.core
+(defn validate
+  "Validate data against schema"
+  [schema data]
+  (m/validate schema data))
+
+(defn explain
+  "Explain validation errors"
+  [schema data]
+  (m/explain schema data))
+
+(defn humanize
+  "Humanize validation errors"
+  [explanation]
+  (me/humanize explanation))
+
 ;; Command parameter schemas for validation
 (def select-node-params
   "Schema for select-node command parameters"
