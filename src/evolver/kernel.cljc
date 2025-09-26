@@ -9,24 +9,41 @@
 
 ;; Derive ALL metadata after ANY operation:
 (defn derive-tree-metadata
-  "Return {:depth {id depth} :paths {id [parent ...]}} from a :children-by-parent adjacency map."
-  [{:keys [children-by-parent]}]
-  (letfn
-   [(walker [node-id depth path acc]
-      (let [node-children (get children-by-parent node-id []) ;;lookup node in the children-by-parent map; if it's not there, use []
-
-            acc (-> acc
-                    (assoc-in [:depth node-id] depth)
-                    (assoc-in [:paths node-id] path))]
-
-        (reduce
-         (fn [acc child] (walker child (inc depth) (conj path node-id) acc))
-         acc
-         node-children)))]
-    (walker "root" 0 [] {})))
+  "Return {:depth {id depth} :paths {id [parent ...]} :parent-of {id parent}} from a :children-by-parent adjacency map."
+  [{:keys [children-by-parent nodes]}]
+  (letfn [(walker [node-id depth path acc visited]
+            ;; Prevent infinite loops by checking if we've visited this node in this path
+            (if (contains? visited node-id)
+              acc ; Skip cycles
+              (let [node-children (get children-by-parent node-id [])
+                    new-visited (conj visited node-id)
+                    acc (-> acc
+                            (assoc-in [:depth node-id] depth)
+                            (assoc-in [:paths node-id] path)
+                            (update :parent-of into (map (fn [c] [c node-id]) node-children)))]
+                (reduce
+                 (fn [acc child] (walker child (inc depth) (conj path node-id) acc new-visited))
+                 acc
+                 node-children))))]
+    (let [reachable-metadata (walker "root" 0 [] {:depth {} :paths {} :parent-of {}} #{})
+          all-node-ids (set (keys nodes))
+          reachable-ids (set (keys (:depth reachable-metadata)))
+          orphaned-ids (set/difference all-node-ids reachable-ids)]
+      ;; Add orphaned nodes with nil depth/path to indicate they're disconnected
+      (reduce (fn [acc orphaned-id]
+                (-> acc
+                    (assoc-in [:depth orphaned-id] nil)
+                    (assoc-in [:paths orphaned-id] nil)))
+              reachable-metadata
+              orphaned-ids))))
 
 (defn find-parent [children-by-parent node-id]
   (some (fn [[p children]] (when (some #{node-id} children) p)) children-by-parent))
+
+(defn parent-of
+  "O(1) parent lookup using derived data"
+  [db id]
+  (get-in db [:derived :parent-of id]))
 
 (defn update-derived [db]
   (assoc db :derived (derive-tree-metadata db)))
@@ -34,13 +51,7 @@
 (defn validate-db-state
   "Validate db state and throw if invalid"
   [db]
-  (try
-    (schemas/validate-db db)
-    (catch #?(:clj Exception :cljs js/Error) e
-      (throw (ex-info "Database state validation failed"
-                      {:errors (:errors (ex-data e))
-                       :db db}
-                      e)))))
+  (schemas/validate-db db))
 
 (defn log-operation
   "Add operation to transaction log"
@@ -118,17 +129,19 @@
           new-db (if (#{:insert :delete :move :patch :reorder :add-reference :remove-reference} (:op command))
                    (log-operation new-db command)
                    new-db)]
-      ;; Validate db state after operation
+      ;; Validate db state after operation using derive-tree-metadata for structural validation
+      (derive-tree-metadata new-db) ; This will throw if invalid
+      ;; Also validate against schema
       (when-not (m/validate schemas/db-schema new-db)
         (throw (ex-info "Invalid database state after command"
                         {:errors (me/humanize (m/explain schemas/db-schema new-db))
                          :command command
                          :before-db db})))
       new-db)
-    (catch #?(:clj Exception :cljs js/Error) e
+    (catch #?(:clj Exception :cljs :default) e
       (try
         (log-message db :error (str "Command failed: " (:op command)) {:error (ex-message e) :command command})
-        (catch #?(:clj Exception :cljs js/Error) _ nil)) ; If logging fails, ignore
+        (catch #?(:clj Exception :cljs :default) _ nil)) ; If logging fails, ignore
       (throw (ex-info "Command execution failed" {:error (ex-message e) :command command} e)))))
 
 (defn undo-last-operation
@@ -147,9 +160,10 @@
       db)))
 
 (defn node-position [db node-id]
-  (when-let [parent (find-parent (:children-by-parent db) node-id)]
-    (let [children (get (:children-by-parent db) parent [])
-          idx (.indexOf children node-id)]
+  (when-let [parent (parent-of db node-id)]
+    (let [children (get-in db [:children-by-parent parent] [])
+          idx #?(:clj (.indexOf ^java.util.List children node-id)
+                 :cljs (.indexOf children node-id))]
       {:parent parent :index idx :children children})))
 
 (def db (update-derived constants/initial-db-base))
@@ -189,7 +203,7 @@
     (update-derived new-db)))
 
 (defn move-node [db {:keys [node-id new-parent-id position]}]
-  (let [old-parent (find-parent (:children-by-parent db) node-id)
+  (let [old-parent (parent-of db node-id)
         new-db (-> db
                    (update-in [:children-by-parent old-parent] #(vec (remove #{node-id} %)))
                    (update-in [:children-by-parent new-parent-id]
@@ -200,13 +214,13 @@
   (let [descendants (set (tree-seq #(get-in db [:children-by-parent %])
                                    #(get-in db [:children-by-parent %])
                                    node-id))
-        parent (find-parent (:children-by-parent db) node-id)
+        parent (parent-of db node-id)
         new-db (-> db
                    (update :nodes #(apply dissoc % descendants))
                    (update :children-by-parent #(-> %
                                                     (update parent (fn [ch] (vec (remove #{node-id} ch))))
                                                     ((fn [m] (apply dissoc m descendants)))))
-                   (update :view #(into {} (map (fn [[k v]] [k (set/difference v descendants)]) %)))
+                   (update :view #(into {} (map (fn [[k v]] [k (if (set? v) (set/difference v descendants) v)]) %)))
                    ;; Clean up references to deleted nodes
                    (update :references #(apply dissoc % descendants))
                    ;; Remove references FROM deleted nodes in other nodes' reference lists
@@ -217,12 +231,14 @@
     (update-derived new-db)))
 
 (defn reorder-node [db {:keys [node-id parent-id to-index]}]
-  (let [siblings (get (:children-by-parent db) parent-id [])
-        siblings-without-node (vec (remove #{node-id} siblings))
-        new-siblings (vec (concat (take to-index siblings-without-node)
-                                  [node-id]
-                                  (drop to-index siblings-without-node)))]
-    (update-derived (assoc-in db [:children-by-parent parent-id] new-siblings))))
+  (let [actual (parent-of db node-id)]
+    (when (not= actual parent-id)
+      (throw (ex-info "reorder-node only reorders within a parent; use move-node"
+                      {:node-id node-id :arg-parent parent-id :actual-parent actual})))
+    (let [siblings (get-in db [:children-by-parent parent-id] [])
+          without (vec (remove #{node-id} siblings))
+          new (vec (concat (take to-index without) [node-id] (drop to-index without)))]
+      (update-derived (assoc-in db [:children-by-parent parent-id] new)))))
 
 ;; NOTE: execute-command is redundant - use apply-command directly or go through middleware/state pipeline
 
@@ -232,7 +248,8 @@
   (first (:selected (:view db))))
 
 (defn gen-new-id []
-  (str "node-" (rand-int 10000)))
+  (str "node-" #?(:clj (java.util.UUID/randomUUID)
+                  :cljs (random-uuid))))
 
 (defn create-child-block [db]
   (let [current (current-node-id db)
@@ -381,7 +398,7 @@
 (defn get-parent
   "Get the parent of a node"
   [db node-id]
-  (find-parent (:children-by-parent db) node-id))
+  (parent-of db node-id))
 
 (defn get-block-parents
   "Get the entire chain of ancestors for a given block"
