@@ -24,6 +24,8 @@
 - **Preload Failures**: Shadow-cljs preloads fragile; manual REPL loading more reliable
 - **Malli Dev Tools**: ClojureScript compatibility issues; manual validation helpers preferred
 - **Console Message Visibility**: Chrome DevTools console messages may not refresh automatically
+- **Dual Shadow-cljs Processes**: `npm dev` runs shadow-cljs; avoid manual `npx shadow-cljs` commands
+- **Process Conflicts**: Always check if `npm dev` is running before starting manual shadow-cljs
 
 ## Debugging Patterns
 
@@ -184,13 +186,40 @@ Tests automatically adapt based on runtime environment:
 5. **State Migration Tests**: Backward compatibility for schema changes
 6. **Mutation Testing**: Random code mutations to ensure test coverage
 
+## Development Environment Safety
+
+### ⚠️ CRITICAL: Shadow-cljs Process Management
+
+**Rule**: Never run manual `npx shadow-cljs` commands when `npm dev` is running
+
+```bash
+# ✅ SAFE: Use npm scripts (recommended)
+npm dev               # Starts both shadow-cljs watch + nREPL
+npm test              # Run complete test suite
+
+# ❌ DANGEROUS: Manual shadow-cljs when npm dev is running
+npx shadow-cljs watch frontend  # Creates process conflicts!
+```
+
+**Detection**:
+```bash
+# Check if npm dev is running
+ps aux | grep "npm.*dev"
+lsof -i :8080         # Check what's using the port
+```
+
+**Recovery from Process Conflicts**:
+```bash
+npm run clean         # Full reset: stop processes + clean cache
+npm dev               # Restart clean
+```
+
 ## Tool Commands That Work
 
 ```bash
-npm run clean          # Full clean and reinstall
+npm run clean          # Full clean and reinstall  
+npm dev               # Start development (shadow-cljs + nREPL)
 npm test              # Run complete test suite with environment detection
-npx shadow-cljs stop  # Stop shadow-cljs server
-npx shadow-cljs watch frontend  # Start development server
 ```
 
 ### Test Commands
