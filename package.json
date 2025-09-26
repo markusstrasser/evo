@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "shadow-cljs watch frontend",
-    "test": "shadow-cljs compile test && node out/tests.js",
+    "test": "./.pre-commit-check.sh && shadow-cljs compile test && node out/tests.js",
     "test:watch": "shadow-cljs watch test",
     "test:repl": "shadow-cljs cljs-repl test",
     "mcp": "clojure -M:nrepl",
@@ -15,6 +15,9 @@
     "test:notify": "shadow-cljs watch test | grep -E '(FAIL|ERROR|PASS|Testing)'",
     "check-env": "src/agent/check_processes.sh",
     "shadow-cljs": "src/agent/check_processes.sh && npx shadow-cljs",
+    "lint": "clj-kondo --lint src test --fail-level error",
+    "validate": "npm run lint && npm run test",
+    "pre-commit": "./.pre-commit-check.sh",
     "clean": "npm run clean:shadow && npm run clean:npm && npm run clean:install",
     "clean:shadow": "npx shadow-cljs stop && rm -rf .shadow-cljs out target .cljs_node_repl",
     "clean:npm": "npm cache clean --force",
