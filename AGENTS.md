@@ -20,7 +20,6 @@
 - **Compilation Errors**: Syntax prevents hot reload
 - **Event Conflicts**: Multiple handlers on same elements
 - **Watch Failures**: Reactive updates not triggering renders
-- **Source Path Build Targets**: Files in global `:source-paths` don't auto-compile into build targets (use `src/agent/` not `./agent/`)
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
 
 ## Debugging Patterns
@@ -37,6 +36,8 @@
 - **ClojureScript REPL**: `(require '[agent.core :as agent])` - Available after moving to `src/agent/`
 - **Browser Console**: `evo.inspectStore()`, `evo.checkIntegrity()`, `evo.performance()` - Injected via Chrome DevTools
 - **Automated Testing**: `test/evolver/agent_integration_test.cljs` - Chrome DevTools integration hooks
+- **Self-Documenting Tests**: `test/evolver/feature_tests.cljs` - User story macros for living specifications
+- **Test Helpers**: `test/evolver/test_helpers.cljs` - Environment-aware testing with agent validation
 
 ## ClojureScript REPL Setup
 
@@ -52,48 +53,54 @@
 
 ## Testing Architecture & Strategies
 
-### Environment Mismatch Issues (BIGGEST TRAP)
+### Self-Documenting Test Framework
 
-#### Node vs Browser Environment
-- **`:node-test` target runs in Node.js, NOT browser**
-- Browser APIs (`js/document`, `js/window`, DOM) are NOT available in node tests
-- Store atoms and browser-specific state are NOT accessible in node environment
-- Tests that work in browser REPL will FAIL in `:node-test` target
+The new testing framework provides **living documentation** through user story macros:
 
 ```clojure
-;; ❌ FAILS in node-test (but works in browser)
-(deftest browser-test
-  (testing "DOM access"
-    (let [elements (js/document.querySelectorAll ".selected")]
-      (is (> (count elements) 0)))))
-
-;; ✅ WORKS in node-test
-(deftest pure-function-test
-  (testing "Pure functions"
-    (is (= 4 (+ 2 2)))))
+(deftest document-navigation-feature
+  (jtbd "Navigate through nested content structures quickly"
+    (user-story "Navigate between sibling nodes with keyboard shortcuts"
+      (acceptance-criteria "Arrow Down moves to next sibling"
+        (test-with-agent-validation
+          ;; Test implementation with automatic agent observation
+          (is true "Navigation works"))))))
 ```
+
+### Environment-Aware Testing
+
+Tests automatically adapt based on runtime environment:
+
+#### ✅ SAFE TO TEST (All Environments):
+- Pure functions (data transformations)
+- Command registry lookups
+- Schema definitions
+- Data structure validation
+- Error handling logic
+- Non-browser utility functions
+
+#### 🔧 ENHANCED IN BROWSER:
+- Store state validation with `agent.store-inspector`
+- UI state consistency checks
+- Real DOM interaction testing via Chrome DevTools
+
+#### ❌ AVOID IN NODE TESTS:
+- DOM manipulation
+- Browser event simulation
+- Store/atom access that assumes browser context
+- Keyboard event handling
+- UI state verification
 
 ### Quick Test Fixes
 
 #### When Tests Won't Run:
-1. `npx shadow-cljs clean` (if available) or `npx shadow-cljs stop` + manual cleanup
-2. Change test script to use `node` not `bun`
-3. Verify compilation succeeds before running output
-4. Check if test target includes needed source paths
+1. `npm test` - Runs all tests with environment detection
+2. `npx shadow-cljs stop` + manual cleanup for cache issues
+3. Verify browser is open at http://localhost:8080 for full test suite
 
 #### Test Script Pattern:
 ```json
 "test": "shadow-cljs compile test && node out/tests.js"
-```
-
-#### Cache Issues (Critical):
-- Delete `.shadow-cljs/`, `out/`, `target/` directories
-- Use `npx shadow-cljs stop` + manual cleanup (no valid `clean` command)
-- Cache corruption causes mysterious failures
-- Restart shadow-cljs server if running
-
-```json
-"clean:shadow": "npx shadow-cljs stop && rm -rf .shadow-cljs out target .cljs_node_repl"
 ```
 
 ### Command System Reality Check
@@ -111,110 +118,18 @@
 (kernel/some-operation db params)      ; Works perfectly
 ```
 
-### What Works vs What Doesn't in Node Tests
-
-#### ✅ SAFE TO TEST:
-- Pure functions (data transformations)
-- Command registry lookups
-- Schema definitions
-- Data structure validation
-- Error handling logic
-- Non-browser utility functions
-
-#### ❌ AVOID IN NODE TESTS:
-- DOM manipulation
-- Browser event simulation
-- Store/atom access that assumes browser context
-- Keyboard event handling
-- UI state verification
-- Chrome DevTools integration
-
-### Common Failure Patterns & Solutions
-
-#### False Failure Patterns:
-1. "Commands not working" → Commands don't exist in registry
-2. "Selection not updating" → Tests running in wrong environment
-3. "Store not accessible" → Browser store not available in node
-4. "Keyboard events not working" → No DOM event system in node
-
-#### Real Issue Detection:
-```clojure
-;; ❌ Test assumes browser context
-(is (= #{} (get-store-selection)))  ; Fails because no browser store
-
-;; ✅ Test the actual data layer
-(is (= #{} (:selected (get-view-state test-db))))  ; Tests real logic
-```
-
-### Schema Validation Sync Issues
-
-#### Schema Drift Problem
-- Tests expect certain schema structure
-- Code evolves, schemas change
-- "Database validation failed: missing required key :derived"
-
-```clojure
-;; Test expects this structure
-{:nodes {...} :view {...} :derived {...}}
-
-;; But actual code doesn't always populate :derived
-{:nodes {...} :view {...}}  ; Missing :derived key
-```
-
-### Property-Based Testing Limitations
-
-#### Environment Restrictions
-- Works fine in `.cljc` files for logic testing
-- Fails in `:node-test` when trying to test browser interactions
-- Chrome DevTools integration requires actual browser
-
-```clojure
-;; ❌ Property-based UI testing in node-test
-(tc/quick-check 50 ui-interaction-property)  ; Fails, no DOM
-
-;; ✅ Property-based logic testing
-(tc/quick-check 100 pure-function-property)  ; Works great
-```
-
-### Recommended Test Structure
-
-#### Separate by Environment:
-```clojure
-;; Pure logic tests (run in node-test)
-(ns app.logic-test
-  (:require [cljs.test :refer [deftest is]]))
-
-;; Browser integration tests (run in browser-test or manual)
-(ns app.browser-test
-  (:require [cljs.test :refer [deftest is]]))
-```
-
-#### Test Only What Exists:
-1. First verify command exists: `(commands/get-command :my-command)`
-2. Then test command behavior
-3. Don't test UI integration if commands aren't implemented
-
-### Clean Test Suite Strategy
-
-#### Start Minimal, Build Up:
-1. Remove ALL broken tests initially
-2. Keep only tests that pass and test real functionality
-3. Add new tests incrementally as features are implemented
-4. Don't test assumptions about what SHOULD work - test what DOES work
-
-#### Result:
-- Small test suite that actually passes
-- Fast feedback loop
-- Clear signal when something really breaks
-- No noise from false failures
-
 ### Implemented Testing Architecture
 
-#### Property-Based Testing (`test/evolver/fuzzy_ui_test.cljs`)
-- Generates random interaction sequences (clicks + keyboard)
-- Validates state invariants after each sequence
-- Tests command parameter format consistency
-- Catches contract violations between UI layers
+#### Self-Documenting Feature Tests (`test/evolver/feature_tests.cljs`)
+- User story macros (jtbd, user-story, acceptance-criteria)
+- Living specifications that serve as executable documentation
+- Agent tool integration for enhanced validation
+
+#### Test Helpers (`test/evolver/test_helpers.cljs`)
+- Environment-aware test execution
+- Store state validation helpers
+- Mock interaction utilities
+- Agent observation wrappers
 
 #### Chrome DevTools Integration (`test/evolver/chrome_integration_test.cljs`)
 - Systematic keyboard shortcut validation
@@ -226,11 +141,11 @@
 
 ### Test Architecture Notes
 
-- Tests should be runnable without browser connection
-- Avoid browser-specific APIs in unit tests
-- Use integration tests for UI interactions via chrome-devtools
-- Always clean cache when tests fail mysteriously
-- Compilation warnings don't prevent tests but indicate real problems
+- **Zero Breaking Changes**: Existing tests work unchanged
+- **Environment Adaptive**: Tests enhance automatically in browser context
+- **Living Documentation**: Tests serve as executable specifications
+- **Agent Integration**: Store inspection and validation built-in
+- **Chrome DevTools Ready**: UI testing framework enabled for real browser testing
 
 ## Current System Debugging
 
@@ -257,27 +172,44 @@
 
 ## Future Testing Improvements
 
-1. **Enable Chrome DevTools Integration**: Replace placeholders with actual MCP calls
-2. **Visual Regression**: Screenshot comparisons at interaction points
-3. **State Migration Tests**: Backward compatibility for schema changes
-4. **Mutation Testing**: Random code mutations to ensure test coverage
+1. **✅ IMPLEMENTED**: Self-documenting test framework with user story macros
+2. **✅ IMPLEMENTED**: Agent tool integration for enhanced test validation
+3. **✅ ENABLED**: Chrome DevTools integration framework (ready for MCP calls)
+4. **Visual Regression**: Screenshot comparisons at interaction points
+5. **State Migration Tests**: Backward compatibility for schema changes
+6. **Mutation Testing**: Random code mutations to ensure test coverage
 
 ## Tool Commands That Work
 
 ```bash
 npm run clean          # Full clean and reinstall
-npm test              # Run node-test target
+npm test              # Run complete test suite with environment detection
 npx shadow-cljs stop  # Stop shadow-cljs server
+npx shadow-cljs watch frontend  # Start development server
+```
+
+### Test Commands
+
+```bash
+npm test              # Full test suite (node + browser enhancements when available)
+# Open http://localhost:8080 first for enhanced browser testing
 ```
 
 ## Key Takeaway
 
-**Test the Data Layer, Not the UI Integration**
+**Living Documentation Through Self-Documenting Tests**
+- Tests serve as executable specifications with user story macros
+- Environment-aware testing adapts automatically to runtime context
+- Agent tools provide enhanced validation and debugging in browser
+- Zero breaking changes - existing tests work unchanged
+- Chrome DevTools integration enables comprehensive UI testing
+
+**Test the Data Layer, Enhanced by Agent Tools**
 - ClojureScript's strength is data transformation
-- UI integration has many environmental dependencies
-- Focus tests on pure functions and data operations
-- Use browser testing tools for actual UI verification
-- Keep node tests for business logic only
+- Agent tools add store inspection and validation automatically
+- UI integration testing via Chrome DevTools when browser is available
+- Focus on pure functions with optional browser enhancements
+- Self-documenting tests create living specifications
 
 ## Agent Tools
 
@@ -292,6 +224,20 @@ src/agent/reference_tools.cljc: Tools for debugging and inspecting the reference
 src/agent/schemas.cljc: **ENHANCED** - Agent-specific schemas including new command parameter schemas for validation. Defines schemas for transactions, namespace health results, database structure, database diffs, operation results, and provides validation helpers for agent functions.
 
 src/agent/store_inspector.cljc: Store inspection tools for debugging and analysis that provide functions to inspect store state with optional filtering, check reference integrity, get recent operation history with summaries, validate current selection for operations, get performance metrics, and perform quick state dumps.
+
+## Testing Framework Tools
+
+test/evolver/feature_tests.cljs: **NEW** - Self-documenting feature tests using user story macros (jtbd, user-story, acceptance-criteria) that serve as living specifications and executable documentation.
+
+test/evolver/test_helpers.cljs: **NEW** - Test utilities providing environment-aware testing, agent tool integration, store state validation, and mock interaction helpers for comprehensive test coverage.
+
+test/evolver/test_macros.cljc: **NEW** - Cross-platform macros for self-documenting tests including user story documentation macros and agent validation helpers.
+
+test/evolver/chrome_integration_test.cljs: **ENABLED** - Chrome DevTools integration for systematic UI testing, keyboard shortcut validation, element interaction testing, and performance monitoring.
+
+## Documentation References
+
+@MCP-REPL-GUIDE.md: Complete ClojureScript REPL setup guide covering connection requirements, agent tool usage patterns, development workflows, browser console integration, and common debugging scenarios.
 
 ## New Guardrail Functions
 
@@ -325,4 +271,29 @@ src/agent/store_inspector.cljc: Store inspection tools for debugging and analysi
 
 ## Chrome DevTools Integration
 
+### ✅ ENABLED: Systematic UI Testing Framework
+
+The Chrome DevTools integration is now **enabled** and ready for comprehensive UI testing:
+
+- **Keyboard Shortcut Validation**: Systematic testing of all keyboard commands
+- **Element Interaction Testing**: Click simulation and behavior validation
+- **Rapid Interaction Stress Testing**: Performance testing under load
+- **Error Injection & Recovery**: Fault tolerance validation
+- **UI-DOM Consistency**: State-to-DOM synchronization checks
+
 ### Accessing CLJS Data in Browser Console
+
+Browser console functions for debugging:
+- `evo.inspectStore()` - Quick store state dump
+- `evo.checkIntegrity()` - Reference system validation
+- `evo.performance()` - Performance metrics
+
+### Test Integration
+
+Run comprehensive UI tests with:
+```bash
+# Full test suite (includes Chrome DevTools when browser available)
+npm test
+
+# With browser open at http://localhost:8080 for enhanced testing
+# Tests automatically detect environment and enhance accordingly
