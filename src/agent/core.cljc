@@ -359,11 +359,15 @@
   "Quick check of schema availability for key functions"
   []
   (let [checks [["evolver.kernel/add-reference" 
-                 (try (some? (get (meta #'evolver.kernel/add-reference) :malli/schema))
-                      (catch :default _ false))]
+                 (try
+                   (when-let [fn-var (resolve 'evolver.kernel/add-reference)]
+                     (some? (get (meta fn-var) :malli/schema)))
+                   (catch #?(:cljs :default :clj Exception) _ false))]
                 ["evolver.kernel/remove-reference"
-                 (try (some? (get (meta #'evolver.kernel/remove-reference) :malli/schema))
-                      (catch :default _ false))]
+                 (try
+                   (when-let [fn-var (resolve 'evolver.kernel/remove-reference)]
+                     (some? (get (meta fn-var) :malli/schema)))
+                   (catch #?(:cljs :default :clj Exception) _ false))]
 ]]
     (into {} checks)))
 
