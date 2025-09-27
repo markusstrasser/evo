@@ -1,7 +1,12 @@
 # Evolver
 
 A ClojureScript tree editor with a command-driven architecture for AI-assisted development.
+Underlying concept: edit algebra over a tree has four independent dimensions—existence, topology, order, attributes.
 
+### Kernel OS
+Hard primitives (4): ensure-node, set-parent(id parent index?), patch-props, purge(pred). That’s it.
+Don’t re-introduce mv/reorder as kernel ops if you’ve already collapsed “where” and “in what order” into set-parent(parent, index?). Order only exists relative to a parent, so topology+order is a single axis operationally. Splitting it forces two ops for the common “move-and-place” and bloats logs/undo without adding invariants you can’t encode as preconditions.
+Drop protocols for now. Kernel should own a canonical value and be testable in isolation. Adapters are an afterthought because they’re just normalize/denormalize shims into that value.
 
 Your mistake was thinking you were building a UI framework. You're building an interpreter for a tree-manipulation DSL, and the LLM is the programmer.
 
@@ -14,11 +19,21 @@ Also is this reinventing the wheel? Has svelte5 or whatever other community done
 
 Assume it's mostly for LLMs to patch in events and change uis on the fly generatively
 
-Your "core algebra" is a set of rewrite rules, and the "laws" you would test with property-based testing are proofs of their desirable properties.
+### Protocols AT Edges NOT in Kernel functions
+Keep the kernel dumb and sovereign. It should be an algebra over a canonical value (your {:nodes … :children-by-parent …}), not over an interface. Having kernel ops “know” :children-by-parent is a feature: it makes them total, deterministic, property-testable, and trivially REPLable. If the kernel called a protocol/record, you’d push dynamic dispatch and store-specific concerns into the core, lose referential transparency, and make invariants (acyclic, closure on purge, idempotent ensure) harder to reason about.
+
+Put the protocols at the edges as adapters. Flow: external store → normalize→ canonical → interpret (re-derive) → denormalize → external store*. If you fear key lock-in, add tiny accessors or a normalize/denormalize pair so :children-by-parent is a private contract of the kernel, not the world. Net: better like this—kernel owns the shape; adapters translate.
 
 ## inspo
 https://gitingest.com/crs48/cause
 "Ports and Adapters" (or Hexagonal) architecture.
+* Your "core algebra" is a set of rewrite rules, and the "laws" you would test with property-based testing are proofs of their desirable properties.
+* FSM 
+
+## Protocols vs Multimethods
+Protocols are best when you have a fixed set of operations (insert, patch) and want to support many different data types (backends like InMem, DataScript, Postgres). It abstracts over the db argument.
+
+Multimethods are best when you have a fixed set of data types (just your InMem db) and want to support an open-ended set of operations. It abstracts over the op argument.
 
 ## WHy not datascript?
 * No ordered lists! Buggy on some things.
@@ -64,10 +79,6 @@ This reveals that your system isn't a single interpreter but a pipeline of trans
 
 
 The UI as MLIR
-The LLVM metaphor is useful, but thinking of your system through the lens of MLIR (Multi-Level Intermediate Representation) is more powerful. MLIR isn't a single IR; it's an infrastructure for creating and transforming multiple, domain-specific IRs, "progressively lowering" from high-level intent to low-level implementation.
-
-This reveals that your system isn't a single interpreter but a pipeline of transformations between different levels of semantic abstraction.
-
 1. The Intent IR (High-Level)
    This is the most abstract representation of what the user or LLM wants to do. It describes semantic intent, not implementation.
 
