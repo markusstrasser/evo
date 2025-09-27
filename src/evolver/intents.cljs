@@ -11,7 +11,7 @@
       :parent-id cursor
       :node-id (k/gen-new-id)
       :node-data {:type :div :props {:text "New child"}}
-      :position nil}]))
+      :at-position [:last]}]))
 
 (defn create-sibling-above [db {:keys [cursor]}]
   (when cursor
@@ -20,7 +20,7 @@
         :parent-id parent
         :node-id (k/gen-new-id)
         :node-data {:type :div :props {:text "New sibling"}}
-        :position index}])))
+        :at-position [:index index]}])))
 
 (defn create-sibling-below [db {:keys [cursor]}]
   (when cursor
@@ -29,7 +29,7 @@
         :parent-id parent
         :node-id (k/gen-new-id)
         :node-data {:type :div :props {:text "New sibling"}}
-        :position (inc index)}])))
+        :at-position [:index (inc index)]}])))
 
 (defn enter-new-block [db {:keys [cursor cursor-position block-content]}]
   (when cursor
@@ -40,7 +40,7 @@
           :parent-id parent
           :node-id (k/gen-new-id)
           :node-data {:type :div :props {:text ""}}
-          :position (inc index)}]
+          :at-position [:index (inc index)]}]
         ;; Cursor in middle -> split block
         (let [content-before (subs (or block-content "") 0 cursor-position)
               content-after (subs (or block-content "") cursor-position)]
@@ -50,7 +50,7 @@
                         :parent-id parent
                         :node-id (k/gen-new-id)
                         :node-data {:type :div :props {:text content-after}}
-                        :position (inc index)}]}])))))
+                        :at-position [:index (inc index)]}]}])))))
 
 (defn indent [db {:keys [cursor]}]
   (when cursor
@@ -59,7 +59,7 @@
         [{:op :move
           :node-id cursor
           :new-parent-id (nth children (dec index))
-          :position nil}]))))
+          :at-position [:last]}]))))
 
 (defn outdent [db {:keys [cursor]}]
   (when cursor
@@ -69,7 +69,7 @@
           [{:op :move
             :node-id cursor
             :new-parent-id p2
-            :position (inc i2)}])))))
+            :at-position [:index (inc i2)]}])))))
 
 (defn move-up [db {:keys [cursor]}]
   (when cursor
@@ -114,10 +114,10 @@
                          :updates {:props {:text merged-content}}}]
                        ;; Move current node's children to previous node
                        (map (fn [child-id]
-                              {:op :move
-                               :node-id child-id
-                               :new-parent-id prev-node
-                               :position :last})
+                               {:op :move
+                                :node-id child-id
+                                :new-parent-id prev-node
+                                :at-position [:last]})
                             children)
                        ;; Delete the current node
                        [{:op :delete :node-id cursor}])}])))))
@@ -139,10 +139,10 @@
                          :updates {:props {:text merged-content}}}]
                        ;; Move next node's children to current node
                        (map (fn [child-id]
-                              {:op :move
-                               :node-id child-id
-                               :new-parent-id cursor
-                               :position :last})
+                               {:op :move
+                                :node-id child-id
+                                :new-parent-id cursor
+                                :at-position [:last]})
                             children)
                        ;; Delete the next node
                        [{:op :delete :node-id next-node}])}])))))
