@@ -15,7 +15,7 @@
                 :clj false)
    :node? #?(:cljs (try (boolean js/process) (catch :default _ false))
              :clj (try (boolean (resolve 'clojure.java.shell/sh)) (catch Exception _ false)))
-   :store-accessible? (try (some? (resolve 'evolver.core/store)) (catch #?(:cljs :default :clj Exception) _ false))
+   :store-accessible? (try (some? (resolve 'evolver.protocol-sketch/store)) (catch #?(:cljs :default :clj Exception) _ false))
    :cljs-repl? #?(:cljs (try (some? (resolve 'cljs.repl/*repl-env*)) (catch :default _ false))
                   :clj false)})
 
@@ -88,7 +88,7 @@
   (validate-environment-for-operation :store-access)
   (if-let [handler (get (resolve 'evolver.registry/registry) cmd-name)]
     (try
-      ((resolve 'evolver.core/dispatch!) store event-data [cmd-name params])
+      ((resolve 'evolver.protocol-sketch/dispatch!) store event-data [cmd-name params])
       #?(:clj (catch Exception e
                 (throw (ex-info "Command execution failed"
                                 {:command cmd-name :params params :error e})))
@@ -284,7 +284,7 @@
   (validate-command-params cmd-name params)
   (if-let [handler (get (resolve 'evolver.registry/registry) cmd-name)]
     (try
-      ((resolve 'evolver.core/dispatch!) store event-data [cmd-name params])
+      ((resolve 'evolver.protocol-sketch/dispatch!) store event-data [cmd-name params])
       #?(:clj (catch Exception e
                 (throw (ex-info "Command execution failed"
                                 {:command cmd-name :params params :error e})))
