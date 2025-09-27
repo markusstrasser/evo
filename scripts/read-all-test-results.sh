@@ -11,13 +11,13 @@ echo ""
 # 1. Node.js test results (latest)
 echo "🖥️  NODE.JS TEST RESULTS"
 echo "========================="
-if [ -f "/tmp/evo-latest-test-results.txt" ]; then
+if [ -f "./test-results/latest-node-results.txt" ]; then
     echo "✅ Found Node.js test results:"
     echo "------------------------------"
-    cat "/tmp/evo-latest-test-results.txt"
+    cat "./test-results/latest-node-results.txt"
     echo ""
     echo "Summary from Node tests:"
-    grep -E "(Summary:|failures|errors)" "/tmp/evo-latest-test-results.txt" | tail -3
+    grep -E "(Summary:|failures|errors)" "./test-results/latest-node-results.txt" | tail -3
 else
     echo "❌ No Node.js test results found. Run: npm test"
 fi
@@ -28,10 +28,10 @@ echo ""
 # 2. UI test setup results
 echo "🌐 UI TEST SETUP RESULTS"
 echo "========================="
-if [ -f "/tmp/evo-latest-ui-test-results.txt" ]; then
+if [ -f "./test-results/latest-ui-results.txt" ]; then
     echo "✅ Found UI test setup log:"
     echo "----------------------------"
-    cat "/tmp/evo-latest-ui-test-results.txt"
+    cat "./test-results/latest-ui-results.txt"
 else
     echo "❌ No UI test setup found. Run: npm run test:ui"
 fi
@@ -60,16 +60,16 @@ echo "======================"
 NODE_STATUS="❓ Unknown"
 UI_STATUS="❓ Unknown"
 
-if [ -f "/tmp/evo-latest-test-results.txt" ]; then
-    if grep -q "0 failures, 0 errors" "/tmp/evo-latest-test-results.txt"; then
+if [ -f "./test-results/latest-node-results.txt" ]; then
+    if grep -q "0 failures, 0 errors" "./test-results/latest-node-results.txt"; then
         NODE_STATUS="✅ Passing"
     else
         NODE_STATUS="❌ Failing"
     fi
 fi
 
-if [ -f "/tmp/evo-latest-ui-test-results.txt" ]; then
-    if grep -q "Compilation successful" "/tmp/evo-latest-ui-test-results.txt"; then
+if [ -f "./test-results/latest-ui-results.txt" ]; then
+    if grep -q "Build completed" "./test-results/latest-ui-results.txt"; then
         UI_STATUS="✅ Compiled (check browser)"
     else
         UI_STATUS="❌ Compilation failed"
@@ -89,9 +89,9 @@ echo "Extract UI results:    ./scripts/extract-ui-test-results.sh"
 echo "Read this summary:     ./scripts/read-all-test-results.sh"
 echo ""
 echo "Direct file access:"
-echo "Node results:     /tmp/evo-latest-test-results.txt"
-echo "UI setup log:     /tmp/evo-latest-ui-test-results.txt" 
-echo "UI extraction:    /tmp/evo-latest-ui-extract.txt"
+echo "Node results:     ./test-results/latest-node-results.txt"
+echo "UI setup log:     ./test-results/latest-ui-results.txt"
+echo "All logs:         ./logs/"
 echo ""
 echo "Browser access:"
 echo "Test page:        http://localhost:8080/test.html"
