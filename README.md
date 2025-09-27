@@ -5,6 +5,7 @@ Underlying concept: edit algebra over a tree has four independent dimensions—e
 
 ### Kernel OS
 Hard primitives (4): ensure-node, set-parent(id parent index?), patch-props, purge(pred). That’s it.
+The MLIR framing (Intent → Core Algebra → View Diff) fits perfectly; you’re already at the “Core Algebra” tier and it compiles cleanly from higher intents without touching the kernel.
 Don’t re-introduce mv/reorder as kernel ops if you’ve already collapsed “where” and “in what order” into set-parent(parent, index?). Order only exists relative to a parent, so topology+order is a single axis operationally. Splitting it forces two ops for the common “move-and-place” and bloats logs/undo without adding invariants you can’t encode as preconditions.
 Drop protocols for now. Kernel should own a canonical value and be testable in isolation. Adapters are an afterthought because they’re just normalize/denormalize shims into that value.
 
