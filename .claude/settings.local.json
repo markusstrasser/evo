@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__clojure-shadow-cljs__read_file",
-      "mcp__clojure-shadow-cljs__clojure_edit"
+      "mcp__clojure-shadow-cljs__clojure_edit",
+      "mcp__jetbrains__get_file_text_by_path"
     ],
     "deny": [],
     "ask": []
