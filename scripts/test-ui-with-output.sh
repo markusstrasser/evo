@@ -5,8 +5,8 @@
 
 set -e
 
-# Create temp file for output  
-TEMP_FILE="/tmp/evo-ui-test-results-$(date +%s).txt"
+# Create project-local output file
+TEMP_FILE="./test-results/ui-test-results-$(date +%s).txt"
 TEST_URL="http://localhost:8080/test.html"
 
 echo "📝 Capturing UI test output to: $TEMP_FILE"
@@ -72,8 +72,8 @@ echo "========================================" >> "$TEMP_FILE"
 echo "UI test setup completed at: $(date)" >> "$TEMP_FILE"
 
 # Create symlinks for easy access
-ln -sf "$TEMP_FILE" "/tmp/evo-latest-ui-test-results.txt"
-echo "🔗 Latest UI test results: /tmp/evo-latest-ui-test-results.txt"
+ln -sf "$TEMP_FILE" "./test-results/latest-ui-results.txt"
+echo "🔗 Latest UI test results: ./test-results/latest-ui-results.txt"
 
 echo ""
 echo "📁 Full setup log saved to: $TEMP_FILE"

@@ -5,8 +5,8 @@
 
 set -e
 
-# Create temp file for output
-TEMP_FILE="/tmp/evo-test-results-$(date +%s).txt"
+# Create project-local output file
+TEMP_FILE="./test-results/node-test-results-$(date +%s).txt"
 echo "📝 Capturing test output to: $TEMP_FILE"
 
 # Run tests and capture all output
@@ -31,8 +31,8 @@ echo "📁 Full test results saved to: $TEMP_FILE"
 echo "💡 Agent can read this file for complete test output"
 
 # Create a symlink to the latest results for easy access
-ln -sf "$TEMP_FILE" "/tmp/evo-latest-test-results.txt"
-echo "🔗 Latest results symlink: /tmp/evo-latest-test-results.txt"
+ln -sf "$TEMP_FILE" "./test-results/latest-node-results.txt"
+echo "🔗 Latest results symlink: ./test-results/latest-node-results.txt"
 
 # Exit with the same code as the tests
 exit $TEST_EXIT_CODE
