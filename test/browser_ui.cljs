@@ -1,4 +1,4 @@
-(ns browser-ui-test
+(ns browser-ui
   "Browser-specific UI tests that use DOM APIs"
   (:require [cljs.test :refer [deftest testing is are run-tests]]))
 

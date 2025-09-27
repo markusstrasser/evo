@@ -4,7 +4,7 @@
             [evolver-core-test]
             [data-transform-test]
             [pure-logic-test]
-            [browser-ui-test]))
+            [browser-ui]))
 
 (defn ^:export run-all-tests []
   "Run all tests and capture results for AI agent access"
@@ -55,7 +55,7 @@
 
       ;; Run the tests
       (println "🚀 Running all test namespaces...")
-      (test/run-tests 'evolver-core-test 'data-transform-test 'pure-logic-test 'browser-ui-test)
+      (test/run-tests 'evolver-core-test 'data-transform-test 'pure-logic-test 'browser-ui)
 
       ;; Restore original functions
       (set! js/console.log original-log)
