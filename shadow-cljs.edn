@@ -25,10 +25,4 @@
    {:target :node-test
     :output-to "out/tests.js"
     :ns-regexp "-test$"
-    :ns-exclude-regexp "browser-ui"}
-
-   :test-ui
-   {:target :browser-test
-    :test-dir "out/ui-tests"
-    :ns-regexp "-test$"
-    :runner-ns ui.test-runner}}}
+    :ns-exclude-regexp "browser-ui"}}}
