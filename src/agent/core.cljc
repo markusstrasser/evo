@@ -86,9 +86,9 @@
   {:malli/schema [:=> [:cat any? map? [:tuple keyword? map?]] any?]}
   [store event-data [cmd-name params]]
   (validate-environment-for-operation :store-access)
-  (if-let [handler (get (resolve 'evolver.commands/command-registry) cmd-name)]
+  (if-let [handler (get (resolve 'evolver.registry/registry) cmd-name)]
     (try
-      ((resolve 'evolver.commands/dispatch-command) store event-data [cmd-name params])
+      ((resolve 'evolver.core/dispatch!) store event-data [cmd-name params])
       #?(:clj (catch Exception e
                 (throw (ex-info "Command execution failed"
                                 {:command cmd-name :params params :error e})))
@@ -97,7 +97,7 @@
                                  {:command cmd-name :params params :error e})))))
     (throw (ex-info "Command not found in registry"
                     {:command cmd-name
-                     :available-commands (keys (resolve 'evolver.commands/command-registry))}))))
+                     :available-commands (keys (resolve 'evolver.registry/registry))}))))
 
 (defn validate-file-namespace-alignment
   "Validate that namespace matches filename (prevents shadow-cljs compilation errors)"
@@ -282,9 +282,9 @@
   [store event-data [cmd-name params]]
   (validate-environment-for-operation :store-access)
   (validate-command-params cmd-name params)
-  (if-let [handler (get (resolve 'evolver.commands/command-registry) cmd-name)]
+  (if-let [handler (get (resolve 'evolver.registry/registry) cmd-name)]
     (try
-      ((resolve 'evolver.commands/dispatch-command) store event-data [cmd-name params])
+      ((resolve 'evolver.core/dispatch!) store event-data [cmd-name params])
       #?(:clj (catch Exception e
                 (throw (ex-info "Command execution failed"
                                 {:command cmd-name :params params :error e})))
@@ -293,7 +293,7 @@
                                  {:command cmd-name :params params :error e})))))
     (throw (ex-info "Command not found in registry"
                     {:command cmd-name
-                     :available-commands (keys (resolve 'evolver.commands/command-registry))}))))
+                     :available-commands (keys (resolve 'evolver.registry/registry))}))))
 
 ;; Schema validation
 
