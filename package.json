@@ -29,7 +29,9 @@
     "dev-unified": "echo '🚀 Starting unified development environment...' && npm run check-env && npm run dev",
     "init-agent": "echo '🤖 Initializing agent development environment...' && clojure -e '(do (require (quote [dev-unified :as dev])) (dev/init!) (println \"🎯 Agent environment ready!\"))'",
     "test:results": "./scripts/read-all-test-results.sh",
-    "test:extract-ui": "./scripts/extract-ui-test-results.sh"
+    "test:extract-ui": "./scripts/extract-ui-test-results.sh",
+    "validate-env": "./scripts/validate-environment.sh",
+    "test:robust": "./scripts/robust-test-runner.sh"
   },
   "dependencies": {
     "concurrently": "^9.2.1"
