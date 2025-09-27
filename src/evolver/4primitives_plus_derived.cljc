@@ -1,19 +1,19 @@
 (ns evolver.4primitives-plus-derived
   "Tiny, testable tree-edit kernel over a canonical value.
    Canonical DB:
-     {:nodes               {id {:type kw :props map}}
-      :children-by-parent  {parent-id [child-id ...]}
-      :derived             {:parent-of  {id parent}
-                            :children-of{parent [child ...]}
-                            :index      {id idx}
-                            :prev       {id prev-id?}
-                            :next       {id next-id?}
-                            :depth      {id int}
-                            :paths      {id [ancestors ...]}
-                            :pre        {id int}
-                            :post       {id int}}}
+     {:nodes                    {id {:type kw :props map}}
+      :children-by-parent-id    {parent-id [child-id ...]}
+      :derived                  {:parent-id-of   {id parent-id}
+                                 :child-ids-of   {parent-id [child-id ...]}
+                                 :index-of       {id idx}
+                                 :prev-id-of     {id prev-id?}
+                                 :next-id-of     {id next-id?}
+                                 :depth-of       {id int}
+                                 :path-of        {id [ancestor-ids ...]}
+                                 :pre            {id int}
+                                 :post           {id int}}}
 
-   Ops are maps with an :op key; e.g. {:op :ins :id \"a\" :under \"root\"}."
+   Ops are maps with an :op key; e.g. {:op :ins :id \"a\" :parent-id \"root\"}."
 
   (:require [clojure.set :as set]
             [clojure.pprint :refer [pprint]]))
@@ -24,77 +24,89 @@
 
 (defn rmv [v x] (vec (remove #{x} v)))
 (defn clamp [i lo hi] (-> i (max lo) (min hi)))
-(defn children-of* [db p] (get-in db [:children-by-parent p] []))
+(defn child-ids-of* [db parent-id] (get-in db [:children-by-parent-id parent-id] []))
 
 ;; ------------------------------------------------------------
 ;; Derived helpers (always computed fresh from :children-by-parent)
 ;; ------------------------------------------------------------
 
-(defn derive-parent-of
-  "Produce {child -> parent} from {parent -> [child ...]}."
-  [children-by-parent]
-  (reduce-kv (fn [m p kids]
-               (reduce (fn [m2 c] (assoc m2 c p)) m kids))
-             {} children-by-parent))
+(defn derive-parent-id-of
+  "Produce {child-id -> parent-id} from {parent-id -> [child-id ...]}."
+  [children-by-parent-id]
+  (reduce-kv (fn [m parent-id child-ids]
+               (reduce (fn [m2 c] (assoc m2 c parent-id)) m child-ids))
+             {} children-by-parent-id))
 
 (defn- derive-depth-paths-prepost
-  "DFS from \"root\"; returns {:depth ... :paths ... :pre ... :post ...}."
-  [children-by-parent]
+  "DFS from \"root\"; returns {:depth-of ... :path-of ... :pre ... :post ...}.
+   Orphan nodes (not reachable from root) get :depth-of nil."
+  [children-by-parent-id nodes]
   (letfn [(walk [node depth path [acc t]]
             (let [t1 (inc t)
                   acc1 (-> acc
-                           (assoc-in [:depth node] depth)
-                           (assoc-in [:paths node] path)
+                           (assoc-in [:depth-of node] depth)
+                           (assoc-in [:path-of node] path)
                            (assoc-in [:pre node] t1))
-                  kids (get children-by-parent node [])
+                  child-ids (get children-by-parent-id node [])
                   [acc2 t2]
                   (reduce (fn [[a tt] k]
                             (walk k (inc depth) (conj path node) [a tt]))
-                          [acc1 t1] kids)
+                          [acc1 t1] child-ids)
                   t3 (inc t2)
                   acc3 (assoc-in acc2 [:post node] t3)]
               [acc3 t3]))]
-    (first (walk "root" 0 [] [{} 0]))))
+    (let [[coords _] (walk "root" 0 [] [{} 0])
+          ;; Find all nodes mentioned anywhere
+          all-ids (set (concat (keys nodes)
+                               (keys children-by-parent-id)
+                               (mapcat identity (vals children-by-parent-id))))
+          ;; Mark orphans with nil depth
+          coords-with-orphans (reduce (fn [acc id]
+                                        (if (contains? (:depth-of acc) id)
+                                          acc
+                                          (assoc-in acc [:depth-of id] nil)))
+                                      coords all-ids)]
+      coords-with-orphans)))
 
 (defn- compute-derived
   "Build Tier A+B derived maps from canonical adjacency."
   [db]
-  (let [cbp (:children-by-parent db)
+  (let [adj (:children-by-parent-id db)
         nodes (:nodes db)
-        parent-of (derive-parent-of cbp)
+        parent-id-of (derive-parent-id-of adj)
         ;; cover anything mentioned anywhere (keys(nodes), parents, children)
         all-ids (set (concat (keys nodes)
-                             (keys cbp)
-                             (mapcat identity (vals cbp))))
-        children-of (into {}
-                          (for [id all-ids]
-                            [id (vec (get cbp id []))]))
+                             (keys adj)
+                             (mapcat identity (vals adj))))
+        child-ids-of (into {}
+                           (for [id all-ids]
+                             [id (vec (get adj id []))]))
         ;; index, prev, next
-        index (reduce-kv
-               (fn [m _ kids]
-                 (reduce (fn [m2 [i c]] (assoc m2 c i))
-                         m (map-indexed vector kids)))
-               {} cbp)
-        {:keys [prev next]}
+        index-of (reduce-kv
+                  (fn [m _ child-ids]
+                    (reduce (fn [m2 [i c]] (assoc m2 c i))
+                            m (map-indexed vector child-ids)))
+                  {} adj)
+        {:keys [prev-id-of next-id-of]}
         (reduce-kv
-         (fn [{:keys [prev next] :as acc} _ kids]
-           (let [n (count kids)]
-             (loop [i 0 prev prev next next]
+         (fn [{:keys [prev-id-of next-id-of] :as acc} _ child-ids]
+           (let [n (count child-ids)]
+             (loop [i 0 prev prev-id-of next next-id-of]
                (if (= i n)
-                 {:prev prev :next next}
-                 (let [id (nth kids i)
-                       prev (cond-> prev (> i 0) (assoc id (nth kids (dec i))))
-                       next (cond-> next (< i (dec n)) (assoc id (nth kids (inc i))))]
+                 {:prev-id-of prev :next-id-of next}
+                 (let [id (nth child-ids i)
+                       prev (cond-> prev (> i 0) (assoc id (nth child-ids (dec i))))
+                       next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
                    (recur (inc i) prev next))))))
-         {:prev {} :next {}} cbp)
-        coords (derive-depth-paths-prepost cbp)]
-    {:parent-of parent-of
-     :children-of children-of
-     :index index
-     :prev prev
-     :next next
-     :depth (:depth coords)
-     :paths (:paths coords)
+         {:prev-id-of {} :next-id-of {}} adj)
+        coords (derive-depth-paths-prepost adj nodes)]
+    {:parent-id-of parent-id-of
+     :child-ids-of child-ids-of
+     :index-of index-of
+     :prev-id-of prev-id-of
+     :next-id-of next-id-of
+     :depth-of (:depth-of coords)
+     :path-of (:path-of coords)
      :pre (:pre coords)
      :post (:post coords)}))
 
@@ -103,28 +115,43 @@
   [db]
   (assoc db :derived (compute-derived db)))
 
-(defn parent-of* [db id]
-  (get (derive-parent-of (:children-by-parent db)) id))
+(defn parent-id-of* [db id]
+  (if-let [derived (:derived db)]
+    (get-in derived [:parent-id-of id])
+    (get (derive-parent-id-of (:children-by-parent-id db)) id)))
 
 (defn subtree-ids
   "Inclusive set: root + all descendants of `root`."
   [db root]
-  (letfn [(walk [acc x] (reduce walk (conj acc x) (children-of* db x)))]
+  (letfn [(walk [acc x] (reduce walk (conj acc x) (child-ids-of* db x)))]
     (walk #{} root)))
 
 (defn cycle? [db id new-parent]
   (and new-parent (contains? (subtree-ids db id) new-parent)))
 
-(defn ->index
-  "Normalize position; accepts integer, :first, :last, or [:index n]."
-  [kids index]
-  (cond
-    (nil? index) (count kids)
-    (keyword? index) (case index :first 0 :last (count kids) (count kids))
-    (and (vector? index) (= :index (first index)))
-    (clamp (second index) 0 (count kids))
-    (int? index) (clamp index 0 (count kids))
-    :else (count kids)))
+(defn pos->index
+  "Convert position spec to insertion index.
+   pos ∈ {nil,:first,:last, [:index i], [:before anchor-id], [:after anchor-id]}"
+  [db parent-id id pos]
+  (let [child-ids (-> (:derived db) :child-ids-of (get parent-id []))
+        base (vec (remove #{id} child-ids))
+        idx (fn [anchor-id]
+              (let [i (.indexOf base anchor-id)]
+                (when (neg? i)
+                  (throw (ex-info "anchor not in parent" {:anchor anchor-id :parent parent-id})))
+                i))]
+    (cond
+      (nil? pos) (count base) ; default :last
+      (= :first pos) 0
+      (= :last pos) (count base)
+      (and (vector? pos) (= :index (first pos)))
+      (let [i (second pos)]
+        (when (or (neg? i) (> i (count base)))
+          (throw (ex-info "index OOB" {:i i :n (count base)})))
+        i)
+      (and (vector? pos) (= :before (first pos))) (idx (second pos))
+      (and (vector? pos) (= :after (first pos))) (inc (idx (second pos)))
+      :else (throw (ex-info "bad :pos" {:pos pos})))))
 
 ;; ------------------------------------------------------------
 ;; 4 primitives (existence, edge+order, attributes, deletion)
@@ -140,32 +167,37 @@
 
 (defn set-parent*
   "Topology + order in one op.
-   {:id ... :parent p-or-nil :index (int|:first|:last|[:index n])}
-   - parent=nil    => detach only
-   - parent=same   => reorder
-   - parent≠same   => move-and-place
+   {:id ... :parent-id p-or-nil :pos (see pos->index)}
+   - parent-id=nil    => detach only
+   - parent-id=same   => reorder
+   - parent-id≠same   => move-and-place
    Cycle-safe."
-  [db {:keys [id parent index]}]
+  [db {:keys [id parent-id pos]}]
   (assert id "set-parent*: :id required")
-  (when (cycle? db id parent)
-    (throw (ex-info "set-parent*: cycle/invalid parent" {:id id :parent parent})))
-  (let [oldp (parent-of* db id)
-        db1 (if oldp (update-in db [:children-by-parent oldp] (fnil rmv []) id) db)]
-    (if (nil? parent)
+  (assert (contains? (:nodes db) id) (str "set-parent*: node does not exist: " id))
+  (when (cycle? db id parent-id)
+    (throw (ex-info "set-parent*: cycle/invalid parent" {:id id :parent-id parent-id})))
+  (let [old-parent-id (parent-id-of* db id)
+        db1 (if old-parent-id (update-in db [:children-by-parent-id old-parent-id] (fnil rmv []) id) db)]
+    (if (nil? parent-id)
       db1
-      (let [kids (vec (children-of* db1 parent))
-            base (rmv kids id)
-            i (->index base index)
+      (let [child-ids (vec (child-ids-of* db1 parent-id))
+            base (rmv child-ids id)
+            i (pos->index db1 parent-id id pos)
             v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
-        (assoc-in db1 [:children-by-parent parent] v)))))
+        (assert (= (count v) (count (distinct v))) "set-parent*: duplicate children detected")
+        (assoc-in db1 [:children-by-parent-id parent-id] v)))))
 
 (defn patch-props*
   "Deep-merge-ish updates: map values merge, scalars replace."
-  [db {:keys [id updates props sys] :as payload}]
+  [db {:keys [id props sys updates]}]
   (assert id "patch-props*: :id required")
-  (let [u (merge {:props props} (select-keys payload [:sys]) (or updates {}))
-        merge-deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
-    (update-in db [:nodes id] #(merge-with merge-deep % u))))
+  (let [u (cond-> {}
+            (some? props) (assoc :props props)
+            (some? sys) (assoc :sys sys)
+            (map? updates) (merge updates))
+        deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
+    (update-in db [:nodes id] #(merge-with deep % u))))
 
 (defn purge*
   "Hard delete by predicate over ids. Closure guarantee: if a node matches,
@@ -180,13 +212,13 @@
         db1 (reduce (fn [d id]
                       (-> d
                           (update :nodes dissoc id)
-                          (update :children-by-parent dissoc id)))
+                          (update :children-by-parent-id dissoc id)))
                     db victims)]
     ;; scrub victims from all child vectors
-    (update db1 :children-by-parent
+    (update db1 :children-by-parent-id
             (fn [m]
-              (into {} (for [[p kids] m]
-                         [p (vec (remove victims kids))]))))))
+              (into {} (for [[parent-id child-ids] m]
+                         [parent-id (vec (remove victims child-ids))]))))))
 
 ;; ------------------------------------------------------------
 ;; Sugar ops
@@ -194,27 +226,31 @@
 
 (defn ins
   "Create + attach. Throws if :id already exists."
-  [db {:keys [id under type props index at] :or {type :div props {}}}]
+  [db {:keys [id parent-id type props pos] :or {type :div props {}}}]
   (assert id "ins: :id required")
   (when (get-in db [:nodes id])
     (throw (ex-info "ins: id already exists" {:id id})))
   (-> db
       (ensure-node* {:id id :type type :props props})
-      (set-parent* {:id id :parent under :index (or index at :last)})))
+      (set-parent* {:id id :parent-id parent-id :pos (or pos :last)})))
 
 (defn mv
-  "Move-and-place via set-parent* (optionally validate :from)."
-  [db {:keys [id from to index at]}]
-  (when (and from (not (some #{id} (children-of* db from))))
-    (throw (ex-info "mv: :from does not contain id" {:id id :from from})))
-  (set-parent* db {:id id :parent to :index (or index at :last)}))
+  "Move-and-place via set-parent* (optionally validate :from-parent-id)."
+  [db {:keys [id from-parent-id to-parent-id pos]}]
+  (assert (contains? (:nodes db) id) (str "mv: node does not exist: " id))
+  (when (and from-parent-id (not (some #{id} (child-ids-of* db from-parent-id))))
+    (throw (ex-info "mv: :from-parent-id does not contain id" {:id id :from-parent-id from-parent-id})))
+  (set-parent* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
 
 (defn reorder
   "Within-parent reorder via set-parent*."
-  [db {:keys [id parent to index at]}]
-  (when-not (some #{id} (children-of* db parent))
-    (throw (ex-info "reorder: id not in :parent" {:id id :parent parent})))
-  (set-parent* db {:id id :parent parent :index (or index to at)}))
+  [db {:keys [id parent-id pos]}]
+  (assert (contains? (:nodes db) id) (str "reorder: node does not exist: " id))
+  (when-not (some #{id} (child-ids-of* db parent-id))
+    (throw (ex-info "reorder: id not in :parent-id" {:id id :parent-id parent-id})))
+  (when (nil? pos)
+    (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
+  (set-parent* db {:id id :parent-id parent-id :pos pos}))
 
 (defn del
   "Delete id (and its subtree) via purge*."
@@ -224,6 +260,15 @@
 ;; ------------------------------------------------------------
 ;; Interpreter: derive AFTER EVERY OP (clarity > perf)
 ;; ------------------------------------------------------------
+
+(defn- ->tx
+  "Normalize tx input to a sequence of operations."
+  [tx]
+  (cond
+    (nil? tx) []
+    (map? tx) [tx]
+    (sequential? tx) tx
+    :else (throw (ex-info "Invalid tx format" {:tx tx}))))
 
 (defn- dispatch
   "Return the function implementing an op keyword."
@@ -253,7 +298,7 @@
          ((dispatch (:op m)) m)
          (derive-all)))
    (derive-all db) ;; ensure db has :derived even before first op
-   tx))
+   (->tx tx)))
 
 ;; ------------------------------------------------------------
 ;; REPL asserts (run the file, they should all pass)
@@ -261,44 +306,44 @@
 
 (defn- ok [& _] true)
 
-(let [db0 {:nodes {} :children-by-parent {"root" []}}
-      tx [{:op :ins :id "a" :under "root" :type :div}
-          {:op :ins :id "b" :under "root"}
-          {:op :ins :id "c" :under "a"}]
+(let [db0 {:nodes {} :children-by-parent-id {"root" []}}
+      tx [{:op :ins :id "a" :parent-id "root" :type :div}
+          {:op :ins :id "b" :parent-id "root"}
+          {:op :ins :id "c" :parent-id "a"}]
       db1 (interpret* db0 tx)]
 
   ;; structure
-  (assert (= ["a" "b"] (get-in db1 [:children-by-parent "root"])))
-  (assert (= ["c"] (get-in db1 [:children-by-parent "a"])))
-  (assert (= "a" (get-in db1 [:derived :parent-of "c"])))
+  (assert (= ["a" "b"] (get-in db1 [:children-by-parent-id "root"])))
+  (assert (= ["c"] (get-in db1 [:children-by-parent-id "a"])))
+  (assert (= "a" (get-in db1 [:derived :parent-id-of "c"])))
 
   ;; basic derived (index/prev/next)
-  (assert (= 1 (get-in db1 [:derived :index "b"])))
-  (assert (nil? (get-in db1 [:derived :prev "a"])))
-  (assert (= "b" (get-in db1 [:derived :next "a"])))
+  (assert (= 1 (get-in db1 [:derived :index-of "b"])))
+  (assert (nil? (get-in db1 [:derived :prev-id-of "a"])))
+  (assert (= "b" (get-in db1 [:derived :next-id-of "a"])))
 
   ;; reorder within root
-  (let [db2 (interpret* db1 [{:op :reorder :id "a" :parent "root" :to 1}])]
-    (assert (= ["b" "a"] (get-in db2 [:children-by-parent "root"])))
-    (assert (= 1 (get-in db2 [:derived :index "a"]))))
+  (let [db2 (interpret* db1 [{:op :reorder :id "a" :parent-id "root" :pos [:index 1]}])]
+    (assert (= ["b" "a"] (get-in db2 [:children-by-parent-id "root"])))
+    (assert (= 1 (get-in db2 [:derived :index-of "a"]))))
 
   ;; move c up to root at index 0
-  (let [db3 (interpret* db1 [{:op :mv :id "c" :from "a" :to "root" :index 0}])]
-    (assert (= ["c" "a" "b"] (get-in db3 [:children-by-parent "root"])))
-    (assert (= [] (get-in db3 [:children-by-parent "a"])))
-    (assert (= 0 (get-in db3 [:derived :index "c"]))))
+  (let [db3 (interpret* db1 [{:op :mv :id "c" :from-parent-id "a" :to-parent-id "root" :pos [:index 0]}])]
+    (assert (= ["c" "a" "b"] (get-in db3 [:children-by-parent-id "root"])))
+    (assert (= [] (get-in db3 [:children-by-parent-id "a"])))
+    (assert (= 0 (get-in db3 [:derived :index-of "c"]))))
 
   ;; cycle prevention: move a under c should throw
-  (let [threw? (try (interpret* db1 [{:op :set-parent :id "a" :parent "c"}])
+  (let [threw? (try (interpret* db1 [{:op :set-parent :id "a" :parent-id "c"}])
                     false
-                    (catch #?(:clj clojure.lang.ExceptionInfo :cljs ExceptionInfo) _ true))]
+                    (catch #?(:clj Exception :cljs :default) _ true))]
     (assert threw?))
 
   ;; delete (purge closure): removing a removes c as well
   (let [db4 (interpret* db1 [{:op :del :id "a"}])]
     (assert (nil? (get-in db4 [:nodes "a"])))
     (assert (nil? (get-in db4 [:nodes "c"])))
-    (assert (= ["b"] (get-in db4 [:children-by-parent "root"]))))
+    (assert (= ["b"] (get-in db4 [:children-by-parent-id "root"]))))
 
   (ok))
 
