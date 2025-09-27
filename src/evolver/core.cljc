@@ -7,7 +7,8 @@
 
    The 4 CORE OPS! SHOULD NOT LEVERAGE :DERIVED ever"
   (:require [clojure.set :as set]
-            [evolver.invariants :as inv]))
+            [evolver.invariants :as inv]
+            [evolver.schemas :as S]))
 
 (def ^:const ROOT "root")
 
@@ -170,10 +171,13 @@
 ;; ------------------------------------------------------------
 ;; Derivation system
 ;; ------------------------------------------------------------
+(defn derive-full [db]
+  (let [core (derive-core db)]
+    (assoc db :derived (derive-dx db core))))
 
 (def ^:dynamic *derive-pass*
-  "Default derivation pass: Tier-A core only"
-  (fn [db] (assoc db :derived (derive-core db))))
+  "Default derivation pass: Tier-A + Tier-B (clarity > perf)"
+  derive-full)
 
 (defn parent-id-of* [db id]
   (if-let [derived (:derived db)]
@@ -253,16 +257,18 @@
     (throw (ex-info "set-parent*: parent-id does not exist" {:parent-id parent-id})))
   (when (cycle? db id parent-id)
     (throw (ex-info "set-parent*: cycle/invalid parent" {:id id :parent-id parent-id})))
-  (let [old-parent-id (parent-id-of* db id)
-        db1 (if old-parent-id (update-in db [:children-by-parent-id old-parent-id] (fnil rmv []) id) db)]
-    (if (nil? parent-id)
-      db1
-      (let [child-ids (vec (child-ids-of* db1 parent-id))
-            base (rmv child-ids id)
-            i (pos->index db1 parent-id id pos)
-            v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
-        (assert (= (count v) (count (distinct v))) "set-parent*: duplicate children detected")
-        (assoc-in db1 [:children-by-parent-id parent-id] v)))))
+  (let [old-parent-id (parent-id-of* db id)]
+    (if (and (= parent-id old-parent-id) (nil? pos))
+      db
+      (let [db1 (if old-parent-id (update-in db [:children-by-parent-id old-parent-id] (fnil rmv []) id) db)]
+        (if (nil? parent-id)
+          db1
+          (let [child-ids (vec (child-ids-of* db1 parent-id))
+                base (rmv child-ids id)
+                i (pos->index db1 parent-id id pos)
+                v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
+            (assert (= (count v) (count (distinct v))) "set-parent*: duplicate children detected")
+            (assoc-in db1 [:children-by-parent-id parent-id] v)))))))
 
 (defn patch-props*
   "Deep-merge-ish updates: map values merge, scalars replace."
@@ -338,18 +344,24 @@
     :patch-props patch-props*
     :purge (fn [db m] (purge* db (:pred m)))
     ;; sugar-ops - we need to import these
-    :ins (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/ins)]
-                      (sugar-ops-ns db m)))
-    :mv (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/mv)]
-                     (sugar-ops-ns db m)))
-    :del (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/del)]
-                      (sugar-ops-ns db m)))
-    :reorder (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/reorder)]
-                          (sugar-ops-ns db m)))
-    :move-up (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-up)]
-                          (sugar-ops-ns db m)))
-    :move-down (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-down)]
-                            (sugar-ops-ns db m)))
+    :ins #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/ins)]
+                              (sugar-ops-ns db m)))
+            :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :ins}))))
+    :mv #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/mv)]
+                             (sugar-ops-ns db m)))
+           :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :mv}))))
+    :del #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/del)]
+                              (sugar-ops-ns db m)))
+            :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :del}))))
+    :reorder #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/reorder)]
+                                  (sugar-ops-ns db m)))
+                :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :reorder}))))
+    :move-up #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-up)]
+                                  (sugar-ops-ns db m)))
+                :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-up}))))
+    :move-down #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-down)]
+                                    (sugar-ops-ns db m)))
+                  :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-down}))))
     (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
 
 (defn interpret*
@@ -360,14 +372,15 @@
   ([db tx] (interpret* db tx {}))
   ([db tx {:keys [derive assert?]
            :or {derive *derive-pass* assert? false}}]
+   (S/validate-db! db)
+   (S/validate-tx! tx)
    (reduce
     (fn [d m]
-      (when-not (map? m) (throw (ex-info "interpret*: op must be a map" {:got m})))
-      (let [k (:op m)] (when-not k (throw (ex-info "interpret*: missing :op" {:got m}))))
+      (S/validate-op! m)
       (let [d1 (-> d
                    ((dispatch (:op m)) m)
                    derive)]
         (when assert? (inv/check-invariants d1))
         d1))
-    (derive db) ;; ensure db has :derived even before first op
+    (derive db)
     (->tx tx))))
