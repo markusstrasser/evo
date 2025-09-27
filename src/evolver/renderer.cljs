@@ -21,30 +21,33 @@
         referenced? (contains? (get-in db [:computed :referenced-nodes]) node-id)
         hovered-referencers (get-in db [:view :hovered-referencers] #{})
         is-referencer-highlighted? (contains? hovered-referencers node-id)
-        node-type (:type node)]
-    (into [(if (keyword? node-type)
-             node-type
-             (keyword (str node-type)))
-           {:replicant/key node-id
-            :class (cond-> [:node]
-                     selected? (conj :selected)
-                     collapsed? (conj :collapsed)
-                     referenced? (conj :referenced)
-                     is-referencer-highlighted? (conj :referencer-highlighted))
-            :on (when-not (= node-id kernel/root-id)
-                  {:click [[:select-node {:node-id node-id}]]
-                   :mouseenter [[:hover-node {:node-id node-id}]]
-                   :mouseleave [[:unhover-node {:node-id node-id}]]})}
-           (or (:text (:props node)) (str node-id))]
-          (when-not collapsed?
-            (cond-> (map #(render-node db %) children)
-              referenced? (conj (render-references db node-id)))))))
+        node-type (:type node)
+        element-name (if (keyword? node-type)
+                       node-type
+                       (keyword (str node-type)))
+        attributes {:replicant/key node-id
+                    :class (cond-> [:node]
+                             selected? (conj :selected)
+                             collapsed? (conj :collapsed)
+                             referenced? (conj :referenced)
+                             is-referencer-highlighted? (conj :referencer-highlighted))
+                    :on (when-not (= node-id kernel/root-id)
+                          {:click [[:select-node-with-modifiers {:node-id node-id}]]
+                           :mouseenter [[:hover-node {:node-id node-id}]]
+                           :mouseleave [[:unhover-node {:node-id node-id}]]})}
+        node-text (or (:text (:props node)) (str node-id))]
+    (if (seq children)
+      (into [element-name attributes node-text]
+            (when-not collapsed?
+              (cond-> (map #(render-node db %) children)
+                referenced? (conj (render-references db node-id)))))
+      [element-name attributes node-text])))
 
 (defn render-ops-dropdown [selected-op]
   [:select {:value (if selected-op (name selected-op) "")
             :on {:change [[:set-selected-op]]}}
    [:option {:replicant/key "none" :value ""} "Select operation"]
-   (for [cmd (registry/get-ui-commands)]
+   (for [cmd (vals registry/registry)]
      [:option {:replicant/key (name (:id cmd))
                :value (name (:id cmd))}
       (:doc cmd)])])
