@@ -45,10 +45,4 @@
   (let [root (.getElementById js/document "root")
         store-atom @store] ; Dereference the delay to get the actual atom
     (js/console.log "Initial render")
-    (r/render root (renderer/render (:present @store-atom)))
-    (remove-watch store-atom :render) ; Watch the atom, not the delay
-    (add-watch store-atom :render
-               (fn [_ _ old-state new-state]
-                 (when (not= old-state new-state)
-                   (js/console.log "Reactive render triggered")
-                   (r/render root (renderer/render (:present new-state))))))))
+    (r/render root (renderer/render (:present @store-atom)))))
