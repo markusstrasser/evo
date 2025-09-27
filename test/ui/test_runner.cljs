@@ -76,5 +76,4 @@
         summary-line (last (filter #(clojure.string/includes? % "Summary:") results))]
     (or summary-line "No summary available")))
 
-;; Auto-run tests when page loads
-(set! (.-onload js/window) run-all-tests)
+;; Don't auto-run - let the HTML page control when tests run

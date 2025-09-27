@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Evolver UI Tests</title>
+    <title>Evolver Test Environment</title>
     <style>
         body {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -20,22 +20,19 @@
             margin-bottom: 20px;
             text-align: center;
         }
-        .controls {
-            margin: 20px 0;
-            text-align: center;
-        }
-        button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            margin: 5px;
+        .info {
+            background: #2d2d2d;
+            border: 1px solid #444;
             border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
+            padding: 20px;
+            margin: 20px 0;
         }
-        button:hover {
-            background: #45a049;
+        .command {
+            background: #333;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            margin: 5px 0;
         }
         #test-results {
             background: #2d2d2d;
@@ -43,7 +40,7 @@
             border-radius: 5px;
             padding: 20px;
             margin-top: 20px;
-            max-height: 70vh;
+            max-height: 50vh;
             overflow-y: auto;
             white-space: pre-wrap;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -54,11 +51,7 @@
             padding: 10px;
             margin: 10px 0;
             border-radius: 5px;
-        }
-        .status.loading {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
+            text-align: center;
         }
         .status.success {
             background: #d4edda;
@@ -74,87 +67,44 @@
 </head>
 <body>
     <div class="header">
-        <h1>🧪 Evolver UI Test Suite</h1>
-        <p>Browser-based ClojureScript testing with AI agent integration</p>
+        <h1>🧪 Evolver Test Environment</h1>
+        <p>Browser-based ClojureScript testing for REPL development</p>
     </div>
 
-    <div class="controls">
-        <button onclick="runAllTests()">🚀 Run All Tests</button>
-        <button onclick="clearResults()">🧹 Clear Results</button>
-        <button onclick="copyResults()">📋 Copy Results</button>
-        <button onclick="downloadResults()">💾 Download Results</button>
-    </div>
-
-    <div id="status" class="status loading">
+    <div id="status" class="status">
         ⏳ Loading test framework...
+    </div>
+
+    <div class="info">
+        <h3>🔧 AI Agent Commands (Browser Console)</h3>
+        <div class="command">window.getTestResultsText()</div>
+        <div class="command">window.getLastTestSummary()</div>
+        <div class="command">ui.test_runner.run_all_tests()</div>
+        
+        <h3>🎯 REPL Integration</h3>
+        <p>This page loads ClojureScript tests in browser context for REPL interaction.</p>
+        <p>Use <code>src/dev.clj</code> functions to inspect state and simulate events.</p>
     </div>
 
     <div id="test-results">
         <div style="color: #888; text-align: center; padding: 40px;">
-            Tests will appear here when run...
+            Test results will appear here when run...
         </div>
     </div>
 
     <script>
-        // Global functions for test control
-        function runAllTests() {
-            if (window.runAllTests) {
-                document.getElementById('status').innerHTML = '🏃 Running tests...';
-                document.getElementById('status').className = 'status loading';
-                window.runAllTests();
-                setTimeout(() => {
-                    updateStatus();
-                }, 1000);
-            } else {
-                alert('Test framework not loaded yet. Please wait...');
-            }
-        }
-
-        function clearResults() {
-            const resultsEl = document.getElementById('test-results');
-            resultsEl.innerHTML = '<div style="color: #888; text-align: center; padding: 40px;">Tests cleared. Click "Run All Tests" to run again...</div>';
-            document.getElementById('status').innerHTML = '🧹 Results cleared';
-            document.getElementById('status').className = 'status';
-        }
-
-        function copyResults() {
-            if (window.testResults) {
-                navigator.clipboard.writeText(window.testResults.join('\n'));
-                alert('Test results copied to clipboard!');
-            } else {
-                alert('No test results to copy. Run tests first.');
-            }
-        }
-
-        function downloadResults() {
-            if (window.testResults) {
-                const blob = new Blob([window.testResults.join('\n')], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `evolver-test-results-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
-            } else {
-                alert('No test results to download. Run tests first.');
-            }
-        }
-
+        // Simple status tracking
         function updateStatus() {
-            if (window.testResults) {
-                const summary = window.getTestSummary ? window.getTestSummary() : 'Tests completed';
+            if (window.testResults && window.testResults.length > 0) {
+                const summary = window.getLastTestSummary();
                 const hasFailures = summary.includes('failed') && !summary.includes('0 failed');
                 document.getElementById('status').innerHTML = hasFailures ? '❌ ' + summary : '✅ ' + summary;
                 document.getElementById('status').className = hasFailures ? 'status error' : 'status success';
+                
+                // Show results
+                document.getElementById('test-results').textContent = window.getTestResultsText();
             }
         }
-
-        // Auto-update status when tests complete
-        setInterval(() => {
-            if (window.testResults) {
-                updateStatus();
-            }
-        }, 2000);
 
         // Expose global functions for AI agent access
         window.getTestResultsText = function() {
@@ -162,24 +112,41 @@
         };
 
         window.getLastTestSummary = function() {
-            return window.getTestSummary ? window.getTestSummary() : 'No summary available';
+            if (window.ui && window.ui.test_runner && window.ui.test_runner.get_test_summary) {
+                return window.ui.test_runner.get_test_summary();
+            }
+            return 'No summary available';
         };
+
+        // Auto-run tests when framework loads
+        function autoRunTests() {
+            if (window.ui && window.ui.test_runner && window.ui.test_runner.run_all_tests) {
+                console.log('🚀 Auto-running tests...');
+                window.ui.test_runner.run_all_tests();
+                setTimeout(updateStatus, 1000);
+                return true;
+            }
+            return false;
+        }
+
+        // Check for framework loading
+        let loadAttempts = 0;
+        const checkInterval = setInterval(() => {
+            loadAttempts++;
+            
+            if (autoRunTests()) {
+                document.getElementById('status').innerHTML = '🚀 Tests running...';
+                document.getElementById('status').className = 'status';
+                clearInterval(checkInterval);
+            } else if (loadAttempts > 10) {
+                document.getElementById('status').innerHTML = '❌ Test framework failed to load';
+                document.getElementById('status').className = 'status error';
+                clearInterval(checkInterval);
+            }
+        }, 500);
     </script>
 
     <!-- Load the compiled test suite -->
-    <script src="/ui-tests/main.js"></script>
-
-    <script>
-        // Update status when framework is loaded
-        setTimeout(() => {
-            if (window.runAllTests) {
-                document.getElementById('status').innerHTML = '✅ Test framework loaded. Ready to run tests!';
-                document.getElementById('status').className = 'status success';
-            } else {
-                document.getElementById('status').innerHTML = '❌ Failed to load test framework';
-                document.getElementById('status').className = 'status error';
-            }
-        }, 2000);
-    </script>
+    <script src="/ui-tests/js/test.js"></script>
 </body>
 </html>
