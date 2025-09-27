@@ -383,7 +383,7 @@
           {:valid? (m/validate input-schema (vec args))
            :schema input-schema
            :args args}
-          (catch :default e
+          (catch #?(:cljs :default :clj Exception) e
             {:error "malli.core not available - require it first" :exception e}))))
     {:error "No Malli schema found for function"}))
 
