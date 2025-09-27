@@ -187,7 +187,11 @@
                    (assoc-in [:nodes node-id] node-data)
                    (update-in [:children-by-parent parent-id]
                               #(insert-at-position % node-id position)))]
-    (update-derived new-db)))
+    (update-derived
+     (if (and (not= (:type (get-in new-db [:nodes parent-id])) :div)
+              (seq (get-in new-db [:children-by-parent parent-id])))
+       (assoc-in new-db [:nodes parent-id :type] :div)
+       new-db))))
 
 (defn patch-node [db {:keys [node-id updates]}]
   (let [new-db (update-in db [:nodes node-id]
@@ -215,22 +219,35 @@
     (update-derived final-db)))
 
 (defn delete-node [db {:keys [node-id]}]
-  (let [descendants (set (tree-seq #(get-in db [:children-by-parent %])
-                                   #(get-in db [:children-by-parent %])
-                                   node-id))
-        parent (parent-of db node-id)
+  ;; Non-destructive deletion: promote children to parent level
+  (let [parent (parent-of db node-id)
+        children (get-in db [:children-by-parent node-id] [])
+        position-info (node-position db node-id)
+        node-index (:index position-info)
+
         new-db (-> db
-                   (update :nodes #(apply dissoc % descendants))
-                   (update :children-by-parent #(-> %
-                                                    (update parent (fn [ch] (vec (remove #{node-id} ch))))
-                                                    ((fn [m] (apply dissoc m descendants)))))
-                   (update :view #(into {} (map (fn [[k v]] [k (if (set? v) (set/difference v descendants) v)]) %)))
-                   ;; Clean up references to deleted nodes
-                   (update :references #(apply dissoc % descendants))
-                   ;; Remove references FROM deleted nodes in other nodes' reference lists
+                   ;; Remove the node itself
+                   (update :nodes dissoc node-id)
+                   ;; Remove node from its parent's children
+                   (update-in [:children-by-parent parent]
+                              (fn [siblings] (vec (remove #{node-id} siblings))))
+                   ;; Promote children to the deleted node's parent at the same position
+                   (update-in [:children-by-parent parent]
+                              (fn [siblings]
+                                (let [pos (or node-index 0)
+                                      [before after] (split-at pos siblings)]
+                                  (vec (concat before children after)))))
+                   ;; Remove the deleted node's entry from children-by-parent
+                   (update :children-by-parent dissoc node-id)
+                   ;; Clean up view state
+                   (update-in [:view :selection] (fn [sel] (vec (remove #{node-id} sel))))
+                   (update-in [:view :highlighted] (fn [hl] (disj hl node-id)))
+                   (update-in [:view :collapsed] (fn [coll] (disj coll node-id)))
+                   ;; Clean up references
+                   (update :references dissoc node-id)
                    (update :references (fn [refs]
-                                         (into {} (map (fn [[node-id ref-set]]
-                                                         [node-id (set/difference ref-set descendants)])
+                                         (into {} (map (fn [[nid ref-set]]
+                                                         [nid (disj ref-set node-id)])
                                                        refs)))))]
     (update-derived new-db)))
 
@@ -255,44 +272,6 @@
 (defonce !id-counter (atom 0))
 (defn gen-new-id []
   (str "node-" (swap! !id-counter inc)))
-
-(defn create-child-block [db]
-  (let [current (current-node-id db)
-        new-id (gen-new-id)
-        new-node {:type :div :props {:text (str "Child of " current)}}]
-    (insert-node db {:parent-id current :node-id new-id :node-data new-node :position nil})))
-
-(defn create-sibling-above [db]
-  (let [current (current-node-id db)
-        {:keys [parent index]} (node-position db current)
-        new-id (gen-new-id)
-        new-node {:type :div :props {:text (str "Sibling above " current)}}]
-    (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position index})))
-
-(defn create-sibling-below [db]
-  (let [current (current-node-id db)
-        {:keys [parent index]} (node-position db current)
-        new-id (gen-new-id)
-        new-node {:type :div :props {:text (str "Sibling below " current)}}]
-    (insert-node db {:parent-id parent :node-id new-id :node-data new-node :position (inc index)})))
-
-(defn indent [db]
-  "Move current block under the previous sibling (make it a child)"
-  (let [current (current-node-id db)
-        {:keys [index children]} (node-position db current)]
-    (if (> index 0)
-      (let [prev-sib (get children (dec index))]
-        (move-node db {:node-id current :new-parent-id prev-sib :position nil}))
-      db)))
-
-(defn outdent [db]
-  (let [current (current-node-id db)
-        {:keys [parent]} (node-position db current)]
-    (if (not= parent root-id)
-      (let [grandparent-pos (node-position db parent)
-            grandparent (:parent grandparent-pos)]
-        (move-node db {:node-id current :new-parent-id grandparent :position {:type :after :sibling-id parent}}))
-      db)))
 
 (defn add-reference
   "Adds a reference from one node to another"

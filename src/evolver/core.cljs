@@ -4,7 +4,6 @@
             [evolver.renderer :as renderer]
             [evolver.state :as state]
             [evolver.registry :as registry]
-            [evolver.commands :as commands]
             [evolver.keyboard :as keyboard]
             [evolver.history :as history]
             [agent.core :as agent]
@@ -22,44 +21,34 @@
            (r/render element (renderer/render (:present db)))))
        root-element))))
 
-(defn handle-event
-  "Handles DOM events by dispatching commands to the store"
-  {:malli/schema [:=> [:cat map? vector?] any?]}
-  [event-data actions]
-  (commands/dispatch-commands @store event-data actions))
+(defn dispatch!
+  "Generic dispatcher for both UI and keyboard events."
+  [event [command-id params]]
+  (if-let [command (get registry/registry command-id)]
+    ((:handler command) @store event params) ; Dereference store delay to get atom
+    (js/console.error "No command found in registry for id:" command-id)))
 
-(defn handle-keyboard-event [event]
-  (when-let [action (keyboard/handle-keyboard-event event)]
-    (commands/dispatch-command @store event action)))
+(defn keyboard-event-handler [event]
+  (when-let [[command-id params :as action] (keyboard/handle-keyboard-event event)]
+    (dispatch! event action)))
 
 (defn ^:export main []
   (r/set-dispatch!
    (fn [event-data handler-data]
      (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (handle-event event-data handler-data))))
+       (doseq [action handler-data]
+         (dispatch! event-data action)))))
 
-  ;; Remove any existing keyboard event listener to prevent duplicates
-  (.removeEventListener js/window "keydown" handle-keyboard-event)
+  (.removeEventListener js/window "keydown" keyboard-event-handler)
+  (.addEventListener js/window "keydown" keyboard-event-handler)
 
-  ;; Add keyboard event listener
-  (js/console.log "Attaching keyboard event listener to window")
-  (.addEventListener js/window "keydown" handle-keyboard-event)
-  (js/console.log "Keyboard event listener attached to window")
-
-  ;; Initial render
-  (let [root (.getElementById js/document "root")]
+  (let [root (.getElementById js/document "root")
+        store-atom @store] ; Dereference the delay to get the actual atom
     (js/console.log "Initial render")
-    (r/render root (renderer/render (:present @@store)))
-
-     ;; Set up reactive rendering
-    (remove-watch @store :render)
-    (add-watch @store :render
+    (r/render root (renderer/render (:present @store-atom)))
+    (remove-watch store-atom :render) ; Watch the atom, not the delay
+    (add-watch store-atom :render
                (fn [_ _ old-state new-state]
                  (when (not= old-state new-state)
                    (js/console.log "Reactive render triggered")
                    (r/render root (renderer/render (:present new-state))))))))
-
-(defn load-agent-tools!
-  "Load agent tools for REPL development"
-  []
-  (js/console.log "Agent tools would be loaded here"))

@@ -57,29 +57,3 @@
 
     store))
 
-(defn dispatch!
-  "Single entrypoint for all state mutations - now using snapshot-based history"
-  [store command]
-  (let [current-history-ring @store
-        current-db (:present current-history-ring)
-        initial-ctx {:db current-db :cmd command :log [] :errors [] :effects []}
-        final-ctx (middleware/run-pipeline initial-ctx middleware/pipeline-steps)]
-    (if (seq (:errors final-ctx))
-      (js/console.error "Dispatch failed with errors:" (:errors final-ctx))
-      (let [cmd (:cmd final-ctx)
-            updated-db (:db final-ctx)]
-        (if (#{:undo :redo} (:op cmd))
-          ;; Handle undo/redo using history ring functions
-          (let [new-history-ring (case (:op cmd)
-                                   :undo (history/undo current-history-ring)
-                                   :redo (history/redo current-history-ring))
-                derived-ring (derive-view-state new-history-ring)]
-            (reset! store derived-ring))
-          ;; For other commands, push new snapshot
-          (let [new-history-ring (history/push-snapshot current-history-ring updated-db)
-                derived-ring (derive-view-state new-history-ring)]
-            (reset! store derived-ring)))
-        ;; Process effects if any
-        (doseq [effect (:effects final-ctx)]
-          (js/console.log "Processing effect:" effect))))))
-
