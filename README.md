@@ -87,8 +87,6 @@ Example: [:merge-blocks {:from "id-1" :to "id-2"}] or [:style-selection {:style 
 2. The Core Algebra IR (Mid-Level)
    This is the EDN DSL we've been designing—the pure, verifiable, host-agnostic set of atomic data transformations. This is the canonical language of your "World State."
 
-Example: [:tx [[:patch "id-2" {:text "..."}] [:delete "id-1"]]]
-
 This IR is the output of a "compiler pass" that lowers the Intent IR into a concrete transaction.
 
 3. The View Diff IR (Low-Level)
@@ -101,3 +99,10 @@ This IR is the output of the Adapter/Renderer, which acts as a final lowering pa
 What this metaphor reveals:
 
 Your system becomes a pipeline: Intent IR -> Core Algebra IR -> View Diff IR. This is a profoundly robust model. To add a complex new feature (like multi-block refactoring), you simply define a new high-level "Intent" and write a pure function that lowers it to your stable "Core Algebra." The core interpreter doesn't have to change. This cleanly separates semantic goals, logical data transformations, and rendering specifics, making the entire system more modular and extensible.
+
+
+## NAMING
+
+PLANER/COMPILER: Because it chooses a sequence, it doesn’t do the mutation. “Ops” are your four atoms. A planner takes a fuzzy human intent (“move down visually”, “outdent with carry”, “merge up”) plus the current snapshot and plans: picks anchors (before/after which id), decides emission order to avoid index churn, expands multi-step behaviors into a minimal op list, enforces policy (carry vs. no-carry), short-circuits to no-op when preconditions fail, allocates ids, and groups the result into a single transaction. That’s planning—like a query planner or a motion planner—mapping intent → executable steps with invariants intact.
+
+Why the name matters: it forces separation of concerns. Kernel: algebra (existence / edge+order / attrs / delete). Planner: choice under constraints and context (collapsed view, selection roots, anchors, conflict handling). The output of a planner can be simulated, linted, or rebased before interpretation; an “op” cannot. Calling it a planner reminds you the job is to compute a plan (possibly 0, 1, or many ops) from a snapshot, not to mutate state. This keeps UX sugar, policies, and multi-block semantics out of the kernel while making tests surgical.

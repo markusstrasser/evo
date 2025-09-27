@@ -3,17 +3,32 @@
    Canonical DB:
      {:nodes                    {id {:type kw :props map}}
       :children-by-parent-id    {parent-id [child-id ...]}
-      :derived                  {:parent-id-of   {id parent-id}
-                                 :child-ids-of   {parent-id [child-id ...]}
-                                 :index-of       {id idx}
-                                 :prev-id-of     {id prev-id?}
-                                 :next-id-of     {id next-id?}
-                                 :depth-of       {id int}
-                                 :path-of        {id [ancestor-ids ...]}
-                                 :pre            {id int}
-                                 :post           {id int}}}
+      :derived                  {;; Tier-A: Structural truth
+                                 :parent-id-of     {id parent-id?}
+                                 :child-ids-of     {parent-id [child-id ...]}
+                                 :index-of         {id int}
+                                 :prev-id-of       {id prev-id?}
+                                 :next-id-of       {id next-id?}
+                                 :pre              {id int}
+                                 :post             {id int}
+                                 ;; Tier-B: DX pack
+                                 :preorder         [id ...]
+                                 :doc-index-of     {id int}
+                                 :doc-prev-id-of   {id prev-id?}
+                                 :doc-next-id-of   {id next-id?}
+                                 :position-of      {id {:parent-id p :index i}}
+                                 :child-count-of   {parent-id int}
+                                 :first-child-id-of {parent-id first-id?}
+                                 :last-child-id-of  {parent-id last-id?}
+                                 :subtree-size-of  {id int}
+                                 :id-by-pre        {pre id}
+                                 :reachable-ids    #{id ...}
+                                 :orphan-ids       #{id ...}
+                                 :path-of          {id [ancestor-ids ...]}}}
 
    Ops are maps with an :op key; e.g. {:op :ins :id \"a\" :parent-id \"root\"}."
+
+  ;;The 4 CORE OPS! SHOULD NOT LEVERAGE :DERIVED ever
 
   (:require [clojure.set :as set]
             [clojure.pprint :refer [pprint]]))
@@ -23,6 +38,13 @@
 ;; ------------------------------------------------------------
 
 (defn rmv [v x] (vec (remove #{x} v)))
+
+#?(:clj  (defn index-of [v x] (.indexOf ^java.util.List v x))
+   :cljs (defn index-of [v x]
+           (loop [i 0]
+             (if (< i (count v))
+               (if (= (nth v i) x) i (recur (inc i)))
+               -1))))
 
 (defn child-ids-of* [db parent-id] (get-in db [:children-by-parent-id parent-id] []))
 
@@ -69,77 +91,87 @@
       coords-with-orphans)))
 
 (defn- compute-derived
-  "Build Tier A+B derived maps from canonical adjacency."
+  "Build definitive Tier A+B derived maps from canonical adjacency."
   [db]
   (let [adj (:children-by-parent-id db)
         nodes (:nodes db)
+
+        ;; Tier-A: Structural truth
         parent-id-of (derive-parent-id-of adj)
-        ;; cover anything mentioned anywhere (keys(nodes), parents, children)
+        ;; Ensure every id has a child-ids vector (possibly empty)
         all-ids (set (concat (keys nodes)
                              (keys adj)
                              (mapcat identity (vals adj))))
         child-ids-of (into {}
                            (for [id all-ids]
                              [id (vec (get adj id []))]))
-        ;; index, prev, next
+        ;; index-of: sibling position
         index-of (reduce-kv
-                  (fn [m _ child-ids]
-                    (reduce (fn [m2 [i c]] (assoc m2 c i))
-                            m (map-indexed vector child-ids)))
-                  {} adj)
+                   (fn [m _ child-ids]
+                     (reduce (fn [m2 [i c]] (assoc m2 c i))
+                             m (map-indexed vector child-ids)))
+                   {} adj)
+        ;; prev/next siblings
         {:keys [prev-id-of next-id-of]}
         (reduce-kv
-         (fn [{:keys [prev-id-of next-id-of] :as acc} _ child-ids]
-           (let [n (count child-ids)]
-             (loop [i 0 prev prev-id-of next next-id-of]
-               (if (= i n)
-                 {:prev-id-of prev :next-id-of next}
-                 (let [id (nth child-ids i)
-                       prev (cond-> prev (> i 0) (assoc id (nth child-ids (dec i))))
-                       next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
-                   (recur (inc i) prev next))))))
-         {:prev-id-of {} :next-id-of {}} adj)
+          (fn [{:keys [prev-id-of next-id-of] :as acc} _ child-ids]
+            (let [n (count child-ids)]
+              (loop [i 0 prev prev-id-of next next-id-of]
+                (if (= i n)
+                  {:prev-id-of prev :next-id-of next}
+                  (let [id (nth child-ids i)
+                        prev (cond-> prev (> i 0) (assoc id (nth child-ids (dec i))))
+                        next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
+                    (recur (inc i) prev next))))))
+          {:prev-id-of {} :next-id-of {}} adj)
+        ;; DFS pre/post times
         coords (derive-depth-paths-prepost adj nodes)
+        pre (:pre coords)
+        post (:post coords)
 
-        ;; Tier-B: Built entirely from Tier-A
-        tier-a {:parent-id-of parent-id-of
-                :child-ids-of child-ids-of
-                :index-of index-of
-                :prev-id-of prev-id-of
-                :next-id-of next-id-of
-                :depth-of (:depth-of coords)
-                :path-of (:path-of coords)
-                :pre (:pre coords)
-                :post (:post coords)}
-
+        ;; Tier-B: DX pack that pays rent
+        preorder (->> pre (sort-by val) (map first) vec)
+        doc-index-of (into {} (map-indexed (fn [i id] [id i]) preorder))
+        doc-prev-id-of (into {} (map (fn [[a b]] [b a]) (partition 2 1 [nil] preorder)))
+        doc-next-id-of (into {} (map (fn [[a b]] [a b]) (partition 2 1 preorder [nil])))
         position-of (into {} (for [[id parent-id] parent-id-of]
                                [id {:parent-id parent-id :index (get index-of id 0)}]))
         child-count-of (into {} (map (fn [[p child-ids]] [p (count child-ids)]) child-ids-of))
-        preorder (let [;; stable preorder from DFS clock
-                       pre-map (:pre coords)
-                       by-pre (sort-by second
-                                       (map (fn [id] [id (get pre-map id 0)])
-                                            (keys parent-id-of)))]
-                   (mapv first by-pre))
-        doc-prev-id-of (into {} (map (fn [[a b]] [b a]) (partition 2 1 [nil] preorder)))
-        doc-next-id-of (into {} (map (fn [[a b]] [a b]) (partition 2 1 preorder [nil])))
+        first-child-id-of (into {} (for [[p child-ids] child-ids-of :when (seq child-ids)]
+                                     [p (first child-ids)]))
+        last-child-id-of (into {} (for [[p child-ids] child-ids-of :when (seq child-ids)]
+                                    [p (last child-ids)]))
         subtree-size-of (into {} (map (fn [id]
-                                        (let [pre-val (get (:pre coords) id 0)
-                                              post-val (get (:post coords) id 0)]
+                                        (let [pre-val (get pre id 0)
+                                              post-val (get post id 0)]
                                           [id (quot (inc (- post-val pre-val)) 2)]))
                                       (keys parent-id-of)))
+        id-by-pre (into {} (map (fn [[id pre-val]] [pre-val id]) pre))
         reachable-ids (set (keys (:depth-of coords)))
-        orphan-ids (into #{} (remove reachable-ids) (keys nodes))]
+        orphan-ids (into #{} (remove reachable-ids) (keys nodes))
+        path-of (:path-of coords)]
 
-    (merge tier-a
-           {:position-of position-of
-            :child-count-of child-count-of
-            :preorder preorder
-            :doc-prev-id-of doc-prev-id-of
-            :doc-next-id-of doc-next-id-of
-            :subtree-size-of subtree-size-of
-            :reachable-ids reachable-ids
-            :orphan-ids orphan-ids})))
+    ;; Return complete derived state
+    {:parent-id-of      parent-id-of
+     :child-ids-of      child-ids-of
+     :index-of          index-of
+     :prev-id-of        prev-id-of
+     :next-id-of        next-id-of
+     :pre               pre
+     :post              post
+     :preorder          preorder
+     :doc-index-of      doc-index-of
+     :doc-prev-id-of    doc-prev-id-of
+     :doc-next-id-of    doc-next-id-of
+     :position-of       position-of
+     :child-count-of    child-count-of
+     :first-child-id-of first-child-id-of
+     :last-child-id-of  last-child-id-of
+     :subtree-size-of   subtree-size-of
+     :id-by-pre         id-by-pre
+     :reachable-ids     reachable-ids
+     :orphan-ids        orphan-ids
+     :path-of           path-of}))
 
 (defn derive-all
   "Attach fresh :derived snapshot to db."
@@ -178,12 +210,12 @@
   (let [child-ids (get (:children-by-parent-id db) parent-id [])
         base (vec (remove #{id} child-ids))
         idx (fn [anchor-id]
-              (let [i (.indexOf base anchor-id)]
+              (let [i (index-of base anchor-id)]
                 (when (neg? i)
                   (throw (ex-info "anchor not in parent" {:anchor anchor-id :parent parent-id})))
                 i))]
     (cond
-      (nil? pos) (count base) ; default :last
+      (nil? pos) (count base)                               ; default :last
       (= :first pos) 0
       (= :last pos) (count base)
       (and (vector? pos) (= :index (first pos)))
@@ -237,9 +269,9 @@
   [db {:keys [id props sys updates]}]
   (assert id "patch-props*: :id required")
   (let [u (cond-> {}
-            (some? props) (assoc :props props)
-            (some? sys) (assoc :sys sys)
-            (map? updates) (merge updates))
+                  (some? props) (assoc :props props)
+                  (some? sys) (assoc :sys sys)
+                  (map? updates) (merge updates))
         deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
     (update-in db [:nodes id] #(merge-with deep % u))))
 
@@ -263,7 +295,7 @@
                     ;; Include any roots that might not be in preorder (orphans)
                     (reduce (fn [acc root]
                               (if (get-in derived [:pre root])
-                                acc ; already handled by intervals
+                                acc                         ; already handled by intervals
                                 (set/union acc (subtree-ids db root))))
                             interval-victims roots))
                   ;; Fallback to recursive walk
@@ -326,14 +358,6 @@
 ;; Tier-B operations (using oracle)
 ;; ------------------------------------------------------------
 
-(defn nudge
-  "Move one up/down without thinking about anchors."
-  [db {:keys [id delta]}]
-  (let [{:keys [parent-id index]} (get-in db [:derived :position-of id])
-        n (get-in db [:derived :child-count-of parent-id])
-        i' (-> (+ index delta) (max 0) (min n))]
-    (set-parent* db {:id id :parent-id parent-id :pos [:index i']})))
-
 (defn move-down
   "Move after doc-next."
   [db {:keys [id]}]
@@ -384,14 +408,14 @@
    Example op: {:op :ins :id \"a\" :under \"root\"}"
   [db tx]
   (reduce
-   (fn [d m]
-     (when-not (map? m) (throw (ex-info "interpret*: op must be a map" {:got m})))
-     (let [k (:op m)] (when-not k (throw (ex-info "interpret*: missing :op" {:got m}))))
-     (-> d
-         ((dispatch (:op m)) m)
-         (derive-all)))
-   (derive-all db) ;; ensure db has :derived even before first op
-   (->tx tx)))
+    (fn [d m]
+      (when-not (map? m) (throw (ex-info "interpret*: op must be a map" {:got m})))
+      (let [k (:op m)] (when-not k (throw (ex-info "interpret*: missing :op" {:got m}))))
+      (-> d
+          ((dispatch (:op m)) m)
+          (derive-all)))
+    (derive-all db)                                         ;; ensure db has :derived even before first op
+    (->tx tx)))
 
 ;; ------------------------------------------------------------
 ;; REPL asserts (run the file, they should all pass)
@@ -442,5 +466,5 @@
 
 ;; Usage example:
 ;; (def db {:nodes {} :children-by-parent {"root" []}})
-;; (def db' (interpret* db [{:op :ins :id "x" :under "root"}]))
+;; (def db' (interpret* db [{:op :ins :id "x" :parent-id "root"}]))
 ;; (pprint (:derived db'))
