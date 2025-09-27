@@ -116,6 +116,10 @@
 (defmethod apply-command :transaction [db command]
   (apply-transaction db (:commands command)))
 
+(defmethod apply-command :update-view [db command]
+  (let [{:keys [path value]} command]
+    (assoc-in db (cons :view path) value)))
+
 (defmethod apply-command :default [db command]
   (log-message db :warn (str "Unknown command op: " (:op command)))
   db)
@@ -393,3 +397,29 @@
       (if (or (nil? parent-id) (= parent-id root-id))
         parents
         (recur parent-id (conj parents parent-id))))))
+
+;; === SELECTION UTILITIES ===
+
+(defn selected?
+  "Check if a node is currently selected"
+  [db node-id]
+  (let [selection (get-in db [:view :selection] [])]
+    (some #(= % node-id) selection)))
+
+(defn node-exists?
+  "Check if a node exists in the database"
+  [db node-id]
+  (contains? (:nodes db) node-id))
+
+(defn toggle-selection
+  "Toggle selection state of a node"
+  [db node-id]
+  (let [current-selection (get-in db [:view :selection] [])
+        is-selected (some #(= % node-id) current-selection)]
+    (if is-selected
+      ;; Remove from selection
+      (assoc-in db [:view :selection]
+                (vec (remove #(= % node-id) current-selection)))
+      ;; Add to selection
+      (assoc-in db [:view :selection]
+                (conj current-selection node-id)))))

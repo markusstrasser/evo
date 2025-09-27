@@ -24,4 +24,10 @@
    :test
    {:target :node-test
     :output-to "out/tests.js"
-    :ns-regexp "-test$"}}}
+    :ns-regexp "-test$"}
+
+   :test-ui
+   {:target :browser-test
+    :test-dir "out/ui-tests"
+    :ns-regexp "-test$"
+    :runner-ns ui.test-runner}}}

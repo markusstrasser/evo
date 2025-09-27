@@ -28,5 +28,9 @@ pom.xml.asc
 .nrepl-*
 .DS_Store
 
+# Test output files (for AI agent access)
+/tmp/evo-*test-results*.txt
+/tmp/evo-latest-*test-results.txt
+
 .hgignore
 .hg/
