@@ -8,7 +8,8 @@
    The 4 CORE OPS! SHOULD NOT LEVERAGE :DERIVED ever"
   (:require [clojure.set :as set]
             [evolver.invariants :as inv]
-            [evolver.schemas :as S]))
+            [evolver.schemas :as S]
+            [malli.core :as m]))
 
 (def ^:const ROOT "root")
 
@@ -210,6 +211,7 @@
 (defn pos->index
   "Convert position spec to insertion index.
    pos ∈ {nil,:first,:last, [:index i], [:before anchor-id], [:after anchor-id]}"
+  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/pos->index-fn])}
   [db parent-id id pos]
   (let [child-ids (get (:children-by-parent-id db) parent-id [])
         base (vec (remove #{id} child-ids))
@@ -250,6 +252,7 @@
    - parent-id=same   => reorder
    - parent-id≠same   => move-and-place
    Cycle-safe."
+  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/set-parent*-fn])}
   [db {:keys [id parent-id pos]}]
   (assert id "set-parent*: :id required")
   (assert (contains? (:nodes db) id) (str "set-parent*: node does not exist: " id))
@@ -369,6 +372,7 @@
    Options:
    - :derive  Function to derive state after each op (default: *derive-pass*)
    - :assert? Flag to run invariant checks after each op (default: false)"
+  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/interpret*-fn])}
   ([db tx] (interpret* db tx {}))
   ([db tx {:keys [derive assert?]
            :or {derive *derive-pass* assert? false}}]
