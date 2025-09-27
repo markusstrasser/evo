@@ -8,6 +8,7 @@
    [datascript "1.7.5"]
    [binaryage/devtools "1.0.7"]
    [com.rpl/specter "1.1.4"]
+   [org.clojure/core.match "1.1.0"]
    [hiccup/hiccup "2.0.0"]
    [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]
    [org.clojure/test.check "1.1.1"]]
