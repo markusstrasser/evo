@@ -50,17 +50,19 @@
     (.removeItem js/localStorage "test-key")
     (is (nil? (.getItem js/localStorage "test-key")))))
 
-(deftest failing-browser-test
-  (testing "This test will fail to demonstrate failure capture"
-    ;; This will fail - checking for a non-existent element
+(deftest browser-integration-test
+  (testing "Browser integration works correctly"
+    ;; Test that non-existent elements return null (correct behavior)
     (let [non-existent (.getElementById js/document "element-that-does-not-exist")]
-      (is (not (nil? non-existent)) "Should find non-existent element (this will fail)")
+      (is (nil? non-existent) "Non-existent elements should return null"))
 
-      ;; This will also fail - wrong document title
-      (is (= "Wrong Title" (.-title js/document)) "Document title should be 'Wrong Title' (this will fail)")
+    ;; Test document title exists (don't care about specific value)
+    (is (string? (.-title js/document)) "Document title should be a string")
 
-      ;; This will fail - checking window width is exactly 1000
-      (is (= 1000 (.-innerWidth js/window)) "Window width should be exactly 1000px (this will fail)"))))
+    ;; Test window width is a positive number (don't care about exact value)
+    (is (and (number? (.-innerWidth js/window))
+             (pos? (.-innerWidth js/window)))
+        "Window width should be a positive number")))
 
 (deftest window-properties-test
   (testing "Window and navigator properties"
@@ -70,8 +72,8 @@
     (is (number? (.-innerWidth js/window)))
     (is (number? (.-innerHeight js/window)))
 
-    ;; This will likely fail unless on a very specific screen size
-    (is (> (.-innerWidth js/window) 2000) "Window width should be greater than 2000px (likely to fail)")))
+;; Test reasonable window width (most screens are at least 800px)
+    (is (> (.-innerWidth js/window) 800) "Window width should be greater than 800px")))
 
 (deftest console-api-test
   (testing "Console API functionality"
@@ -84,8 +86,8 @@
     (js/console.log "🧪 Test log message from browser-ui-test")
     (js/console.warn "⚠️ Test warning from browser-ui-test")
 
-    ;; This test will fail - console.log doesn't return anything meaningful
-    (is (= "logged" (js/console.log "test")) "console.log should return 'logged' (this will fail)")))
+;; Test console.log returns undefined (correct behavior)
+    (is (undefined? (js/console.log "test")) "console.log should return undefined")))
 
 ;; Run tests automatically when namespace loads in browser
 (run-tests)
