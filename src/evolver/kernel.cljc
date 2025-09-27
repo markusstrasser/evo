@@ -3,7 +3,8 @@
             [malli.core :as m]
             [malli.error :as me]
             [evolver.schemas :as schemas]
-            [evolver.constants :as constants]))
+            [evolver.constants :as constants]
+            [clojure.core.match :refer [match]]))
 
 (declare insert-node move-node patch-node delete-node reorder-node undo-last-operation redo-last-operation add-reference remove-reference initial-db-base)
 
@@ -86,11 +87,17 @@
   "Apply command based on operation type"
   (fn [_ command] (:op command)))
 
+(defn apply-step
+  "Applies a single command and immediately updates derived data. The core of transactional safety."
+  [db command]
+  (let [db-with-derived (if (:derived db) db (update-derived db))
+        new-db-base (apply-command db-with-derived command)]
+    (update-derived new-db-base)))
+
 (defn apply-transaction
-  "Applies a vector of command maps to a db state, returning the new state.
-   This is a pure reduction over the apply-command multimethod."
+  "Applies a vector of commands, ensuring derived state is valid between each step."
   [db commands]
-  (reduce apply-command db commands))
+  (reduce apply-step db commands))
 
 (defmethod apply-command :insert [db command]
   (insert-node db command))
@@ -164,96 +171,91 @@
 (def db (update-derived constants/initial-db-base))
 
 (defn insert-at-position
-  [v thing position-spec]
-  (let [v (or v [])]
-    (cond
-      (nil? position-spec) (conj (vec v) thing)
-      (number? position-spec) (vec (concat (take position-spec v) [thing] (drop position-spec v)))
-      (= (:type position-spec) :last) (conj (vec v) thing)
-      (= (:type position-spec) :first) (vec (cons thing v))
-      (= (:type position-spec) :after)
-      (let [sibling-id (:sibling-id position-spec)
-            idx (some #(when (= (get v %) sibling-id) %) (range (count v)))]
-        (if idx
-          (vec (concat (take (inc idx) v) [thing] (drop (inc idx) v)))
-          (conj (vec v) thing))) ; if sibling not found, append
-      (= (:type position-spec) :before)
-      (let [sibling-id (:sibling-id position-spec)
-            idx (some #(when (= (get v %) sibling-id) %) (range (count v)))]
-        (if idx
-          (vec (concat (take idx v) [thing] (drop idx v)))
-          (vec (cons thing v)))) ; if not found, prepend
-      :else (conj (vec v) thing))))
+  "Inserts an item into a vector based on a tagged-union position spec."
+  [coll item position-spec]
+  (let [v (vec (remove #{item} (or coll [])))]
+    (match position-spec
+      [:index i]
+      (if (and (number? i) (<= 0 i (count v)))
+        (vec (concat (subvec v 0 i) [item] (subvec v i)))
+        (conj v item)) ; Append if index is invalid
 
-(defn insert-node [db {:keys [parent-id node-id node-data position]}]
+      [:after sibling-id]
+      (let [idx (.indexOf v sibling-id)]
+        (if (neg? idx)
+          (conj v item) ; Append if sibling not found
+          (vec (concat (subvec v 0 (inc idx)) [item] (subvec v (inc idx))))))
+
+      [:before sibling-id]
+      (let [idx (.indexOf v sibling-id)]
+        (if (neg? idx)
+          (vec (cons item v)) ; Prepend if sibling not found
+          (vec (concat (subvec v 0 idx) [item] (subvec v idx)))))
+
+      [:first] (vec (cons item v))
+      [:last]  (conj v item)
+      :else    (conj v item)))) ; Default to appending
+
+(defn insert-node [db {:keys [parent-id node-id node-data at-position]}]
   (schemas/validate-node node-data) ; Validate node data
   (let [new-db (-> db
                    (assoc-in [:nodes node-id] node-data)
                    (update-in [:children-by-parent parent-id]
-                              #(insert-at-position % node-id position)))]
-    (update-derived
-     (if (and (not= (:type (get-in new-db [:nodes parent-id])) :div)
-              (seq (get-in new-db [:children-by-parent parent-id])))
-       (assoc-in new-db [:nodes parent-id :type] :div)
-       new-db))))
+                              #(insert-at-position % node-id at-position)))]
+    (if (and (not= (:type (get-in new-db [:nodes parent-id])) :div)
+             (seq (get-in new-db [:children-by-parent parent-id])))
+      (assoc-in new-db [:nodes parent-id :type] :div)
+      new-db)))
+
+(defn is-ancestor?
+  "Checks if potential-ancestor-id is an ancestor of node-id."
+  [db node-id potential-ancestor-id]
+  (let [path (get-in db [:derived :paths node-id] [])]
+    (boolean (some #{potential-ancestor-id} path))))
 
 (defn patch-node [db {:keys [node-id updates]}]
-  (let [new-db (update-in db [:nodes node-id]
-                          (fn [node]
-                            (merge-with (fn [old new] (if (and (map? old) (map? new)) (merge old new) new))
-                                        node
-                                        updates)))]
-    (update-derived new-db)))
+  (update-in db [:nodes node-id]
+             (fn [node]
+               (merge-with (fn [old new] (if (and (map? old) (map? new)) (merge old new) new))
+                           node
+                           updates))))
 
-(defn move-node [db {:keys [node-id new-parent-id position]}]
-  (let [old-parent (parent-of db node-id)
-        new-db (-> db
-                   ;; Remove from old parent
-                   (update-in [:children-by-parent old-parent] #(vec (remove #{node-id} %)))
-                   ;; Also remove from new parent if it's already there (prevents duplicates)
-                   (update-in [:children-by-parent new-parent-id] #(vec (remove #{node-id} %)))
-                   ;; Add to new parent at specified position
-                   (update-in [:children-by-parent new-parent-id]
-                              #(insert-at-position % node-id position)))
-        ;; Convert new parent to div if it's not already and now has children
-        final-db (if (and (not= (:type (get-in new-db [:nodes new-parent-id])) :div)
-                          (seq (get-in new-db [:children-by-parent new-parent-id])))
-                   (update-in new-db [:nodes new-parent-id] assoc :type :div)
-                   new-db)]
-    (update-derived final-db)))
+(defn move-node [db {:keys [node-id new-parent-id at-position]}]
+  (if (or (= node-id new-parent-id) (is-ancestor? db new-parent-id node-id))
+    (log-message db :warn "Invalid move: cannot move a node under itself or its descendants.")
+    (let [old-parent (parent-of db node-id)
+          new-db (-> db
+                     ;; Remove from old parent
+                     (update-in [:children-by-parent old-parent] #(vec (remove #{node-id} %)))
+                     ;; Also remove from new parent if it's already there (prevents duplicates)
+                     (update-in [:children-by-parent new-parent-id] #(vec (remove #{node-id} %)))
+                     ;; Add to new parent at specified position
+                     (update-in [:children-by-parent new-parent-id]
+                                #(insert-at-position % node-id at-position)))
+          ;; Convert new parent to div if it's not already and now has children
+          final-db (if (and (not= (:type (get-in new-db [:nodes new-parent-id])) :div)
+                            (seq (get-in new-db [:children-by-parent new-parent-id])))
+                     (update-in new-db [:nodes new-parent-id] assoc :type :div)
+                     new-db)]
+      final-db)))
 
 (defn delete-node [db {:keys [node-id]}]
-  ;; Non-destructive deletion: promote children to parent level
-  (let [parent (parent-of db node-id)
-        children (get-in db [:children-by-parent node-id] [])
-        position-info (node-position db node-id)
-        node-index (:index position-info)
-
-        new-db (-> db
-                   ;; Remove the node itself
-                   (update :nodes dissoc node-id)
-                   ;; Remove node from its parent's children
-                   (update-in [:children-by-parent parent]
-                              (fn [siblings] (vec (remove #{node-id} siblings))))
-                   ;; Promote children to the deleted node's parent at the same position
-                   (update-in [:children-by-parent parent]
-                              (fn [siblings]
-                                (let [pos (or node-index 0)
-                                      [before after] (split-at pos siblings)]
-                                  (vec (concat before children after)))))
-                   ;; Remove the deleted node's entry from children-by-parent
-                   (update :children-by-parent dissoc node-id)
-                   ;; Clean up view state
-                   (update-in [:view :selection] (fn [sel] (vec (remove #{node-id} sel))))
-                   (update-in [:view :highlighted] (fn [hl] (disj hl node-id)))
-                   (update-in [:view :collapsed] (fn [coll] (disj coll node-id)))
-                   ;; Clean up references
-                   (update :references dissoc node-id)
-                   (update :references (fn [refs]
-                                         (into {} (map (fn [[nid ref-set]]
-                                                         [nid (disj ref-set node-id)])
-                                                       refs)))))]
-    (update-derived new-db)))
+  (if (= node-id root-id)
+    (log-message db :warn "Cannot delete the root node.")
+    (if-let [parent (parent-of db node-id)]
+      (if-let [idx (-> (node-position db node-id) :index)]
+        (let [siblings (get-in db [:children-by-parent parent])
+              kids     (get-in db [:children-by-parent node-id] [])
+              new-sibs (vec (concat (subvec siblings 0 idx) kids (subvec siblings (inc idx))))]
+          (-> db
+              (assoc-in [:children-by-parent parent] new-sibs)
+              (update :children-by-parent dissoc node-id)
+              (update :nodes dissoc node-id)
+              (update-in [:view :selection] #(vec (remove #{node-id} %)))
+              (update-in [:view :collapsed] (fnil disj #{}) node-id)
+              (update :references dissoc node-id)))
+        db) ; Node not found in siblings, do nothing
+      db))) ; Node has no parent, do nothing
 
 (defn reorder-node [db {:keys [node-id parent-id to-index]}]
   (let [actual (parent-of db node-id)]
@@ -263,7 +265,7 @@
     (let [siblings (get-in db [:children-by-parent parent-id] [])
           without (vec (remove #{node-id} siblings))
           new (vec (concat (take to-index without) [node-id] (drop to-index without)))]
-      (update-derived (assoc-in db [:children-by-parent parent-id] new)))))
+      (assoc-in db [:children-by-parent parent-id] new))))
 
 ;; NOTE: execute-command is redundant - use apply-command directly or go through middleware/state pipeline
 
