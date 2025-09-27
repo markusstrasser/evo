@@ -23,7 +23,7 @@
 ;; ------------------------------------------------------------
 
 (defn rmv [v x] (vec (remove #{x} v)))
-(defn clamp [i lo hi] (-> i (max lo) (min hi)))
+
 (defn child-ids-of* [db parent-id] (get-in db [:children-by-parent-id parent-id] []))
 
 ;; ------------------------------------------------------------
@@ -99,16 +99,47 @@
                        next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
                    (recur (inc i) prev next))))))
          {:prev-id-of {} :next-id-of {}} adj)
-        coords (derive-depth-paths-prepost adj nodes)]
-    {:parent-id-of parent-id-of
-     :child-ids-of child-ids-of
-     :index-of index-of
-     :prev-id-of prev-id-of
-     :next-id-of next-id-of
-     :depth-of (:depth-of coords)
-     :path-of (:path-of coords)
-     :pre (:pre coords)
-     :post (:post coords)}))
+        coords (derive-depth-paths-prepost adj nodes)
+
+        ;; Tier-B: Built entirely from Tier-A
+        tier-a {:parent-id-of parent-id-of
+                :child-ids-of child-ids-of
+                :index-of index-of
+                :prev-id-of prev-id-of
+                :next-id-of next-id-of
+                :depth-of (:depth-of coords)
+                :path-of (:path-of coords)
+                :pre (:pre coords)
+                :post (:post coords)}
+
+        position-of (into {} (for [[id parent-id] parent-id-of]
+                               [id {:parent-id parent-id :index (get index-of id 0)}]))
+        child-count-of (into {} (map (fn [[p child-ids]] [p (count child-ids)]) child-ids-of))
+        preorder (let [;; stable preorder from DFS clock
+                       pre-map (:pre coords)
+                       by-pre (sort-by second
+                                       (map (fn [id] [id (get pre-map id 0)])
+                                            (keys parent-id-of)))]
+                   (mapv first by-pre))
+        doc-prev-id-of (into {} (map (fn [[a b]] [b a]) (partition 2 1 [nil] preorder)))
+        doc-next-id-of (into {} (map (fn [[a b]] [a b]) (partition 2 1 preorder [nil])))
+        subtree-size-of (into {} (map (fn [id]
+                                        (let [pre-val (get (:pre coords) id 0)
+                                              post-val (get (:post coords) id 0)]
+                                          [id (quot (inc (- post-val pre-val)) 2)]))
+                                      (keys parent-id-of)))
+        reachable-ids (set (keys (:depth-of coords)))
+        orphan-ids (into #{} (remove reachable-ids) (keys nodes))]
+
+    (merge tier-a
+           {:position-of position-of
+            :child-count-of child-count-of
+            :preorder preorder
+            :doc-prev-id-of doc-prev-id-of
+            :doc-next-id-of doc-next-id-of
+            :subtree-size-of subtree-size-of
+            :reachable-ids reachable-ids
+            :orphan-ids orphan-ids})))
 
 (defn derive-all
   "Attach fresh :derived snapshot to db."
@@ -126,14 +157,25 @@
   (letfn [(walk [acc x] (reduce walk (conj acc x) (child-ids-of* db x)))]
     (walk #{} root)))
 
-(defn cycle? [db id new-parent]
-  (and new-parent (contains? (subtree-ids db id) new-parent)))
+(defn cycle? [db id new-parent-id]
+  "Efficient cycle check using pre/post intervals."
+  (when new-parent-id
+    (if-let [derived (:derived db)]
+      (let [id-pre (get-in derived [:pre id])
+            id-post (get-in derived [:post id])
+            parent-pre (get-in derived [:pre new-parent-id])
+            parent-post (get-in derived [:post new-parent-id])]
+        ;; new-parent-id is in subtree of id if parent's interval is contained in id's interval
+        (and id-pre id-post parent-pre parent-post
+             (< id-pre parent-pre) (< parent-post id-post)))
+      ;; fallback to subtree walk if no derived data
+      (contains? (subtree-ids db id) new-parent-id))))
 
 (defn pos->index
   "Convert position spec to insertion index.
    pos ∈ {nil,:first,:last, [:index i], [:before anchor-id], [:after anchor-id]}"
   [db parent-id id pos]
-  (let [child-ids (-> (:derived db) :child-ids-of (get parent-id []))
+  (let [child-ids (get (:children-by-parent-id db) parent-id [])
         base (vec (remove #{id} child-ids))
         idx (fn [anchor-id]
               (let [i (.indexOf base anchor-id)]
@@ -175,6 +217,8 @@
   [db {:keys [id parent-id pos]}]
   (assert id "set-parent*: :id required")
   (assert (contains? (:nodes db) id) (str "set-parent*: node does not exist: " id))
+  (when (and parent-id (not (contains? (:nodes db) parent-id)))
+    (throw (ex-info "set-parent*: parent-id does not exist" {:parent-id parent-id})))
   (when (cycle? db id parent-id)
     (throw (ex-info "set-parent*: cycle/invalid parent" {:id id :parent-id parent-id})))
   (let [old-parent-id (parent-id-of* db id)
@@ -201,14 +245,33 @@
 
 (defn purge*
   "Hard delete by predicate over ids. Closure guarantee: if a node matches,
-   its entire subtree is removed."
+   its entire subtree is removed. Uses interval optimization when derived data available."
   [db pred]
   (let [ids (set (keys (:nodes db)))
-        victims (reduce (fn [acc id]
-                          (if (pred db id)
-                            (set/union acc (subtree-ids db id))
-                            acc))
-                        #{} ids)
+        victims (if-let [derived (:derived db)]
+                  ;; Interval-based approach: if pred(id) then remove all nodes 
+                  ;; with pre in [pre[id], post[id]]
+                  (let [pre-to-id (into {} (map (fn [[id pre-val]] [pre-val id]) (:pre derived)))
+                        roots (filter #(pred db %) ids)
+                        intervals (for [root roots
+                                        :let [pre-val (get-in derived [:pre root])
+                                              post-val (get-in derived [:post root])]
+                                        :when (and pre-val post-val)
+                                        pre-time (range pre-val (inc post-val))]
+                                    (get pre-to-id pre-time))
+                        interval-victims (set (filter identity (flatten intervals)))]
+                    ;; Include any roots that might not be in preorder (orphans)
+                    (reduce (fn [acc root]
+                              (if (get-in derived [:pre root])
+                                acc ; already handled by intervals
+                                (set/union acc (subtree-ids db root))))
+                            interval-victims roots))
+                  ;; Fallback to recursive walk
+                  (reduce (fn [acc id]
+                            (if (pred db id)
+                              (set/union acc (subtree-ids db id))
+                              acc))
+                          #{} ids))
         db1 (reduce (fn [d id]
                       (-> d
                           (update :nodes dissoc id)
@@ -243,19 +306,49 @@
   (set-parent* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
 
 (defn reorder
-  "Within-parent reorder via set-parent*."
+  "Within-parent reorder via set-parent*. Uses :position-of oracle."
   [db {:keys [id parent-id pos]}]
   (assert (contains? (:nodes db) id) (str "reorder: node does not exist: " id))
-  (when-not (some #{id} (child-ids-of* db parent-id))
-    (throw (ex-info "reorder: id not in :parent-id" {:id id :parent-id parent-id})))
-  (when (nil? pos)
-    (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
-  (set-parent* db {:id id :parent-id parent-id :pos pos}))
+  (let [position (get-in db [:derived :position-of id] {})
+        cur-parent-id (:parent-id position)]
+    (when (and cur-parent-id (not= parent-id cur-parent-id))
+      (throw (ex-info "reorder: wrong parent-id" {:id id :given parent-id :actual cur-parent-id})))
+    (when (nil? pos)
+      (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
+    (set-parent* db {:id id :parent-id parent-id :pos pos})))
 
 (defn del
   "Delete id (and its subtree) via purge*."
   [db {:keys [id]}]
   (purge* db (fn [_ x] (= x id))))
+
+;; ------------------------------------------------------------
+;; Tier-B operations (using oracle)
+;; ------------------------------------------------------------
+
+(defn nudge
+  "Move one up/down without thinking about anchors."
+  [db {:keys [id delta]}]
+  (let [{:keys [parent-id index]} (get-in db [:derived :position-of id])
+        n (get-in db [:derived :child-count-of parent-id])
+        i' (-> (+ index delta) (max 0) (min n))]
+    (set-parent* db {:id id :parent-id parent-id :pos [:index i']})))
+
+(defn move-down
+  "Move after doc-next."
+  [db {:keys [id]}]
+  (if-let [anchor (get-in db [:derived :doc-next-id-of id])]
+    (let [p (get-in db [:derived :parent-id-of anchor])]
+      (set-parent* db {:id id :parent-id p :pos [:after anchor]}))
+    db))
+
+(defn move-up
+  "Move before doc-prev."
+  [db {:keys [id]}]
+  (if-let [anchor (get-in db [:derived :doc-prev-id-of id])]
+    (let [p (get-in db [:derived :parent-id-of anchor])]
+      (set-parent* db {:id id :parent-id p :pos [:before anchor]}))
+    db))
 
 ;; ------------------------------------------------------------
 ;; Interpreter: derive AFTER EVERY OP (clarity > perf)
@@ -306,7 +399,7 @@
 
 (defn- ok [& _] true)
 
-(let [db0 {:nodes {} :children-by-parent-id {"root" []}}
+(let [db0 {:nodes {"root" {:type :root}} :children-by-parent-id {"root" []}}
       tx [{:op :ins :id "a" :parent-id "root" :type :div}
           {:op :ins :id "b" :parent-id "root"}
           {:op :ins :id "c" :parent-id "a"}]
