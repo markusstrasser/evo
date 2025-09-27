@@ -28,6 +28,9 @@
 - **Event Conflicts**: Multiple handlers on same elements
 - **Watch Failures**: Reactive updates not triggering renders
 - **Dependency Order**: Compile frontend before test to ensure all namespaces are loaded
+- **Store Delay/Atom Confusion**: Store defined as `delay` but used as atom - must dereference `@store` before watch operations
+- **Missing Derived Metadata**: All kernel operations require `(k/update-derived db)` after test db creation
+- **Chrome Console Overflow**: DevTools console logs exceed token limits - clear with `console.clear()` before testing
 
 ## DX Debugging Workflow
 
@@ -76,6 +79,28 @@
 (assert-selection-state-valid db)               ; Validate triple-field rule
 (test-with-ui-context state test-fn)            ; Execute with proper context
 ```
+
+## Architecture Invariants
+
+### Replicant Event System
+- **Event Format**: `:on {:click [[:command-id {:param value}]]}` - data vectors, not functions
+- **Store Access**: Store may be `delay` - always dereference `@store` before watch operations
+- **Rendering**: Parent nodes with children still show their own text - include in hiccup vector
+
+### Intent System Pattern
+- **Pure Functions**: `(intent-fn db params) -> [operations]` - no side effects
+- **Test Setup**: Must call `(k/update-derived db)` after creating test databases
+- **Data Structure**: `node-position` returns `{:parent :index :children}` where `:children` = siblings (not node's children)
+
+### Chrome DevTools Integration
+- **Console Management**: Call `console.clear()` before testing to avoid token overflow
+- **Live Testing**: More reliable than ClojureScript REPL for UI validation
+- **DOM Inspection**: Use snapshots to verify hierarchical content rendering
+
+### Test Architecture
+- **Immediate Validation**: Run tests immediately after writing - don't assume data structures
+- **Derived Metadata**: All kernel tests need `update-derived` for tree operations to work
+- **Browser Testing**: Use Chrome DevTools MCP for end-to-end validation over REPL
 
 ## ClojureScript REPL Setup
 
