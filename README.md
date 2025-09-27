@@ -16,6 +16,10 @@ Assume it's mostly for LLMs to patch in events and change uis on the fly generat
 
 Your "core algebra" is a set of rewrite rules, and the "laws" you would test with property-based testing are proofs of their desirable properties.
 
+## inspo
+https://gitingest.com/crs48/cause
+"Ports and Adapters" (or Hexagonal) architecture.
+
 ## WHy not datascript?
 * No ordered lists! Buggy on some things.
 * You should only reach for Datascript when your query logic becomes more complex than your mutation logic.
