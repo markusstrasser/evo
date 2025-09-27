@@ -1,179 +1,180 @@
 (ns evolver.registry
-  "Unified command registry for the evolver system - the single source of truth for all user actions"
-  (:require [evolver.commands :as commands]))
+  (:require [evolver.dispatcher :as dispatcher]
+            [evolver.history :as history]
+            [evolver.kernel :as k]))
 
-(def command-schema
-  "Schema for each command in the registry"
-  [:map
-   [:id :keyword]
-   [:doc :string]
-   [:handler fn?] ; Takes [store params], performs side-effects
-   [:hotkey {:optional true}
-    [:map
-     [:key :string]
-     [:shift {:optional true} :boolean]
-     [:ctrl {:optional true} :boolean]
-     [:alt {:optional true} :boolean]
-     [:meta {:optional true} :boolean]]]])
-
-;; Mutable reference to dispatch-intent! function that will be set by the dispatcher
+;; Helper to get the current cursor
+(defn- cursor [store] (-> @store :present :view :selection peek))
+(defn- selv [store] (-> @store :present :view :selection))
 
 (def registry
-  "The authoritative registry - single source of truth for all user actions"
-  {:enter-new-block
-   {:id :enter-new-block
-    :doc "Context-sensitive Enter behavior - split block or create sibling."
-    :handler (fn [store event params] (commands/dispatch-command store event [:enter-new-block params]))
+  {;; Data-mutating commands (via dispatcher)
+   :create-child-block
+   {:id :create-child-block
+    :doc "Creates a new child of the current cursor."
+    :handler (fn [store _]
+               (dispatcher/dispatch-intent! store :create-child-block {:cursor (cursor store)}))
     :hotkey {:key "Enter"}}
-
-   :enter-line-break
-   {:id :enter-line-break
-    :doc "Add line break within current block (Shift+Enter)."
-    :handler (fn [store event params] (commands/dispatch-command store event [:enter-line-break params]))
-    :hotkey {:key "Enter" :shift true}}
-
-   :create-sibling-below
-   {:id :create-sibling-below
-    :doc "Creates a new sibling below the current cursor."
-    :handler (fn [store event params] (commands/dispatch-command store event [:create-sibling-below params]))}
 
    :indent-block
    {:id :indent-block
     :doc "Indents the selected block(s)."
-    :handler (fn [store event params] (commands/dispatch-command store event [:indent-block params]))
+    :handler (fn [store _] (dispatcher/dispatch-intent! store :indent-block {:cursor (cursor store)}))
     :hotkey {:key "Tab"}}
 
    :outdent-block
    {:id :outdent-block
     :doc "Outdents the selected block(s)."
-    :handler (fn [store event params] (commands/dispatch-command store event [:outdent-block params]))
+    :handler (fn [store _] (dispatcher/dispatch-intent! store :outdent-block {:cursor (cursor store)}))
     :hotkey {:key "Tab" :shift true}}
-
-   :move-up
-   {:id :move-up
-    :doc "Moves the selected block up."
-    :handler (fn [store event params] (commands/dispatch-command store event [:move-block {:direction :up}]))
-    :hotkey {:key "ArrowUp" :alt true :shift true}}
-
-   :move-down
-   {:id :move-down
-    :doc "Moves the selected block down."
-    :handler (fn [store event params] (commands/dispatch-command store event [:move-block {:direction :down}]))
-    :hotkey {:key "ArrowDown" :alt true :shift true}}
 
    :delete-selected-blocks
    {:id :delete-selected-blocks
     :doc "Deletes all selected blocks."
-    :handler (fn [store event params] (commands/dispatch-command store event [:delete-selected-blocks params]))
+    :handler (fn [store _] (dispatcher/dispatch-intent! store :delete-selected-blocks {:ids (selv store)}))
     :hotkey {:key "Backspace"}}
 
-   :select-all-blocks
-   {:id :select-all-blocks
-    :doc "Selects all blocks in the tree."
-    :handler (fn [store event params] (commands/dispatch-command store event [:select-all-blocks params]))
-    :hotkey {:key "A" :meta true :shift true}}
+   :move-up
+   {:id :move-up
+    :doc "Moves the current block up."
+    :handler (fn [store _] (dispatcher/dispatch-intent! store :move-up {:cursor (cursor store)}))
+    :hotkey {:key "ArrowUp" :alt true :shift true}}
 
-   :clear-selection
-   {:id :clear-selection
-    :doc "Clears the current selection."
-    :handler (fn [store event params] (commands/dispatch-command store event [:clear-selection params]))
-    :hotkey {:key "Escape"}}
+   :move-down
+   {:id :move-down
+    :doc "Moves the current block down."
+    :handler (fn [store _] (dispatcher/dispatch-intent! store :move-down {:cursor (cursor store)}))
+    :hotkey {:key "ArrowDown" :alt true :shift true}}
 
-   :navigate-sequential-down
-   {:id :navigate-sequential-down
-    :doc "Navigate to the next block in sequence."
-    :handler (fn [store event params] (commands/dispatch-command store event [:navigate-sequential {:direction :down}]))
-    :hotkey {:key "ArrowDown"}}
-
-   :navigate-sequential-up
-   {:id :navigate-sequential-up
-    :doc "Navigate to the previous block in sequence."
-    :handler (fn [store event params] (commands/dispatch-command store event [:navigate-sequential {:direction :up}]))
-    :hotkey {:key "ArrowUp"}}
-
-   :navigate-sibling-down
-   {:id :navigate-sibling-down
-    :doc "Navigate to the next sibling."
-    :handler (fn [store event params] (commands/dispatch-command store event [:navigate-sibling {:direction :down}]))
-    :hotkey {:key "ArrowDown" :alt true}}
-
-   :navigate-sibling-up
-   {:id :navigate-sibling-up
-    :doc "Navigate to the previous sibling."
-    :handler (fn [store event params] (commands/dispatch-command store event [:navigate-sibling {:direction :up}]))
-    :hotkey {:key "ArrowUp" :alt true}}
-
-   :select-parent
-   {:id :select-parent
-    :doc "Select the parent of the current block."
-    :handler (fn [store event params] (commands/dispatch-command store event [:select-parent params]))
-    :hotkey {:key "ArrowLeft"}}
-
-   :select-first-child
-   {:id :select-first-child
-    :doc "Select the first child of the current block."
-    :handler (fn [store event params] (commands/dispatch-command store event [:select-first-child params]))
-    :hotkey {:key "ArrowRight"}}
-
-   :select-last-child
-   {:id :select-last-child
-    :doc "Select the last child of the current block."
-    :handler (fn [store event params] (commands/dispatch-command store event [:select-last-child params]))
-    :hotkey {:key "ArrowRight" :shift true}}
-
-   :toggle-collapse
-   {:id :toggle-collapse
-    :doc "Toggle collapse/expand of the current block."
-    :handler (fn [store event params] (commands/dispatch-command store event [:toggle-collapse params]))
-    :hotkey {:key "." :meta true}}
-
-   :add-reference
-   {:id :add-reference
-    :doc "Add a reference between two selected blocks."
-    :handler (fn [store event params] (commands/dispatch-command store event [:add-reference params]))}
-
-   :remove-reference
-   {:id :remove-reference
-    :doc "Remove a reference between two selected blocks."
-    :handler (fn [store event params] (commands/dispatch-command store event [:remove-reference params]))}
-
+   ;; History commands (direct manipulation)
    :undo
    {:id :undo
     :doc "Undo the last action."
-    :handler (fn [store event params] (commands/dispatch-command store event [:undo params]))
+    :handler (fn [store _] (swap! store history/undo))
     :hotkey {:key "z" :meta true}}
 
    :redo
    {:id :redo
     :doc "Redo the last undone action."
-    :handler (fn [store event params] (commands/dispatch-command store event [:redo params]))
+    :handler (fn [store _] (swap! store history/redo))
     :hotkey {:key "z" :meta true :shift true}}
 
-   :set-selected-op
-   {:id :set-selected-op
-    :doc "Set the selected operation for the UI dropdown."
-    :handler (fn [store event params] (commands/dispatch-command store event [:set-selected-op params]))}
+   ;; View-only commands (direct swap!)
+   :select-node
+   {:id :select-node
+    :doc "Selects a single node, clearing previous selection."
+    :handler (fn [store _ {:keys [node-id]}]
+               (swap! store assoc-in [:present :view :selection] [node-id]))}
+
+   :toggle-selection
+   {:id :toggle-selection
+    :doc "Toggles the selection of a single node."
+    :handler (fn [store _ {:keys [target-id]}]
+               (swap! store update-in [:present :view :selection]
+                      (fn [selection]
+                        (let [sel-set (set selection)]
+                          (if (contains? sel-set target-id)
+                            (vec (disj sel-set target-id))
+                            (conj (vec selection) target-id))))))}
+
+   :select-block-below
+   {:id :select-block-below
+    :doc "Selects the block below the current cursor."
+    :handler (fn [store _]
+               (let [db (:present @store)
+                     cur (cursor store)]
+                 (when-let [next-node (k/get-next db cur)]
+                   (swap! store assoc-in [:present :view :selection] [next-node]))))
+    :hotkey {:key "ArrowDown" :alt true}}
+
+   :select-block-above
+   {:id :select-block-above
+    :doc "Selects the block above the current cursor."
+    :handler (fn [store _]
+               (let [db (:present @store)
+                     cur (cursor store)]
+                 (when-let [prev-node (k/get-prev db cur)]
+                   (swap! store assoc-in [:present :view :selection] [prev-node]))))
+    :hotkey {:key "ArrowUp" :alt true}}
+
+   :hover-node
+   {:id :hover-node
+    :doc "Highlights a node on hover."
+    :handler (fn [store _ {:keys [node-id]}]
+               (swap! store update-in [:present :view :hovered-referencers] (fnil conj #{}) node-id))}
+
+   :unhover-node
+   {:id :unhover-node
+    :doc "Removes highlight from a node on unhover."
+    :handler (fn [store _ {:keys [node-id]}]
+               (swap! store update-in [:present :view :hovered-referencers] (fnil disj #{}) node-id))}
+
+   :toggle-collapse
+   {:id :toggle-collapse
+    :doc "Toggles the collapsed state of the current node."
+    :handler (fn [store _]
+               (let [cur (cursor store)]
+                 (swap! store update-in [:present :view :collapsed]
+                        (fn [collapsed-set]
+                          (if (contains? collapsed-set cur)
+                            (disj collapsed-set cur)
+                            (conj collapsed-set cur))))))
+    :hotkey {:key "." :meta true}}
+
+   :select-node-with-modifiers
+   {:id :select-node-with-modifiers
+    :doc "Selects a node with modifier key support for multi-selection."
+    :handler (fn [store event {:keys [node-id]}]
+               (let [shift? (.-shiftKey event)
+                     meta? (or (.-metaKey event) (.-ctrlKey event))]
+                 (cond
+                   ;; Shift or Meta/Ctrl = toggle selection (add/remove from multi-selection)
+                   (or shift? meta?)
+                   (swap! store update-in [:present :view :selection]
+                          (fn [selection]
+                            (let [sel-set (set selection)]
+                              (if (contains? sel-set node-id)
+                                (vec (disj sel-set node-id))
+                                (conj (vec selection) node-id)))))
+
+                   ;; No modifiers = replace selection with single node
+                   :else
+                   (swap! store assoc-in [:present :view :selection] [node-id]))))}
+
+   :merge-block-up
+   {:id :merge-block-up
+    :doc "Merge current block with previous block (Backspace at start of block)."
+    :handler (fn [store _]
+               (let [cur (cursor store)
+                     ;; TODO: Get actual cursor position from editor state
+                     cursor-position 0] ; Assume at start for now
+                 (dispatcher/dispatch-intent! store :merge-block-up
+                                              {:cursor cur
+                                               :cursor-position cursor-position})))}
+
+   :merge-block-down
+   {:id :merge-block-down
+    :doc "Merge next block into current block (Delete at end of block)."
+    :handler (fn [store _]
+               (let [cur (cursor store)
+                     ;; TODO: Get actual cursor position and content from editor state
+                     cursor-position nil
+                     block-content nil]
+                 (dispatcher/dispatch-intent! store :merge-block-down
+                                              {:cursor cur
+                                               :cursor-position cursor-position
+                                               :block-content block-content})))}
 
    :apply-selected-op
    {:id :apply-selected-op
-    :doc "Apply the selected operation from the UI dropdown."
-    :handler (fn [store event params] (commands/dispatch-command store event [:apply-selected-op params]))}})
+    :doc "Apply the selected operation from the dropdown."
+    :handler (fn [store _ _]
+               ;; TODO: Implement dropdown operation selection
+               (js/console.log "Apply selected operation - not implemented"))}
 
-(defn get-command-by-id
-  "Get command metadata by id"
-  [id]
-  (get registry id))
-
-(defn get-keyboard-mappings
-  "Generate keyboard mappings from registry"
-  []
-  (into {}
-        (keep (fn [[cmd-id cmd-config]]
-                (when-let [hotkey (:hotkey cmd-config)]
-                  [hotkey [cmd-id {}]]))
-              registry)))
-
-(defn get-ui-commands
-  "Get commands suitable for UI display"
-  []
-  (vals (dissoc registry :undo :redo)))
+   :set-selected-op
+   {:id :set-selected-op
+    :doc "Set the selected operation in the dropdown."
+    :handler (fn [store event _]
+               ;; TODO: Implement dropdown operation selection
+               (js/console.log "Set selected operation - not implemented"))}})
