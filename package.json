@@ -7,7 +7,11 @@
   },
   "scripts": {
     "start": "shadow-cljs watch frontend",
-    "test": "./.pre-commit-check.sh && shadow-cljs compile test && node out/tests.js",
+    "test": "./scripts/test-with-output.sh",
+    "test:direct": "./.pre-commit-check.sh && shadow-cljs compile test && node out/tests.js",
+    "test:ui": "./scripts/test-ui-with-output.sh",
+    "test:ui-old": "echo '🧪 Running UI tests with browser access...' && clojure -M -e '(load-file \"scripts/run-ui-tests.clj\")'",
+    "test:node": "./.pre-commit-check.sh && shadow-cljs compile test && node out/tests.js",
     "test:watch": "shadow-cljs watch test",
     "test:repl": "shadow-cljs cljs-repl test",
     "mcp": "clojure -M:nrepl",
@@ -21,7 +25,11 @@
     "clean": "npm run clean:shadow && npm run clean:npm && npm run clean:install",
     "clean:shadow": "npx shadow-cljs stop && rm -rf .shadow-cljs out target .cljs_node_repl",
     "clean:npm": "npm cache clean --force",
-    "clean:install": "npm install"
+    "clean:install": "npm install",
+    "dev-unified": "echo '🚀 Starting unified development environment...' && npm run check-env && npm run dev",
+    "init-agent": "echo '🤖 Initializing agent development environment...' && clojure -e '(do (require (quote [dev-unified :as dev])) (dev/init!) (println \"🎯 Agent environment ready!\"))'",
+    "test:results": "./scripts/read-all-test-results.sh",
+    "test:extract-ui": "./scripts/extract-ui-test-results.sh"
   },
   "dependencies": {
     "concurrently": "^9.2.1"

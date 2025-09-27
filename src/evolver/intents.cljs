@@ -147,6 +147,18 @@
                        ;; Delete the next node
                        [{:op :delete :node-id next-node}])}])))))
 
+(defn toggle-selection [db {:keys [target-id]}]
+  "Toggle selection state of a node"
+  (when target-id
+    (let [current-selection (get-in db [:view :selection] [])
+          is-selected (some #(= % target-id) current-selection)
+          new-selection (if is-selected
+                          (vec (remove #(= % target-id) current-selection))
+                          (conj current-selection target-id))]
+      [{:op :update-view
+        :path [:selection]
+        :value new-selection}])))
+
 ;;; =================================================================
 ;;; Public API
 ;;; =================================================================
@@ -162,5 +174,6 @@
    :delete-selected-blocks delete-blocks
    :merge-block-up merge-block-up
    :merge-block-down merge-block-down
+   :toggle-selection toggle-selection
    ;; ... add all other pure state transformations here
    })
