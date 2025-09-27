@@ -1,4 +1,4 @@
-(ns dev-unified
+(ns dev
   "Unified development environment for Evolver - combines REPL, testing, and agent utilities"
   (:require [nrepl.core :as nrepl]
             [shadow.cljs.devtools.api :as shadow]
