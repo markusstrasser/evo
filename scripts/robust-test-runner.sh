@@ -37,28 +37,14 @@ else
     exit 1
 fi
 
-# Phase 4: Compile and prepare UI tests  
-echo "📋 Phase 4: UI Test Compilation" | tee -a "$LOG_FILE"
-UI_RESULTS="./test-results/ui-test-results-$(date +%s).txt"
-if npx shadow-cljs compile test-ui 2>&1 | tee "$UI_RESULTS"; then
-    ln -sf "$UI_RESULTS" "./test-results/latest-ui-results.txt"
-    echo "✅ UI tests compiled: $UI_RESULTS" | tee -a "$LOG_FILE"
-    echo "🌐 Access UI tests at: http://localhost:8080/test.html" | tee -a "$LOG_FILE"
-else
-    echo "❌ UI test compilation failed. See: $UI_RESULTS" | tee -a "$LOG_FILE"
-    exit 1
-fi
-
-# Phase 5: Summary and next steps
-echo "📋 Phase 5: Summary" | tee -a "$LOG_FILE"
-echo "🎉 All automated tests completed successfully!" | tee -a "$LOG_FILE"
+# Phase 4: Summary
+echo "📋 Phase 4: Summary" | tee -a "$LOG_FILE"
+echo "🎉 Node.js tests completed successfully!" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 echo "📊 Results:" | tee -a "$LOG_FILE"
 echo "   Node.js tests: ./test-results/latest-node-results.txt" | tee -a "$LOG_FILE"
-echo "   UI test setup: ./test-results/latest-ui-results.txt" | tee -a "$LOG_FILE"
 echo "   Full run log:  $LOG_FILE" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
-echo "🎯 For UI test results:" | tee -a "$LOG_FILE"
-echo "   1. Visit: http://localhost:8080/test.html" | tee -a "$LOG_FILE"
-echo "   2. Console: window.getTestResultsText()" | tee -a "$LOG_FILE"
-echo "   3. Or use: npm run test:extract-ui" | tee -a "$LOG_FILE"
+echo "🎯 For ClojureScript/browser tests:" | tee -a "$LOG_FILE"
+echo "   Use: npm run test:cljs" | tee -a "$LOG_FILE"
+echo "   Or REPL: clojure -M -e '(load-file \"scripts/cljs-test-runner.clj\")'" | tee -a "$LOG_FILE"
