@@ -1,7 +1,8 @@
 (ns evolver.schemas
   (:require [malli.core :as m]
             [malli.error :as me]
-            [malli.instrument :as mi]))
+            [malli.instrument :as mi]
+            [malli.dev :as md]))
 
 ;; --- Registry ------------------------------------------------
 
@@ -34,9 +35,41 @@
                [:op [:= :purge]]
                [:pred fn?]]
 
-   ;; Sugar ops (open maps so extra keys are allowed)
-   ::sugar-op [:map {:closed false}
-               [:op [:enum :ins :mv :del :reorder :move-up :move-down]]]
+   ;; Sugar ops (now with tight, closed shapes via multi-schema)
+   ::ins-op [:map
+             [:op [:= :ins]]
+             [:id ::id]
+             [:parent-id ::id]
+             [:type {:optional true} keyword?]
+             [:props {:optional true} map?]
+             [:pos {:optional true} ::pos]]
+   ::mv-op [:map
+            [:op [:= :mv]]
+            [:id ::id]
+            [:from-parent-id {:optional true} ::id]
+            [:to-parent-id ::id]
+            [:pos {:optional true} ::pos]]
+   ::del-op [:map
+             [:op [:= :del]]
+             [:id ::id]]
+   ::reorder-op [:map
+                 [:op [:= :reorder]]
+                 [:id ::id]
+                 [:parent-id ::id]
+                 [:pos ::pos]]
+   ::move-up-op [:map
+                 [:op [:= :move-up]]
+                 [:id ::id]]
+   ::move-down-op [:map
+                   [:op [:= :move-down]]
+                   [:id ::id]]
+   ::sugar-op [:multi {:dispatch :op}
+               [:ins ::ins-op]
+               [:mv ::mv-op]
+               [:del ::del-op]
+               [:reorder ::reorder-op]
+               [:move-up ::move-up-op]
+               [:move-down ::move-down-op]]
 
    ::op [:or ::ensure-node-op ::set-parent-op ::patch-props-op ::purge-op ::sugar-op]
    ::tx [:or nil? ::op [:sequential ::op]]
@@ -50,7 +83,19 @@
          [:nodes [:map-of ::id ::node]]
          [:children-by-parent-id [:map-of ::id [:vector ::id]]]
          [:derived {:optional true} map?]
-         [:edges {:optional true} map?]]})
+         [:edges {:optional true} map?]]
+
+   ;; Function Schemas for instrumentation
+   ::pos->index-fn [:=> [:cat ::db ::id ::id ::pos] int?]
+   ::set-parent-args [:map
+                      [:id ::id]
+                      [:parent-id {:optional true} [:or nil? ::id]]
+                      [:pos {:optional true} ::pos]]
+   ::set-parent*-fn [:=> [:cat ::db ::set-parent-args] ::db]
+   ::interpret*-fn [:=> [:cat ::db ::tx [:? [:map
+                                             [:derive {:optional true} fn?]
+                                             [:assert? {:optional true} :boolean]]]]
+                    ::db]})
 
 (def op-schema (m/schema [:schema {:registry registry} ::op]))
 (def tx-schema (m/schema [:schema {:registry registry} ::tx]))
@@ -68,4 +113,6 @@
 (defn validate-db! [x] (when-not (m/validate db-schema x) (ex! :db db-schema x)))
 
 ;; Optional: turn on function instrumentation in dev REPL
-(defn instrument! [] (mi/instrument!))
+(defn instrument! []
+  (md/start!)
+  (mi/instrument!))
