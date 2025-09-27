@@ -39,4 +39,5 @@
    :references {"p1-select" #{"title"}} ; node-id -> set of referencing nodes
 
    :log-level :info
-   :log-history []})
+   :log-history []
+   :tx-log []})
