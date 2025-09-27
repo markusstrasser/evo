@@ -9,7 +9,7 @@
     "start": "shadow-cljs watch frontend",
     "test": "./scripts/robust-test-runner.sh",
     "test:node": "./.pre-commit-check.sh && npx shadow-cljs compile test && node out/tests.js",
-    "test:ui": "./scripts/test-ui-with-output.sh",
+    "test:cljs": "clojure -M -e '(load-file \"scripts/cljs-test-runner.clj\")'",
     "test:watch": "shadow-cljs watch test",
     "test:repl": "shadow-cljs cljs-repl test",
     "mcp": "clojure -M:nrepl",
@@ -25,8 +25,8 @@
     "clean:npm": "npm cache clean --force",
     "clean:install": "npm install",
     "dev-unified": "echo '🚀 Starting unified development environment...' && npm run check-env && npm run dev",
-    "init-agent": "echo '🤖 Initializing agent development environment...' && clojure -e '(do (require (quote [dev-unified :as dev])) (dev/init!) (println \"🎯 Agent environment ready!\"))'",
-    "test:results": "./scripts/read-all-test-results.sh",
+    "init-agent": "echo '🤖 Initializing agent development environment...' && clojure -e '(do (require (quote [dev :as dev])) (dev/init!) (println \"🎯 Agent environment ready!\"))'",
+
     "validate-env": "./scripts/validate-environment.sh"
   },
   "dependencies": {
