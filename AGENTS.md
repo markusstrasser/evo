@@ -96,6 +96,11 @@
 - **Console Management**: Call `console.clear()` before testing to avoid token overflow
 - **Live Testing**: More reliable than ClojureScript REPL for UI validation
 - **DOM Inspection**: Use snapshots to verify hierarchical content rendering
+- **REPL Context Solutions**:
+  - Default ClojureScript REPL runs in Node.js context (can't access app/DOM)
+  - Use `shadow-cljs repl :frontend` or dev namespace with `shadow/cljs-eval` for browser access
+  - Browser REPL requires running shadow-cljs server and connected browser
+  - For immediate testing: Chrome DevTools MCP is always available and reliable
 
 ### Test Architecture
 - **Immediate Validation**: Run tests immediately after writing - don't assume data structures
