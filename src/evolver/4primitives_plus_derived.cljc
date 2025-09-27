@@ -39,7 +39,7 @@
 
 (defn rmv [v x] (vec (remove #{x} v)))
 
-#?(:clj  (defn index-of [v x] (.indexOf ^java.util.List v x))
+#?(:clj (defn index-of [v x] (.indexOf ^java.util.List v x))
    :cljs (defn index-of [v x]
            (loop [i 0]
              (if (< i (count v))
@@ -107,23 +107,23 @@
                              [id (vec (get adj id []))]))
         ;; index-of: sibling position
         index-of (reduce-kv
-                   (fn [m _ child-ids]
-                     (reduce (fn [m2 [i c]] (assoc m2 c i))
-                             m (map-indexed vector child-ids)))
-                   {} adj)
+                  (fn [m _ child-ids]
+                    (reduce (fn [m2 [i c]] (assoc m2 c i))
+                            m (map-indexed vector child-ids)))
+                  {} adj)
         ;; prev/next siblings
         {:keys [prev-id-of next-id-of]}
         (reduce-kv
-          (fn [{:keys [prev-id-of next-id-of] :as acc} _ child-ids]
-            (let [n (count child-ids)]
-              (loop [i 0 prev prev-id-of next next-id-of]
-                (if (= i n)
-                  {:prev-id-of prev :next-id-of next}
-                  (let [id (nth child-ids i)
-                        prev (cond-> prev (> i 0) (assoc id (nth child-ids (dec i))))
-                        next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
-                    (recur (inc i) prev next))))))
-          {:prev-id-of {} :next-id-of {}} adj)
+         (fn [{:keys [prev-id-of next-id-of] :as acc} _ child-ids]
+           (let [n (count child-ids)]
+             (loop [i 0 prev prev-id-of next next-id-of]
+               (if (= i n)
+                 {:prev-id-of prev :next-id-of next}
+                 (let [id (nth child-ids i)
+                       prev (cond-> prev (> i 0) (assoc id (nth child-ids (dec i))))
+                       next (cond-> next (< i (dec n)) (assoc id (nth child-ids (inc i))))]
+                   (recur (inc i) prev next))))))
+         {:prev-id-of {} :next-id-of {}} adj)
         ;; DFS pre/post times
         coords (derive-depth-paths-prepost adj nodes)
         pre (:pre coords)
@@ -147,31 +147,31 @@
                                           [id (quot (inc (- post-val pre-val)) 2)]))
                                       (keys parent-id-of)))
         id-by-pre (into {} (map (fn [[id pre-val]] [pre-val id]) pre))
-        reachable-ids (set (keys (:depth-of coords)))
-        orphan-ids (into #{} (remove reachable-ids) (keys nodes))
+        reachable-ids (into #{} (for [[id d] (:depth-of coords) :when (some? d)] id))
+        orphan-ids (set/difference (set (keys nodes)) reachable-ids)
         path-of (:path-of coords)]
 
     ;; Return complete derived state
-    {:parent-id-of      parent-id-of
-     :child-ids-of      child-ids-of
-     :index-of          index-of
-     :prev-id-of        prev-id-of
-     :next-id-of        next-id-of
-     :pre               pre
-     :post              post
-     :preorder          preorder
-     :doc-index-of      doc-index-of
-     :doc-prev-id-of    doc-prev-id-of
-     :doc-next-id-of    doc-next-id-of
-     :position-of       position-of
-     :child-count-of    child-count-of
+    {:parent-id-of parent-id-of
+     :child-ids-of child-ids-of
+     :index-of index-of
+     :prev-id-of prev-id-of
+     :next-id-of next-id-of
+     :pre pre
+     :post post
+     :preorder preorder
+     :doc-index-of doc-index-of
+     :doc-prev-id-of doc-prev-id-of
+     :doc-next-id-of doc-next-id-of
+     :position-of position-of
+     :child-count-of child-count-of
      :first-child-id-of first-child-id-of
-     :last-child-id-of  last-child-id-of
-     :subtree-size-of   subtree-size-of
-     :id-by-pre         id-by-pre
-     :reachable-ids     reachable-ids
-     :orphan-ids        orphan-ids
-     :path-of           path-of}))
+     :last-child-id-of last-child-id-of
+     :subtree-size-of subtree-size-of
+     :id-by-pre id-by-pre
+     :reachable-ids reachable-ids
+     :orphan-ids orphan-ids
+     :path-of path-of}))
 
 (defn derive-all
   "Attach fresh :derived snapshot to db."
@@ -197,9 +197,12 @@
             id-post (get-in derived [:post id])
             parent-pre (get-in derived [:pre new-parent-id])
             parent-post (get-in derived [:post new-parent-id])]
-        ;; new-parent-id is in subtree of id if parent's interval is contained in id's interval
-        (and id-pre id-post parent-pre parent-post
-             (< id-pre parent-pre) (< parent-post id-post)))
+        ;; If any pre/post is nil (orphans), fallback to subtree walk
+        (if (and id-pre id-post parent-pre parent-post)
+          ;; new-parent-id is in subtree of id if parent's interval is contained in id's interval
+          (< id-pre parent-pre parent-post id-post)
+          ;; fallback when any interval data is missing
+          (contains? (subtree-ids db id) new-parent-id)))
       ;; fallback to subtree walk if no derived data
       (contains? (subtree-ids db id) new-parent-id))))
 
@@ -215,7 +218,7 @@
                   (throw (ex-info "anchor not in parent" {:anchor anchor-id :parent parent-id})))
                 i))]
     (cond
-      (nil? pos) (count base)                               ; default :last
+      (nil? pos) (count base) ; default :last
       (= :first pos) 0
       (= :last pos) (count base)
       (and (vector? pos) (= :index (first pos)))
@@ -269,9 +272,9 @@
   [db {:keys [id props sys updates]}]
   (assert id "patch-props*: :id required")
   (let [u (cond-> {}
-                  (some? props) (assoc :props props)
-                  (some? sys) (assoc :sys sys)
-                  (map? updates) (merge updates))
+            (some? props) (assoc :props props)
+            (some? sys) (assoc :sys sys)
+            (map? updates) (merge updates))
         deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
     (update-in db [:nodes id] #(merge-with deep % u))))
 
@@ -295,7 +298,7 @@
                     ;; Include any roots that might not be in preorder (orphans)
                     (reduce (fn [acc root]
                               (if (get-in derived [:pre root])
-                                acc                         ; already handled by intervals
+                                acc ; already handled by intervals
                                 (set/union acc (subtree-ids db root))))
                             interval-victims roots))
                   ;; Fallback to recursive walk
@@ -408,18 +411,64 @@
    Example op: {:op :ins :id \"a\" :under \"root\"}"
   [db tx]
   (reduce
-    (fn [d m]
-      (when-not (map? m) (throw (ex-info "interpret*: op must be a map" {:got m})))
-      (let [k (:op m)] (when-not k (throw (ex-info "interpret*: missing :op" {:got m}))))
-      (-> d
-          ((dispatch (:op m)) m)
-          (derive-all)))
-    (derive-all db)                                         ;; ensure db has :derived even before first op
-    (->tx tx)))
+   (fn [d m]
+     (when-not (map? m) (throw (ex-info "interpret*: op must be a map" {:got m})))
+     (let [k (:op m)] (when-not k (throw (ex-info "interpret*: missing :op" {:got m}))))
+     (-> d
+         ((dispatch (:op m)) m)
+         (derive-all)))
+   (derive-all db) ;; ensure db has :derived even before first op
+   (->tx tx)))
 
 ;; ------------------------------------------------------------
 ;; REPL asserts (run the file, they should all pass)
 ;; ------------------------------------------------------------
+
+(defn- check-invariants
+  "Verify that derived data is consistent with canonical adjacency."
+  [db]
+  (when-let [derived (:derived db)]
+    (let [{:keys [nodes children-by-parent-id]} db
+          {:keys [parent-id-of child-ids-of index-of pre post subtree-size-of
+                  id-by-pre reachable-ids orphan-ids]} derived]
+
+      ;; Adjacency symmetry: parent-child relationship is bidirectional
+      (doseq [[parent-id child-ids] children-by-parent-id
+              child-id child-ids]
+        (assert (= parent-id (get parent-id-of child-id))
+                (str "Adjacency symmetry broken: " child-id " not parent " parent-id)))
+
+      ;; No duplicate children in any parent's child list
+      (doseq [[parent-id child-ids] children-by-parent-id]
+        (assert (= (count child-ids) (count (distinct child-ids)))
+                (str "Duplicate children in " parent-id ": " child-ids)))
+
+      ;; Subtree size formula: (post - pre + 1) / 2
+      (doseq [[id size] subtree-size-of
+              :let [pre-val (get pre id)
+                    post-val (get post id)]
+              :when (and pre-val post-val)]
+        (assert (= size (quot (inc (- post-val pre-val)) 2))
+                (str "Subtree size mismatch for " id ": " size " vs " (quot (inc (- post-val pre-val)) 2))))
+
+      ;; id-by-pre is inverse of pre
+      (doseq [[id pre-val] pre]
+        (assert (= id (get id-by-pre pre-val))
+                (str "pre/id-by-pre mismatch: " id " at pre " pre-val)))
+
+      ;; index-of matches actual positions in children vectors
+      (doseq [[parent-id child-ids] children-by-parent-id
+              [idx child-id] (map-indexed vector child-ids)]
+        (assert (= idx (get index-of child-id))
+                (str "Index mismatch for " child-id ": " idx " vs " (get index-of child-id))))
+
+      ;; orphan-ids are exactly those not reachable from root
+      (let [all-node-ids (set (keys nodes))
+            expected-orphans (set/difference all-node-ids reachable-ids)]
+        (assert (= orphan-ids expected-orphans)
+                (str "Orphan-ids vs reachable mismatch: " orphan-ids " vs " expected-orphans)))
+
+      true)))
 
 (defn- ok [& _] true)
 
@@ -428,6 +477,9 @@
           {:op :ins :id "b" :parent-id "root"}
           {:op :ins :id "c" :parent-id "a"}]
       db1 (interpret* db0 tx)]
+
+  ;; Verify invariants hold
+  (assert (check-invariants db1))
 
   ;; structure
   (assert (= ["a" "b"] (get-in db1 [:children-by-parent-id "root"])))
@@ -441,11 +493,13 @@
 
   ;; reorder within root
   (let [db2 (interpret* db1 [{:op :reorder :id "a" :parent-id "root" :pos [:index 1]}])]
+    (assert (check-invariants db2))
     (assert (= ["b" "a"] (get-in db2 [:children-by-parent-id "root"])))
     (assert (= 1 (get-in db2 [:derived :index-of "a"]))))
 
   ;; move c up to root at index 0
   (let [db3 (interpret* db1 [{:op :mv :id "c" :from-parent-id "a" :to-parent-id "root" :pos [:index 0]}])]
+    (assert (check-invariants db3))
     (assert (= ["c" "a" "b"] (get-in db3 [:children-by-parent-id "root"])))
     (assert (= [] (get-in db3 [:children-by-parent-id "a"])))
     (assert (= 0 (get-in db3 [:derived :index-of "c"]))))
@@ -458,9 +512,17 @@
 
   ;; delete (purge closure): removing a removes c as well
   (let [db4 (interpret* db1 [{:op :del :id "a"}])]
+    (assert (check-invariants db4))
     (assert (nil? (get-in db4 [:nodes "a"])))
     (assert (nil? (get-in db4 [:nodes "c"])))
     (assert (= ["b"] (get-in db4 [:children-by-parent-id "root"]))))
+
+  ;; test orphan handling
+  (let [db-with-orphans {:nodes {"root" {:type :root} "a" {:type :div} "orphan" {:type :div}}
+                         :children-by-parent-id {"root" ["a"] "a" []}}
+        db5 (derive-all db-with-orphans)]
+    (assert (check-invariants db5))
+    (assert (= #{"orphan"} (get-in db5 [:derived :orphan-ids]))))
 
   (ok))
 
