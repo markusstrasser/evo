@@ -8,200 +8,26 @@ Your mistake was thinking you were building a UI framework. You're building an i
 * The indirection was done so that every step is data driven and can be tested and inspected separately... maybe it's not needed for this?
 * There should be plugins later on ... it's an editor but also later a chatbot and genui thing where the LLM REPL-s in commands and forms
 
-## Block Editing JTBD - UX
+Is there anything like this that's done it better? Any utils that could remove LoC and delete custom stuff for general patterns (like CQRS)?
+Also apply-transaction(state, transaction-log) ... isn't that the job of the kernel then? otheriwse the client has to implement the tree logic? or am i misunderstanding?
+Also is this reinventing the wheel? Has svelte5 or whatever other community done this better?
 
-### Editor Mode (JTBD)
-
--  As a writer, I want typing to always insert text into the focused block so I can stay in flow without switching modes.
--  As a power user, I want navigation and structural commands to be triggered via keyboard shortcuts so I can operate quickly without leaving the keyboard.
-
-### Block Navigation (Sequential Movement) 🗺️
-
--  Moving Down:
-    - As a user, I want pressing “down” to take me to the next block in the visual order so I can read and edit naturally from top to bottom.
-    - If the current block has a next sibling, go there.
-    - If not, traverse upward to the nearest ancestor that has a next sibling and go there, continuing until a next block is found.
-    - Respect collapsed blocks: when configured, skip the children of collapsed blocks and move directly to the next visible block.
-
--  Moving Up:
-    - As a user, I want pressing “up” to take me to the block that appears visually above the current one so navigation feels intuitive.
-    - If there is a previous sibling and it is expanded with visible children, move to its deepest, last visible descendant so the cursor lands on the visually adjacent block above.
-    - If the previous sibling is collapsed or has no children, move directly to that sibling.
-    - If there is no previous sibling, move to the parent block.
-
-## #Structural Operations (Hierarchical Changes) 🌳
-
--  Moving to Parent:
-    - As a user, I want to jump to a block’s parent so I can quickly change context or restructure higher-level content.
-
--  Moving to Children:
-    - As a user, I want to jump to a block’s first child to dive into details quickly.
-    - As a user, I want to jump to a block’s last immediate child to access the most recently added or deepest sibling-level detail.
-
--  Indenting:
-    - As a user, I want to indent a block to make it a child of its previous sibling so I can create subpoints and group related ideas beneath a header or parent block.
-    - The indented block should become the last child under the new parent to preserve reading order.
-
--  Outdenting:
-    - As a user, I want to outdent a block to promote it one level up so I can pull items out of a group and place them alongside their former parent.
-    - The outdented block should appear immediately after its former parent in the new sibling list.
-
--  Multi-Select Operations:
-    - As a user, I want to select multiple blocks and apply structural changes in one action so I can reorganize sections efficiently.
-    - The relative hierarchy and internal order of the selection must be preserved. For example, if a parent and its two children are selected and indented together, they move as a unit under the new parent, and the children remain children of their original parent within that moved group.
+Assume it's mostly for LLMs to patch in events and change uis on the fly generatively
 
 
-
-
-### Phase 2: Command Architecture Refactor (Current)
-- **Problem**: 150+ line event handling case statement mixing UI events with business logic
-- **Solution**: Command-driven CQRS-style architecture with middleware pipeline
-- **Result**: Scalable system where adding features is exponentially easier
-
-**Architecture**: `UI Events → Command Registry → Middleware Pipeline → Pure Kernel → State Updates → Reactive Rendering`
-
-### Testing Evolution  
-- **Before**: 26 tests, 108 assertions - missed critical parameter contract bugs
-- **After**: 30 tests, 115 assertions + property-based fuzzy testing + Chrome DevTools automation framework
-- **Added**: Contract validation, integration testing, UI state invariant checking
-
-* The agent tools provide structural awareness
-## Open Questions
-* derived state in DB or memoized? (level/depth, children etc)
-:children on :nodes directly? Or normalized?
-* This is the classic adjacency list vs nested set vs materialized path problem from 40+ years of hierarchical data modeling. normalized adjacency list vs embedding children directly is literally the Entity-Attribute-Value antipattern debate from database theory.
-
-## Design: Semantic UI REPL
-You're designing a conversational interface canvas. The product is a tool where a user sculpts a fully reactive application by issuing natural language commands to an AI. Its core design principle moves beyond static layout tools by treating the interface not as a rigid tree of visual elements, but as a dynamic graph of interconnected components. A user can direct the AI to forge not just structural parent-child relationships, but also behavioral triggers, data-binding links, and semantic connections. This enables the rapid, iterative construction of both complex application logic and visual appearance from a single, unified conversational prompt, creating a fluid and deeply inspectable design environment.
-
-it will have style attributes and references , citations, transclusions, backlinks.
-The access pattern should drive the schema, not some abstract notion of "completeness."
-
-It will use many components ... it will allow an AI/LLM to patch in or query the db and use the transaction API to change the view.
-## Design Decisions
-
-### Tree Operations in DataScript
-Core insight: Trees in DataScript require fighting the tool - it's a flat EAV store pretending to do hierarchies. But if committed to this approach, the API must prioritize atomic operations that maintain tree coherence.
-What we learned:
-
-- Position isn't conflation, it's a requirement. Creating an entity without position leaves the tree incoherent. Atomic create-with-position is a legitimate compound operation, not bad design.
-- Order calculation belongs in the system, not client. The LLM/client should declare intent ({:after "x"}) not implementation details (order strings). This keeps fractional indexing mechanics hidden.
-- Manual cascade deletion was the right call. DataScript's :db/isComponent is broken. Explicit descendant collection is more predictable.
-
-The entire complexity stems from supporting operations like :after and :before.
-
-## Why datascript
-The key insight: outliner editors are trees with frequent hierarchy queries + positional mutations. Datascript's strength here isn't the hierarchy walking (that's simple) but handling the complex constraint propagation when you move subtrees around.
-The real win: use rules for queries, transaction functions for consistency, reverse refs for navigation. You might not need to store derived props at all - compute them efficiently at query time.
-Why store :ancestors when (ancestor ?child ?anc) is fast and always correct?
-
-## Why not datascript (sept 25 2025)
-
-After fighting it for a day+ : it's not worth the complexity. 
-Just use a tree. Have structural relations as "refs-in", "refs-out". 
-Have :parent on the node or :parents in the derived. 
-Derive the state and be done with it.
-
-
-### Fractional Ordering Implementation 
-**Decision**: Replaced verbose ~70 LOC fractional indexing with canonical Greenspan-style implementation in ~25 LOC.
-
-**Reasoning**: 
-- Original implementation was overcomplicated for a toy problem
-- New version uses standard 62-character alphabet (0-9, A-Z, a-z) for maximum density
-- Returns lexicographically sortable strings without numeric conversion
-- Handles edge cases (nil boundaries, gap exhaustion) with mathematical precision
-- Maintains same API (`calculate-order`) for backward compatibility
-
-**Key insight**: Fractional indexing is a solved problem. Use the canonical algorithm rather than reinventing string interpolation logic. The ~25 LOC version is more maintainable and follows established patterns from systems like Jira's LexoRank.
-
-### Functional Naming and Pipeline Architecture 
-**Decision**: Transformed procedural naming and coupled recursion into functional, declarative design.
-
-**Changes**:
-- Renamed functions to describe transformations not temporal roles (`calculate-order` → `resolve-rank`, `prepare-put-tx` → `tree->tx-data`)
-- Replaced mutual recursion with decoupled data pipeline (`linearize-subtree` → `map linearized-node->tx`)
-- Consolidated duplicate logic (added `find-surrounding-orders` helper)
-- Used `reductions` instead of imperative `loop/recur`
-
-**Reasoning**: Functions named after "when they execute" (`prepare-*`, `calculate-*`) reveal procedural thinking. Pure functions should describe **what they transform**, not their temporal role in a sequence. The pipeline separates tree traversal from transaction formatting, making the data flow explicit and each component independently testable.
-
-### Integer-Based Ordering Architecture
-**Decision**: Replaced complex fractional string ordering with simple integer system + automatic renumbering.
-
-**Migration from Fractional to Integer**:
-- **Before**: 70+ lines of string manipulation, base-62 encoding, complex gap detection
-- **After**: ~25 lines with simple midpoint calculation: `(quot (+ lo hi) 2)`
-- **Renumbering**: When gaps become too small (`o = lo`), automatically renumber siblings with 1000-unit spacing
-
-**Key Trade-off Analysis**:
-- ✅ **Algorithmic Complexity**: Dramatically reduced (no string manipulation)
-- ✅ **Debuggability**: Integer orders much easier to inspect and reason about
-- ✅ **Maintainability**: Fewer edge cases, clearer logic flow
-- ❌ **Infrastructure Complexity**: Added renumbering system requiring connection access
-- ≈ **LoC**: Similar total lines (~11 vs ~13) due to infrastructure additions
-
-**Architecture Insight**: The win was **maintainability over code size**. While LoC didn't decrease significantly, the integer system trades mathematical complexity for infrastructural complexity, resulting in much more debuggable and understandable code.
-
-### Schema Minimalism and Explicit Operations
-**Decision**: Avoid DataScript's complex features in favor of explicit, predictable operations.
-
-**Schema Evolution**:
-```clojure
-;; Final minimal schema
-(def schema
-  {:id {:db/unique :db.unique/identity}
-   :parent {:db/valueType :db.type/ref}
-   :order {:db/index true}
-   :parent+order {:db/tupleAttrs [:parent :order]
-                  :db/unique :db.unique/value}})
-```
-
-**Rejected Approach**: `:db/isComponent` for automatic cascade deletion
-- **Problem**: DataScript's `:db/isComponent` behaves unpredictably (different from Datomic)
-- **Evidence**: Deleting child entities incorrectly deletes parent entities, orphans grandchildren
-- **Solution**: Manual cascade deletion via Datalog rules
-
-**Manual Cascade Implementation**:
-```clojure
-(def rules
-  '[[(subtree-member ?ancestor ?descendant)
-     [?descendant :parent ?ancestor]]           ; Direct parent-child
-    [(subtree-member ?ancestor ?descendant)
-     [?descendant :parent ?intermediate]        ; Transitive closure
-     (subtree-member ?ancestor ?intermediate)]])
-
-(defn delete! [conn entity-id]
-  (let [descendant-ids (d/q '[:find [?did ...] :in $ % ?pref :where
-                             [?d :id ?did] (subtree-member ?pref ?d)]
-                           @conn rules [:id entity-id])]
-    ;; Explicit retraction of all descendants
-    ))
-```
-
-**Benefits of Explicit Approach**:
-- ✅ **Predictable behavior** - no database feature surprises
-- ✅ **Unified query patterns** - all operations use same Datalog approach  
-- ✅ **Better debuggability** - cascade logic is visible and testable
-- ✅ **Database independence** - doesn't rely on DataScript-specific behaviors
-
-### CRUD API Design with Position Integration
-**Decision**: Position specification is a core part of tree entity creation, not an optional afterthought.
-
-**Unified Position Resolution**:
-```clojure
-(defn- resolve-position [conn {:keys [parent sibling rel] :as pos}]
-  ;; Single function handles all positioning: :first, :last, :before, :after
-  ;; Returns [parent-ref order-value] for transaction
-  )
-```
-
+## WHy not datascript?
+* No ordered lists! Buggy on some things.
+* You should only reach for Datascript when your query logic becomes more complex than your mutation logic.
 **API Integration**:
 - `insert!` creates entities with mandatory position specification
 - `move!` uses same position resolution for atomic subtree relocation
 - `update!` handles only non-structural attributes (prevents accidental position corruption)
 
 **Design Rationale**: Creating tree entities without position leaves the tree in an incoherent state. Rather than separate create/position operations, atomic create-with-position is a legitimate compound operation that maintains tree invariants.
+
+## DEV
+* REACTIVE UI has insane OVERHEAD TO DEVELOP
+  * I am building a pure data transformation library. the core has no UI, no side effects, and no async operations.
 
 ### Hypergraph Test-Driven Development
 **Decision**: Write comprehensive tests for functionality that doesn't exist yet to drive future architecture.
