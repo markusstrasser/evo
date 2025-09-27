@@ -6,15 +6,33 @@
 ;; Helper to get the current cursor
 (defn- cursor [store] (-> @store :present :view :selection peek))
 (defn- selv [store] (-> @store :present :view :selection))
+(defn- toggle-selection-item [selection-vec target-id]
+  (let [selection-set (set selection-vec)]
+    (if (contains? selection-set target-id)
+      (vec (remove #{target-id} selection-vec))
+      (conj selection-vec target-id))))
 
 (def registry
   {;; Data-mutating commands (via dispatcher)
-   :create-child-block
-   {:id :create-child-block
-    :doc "Creates a new child of the current cursor."
-    :handler (fn [store _]
-               (dispatcher/dispatch-intent! store :create-child-block {:cursor (cursor store)}))
-    :hotkey {:key "Enter"}}
+   :enter-new-block
+   {:id      :enter-new-block
+    :doc     "Creates a new block or splits the current one."
+    :handler (fn [store _ _]
+               (let [db (:present @store)
+                     cur (cursor store)
+                     text (get-in db [:nodes cur :props :text] "")
+                     caret-pos (count text)] ; NOTE: This is a placeholder for real cursor position
+                 (dispatcher/dispatch-intent! store :enter-new-block
+                                              {:cursor cur
+                                               :cursor-position caret-pos
+                                               :block-content text})))
+    :hotkey  {:key "Enter"}}
+
+   :create-sibling-above
+   {:id      :create-sibling-above
+    :doc     "Creates a new sibling above the current cursor."
+    :handler (fn [store _ _] (dispatcher/dispatch-intent! store :create-sibling-above {:cursor (cursor store)}))
+    :hotkey  {:key "Enter" :shift true}}
 
    :indent-block
    {:id :indent-block
@@ -60,23 +78,6 @@
     :hotkey {:key "z" :meta true :shift true}}
 
    ;; View-only commands (direct swap!)
-   :select-node
-   {:id :select-node
-    :doc "Selects a single node, clearing previous selection."
-    :handler (fn [store _ {:keys [node-id]}]
-               (swap! store assoc-in [:present :view :selection] [node-id]))}
-
-   :toggle-selection
-   {:id :toggle-selection
-    :doc "Toggles the selection of a single node."
-    :handler (fn [store _ {:keys [target-id]}]
-               (swap! store update-in [:present :view :selection]
-                      (fn [selection]
-                        (let [sel-set (set selection)]
-                          (if (contains? sel-set target-id)
-                            (vec (disj sel-set target-id))
-                            (conj (vec selection) target-id))))))}
-
    :select-block-below
    {:id :select-block-below
     :doc "Selects the block below the current cursor."
@@ -123,22 +124,14 @@
 
    :select-node-with-modifiers
    {:id :select-node-with-modifiers
-    :doc "Selects a node with modifier key support for multi-selection."
+    :doc "Selects a single node, or toggles/adds with Shift/Meta."
     :handler (fn [store event {:keys [node-id]}]
-               (let [shift? (.-shiftKey event)
-                     meta? (or (.-metaKey event) (.-ctrlKey event))]
-                 (cond
-                   ;; Shift or Meta/Ctrl = toggle selection (add/remove from multi-selection)
-                   (or shift? meta?)
-                   (swap! store update-in [:present :view :selection]
-                          (fn [selection]
-                            (let [sel-set (set selection)]
-                              (if (contains? sel-set node-id)
-                                (vec (disj sel-set node-id))
-                                (conj (vec selection) node-id)))))
-
-                   ;; No modifiers = replace selection with single node
-                   :else
+               ; The event object is passed by replicant's dispatch
+               (let [native-event (:replicant/event event)
+                     shift? (.-shiftKey native-event)
+                     meta? (.-metaKey native-event)]
+                 (if (or shift? meta?)
+                   (swap! store update-in [:present :view :selection] toggle-selection-item node-id)
                    (swap! store assoc-in [:present :view :selection] [node-id]))))}
 
    :merge-block-up
