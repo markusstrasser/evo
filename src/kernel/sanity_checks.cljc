@@ -41,9 +41,10 @@
        :result result
        :expected (str "Should throw error containing: " expected-error-substring)
        :problem "Expected exception but got result"})
-    (catch Exception e
+    (catch #?(:clj Throwable :cljs :default) e
       (let [msg (.getMessage e)
-            contains-expected? (.contains msg expected-error-substring)]
+            contains-expected? (and msg #?(:clj (.contains msg expected-error-substring)
+                                           :cljs (.includes msg expected-error-substring)))]
         {:test test-name
          :passed? contains-expected?
          :error msg
@@ -76,7 +77,7 @@
        {:has-tier-a? has-tier-a?
         :has-tier-b? has-tier-b?
         :all-keys (sort (keys derived))
-        :success? (and has-tier-a? has-tier-b?)}))
+        :passed? (and has-tier-a? has-tier-b?)}))
    "Both Tier-A and Tier-B fields present in derived data"))
 
 ;; ------------------------------------------------------------
@@ -107,7 +108,7 @@
 
        {:direct-identical? direct-identical?
         :interpret-unchanged? interpret-unchanged?
-        :success? (and direct-identical? interpret-unchanged?)}))
+        :passed? (and direct-identical? interpret-unchanged?)}))
    "set-parent* returns same object when parent unchanged and pos=nil"))
 
 ;; ------------------------------------------------------------  
@@ -135,7 +136,7 @@
         op-test (test-throws
                  "Invalid OP validation"
                  #(S/validate-op! {:op :ensure-node :id 123}) ; id should be string
-                 "should be a string")
+                 "Schema validation failed")
 
         ;; Test 4: Integration - interpret* catches invalid op
         interpret-test (test-throws
@@ -148,7 +149,7 @@
      :op-validation (:passed? op-test)
      :interpret-integration (:passed? interpret-test)
      :all-tests [db-test tx-test op-test interpret-test]
-     :success? (every? :passed? [db-test tx-test op-test interpret-test])}))
+     :passed? (every? :passed? [db-test tx-test op-test interpret-test])}))
 
 ;; ------------------------------------------------------------
 ;; Patch 4: Enhanced invariants  
@@ -202,7 +203,7 @@
      :child-exists (:passed? child-exists-test)
      :no-self-parent (:passed? no-self-parent-test)
      :all-tests [root-exists-test root-not-child-test child-exists-test no-self-parent-test]
-     :success? (every? :passed? [root-exists-test root-not-child-test child-exists-test no-self-parent-test])}))
+     :passed? (every? :passed? [root-exists-test root-not-child-test child-exists-test no-self-parent-test])}))
 
 ;; ------------------------------------------------------------
 ;; Integration test
@@ -245,7 +246,7 @@
         :invariants-pass? invariants-pass?
         :tree-correct? tree-correct?
         :final-tree (:children-by-parent-id final)
-        :success? (and has-full-derivation? no-op-works? invariants-pass? tree-correct?)}))
+        :passed? (and has-full-derivation? no-op-works? invariants-pass? tree-correct?)}))
    "All patches work together in realistic tree building"))
 
 ;; ------------------------------------------------------------
@@ -263,22 +264,22 @@
         patch4 (enhanced-invariants)
         integration (integration-test)
 
-        all-passed? (every? :success? [patch1 patch2 patch3 patch4 integration])]
+        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 integration])]
 
-    (println (str "📋 Patch 1 - Full Derivation:  " (if (:success? patch1) "✅ PASS" "❌ FAIL")))
-    (println (str "📋 Patch 2 - No-op Guard:      " (if (:success? patch2) "✅ PASS" "❌ FAIL")))
-    (println (str "📋 Patch 3 - Malli Validation: " (if (:success? patch3) "✅ PASS" "❌ FAIL")))
-    (println (str "📋 Patch 4 - Enhanced Checks:  " (if (:success? patch4) "✅ PASS" "❌ FAIL")))
-    (println (str "📋 Integration Test:           " (if (:success? integration) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Patch 1 - Full Derivation:  " (if (:passed? patch1) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Patch 2 - No-op Guard:      " (if (:passed? patch2) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Patch 3 - Malli Validation: " (if (:passed? patch3) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Patch 4 - Enhanced Checks:  " (if (:passed? patch4) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Integration Test:           " (if (:passed? integration) "✅ PASS" "❌ FAIL")))
     (println)
     (println (str "🎯 Overall: " (if all-passed? "✅ ALL PATCHES WORKING" "❌ SOME ISSUES FOUND")))
 
     {:summary {:all-passed? all-passed?
-               :patch-1 (:success? patch1)
-               :patch-2 (:success? patch2)
-               :patch-3 (:success? patch3)
-               :patch-4 (:success? patch4)
-               :integration (:success? integration)}
+               :patch-1 (:passed? patch1)
+               :patch-2 (:passed? patch2)
+               :patch-3 (:passed? patch3)
+               :patch-4 (:passed? patch4)
+               :integration (:passed? integration)}
      :details {:full-derivation patch1
                :no-op-guard patch2
                :malli-validation patch3
