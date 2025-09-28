@@ -16,6 +16,7 @@
             [malli.core :as m]
             [kernel.effects :as effects]
             [kernel.responses :as R]
+            [kernel.deck :as deck]
             [medley.core :as medley]))
 
 (def ^:const ROOT "root")
@@ -635,9 +636,10 @@
             all-effects []
             trace []]
        (if (= i (count ops))
-         ;; Transaction Success
-         (cond-> {:db current-db :effects all-effects}
-           (seq trace) (assoc :trace trace))
+         ;; Transaction Success - run deck checks
+         (let [findings (deck/run current-db {:when #{:post}})]
+           (cond-> {:db current-db :effects all-effects :findings findings}
+             (seq trace) (assoc :trace trace)))
 
          (let [op (nth ops i)
                initial-ctx {:db-before current-db :op op :op-index i :config config}
@@ -675,7 +677,8 @@
          ;; Success case
          {:ok? true
           :db (:db result)
-          :effects (:effects result)}))
+          :effects (:effects result)
+          :findings (:findings result)}))
      (catch Throwable t
        {:ok? false :db db :effects [] :error {:why :unexpected :message (.getMessage t)}}))))
 
