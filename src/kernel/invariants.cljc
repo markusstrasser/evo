@@ -1,4 +1,4 @@
-(ns evolver.invariants
+(ns kernel.invariants
   "Invariant checking for tree kernel. Optional, flagged via assert? parameter.")
 
 (defn check-invariants [db]
@@ -65,5 +65,12 @@
               expected-orphans (set (remove reachable-ids all-node-ids))]
           (assert (= orphan-ids expected-orphans)
                   (str "Orphan-ids vs reachable mismatch: " orphan-ids " vs " expected-orphans))))
+
+      ;; Edge invariants
+      (when-let [E (:edges db)]
+        (doseq [[rel m] E, [src dsts] m, dst dsts]
+          (assert (contains? nodes src) (str "edge src missing: " rel " " src))
+          (assert (contains? nodes dst) (str "edge dst missing: " rel " " dst))
+          (assert (not= src dst)        (str "self-edge on " rel " " src))))
 
       true)))
