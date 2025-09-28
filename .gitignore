@@ -3,7 +3,8 @@ public/js
 
 .agentlog
 .clojure-mcp
-
+repomix-output.xml
+docs/ideas/*
 out
 /out
 ./out
