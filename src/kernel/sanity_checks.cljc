@@ -11,7 +11,8 @@
   (:require [kernel.core :as core]
             [kernel.schemas :as S]
             [kernel.invariants :as inv]
-            [kernel.workspace :as WS]))
+            [kernel.workspace :as WS]
+            [kernel.sugar-ops]))  ; Load sugar ops to extend multimethod
 
 ;; ------------------------------------------------------------
 ;; Test utilities
@@ -362,6 +363,48 @@
                       (= effects-count 2) effects-correct? compat-ok?)}))
    "All REPL verification examples pass"))
 
+(defn multimethod-registry []
+  (test-safely
+   "Multimethod registry replaces dispatch function"
+   (fn []
+     (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+
+           ;; Test 1: Core primitives work directly via apply-op
+           core-result (core/apply-op base {:op :create-node :id "core-test"})
+           core-works? (contains? (:nodes core-result) "core-test")
+
+           ;; Test 2: Sugar ops work after namespace is loaded
+           sugar-result (core/apply-op base {:op :insert :id "sugar-test" :parent-id "root"})
+           sugar-works? (contains? (:nodes sugar-result) "sugar-test")
+
+           ;; Test 3: apply-tx+effects* uses multimethod correctly
+           tx-result (core/apply-tx+effects* base [{:op :create-node :id "tx-core"}
+                                                   {:op :insert :id "tx-sugar" :parent-id "root"}])
+           tx-works? (and (contains? (:nodes (:db tx-result)) "tx-core")
+                          (contains? (:nodes (:db tx-result)) "tx-sugar"))
+
+           ;; Test 4: run-tx works with both core and sugar ops
+           run-result (core/run-tx base [{:op :create-node :id "run-core"}
+                                         {:op :insert :id "run-sugar" :parent-id "root"}])
+           run-works? (and (:ok? run-result)
+                           (contains? (:nodes (:db run-result)) "run-core")
+                           (contains? (:nodes (:db run-result)) "run-sugar"))
+
+           ;; Test 5: Unknown ops throw proper error
+           unknown-error? (try
+                            (core/apply-op base {:op :unknown-operation})
+                            false ; Should not reach here
+                            (catch Exception e
+                              (re-find #"Unknown :op" (.getMessage e))))]
+
+       {:core-primitives? core-works?
+        :sugar-ops? sugar-works?
+        :apply-tx-effects? tx-works?
+        :run-tx? run-works?
+        :unknown-ops-error? (boolean unknown-error?)
+        :passed? (and core-works? sugar-works? tx-works? run-works? unknown-error?)}))
+   "Multimethod registry works for all operation types"))
+
 ;; ------------------------------------------------------------
 ;; Main test runner
 ;; ------------------------------------------------------------
@@ -381,9 +424,10 @@
         mr (multi-root-basics)
         eff (effects-skeleton-smoke)
         repl-v (repl-verification)
+        registry (multimethod-registry)
         integration (integration-test)
 
-        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v integration])]
+        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v registry integration])]
 
     (println (str "📋 Patch 1 - Full Derivation:  " (if (:passed? patch1) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 2 - No-op Guard:      " (if (:passed? patch2) "✅ PASS" "❌ FAIL")))
@@ -395,6 +439,7 @@
     (println (str "📋 Multi-root basics:          " (if (:passed? mr) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Effects skeleton smoke:     " (if (:passed? eff) "✅ PASS" "❌ FAIL")))
     (println (str "📋 REPL verification:          " (if (:passed? repl-v) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Multimethod registry:       " (if (:passed? registry) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Integration Test:           " (if (:passed? integration) "✅ PASS" "❌ FAIL")))
     (println)
     (println (str "🎯 Overall: " (if all-passed? "✅ ALL PATCHES WORKING" "❌ SOME ISSUES FOUND")))
@@ -421,6 +466,7 @@
                :multi-root-basics mr
                :effects-skeleton-smoke eff
                :repl-verification repl-v
+               :multimethod-registry registry
                :integration-test integration}}))
 
 ;; ------------------------------------------------------------

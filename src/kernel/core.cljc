@@ -22,7 +22,7 @@
   (let [r (:roots db)]
     (if (and (vector? r) (seq r)) r [ROOT])))
 
-;; Quick verification asserts for multi-root + effects
+;; Quick verification asserts for multi-root + effects + multimethod registry
 (comment
   ;; Multi-root verification
   (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
@@ -41,7 +41,17 @@
   ;; Backward compatibility
   (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
     (assert (= (:nodes (apply-tx* base {:op :insert :id "z" :parent-id "root"}))
-               (:nodes (:db (apply-tx+effects* base {:op :insert :id "z" :parent-id "root"})))))))
+               (:nodes (:db (apply-tx+effects* base {:op :insert :id "z" :parent-id "root"}))))))
+
+  ;; Multimethod registry verification
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
+    ;; Core primitives work
+    (assert (contains? (:nodes (apply-op base {:op :create-node :id "test-core"})) "test-core"))
+    ;; Sugar ops require namespace loading (will be loaded by sanity_checks.cljc)
+    ;; run-tx works with multimethod
+    (assert (:ok? (run-tx base [{:op :create-node :id "test-run-tx"}])))
+    ;; apply-tx+effects* works with multimethod
+    (assert (contains? (:nodes (:db (apply-tx+effects* base [{:op :create-node :id "test-effects"}]))) "test-effects"))))
 
 ;; ------------------------------------------------------------
 ;; Derivation functions (Tier-A and Tier-B)
@@ -417,51 +427,24 @@
     (sequential? tx) tx
     :else (throw (ex-info "Invalid tx format" {:tx tx}))))
 
-(defn- dispatch
-  "Return the function implementing an op keyword."
-  [k]
-  (case k
-    ;; core
-    :create-node create-node*
-    :place place*
-    :update-node update-node*
-    :prune (fn [db m] (prune* db (:pred m)))
-    :add-ref add-ref*
-    :rm-ref rm-ref*
-    ;; sugar-ops - inline simple implementations to avoid circular deps
-    :insert (fn [db {:keys [id parent-id type props pos] :or {type :div props {}}}]
-              (assert id "insert: :id required")
-              (when (get-in db [:nodes id])
-                (throw (ex-info "insert: id already exists" {:id id})))
-              (-> db
-                  (create-node* {:id id :type type :props props})
-                  (place* {:id id :parent-id parent-id :pos (or pos :last)})))
-    :move (fn [db {:keys [id from-parent-id to-parent-id pos]}]
-            (assert (contains? (:nodes db) id) (str "move: node does not exist: " id))
-            (when (and from-parent-id (not (some #{id} (child-ids-of* db from-parent-id))))
-              (throw (ex-info "move: :from-parent-id does not contain id" {:id id :from-parent-id from-parent-id})))
-            (place* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
-    :delete (fn [db {:keys [id]}]
-              (prune* db (fn [_ x] (= x id))))
-    :reorder (fn [db {:keys [id parent-id pos]}]
-               (assert (contains? (:nodes db) id) (str "reorder: node does not exist: " id))
-               (let [cur-parent-id (get-in db [:derived :parent-id-of id])]
-                 (when (and cur-parent-id (not= parent-id cur-parent-id))
-                   (throw (ex-info "reorder: wrong parent-id" {:id id :given parent-id :actual cur-parent-id})))
-                 (when (nil? pos)
-                   (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
-                 (place* db {:id id :parent-id parent-id :pos pos})))
-    :move-up (fn [db {:keys [id]}]
-               (if-let [anchor (get-in db [:derived :order-prev-id-of id])]
-                 (let [p (get-in db [:derived :parent-id-of anchor])]
-                   (place* db {:id id :parent-id p :pos [:before anchor]}))
-                 db))
-    :move-down (fn [db {:keys [id]}]
-                 (if-let [anchor (get-in db [:derived :order-next-id-of id])]
-                   (let [p (get-in db [:derived :parent-id-of anchor])]
-                     (place* db {:id id :parent-id p :pos [:after anchor]}))
-                   db))
-    (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
+;; ------------------------------------------------------------
+;; Operation registry (multimethod-based dispatch)
+;; ------------------------------------------------------------
+
+(defmulti apply-op
+  "Multimethod for operation dispatch. Extensible - any namespace can add new ops."
+  (fn [_db op] (:op op)))
+
+;; Core primitives only here:
+(defmethod apply-op :create-node [db op] (create-node* db op))
+(defmethod apply-op :place       [db op] (place* db op))
+(defmethod apply-op :update-node [db op] (update-node* db op))
+(defmethod apply-op :prune       [db {:keys [pred] :as _}] (prune* db pred))
+(defmethod apply-op :add-ref     [db op] (add-ref* db op))
+(defmethod apply-op :rm-ref      [db op] (rm-ref* db op))
+
+(defmethod apply-op :default [_db op]
+  (throw (ex-info "Unknown :op" {:op (:op op)})))
 
 (defn apply-tx+effects*
   "Like interpret* but returns {:db ... :effects [...]}. Keeps kernel pure; effects are data."
@@ -481,7 +464,7 @@
              (catch Throwable t
                (throw (ex-info (.getMessage t) {:op-index i :op op :why :schema}))))
            (let [d1 (try
-                      (-> d ((dispatch (:op op)) op) derive)
+                      (-> d (apply-op op) derive)
                       (catch clojure.lang.ExceptionInfo e
                         (throw (ex-info (.getMessage e) (merge (ex-data e) {:op-index i :op op :why :op}))))
                       (catch Throwable t
