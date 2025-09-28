@@ -14,7 +14,8 @@
             [kernel.invariants :as inv]
             [kernel.schemas :as S]
             [malli.core :as m]
-            [kernel.effects :as effects]))
+            [kernel.effects :as effects]
+            [kernel.responses :as R]))
 
 (def ^:const ROOT "root")
 
@@ -120,91 +121,7 @@
     (assert (every? #(contains? (get-in d1 [:derived :parent-id-of]) %) ["a" "b" "c"]) "All children should have parent mapping")
     (assert (= (get-in d1 [:derived :subtree-size-of "r1"]) 3) "Subtree sizes should be correct")))
 
-(defn verify-registry
-  "Run all verification assertions to ensure system integrity."
-  []
-
-  ;; Multi-root traversal with orphan detection
-  (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div} "orphan" {:type :span}}
-            :child-ids/by-parent {"root" ["w"]}
-            :roots ["root" "palette"]}
-        d (*derive-pass* db)]
-    (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]) "Multi-root preorder incorrect")
-    (assert (not (contains? (get-in d [:derived :orphan-ids]) "palette")) "Palette should not be orphan")
-    (assert (contains? (get-in d [:derived :orphan-ids]) "orphan") "Orphan node should be detected")
-    (assert (= (count (get-in d [:derived :reachable-ids])) 3) "Should have 3 reachable nodes"))
-
-  ;; Effects are pure data, detected consistently
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
-        {:keys [db effects]} (apply-tx+effects* base {:op :insert :id "x" :parent-id "root"})]
-    (assert (contains? (:nodes db) "x") "Insert should create node")
-    (assert (= (map :effect effects) [:view/scroll-into-view]) "Insert should emit scroll effect")
-    (assert (every? map? effects) "All effects should be data maps")
-    (assert (every? :effect effects) "All effects should have :effect key"))
-
-  ;; Backward compatibility maintained exactly
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
-        old-api-result (apply-tx* base {:op :insert :id "z" :parent-id "root"})
-        new-api-result (:db (apply-tx+effects* base {:op :insert :id "z" :parent-id "root"}))]
-    (assert (= (:nodes old-api-result) (:nodes new-api-result)) "Node data must be identical")
-    (assert (= (:child-ids/by-parent old-api-result) (:child-ids/by-parent new-api-result)) "Adjacency must be identical")
-    (assert (= (:derived old-api-result) (:derived new-api-result)) "Derived data must be identical"))
-
-  ;; Extensible multimethod registry
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
-    ;; Core primitives work directly
-    (assert (contains? (:nodes (apply-op base {:op :create-node :id "test-core"})) "test-core") "Core ops must work")
-    ;; Registry is extensible (sugar ops loaded by requiring namespace)
-    (assert (:ok? (run-tx base [{:op :create-node :id "test-run-tx"}])) "run-tx must use multimethod")
-    (assert (contains? (:nodes (:db (apply-tx+effects* base [{:op :create-node :id "test-effects"}]))) "test-effects") "apply-tx+effects* must use multimethod")
-    ;; Unknown ops fail gracefully
-    (try (apply-op base {:op :unknown-op}) (assert false "Should throw for unknown op")
-         (catch Exception e (assert (re-find #"Unknown :op" (.getMessage e)) "Should give clear error message"))))
-
-  ;; Total error handling (REPL-driven development)
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
-        error-result (run-tx base [{:op :insert :id "a" :parent-id "root"}
-                                   {:op :place :id "a" :parent-id "NONEXISTENT"}])]
-    (assert (not (:ok? error-result)) "Invalid transaction should fail")
-    (assert (= (get-in error-result [:error :op-index]) 1) "Should report correct failing op index")
-    (assert (contains? #{:schema :op :invariants} (get-in error-result [:error :why])) "Should categorize error type")
-    (assert (= (:db error-result) base) "DB should be unchanged on error")
-    (assert (empty? (:effects error-result)) "No effects on error"))
-
-  ;; Cycle detection prevents infinite nesting
-  (let [base {:nodes {"a" {:type :div} "b" {:type :div}} :child-ids/by-parent {}}
-        tx [{:op :place :id "a" :parent-id "b"}
-            {:op :place :id "b" :parent-id "a"}]
-        result (run-tx base tx)]
-    (assert (not (:ok? result)) "Cycle creation should fail")
-    (assert (= (get-in result [:error :why]) :op) "Should fail at operation level")
-    (assert (re-find #"cycle" (.getMessage (ex-info "" (get-in result [:error :data])))) "Error should mention cycle"))
-
-  ;; Schema validation catches malformed operations
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
-        bad-ops [{:op :create-node} ; missing :id
-                 {:op :place :id "nonexistent"} ; node doesn't exist
-                 {:op :unknown-thing :data "whatever"}] ; unknown op
-        results (map #(run-tx base [%]) bad-ops)]
-    (assert (every? #(not (:ok? %)) results) "All malformed ops should fail")
-    (assert (= (map #(get-in % [:error :why]) results) [:schema :op :op]) "Should categorize errors correctly")
-    (assert (every? #(= (:db %) base) results) "DB should remain unchanged on all failures"))
-
-  ;; Derivation is deterministic and complete
-  (let [complex-db {:nodes {"r1" {:type :root} "r2" {:type :root} "a" {:type :div}
-                            "b" {:type :span} "c" {:type :p} "orphan" {:type :div}}
-                    :child-ids/by-parent {"r1" ["a" "b"] "a" ["c"]}
-                    :roots ["r1" "r2"]}
-        d1 (*derive-pass* complex-db)
-        d2 (*derive-pass* complex-db)] ; derive twice
-    (assert (= (:derived d1) (:derived d2)) "Derivation should be deterministic")
-    (assert (= (get-in d1 [:derived :preorder]) ["r1" "a" "c" "b" "r2"]) "Preorder should follow DFS of roots")
-    (assert (= (get-in d1 [:derived :orphan-ids]) #{"orphan"}) "Should detect orphan nodes correctly")
-    (assert (= (get-in d1 [:derived :reachable-ids]) #{"r1" "r2" "a" "b" "c"}) "Should identify reachable nodes")
-    (assert (every? #(contains? (get-in d1 [:derived :parent-id-of]) %) ["a" "b" "c"]) "All children should have parent mapping")
-    (assert (= (get-in d1 [:derived :subtree-size-of "r1"]) 3) "Subtree sizes should be correct"))
-
-  "✓ All verification assertions passed")
+;; verify-registry moved to after *derive-pass* definition
 
 ;; ------------------------------------------------------------
 ;; Derivation functions (Tier-A and Tier-B)
@@ -368,6 +285,8 @@
 (def ^:dynamic *derive-pass*
   "Default derivation pass: Tier-A + Tier-B (clarity > perf)"
   derive-full)
+
+;; verify-registry moved to end of file
 
 (defn parent-id-of* [db id]
   (if-let [derived (:derived db)]
@@ -590,11 +509,11 @@
 
 ;; Core primitives only here:
 (defmethod apply-op :create-node [db op] (create-node* db op))
-(defmethod apply-op :place       [db op] (place* db op))
+(defmethod apply-op :place [db op] (place* db op))
 (defmethod apply-op :update-node [db op] (update-node* db op))
-(defmethod apply-op :prune       [db {:keys [pred] :as _}] (prune* db pred))
-(defmethod apply-op :add-ref     [db op] (add-ref* db op))
-(defmethod apply-op :rm-ref      [db op] (rm-ref* db op))
+(defmethod apply-op :prune [db {:keys [pred] :as _}] (prune* db pred))
+(defmethod apply-op :add-ref [db op] (add-ref* db op))
+(defmethod apply-op :rm-ref [db op] (rm-ref* db op))
 
 (defmethod apply-op :default [_db op]
   (throw (ex-info "Unknown :op" {:op (:op op)})))
@@ -653,3 +572,108 @@
   "Backward-compatible: return only the db."
   ([db tx] (:db (apply-tx+effects* db tx {})))
   ([db tx opts] (:db (apply-tx+effects* db tx opts))))
+
+(defn evaluate
+  "Uniform envelope:
+   {:status :ok|:error|:conflict|:redirect|:diag
+    :db db? :effects [] :error {...} :trace [...]?}
+   Uses apply-tx+effects* under the hood. Back-compat: run-tx/apply-tx* unchanged."
+  ([db tx] (evaluate db tx {}))
+  ([db tx {:keys [derive assert? trace?] :or {derive *derive-pass* assert? false trace? false}}]
+   (try
+     (let [{:keys [db effects] :as res}
+           (apply-tx+effects* db tx {:derive derive :assert? assert?})
+           res' (cond-> {:db db :effects effects}
+                  trace? (assoc :trace (:trace res)))]
+       (R/ok res'))
+     (catch clojure.lang.ExceptionInfo e
+       (let [{:keys [op-index op why] :as exd} (ex-data e)]
+         (R/error {:why (or why :schema) :data exd :op-index op-index :op op})))
+     (catch Throwable t
+       (R/error {:why :unexpected :data {:message (.getMessage t)}})))))
+
+(defn verify-registry
+  "Run all verification assertions to ensure system integrity."
+  []
+
+  ;; Multi-root traversal with orphan detection
+  (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div} "orphan" {:type :span}}
+            :child-ids/by-parent {"root" ["w"]}
+            :roots ["root" "palette"]}
+        d (*derive-pass* db)]
+    (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]) "Multi-root preorder incorrect")
+    (assert (not (contains? (get-in d [:derived :orphan-ids]) "palette")) "Palette should not be orphan")
+    (assert (contains? (get-in d [:derived :orphan-ids]) "orphan") "Orphan node should be detected")
+    (assert (= (count (get-in d [:derived :reachable-ids])) 3) "Should have 3 reachable nodes"))
+
+  ;; Effects are pure data, detected consistently
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+        {:keys [db effects]} (apply-tx+effects* base {:op :insert :id "x" :parent-id "root"})]
+    (assert (contains? (:nodes db) "x") "Insert should create node")
+    (assert (= (map :effect effects) [:view/scroll-into-view]) "Insert should emit scroll effect")
+    (assert (every? map? effects) "All effects should be data maps")
+    (assert (every? :effect effects) "All effects should have :effect key"))
+
+  ;; Backward compatibility maintained exactly
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+        old-api-result (apply-tx* base {:op :insert :id "z" :parent-id "root"})
+        new-api-result (:db (apply-tx+effects* base {:op :insert :id "z" :parent-id "root"}))]
+    (assert (= (:nodes old-api-result) (:nodes new-api-result)) "Node data must be identical")
+    (assert (= (:child-ids/by-parent old-api-result) (:child-ids/by-parent new-api-result)) "Adjacency must be identical")
+    (assert (= (:derived old-api-result) (:derived new-api-result)) "Derived data must be identical"))
+
+  ;; Extensible multimethod registry
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
+    ;; Core primitives work directly
+    (assert (contains? (:nodes (apply-op base {:op :create-node :id "test-core"})) "test-core") "Core ops must work")
+    ;; Registry is extensible (sugar ops loaded by requiring namespace)
+    (assert (:ok? (run-tx base [{:op :create-node :id "test-run-tx"}])) "run-tx must use multimethod")
+    (assert (contains? (:nodes (:db (apply-tx+effects* base [{:op :create-node :id "test-effects"}]))) "test-effects") "apply-tx+effects* must use multimethod")
+    ;; Unknown ops fail gracefully
+    (try (apply-op base {:op :unknown-op}) (assert false "Should throw for unknown op")
+         (catch Exception e (assert (re-find #"Unknown :op" (.getMessage e)) "Should give clear error message"))))
+
+  ;; Total error handling (REPL-driven development)
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+        error-result (run-tx base [{:op :insert :id "a" :parent-id "root"}
+                                   {:op :place :id "a" :parent-id "NONEXISTENT"}])]
+    (assert (not (:ok? error-result)) "Invalid transaction should fail")
+    (assert (= (get-in error-result [:error :op-index]) 1) "Should report correct failing op index")
+    (assert (contains? #{:schema :op :invariants} (get-in error-result [:error :why])) "Should categorize error type")
+    (assert (= (:db error-result) base) "DB should be unchanged on error")
+    (assert (empty? (:effects error-result)) "No effects on error"))
+
+  ;; Cycle detection prevents infinite nesting
+  (let [base {:nodes {"a" {:type :div} "b" {:type :div}} :child-ids/by-parent {}}
+        tx [{:op :place :id "a" :parent-id "b"}
+            {:op :place :id "b" :parent-id "a"}]
+        result (run-tx base tx)]
+    (assert (not (:ok? result)) "Cycle creation should fail")
+    (assert (= (get-in result [:error :why]) :op) "Should fail at operation level")
+    (assert (re-find #"cycle" (.getMessage (ex-info "" (get-in result [:error :data])))) "Error should mention cycle"))
+
+  ;; Schema validation catches malformed operations
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+        bad-ops [{:op :create-node} ; missing :id
+                 {:op :place :id "nonexistent"} ; node doesn't exist
+                 {:op :unknown-thing :data "whatever"}] ; unknown op
+        results (map #(run-tx base [%]) bad-ops)]
+    (assert (every? #(not (:ok? %)) results) "All malformed ops should fail")
+    (assert (= (map #(get-in % [:error :why]) results) [:schema :op :op]) "Should categorize errors correctly")
+    (assert (every? #(= (:db %) base) results) "DB should remain unchanged on all failures"))
+
+  ;; Derivation is deterministic and complete
+  (let [complex-db {:nodes {"r1" {:type :root} "r2" {:type :root} "a" {:type :div}
+                            "b" {:type :span} "c" {:type :p} "orphan" {:type :div}}
+                    :child-ids/by-parent {"r1" ["a" "b"] "a" ["c"]}
+                    :roots ["r1" "r2"]}
+        d1 (*derive-pass* complex-db)
+        d2 (*derive-pass* complex-db)] ; derive twice
+    (assert (= (:derived d1) (:derived d2)) "Derivation should be deterministic")
+    (assert (= (get-in d1 [:derived :preorder]) ["r1" "a" "c" "b" "r2"]) "Preorder should follow DFS of roots")
+    (assert (= (get-in d1 [:derived :orphan-ids]) #{"orphan"}) "Should detect orphan nodes correctly")
+    (assert (= (get-in d1 [:derived :reachable-ids]) #{"r1" "r2" "a" "b" "c"}) "Should identify reachable nodes")
+    (assert (every? #(contains? (get-in d1 [:derived :parent-id-of]) %) ["a" "b" "c"]) "All children should have parent mapping")
+    (assert (= (get-in d1 [:derived :subtree-size-of "r1"]) 3) "Subtree sizes should be correct"))
+
+  "✓ All verification assertions passed")
