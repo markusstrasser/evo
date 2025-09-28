@@ -102,8 +102,8 @@
          [:edge-registry {:optional true}
           [:map-of keyword?
            [:map
-            [:acyclic? {:optional true} :boolean] ;; forbid cycles over this rel
-            [:unique? {:optional true} :boolean] ;; at most one dst per (rel,src)
+            [:acyclic? {:optional true} boolean?] ;; forbid cycles over this rel
+            [:unique? {:optional true} boolean?] ;; at most one dst per (rel,src)
             [:src-type {:optional true} any?] ;; predicates or keywords you check in op
             [:dst-type {:optional true} any?]]]]
          [:roots {:optional true} [:vector ::id]]]
@@ -117,7 +117,7 @@
    ::place*-fn [:=> [:cat ::db ::place-args] ::db]
    ::apply-tx*-fn [:=> [:cat ::db ::tx [:? [:map
                                             [:derive {:optional true} fn?]
-                                            [:assert? {:optional true} :boolean]]]]
+                                            [:assert? {:optional true} boolean?]]]]
                    ::db]})
 
 (def op-schema (m/schema [:schema {:registry registry} ::op]))
