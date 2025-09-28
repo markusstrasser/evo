@@ -12,7 +12,7 @@
             [kernel.schemas :as S]
             [kernel.invariants :as inv]
             [kernel.workspace :as WS]
-            [kernel.sugar-ops]))  ; Load sugar ops to extend multimethod
+            [kernel.sugar-ops])) ; Load sugar ops to extend multimethod
 
 ;; ------------------------------------------------------------
 ;; Test utilities
@@ -409,6 +409,43 @@
 ;; Main test runner
 ;; ------------------------------------------------------------
 
+(defn defop-wires-up []
+  (test-safely
+   "defop: schema + dispatch"
+   (fn []
+     (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+           db' (core/apply-tx* base {:op :insert :id "i" :parent-id "root"})
+           ok? (contains? (:nodes db') "i")]
+       {:registered? (some? (S/op-schema-for :insert))
+        :apply-op? ok?
+        :passed? (and ok?)}))
+   "Insert defined via defop works and is validated"))
+
+(defn evaluate-envelope []
+  (test-safely
+   "evaluate returns uniform envelope"
+   (fn []
+     (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+           ok (core/evaluate base [{:op :create-node :id "x"} {:op :place :id "x" :parent-id "root"}])
+           bad (core/evaluate base [{:op :place :id "nope" :parent-id "root"}])]
+       {:ok? (= :ok (:status ok))
+        :has-db? (map? (:db ok))
+        :has-effects? (vector? (:effects ok))
+        :err? (= :error (:status bad))
+        :why (-> bad :error :why)
+        :passed? (and (= :ok (:status ok)) (= :error (:status bad)))}))
+   "OK + ERROR shapes validate"))
+
+(defn unknown-op-surface []
+  (test-safely
+   "Unknown :op is caught at validation boundary"
+   (fn []
+     (try (S/validate-op! {:op :__ghost__})
+          {:passed? false}
+          (catch Exception e
+            {:passed? (re-find #"Unknown :op" (.getMessage e))})))
+   "Clear error for unknown op"))
+
 (defn run-all
   "Run all sanity checks and return summary."
   []
@@ -426,8 +463,13 @@
         repl-v (repl-verification)
         registry (multimethod-registry)
         integration (integration-test)
+        ; New tests for opkit and evaluate
+        defop-test (defop-wires-up)
+        evaluate-test (evaluate-envelope)
+        unknown-op-test (unknown-op-surface)
 
-        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v registry integration])]
+        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v registry integration
+                                      defop-test evaluate-test unknown-op-test])]
 
     (println (str "📋 Patch 1 - Full Derivation:  " (if (:passed? patch1) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 2 - No-op Guard:      " (if (:passed? patch2) "✅ PASS" "❌ FAIL")))
@@ -441,6 +483,9 @@
     (println (str "📋 REPL verification:          " (if (:passed? repl-v) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Multimethod registry:       " (if (:passed? registry) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Integration Test:           " (if (:passed? integration) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 defop macro:                " (if (:passed? defop-test) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 evaluate envelope:          " (if (:passed? evaluate-test) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 unknown op handling:        " (if (:passed? unknown-op-test) "✅ PASS" "❌ FAIL")))
     (println)
     (println (str "🎯 Overall: " (if all-passed? "✅ ALL PATCHES WORKING" "❌ SOME ISSUES FOUND")))
 
@@ -455,7 +500,10 @@
                :multi-root (:passed? mr)
                :effects (:passed? eff)
                :repl-verification (:passed? repl-v)
-               :integration (:passed? integration)}
+               :integration (:passed? integration)
+               :defop (:passed? defop-test)
+               :evaluate (:passed? evaluate-test)
+               :unknown-op (:passed? unknown-op-test)}
      :details {:full-derivation patch1
                :no-op-guard patch2
                :malli-validation patch3
@@ -467,7 +515,10 @@
                :effects-skeleton-smoke eff
                :repl-verification repl-v
                :multimethod-registry registry
-               :integration-test integration}}))
+               :integration-test integration
+               :defop-wires-up defop-test
+               :evaluate-envelope evaluate-test
+               :unknown-op-surface unknown-op-test}}))
 
 ;; ------------------------------------------------------------
 ;; Quick REPL helpers
