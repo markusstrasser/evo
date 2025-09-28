@@ -309,9 +309,12 @@
         edges   (edges-basic)
         idemp   (rm-ref-idempotent)
         ws      (workspace-basic)
+        mr      (multi-root-basics)
+        eff     (effects-skeleton-smoke)
+        repl-v  (repl-verification)
         integration (integration-test)
 
-        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws integration])]
+        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v integration])]
 
     (println (str "📋 Patch 1 - Full Derivation:  " (if (:passed? patch1) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 2 - No-op Guard:      " (if (:passed? patch2) "✅ PASS" "❌ FAIL")))
@@ -320,6 +323,9 @@
     (println (str "📋 Edges Basic:                " (if (:passed? edges) "✅ PASS" "❌ FAIL")))
     (println (str "📋 rm-ref idempotent:          " (if (:passed? idemp) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Workspace:                  " (if (:passed? ws) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Multi-root basics:          " (if (:passed? mr) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Effects skeleton smoke:     " (if (:passed? eff) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 REPL verification:          " (if (:passed? repl-v) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Integration Test:           " (if (:passed? integration) "✅ PASS" "❌ FAIL")))
     (println)
     (println (str "🎯 Overall: " (if all-passed? "✅ ALL PATCHES WORKING" "❌ SOME ISSUES FOUND")))
@@ -332,6 +338,9 @@
                :edges (:passed? edges)
                :idempotent (:passed? idemp)
                :workspace (:passed? ws)
+               :multi-root (:passed? mr)
+               :effects (:passed? eff)
+               :repl-verification (:passed? repl-v)
                :integration (:passed? integration)}
      :details {:full-derivation patch1
                :no-op-guard patch2
@@ -340,6 +349,9 @@
                :edges-basic edges
                :rm-ref-idempotent idemp
                :workspace-basic ws
+               :multi-root-basics mr
+               :effects-skeleton-smoke eff
+               :repl-verification repl-v
                :integration-test integration}}))
 
 ;; ------------------------------------------------------------
@@ -356,6 +368,75 @@
   []
   (:details (run-all)))
 
+(defn multi-root-basics []
+  (test-safely
+   "Multi-root traversal + orphans allowed"
+   (fn []
+     (let [db {:nodes {"root" {:type :root}
+                       "palette" {:type :root}
+                       "a" {:type :div} "b" {:type :div}
+                       "p1" {:type :div} "p2" {:type :div}
+                       "loose" {:type :div}}
+               :children-by-parent-id {"root" ["a" "b"] "palette" ["p1" "p2"]}
+               :roots ["root" "palette"]}
+           d (core/*derive-pass* db)]
+       {:preorder (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
+        :orphan?  (contains? (get-in d [:derived :orphan-ids]) "loose")
+        :invariants-pass? (try (inv/check-invariants d) true (catch Exception _ false))
+        :passed? (and
+                   (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
+                   (contains? (get-in d [:derived :orphan-ids]) "loose")
+                   (inv/check-invariants d))}))
+   "Multi-root preorder is concatenated; orphans tracked; invariants hold"))
+
+(defn effects-skeleton-smoke []
+  (test-safely
+   "Effects emitted on :ins via interpret-bundle*"
+   (fn []
+     (let [db0 {:nodes {"root" {:type :root}} :children-by-parent-id {}}
+           {:keys [db effects]} (core/interpret-bundle* db0 {:op :ins :id "x" :parent-id "root"})]
+       {:db-updated? (contains? (:nodes db) "x")
+        :has-effect? (= (map :effect effects) [:view/scroll-into-view])
+        :passed? (and (contains? (:nodes db) "x")
+                      (= (map :effect effects) [:view/scroll-into-view]))}))
+   "Bundle emits a named effect; state updated as before"))
+
+(defn repl-verification []
+  (test-safely
+   "Direct REPL verification of all features"
+   (fn []
+     ;; Multi-root sanity
+     (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
+               :children-by-parent-id {"root" ["w"]}
+               :roots ["root" "palette"]}
+           d (core/*derive-pass* db)
+           preorder-correct? (= (get-in d [:derived :preorder]) ["root" "w" "palette"])
+           orphan-w? (not (contains? (get-in d [:derived :orphan-ids]) "w"))
+           invariants-ok? (try (inv/check-invariants d) true (catch Exception _ false))
+
+           ;; Effects seam visibility
+           base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
+           bundle-result (core/interpret-bundle* base [{:op :ins :id "a" :parent-id "root"}
+                                                       {:op :ins :id "b" :parent-id "root"}])
+           effects-count (count (:effects bundle-result))
+           effects-correct? (= (map :effect (:effects bundle-result))
+                               [:view/scroll-into-view :view/scroll-into-view])
+
+           ;; Backward compatibility
+           old-result (:nodes (core/interpret* base {:op :ins :id "z" :parent-id "root"}))
+           new-result (:nodes (:db (core/interpret-bundle* base {:op :ins :id "z" :parent-id "root"})))
+           compat-ok? (= old-result new-result)]
+
+       {:preorder-correct? preorder-correct?
+        :orphan-w-not-included? orphan-w?
+        :invariants-pass? invariants-ok?
+        :effects-count effects-count
+        :effects-correct? effects-correct?
+        :backward-compat? compat-ok?
+        :passed? (and preorder-correct? orphan-w? invariants-ok?
+                      (= effects-count 2) effects-correct? compat-ok?)}))
+   "All REPL verification examples pass"))
+
 (comment
   ;; REPL usage examples:
 
@@ -365,11 +446,13 @@
   ;; Quick pass/fail
   (quick-check)
 
-  ;; Individual patch tests  
+  ;; Individual patch tests
   (full-derivation)
   (no-op-guard)
   (malli-validation)
   (enhanced-invariants)
+  (multi-root-basics)
+  (effects-skeleton-smoke)
 
   ;; Debug details
   (show-details))
