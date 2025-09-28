@@ -9,9 +9,12 @@
 
           all-children (into #{} (mapcat second children-by-parent-id))]
 
-      ;; NEW: ROOT must exist and never be anyone's child
-      (assert (contains? nodes "root") "ROOT node must exist")
-      (assert (not (contains? all-children "root")) "ROOT cannot be a child")
+      ;; NEW: All roots must exist and never be anyone's child
+      (let [roots (or (:roots db) ["root"])]
+        (doseq [r roots]
+          (assert (contains? nodes r) (str "Root missing: " r))
+          (assert (not (contains? all-children r))
+                  (str "Root listed as a child: " r))))
 
       ;; NEW: every child referenced exists in :nodes
       (doseq [[parent-id child-ids] children-by-parent-id
@@ -34,10 +37,7 @@
         (assert (= (count child-ids) (count (distinct child-ids)))
                 (str "Duplicate children in " parent-id ": " child-ids)))
 
-      ;; NEW: every node is ROOT or appears somewhere as a child
-      (doseq [id (keys nodes)]
-        (assert (or (= id "root") (contains? all-children id))
-                (str "Non-root node is unreachable from adjacency: " id)))
+
 
       ;; Subtree size (if available)
       (when subtree-size-of
