@@ -278,7 +278,7 @@
    - parent-id=same   => reorder
    - parent-id≠same   => move-and-place
    Cycle-safe."
-  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/set-parent*-fn])}
+  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/place*-fn])}
   [db {:keys [id parent-id pos]}]
   (assert id "place*: :id required")
   (assert (contains? (:nodes db) id) (str "place*: node does not exist: " id))
