@@ -9,13 +9,39 @@
   (:require [clojure.set :as set]
             [kernel.invariants :as inv]
             [kernel.schemas :as S]
-            [malli.core :as m]))
+            [malli.core :as m]
+            [kernel.effects :as effects]))
 
 (def ^:const ROOT "root")
 
 ;; ------------------------------------------------------------
 ;; Tiny utils
 ;; ------------------------------------------------------------
+
+(defn- roots-of [db]
+  (let [r (:roots db)]
+    (if (and (vector? r) (seq r)) r [ROOT])))
+
+;; Quick verification asserts for multi-root + effects
+(comment
+  ;; Multi-root verification
+  (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
+            :children-by-parent-id {"root" ["w"]}
+            :roots ["root" "palette"]}
+        d (*derive-pass* db)]
+    (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]))
+    (assert (contains? (get-in d [:derived :orphan-ids]) "palette")))
+
+  ;; Effects verification
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
+        {:keys [db effects]} (interpret-bundle* base {:op :ins :id "x" :parent-id "root"})]
+    (assert (contains? (:nodes db) "x"))
+    (assert (= (map :effect effects) [:view/scroll-into-view])))
+
+  ;; Backward compatibility
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}}
+    (assert (= (:nodes (interpret* base {:op :ins :id "z" :parent-id "root"}))
+               (:nodes (:db (interpret-bundle* base {:op :ins :id "z" :parent-id "root"})))))))
 
 ;; ------------------------------------------------------------
 ;; Derivation functions (Tier-A and Tier-B)
@@ -29,9 +55,9 @@
              {} children-by-parent-id))
 
 (defn derive-depth-paths-prepost
-  "DFS from ROOT; returns {:depth-of ... :path-of ... :pre ... :post ...}.
-   Orphan nodes (not reachable from ROOT) get :depth-of nil."
-  [children-by-parent-id nodes]
+  "DFS from all roots in order; returns {:depth-of ... :path-of ... :pre ... :post ...}.
+   Orphans (not reachable from any root) get :depth-of nil."
+  [children-by-parent-id nodes roots]
   (letfn [(walk [node depth path [acc t]]
             (let [t1 (inc t)
                   acc1 (-> acc
@@ -40,24 +66,22 @@
                            (assoc-in [:pre node] t1))
                   child-ids (get children-by-parent-id node [])
                   [acc2 t2]
-                  (reduce (fn [[a tt] k]
-                            (walk k (inc depth) (conj path node) [a tt]))
+                  (reduce (fn [[a tt] k] (walk k (inc depth) (conj path node) [a tt]))
                           [acc1 t1] child-ids)
                   t3 (inc t2)
                   acc3 (assoc-in acc2 [:post node] t3)]
               [acc3 t3]))]
-    (let [[coords _] (walk ROOT 0 [] [{} 0])
-          ;; Find all nodes mentioned anywhere
+    (let [[coords _]
+          (reduce (fn [[a t] r] (walk r 0 [] [a t])) [{} 0] roots)
           all-ids (set (concat (keys nodes)
                                (keys children-by-parent-id)
                                (mapcat identity (vals children-by-parent-id))))
-          ;; Mark orphans with nil depth
-          coords-with-orphans (reduce (fn [acc id]
-                                        (if (contains? (:depth-of acc) id)
-                                          acc
-                                          (assoc-in acc [:depth-of id] nil)))
-                                      coords all-ids)]
-      coords-with-orphans)))
+          coords' (reduce (fn [acc id]
+                            (if (contains? (:depth-of acc) id)
+                              acc
+                              (assoc-in acc [:depth-of id] nil)))
+                          coords all-ids)]
+      coords')))
 
 (defn derive-core
   "Build Tier-A derived maps from canonical adjacency.
@@ -95,7 +119,8 @@
                    (recur (inc i) prev next))))))
          {:prev-id-of {} :next-id-of {}} adj)
         ;; DFS pre/post times
-        coords (derive-depth-paths-prepost adj nodes)
+        rts (roots-of db)
+        coords (derive-depth-paths-prepost adj nodes rts)
         pre (:pre coords)
         post (:post coords)
         id-by-pre (into {} (map (fn [[id pre-val]] [pre-val id]) pre))]
@@ -138,7 +163,7 @@
         reachable-ids (into #{} (for [id (keys pre) :when (some? (get pre id))] id))
         orphan-ids (set/difference (set (keys nodes)) reachable-ids)
         ;; Path computation from depth-paths (we need to recompute this from adjacency)
-        path-of (let [coords (derive-depth-paths-prepost (:children-by-parent-id db) nodes)]
+        path-of (let [coords (derive-depth-paths-prepost (:children-by-parent-id db) nodes (roots-of db))]
                   (:path-of coords))]
 
     ;; Return merged core + Tier-B
@@ -390,24 +415,24 @@
                   :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-down}))))
     (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
 
-(defn interpret*
-  "Apply a seq of op maps to db, deriving after each step.
-   Options:
-   - :derive  Function to derive state after each op (default: *derive-pass*)
-   - :assert? Flag to run invariant checks after each op (default: false)"
-  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/interpret*-fn])}
-  ([db tx] (interpret* db tx {}))
-  ([db tx {:keys [derive assert?]
-           :or {derive *derive-pass* assert? false}}]
+(defn interpret-bundle*
+  "Like interpret* but returns {:db ... :effects [...]}. Keeps kernel pure; effects are data."
+  ([db tx] (interpret-bundle* db tx {}))
+  ([db tx {:keys [derive assert?] :or {derive *derive-pass* assert? false}}]
    (S/validate-db! db)
    (S/validate-tx! tx)
-   (reduce
-    (fn [d m]
-      (S/validate-op! m)
-      (let [d1 (-> d
-                   ((dispatch (:op m)) m)
-                   derive)]
-        (when assert? (inv/check-invariants d1))
-        d1))
-    (derive db)
-    (->tx tx))))
+   (let [ops (->tx tx)]
+     (loop [i 0, d (derive db), effs []]
+       (if (= i (count ops))
+         {:db d :effects effs}
+         (let [op (nth ops i)
+               _  (S/validate-op! op)
+               d1 (-> d ((dispatch (:op op)) op) derive)
+               _  (when assert? (inv/check-invariants d1))
+               es (effects/detect d d1 i op)]
+           (recur (inc i) d1 (into effs es))))))))
+
+(defn interpret*
+  "Backward-compatible: return only the db."
+  ([db tx] (:db (interpret-bundle* db tx {})))
+  ([db tx opts] (:db (interpret-bundle* db tx opts))))
