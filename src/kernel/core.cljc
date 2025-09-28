@@ -2,7 +2,7 @@
   "Tiny, testable tree-edit kernel over a canonical value.
    Canonical DB:
      {:nodes                    {id {:type kw :props map}}
-      :children-by-parent-id    {parent-id [child-id ...]}
+      :child-ids/by-parent      {parent-id [child-id ...]}
       :derived                  {}}
 
    The 4 CORE OPS! SHOULD NOT LEVERAGE :DERIVED ever"
@@ -26,22 +26,22 @@
 (comment
   ;; Multi-root verification
   (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
-            :children-by-parent-id {"root" ["w"]}
+            :child-ids/by-parent {"root" ["w"]}
             :roots ["root" "palette"]}
         d (*derive-pass* db)]
     (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]))
     (assert (not (contains? (get-in d [:derived :orphan-ids]) "palette"))))
 
   ;; Effects verification
-  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
-        {:keys [db effects]} (interpret-bundle* base {:op :ins :id "x" :parent-id "root"})]
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+        {:keys [db effects]} (apply-tx+effects* base {:op :insert :id "x" :parent-id "root"})]
     (assert (contains? (:nodes db) "x"))
     (assert (= (map :effect effects) [:view/scroll-into-view])))
 
   ;; Backward compatibility
-  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}]
-    (assert (= (:nodes (interpret* base {:op :ins :id "z" :parent-id "root"}))
-               (:nodes (:db (interpret-bundle* base {:op :ins :id "z" :parent-id "root"})))))))
+  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
+    (assert (= (:nodes (apply-tx* base {:op :insert :id "z" :parent-id "root"}))
+               (:nodes (:db (apply-tx+effects* base {:op :insert :id "z" :parent-id "root"})))))))
 
 ;; ------------------------------------------------------------
 ;; Derivation functions (Tier-A and Tier-B)
@@ -49,22 +49,22 @@
 
 (defn derive-parent-id-of
   "Produce {child-id -> parent-id} from {parent-id -> [child-id ...]}."
-  [children-by-parent-id]
+  [child-ids-by-parent]
   (reduce-kv (fn [m parent-id child-ids]
                (reduce (fn [m2 c] (assoc m2 c parent-id)) m child-ids))
-             {} children-by-parent-id))
+             {} child-ids-by-parent))
 
 (defn derive-depth-paths-prepost
   "DFS from all roots in order; returns {:depth-of ... :path-of ... :pre ... :post ...}.
    Orphans (not reachable from any root) get :depth-of nil."
-  [children-by-parent-id nodes roots]
+  [child-ids-by-parent nodes roots]
   (letfn [(walk [node depth path [acc t]]
             (let [t1 (inc t)
                   acc1 (-> acc
                            (assoc-in [:depth-of node] depth)
                            (assoc-in [:path-of node] path)
                            (assoc-in [:pre node] t1))
-                  child-ids (get children-by-parent-id node [])
+                  child-ids (get child-ids-by-parent node [])
                   [acc2 t2]
                   (reduce (fn [[a tt] k] (walk k (inc depth) (conj path node) [a tt]))
                           [acc1 t1] child-ids)
@@ -74,8 +74,8 @@
     (let [[coords _]
           (reduce (fn [[a t] r] (walk r 0 [] [a t])) [{} 0] roots)
           all-ids (set (concat (keys nodes)
-                               (keys children-by-parent-id)
-                               (mapcat identity (vals children-by-parent-id))))
+                               (keys child-ids-by-parent)
+                               (mapcat identity (vals child-ids-by-parent))))
           coords' (reduce (fn [acc id]
                             (if (contains? (:depth-of acc) id)
                               acc
@@ -87,7 +87,7 @@
   "Build Tier-A derived maps from canonical adjacency.
    Returns {:parent-id-of, :child-ids-of, :index-of, :prev-id-of, :next-id-of, :pre, :post, :id-by-pre}"
   [db]
-  (let [adj (:children-by-parent-id db)
+  (let [adj (:child-ids/by-parent db)
         nodes (:nodes db)
 
         ;; Tier-A: Structural truth
@@ -144,9 +144,9 @@
 
         ;; Tier-B: DX pack that pays rent
         preorder (->> pre (sort-by val) (map first) vec)
-        doc-index-of (into {} (map-indexed (fn [i id] [id i]) preorder))
-        doc-prev-id-of (into {} (map (fn [[a b]] [b a]) (partition 2 1 [nil] preorder)))
-        doc-next-id-of (into {} (map (fn [[a b]] [a b]) (partition 2 1 preorder [nil])))
+        order-index-of (into {} (map-indexed (fn [i id] [id i]) preorder))
+        order-prev-id-of (into {} (map (fn [[a b]] [b a]) (partition 2 1 [nil] preorder)))
+        order-next-id-of (into {} (map (fn [[a b]] [a b]) (partition 2 1 preorder [nil])))
         position-of (into {} (for [[id parent-id] parent-id-of]
                                [id {:parent-id parent-id :index (get (:index-of core) id 0)}]))
         child-count-of (into {} (map (fn [[p child-ids]] [p (count child-ids)]) child-ids-of))
@@ -163,15 +163,15 @@
         reachable-ids (into #{} (for [id (keys pre) :when (some? (get pre id))] id))
         orphan-ids (set/difference (set (keys nodes)) reachable-ids)
         ;; Path computation from depth-paths (we need to recompute this from adjacency)
-        path-of (let [coords (derive-depth-paths-prepost (:children-by-parent-id db) nodes (roots-of db))]
+        path-of (let [coords (derive-depth-paths-prepost (:child-ids/by-parent db) nodes (roots-of db))]
                   (:path-of coords))]
 
     ;; Return merged core + Tier-B
     (merge core
            {:preorder preorder
-            :doc-index-of doc-index-of
-            :doc-prev-id-of doc-prev-id-of
-            :doc-next-id-of doc-next-id-of
+            :order-index-of order-index-of
+            :order-prev-id-of order-prev-id-of
+            :order-next-id-of order-next-id-of
             :position-of position-of
             :child-count-of child-count-of
             :first-child-id-of first-child-id-of
@@ -192,7 +192,7 @@
                (if (= (nth v i) x) i (recur (inc i)))
                -1))))
 
-(defn child-ids-of* [db parent-id] (get-in db [:children-by-parent-id parent-id] []))
+(defn child-ids-of* [db parent-id] (get-in db [:child-ids/by-parent parent-id] []))
 
 ;; ------------------------------------------------------------
 ;; Derivation system
@@ -208,7 +208,7 @@
 (defn parent-id-of* [db id]
   (if-let [derived (:derived db)]
     (get-in derived [:parent-id-of id])
-    (get (derive-parent-id-of (:children-by-parent-id db)) id)))
+    (get (derive-parent-id-of (:child-ids/by-parent db)) id)))
 
 (defn subtree-ids
   "Inclusive set: root + all descendants of `root`."
@@ -238,7 +238,7 @@
    pos ∈ {nil,:first,:last, [:index i], [:before anchor-id], [:after anchor-id]}"
   {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/pos->index-fn])}
   [db parent-id id pos]
-  (let [child-ids (get (:children-by-parent-id db) parent-id [])
+  (let [child-ids (get (:child-ids/by-parent db) parent-id [])
         base (vec (remove #{id} child-ids))
         idx (fn [anchor-id]
               (let [i (index-of base anchor-id)]
@@ -262,15 +262,15 @@
 ;; 4 primitives (existence, edge+order, attributes, deletion)
 ;; ------------------------------------------------------------
 
-(defn ensure-node*
+(defn create-node*
   "Idempotent create of a node shell; never attaches to a parent."
   [db {:keys [id type props] :or {type :div props {}}}]
-  (assert id "ensure-node*: :id required")
+  (assert id "create-node*: :id required")
   (if (get-in db [:nodes id])
     db
     (assoc-in db [:nodes id] {:type type :props props})))
 
-(defn set-parent*
+(defn place*
   "Topology + order in one op.
    {:id ... :parent-id p-or-nil :pos (see pos->index)}
    - parent-id=nil    => detach only
@@ -279,29 +279,29 @@
    Cycle-safe."
   {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/set-parent*-fn])}
   [db {:keys [id parent-id pos]}]
-  (assert id "set-parent*: :id required")
-  (assert (contains? (:nodes db) id) (str "set-parent*: node does not exist: " id))
+  (assert id "place*: :id required")
+  (assert (contains? (:nodes db) id) (str "place*: node does not exist: " id))
   (when (and parent-id (not (contains? (:nodes db) parent-id)))
-    (throw (ex-info "set-parent*: parent-id does not exist" {:parent-id parent-id})))
+    (throw (ex-info "place*: parent-id does not exist" {:parent-id parent-id})))
   (when (cycle? db id parent-id)
-    (throw (ex-info "set-parent*: cycle/invalid parent" {:id id :parent-id parent-id})))
+    (throw (ex-info "place*: cycle/invalid parent" {:id id :parent-id parent-id})))
   (let [old-parent-id (parent-id-of* db id)]
     (if (and (= parent-id old-parent-id) (nil? pos))
       db
-      (let [db1 (if old-parent-id (update-in db [:children-by-parent-id old-parent-id] (fnil rmv []) id) db)]
+      (let [db1 (if old-parent-id (update-in db [:child-ids/by-parent old-parent-id] (fnil rmv []) id) db)]
         (if (nil? parent-id)
           db1
           (let [child-ids (vec (child-ids-of* db1 parent-id))
                 base (rmv child-ids id)
                 i (pos->index db1 parent-id id pos)
                 v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
-            (assert (= (count v) (count (distinct v))) "set-parent*: duplicate children detected")
-            (assoc-in db1 [:children-by-parent-id parent-id] v)))))))
+            (assert (= (count v) (count (distinct v))) "place*: duplicate children detected")
+            (assoc-in db1 [:child-ids/by-parent parent-id] v)))))))
 
-(defn patch-props*
+(defn update-node*
   "Deep-merge-ish updates: map values merge, scalars replace."
   [db {:keys [id props sys updates]}]
-  (assert id "patch-props*: :id required")
+  (assert id "update-node*: :id required")
   (let [u (cond-> {}
             (some? props) (assoc :props props)
             (some? sys) (assoc :sys sys)
@@ -309,7 +309,7 @@
         deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
     (update-in db [:nodes id] #(merge-with deep % u))))
 
-(defn purge*
+(defn prune*
   "Hard delete by predicate over ids. Closure guarantee: if a node matches,
    its entire subtree is removed. Uses interval optimization when derived data available."
   [db pred]
@@ -341,14 +341,14 @@
         db1 (reduce (fn [d id]
                       (-> d
                           (update :nodes dissoc id)
-                          (update :children-by-parent-id dissoc id)))
+                          (update :child-ids/by-parent dissoc id)))
                     db victims)]
     ;; scrub victims from all child vectors
-    (let [db2 (update db1 :children-by-parent-id
+    (let [db2 (update db1 :child-ids/by-parent
                       (fn [m]
                         (into {} (for [[parent-id child-ids] m]
                                    [parent-id (vec (remove victims child-ids))]))))
-          db3 (update db2 :edges
+          db3 (update db2 :refs
                       (fn [E]
                         (into {}
                               (for [[rel m] (or E {})]
@@ -364,10 +364,10 @@
   (let [{:keys [acyclic? unique?]} (get-in db [:edge-registry rel] {})]
     (and
      (if unique?
-       (empty? (get-in db [:edges rel src] #{})) true)
+       (empty? (get-in db [:refs rel src] #{})) true)
      (if acyclic?
         ;; Simple check: if there's already a path from dst to src, adding src->dst creates a cycle
-       (not (contains? (get-in db [:edges rel dst] #{}) src))
+       (not (contains? (get-in db [:refs rel dst] #{}) src))
        true))))
 
 (defn add-ref* [db {:keys [rel src dst] :as m}]
@@ -377,10 +377,10 @@
     (throw (ex-info "add-ref*: self-edge not allowed" {:op m :why :self-edge})))
   (when-not (edge-ok? db rel src dst)
     (throw (ex-info "add-ref*: registry constraint violation" {:op m :why :edge-constraint :rel rel :src src :dst dst})))
-  (update-in db [:edges rel src] (fnil conj #{}) dst))
+  (update-in db [:refs rel src] (fnil conj #{}) dst))
 
 (defn rm-ref* [db {:keys [rel src dst]}]
-  (update-in db [:edges rel src] (fnil disj #{}) dst))
+  (update-in db [:refs rel src] (fnil disj #{}) dst))
 
 ;; ------------------------------------------------------------
 ;; Interpreter: derive AFTER EVERY OP (clarity > perf)
@@ -400,22 +400,22 @@
   [k]
   (case k
     ;; core
-    :ensure-node ensure-node*
-    :set-parent set-parent*
-    :patch-props patch-props*
-    :purge (fn [db m] (purge* db (:pred m)))
+    :create-node create-node*
+    :place place*
+    :update-node update-node*
+    :prune (fn [db m] (prune* db (:pred m)))
     :add-ref add-ref*
     :rm-ref rm-ref*
     ;; sugar-ops - we need to import these
-    :ins #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/ins)]
-                              (sugar-ops-ns db m)))
-            :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :ins}))))
-    :mv #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/mv)]
-                             (sugar-ops-ns db m)))
-           :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :mv}))))
-    :del #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/del)]
-                              (sugar-ops-ns db m)))
-            :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :del}))))
+    :insert #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/insert)]
+                                 (sugar-ops-ns db m)))
+               :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :insert}))))
+    :move #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move)]
+                               (sugar-ops-ns db m)))
+             :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move}))))
+    :delete #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/delete)]
+                                 (sugar-ops-ns db m)))
+               :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :delete}))))
     :reorder #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/reorder)]
                                   (sugar-ops-ns db m)))
                 :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :reorder}))))
@@ -427,9 +427,9 @@
                   :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-down}))))
     (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
 
-(defn interpret-bundle*
+(defn apply-tx+effects*
   "Like interpret* but returns {:db ... :effects [...]}. Keeps kernel pure; effects are data."
-  ([db tx] (interpret-bundle* db tx {}))
+  ([db tx] (apply-tx+effects* db tx {}))
   ([db tx {:keys [derive assert?] :or {derive *derive-pass* assert? false}}]
    (S/validate-db! db)
    (S/validate-tx! tx)
@@ -460,13 +460,13 @@
                  es (effects/detect d d1 i op)]
              (recur (inc i) d1 (into effs es)))))))))
 
-(defn interpret-result*
+(defn run-tx
   "Total: never throws for op/schema/invariant errors.
    Returns {:ok? bool, :db db, :effects [...], :error {:op-index i :op op :why kw :data m}}"
-  ([db tx] (interpret-result* db tx {}))
+  ([db tx] (run-tx db tx {}))
   ([db tx {:keys [derive assert?] :or {derive *derive-pass* assert? false}}]
    (try
-     (let [{:keys [db effects]} (interpret-bundle* db tx {:derive derive :assert? assert?})]
+     (let [{:keys [db effects]} (apply-tx+effects* db tx {:derive derive :assert? assert?})]
        {:ok? true :db db :effects effects})
      (catch clojure.lang.ExceptionInfo e
        (let [{:keys [op-index op why] :as exd} (ex-data e)]
@@ -477,7 +477,7 @@
      (catch Throwable t
        {:ok? false :db db :effects [] :error {:why :unexpected :message (.getMessage t)}}))))
 
-(defn interpret*
+(defn apply-tx*
   "Backward-compatible: return only the db."
-  ([db tx] (:db (interpret-bundle* db tx {})))
-  ([db tx opts] (:db (interpret-bundle* db tx opts))))
+  ([db tx] (:db (apply-tx+effects* db tx {})))
+  ([db tx opts] (:db (apply-tx+effects* db tx opts))))

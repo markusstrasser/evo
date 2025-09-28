@@ -15,24 +15,24 @@
           [:tuple [:= :after] ::id]]
 
    ;; Core ops (closed)
-   ::ensure-node-op [:map
-                     [:op [:= :ensure-node]]
+   ::create-node-op [:map
+                     [:op [:= :create-node]]
                      [:id ::id]
                      [:type {:optional true} keyword?]
                      [:props {:optional true} map?]]
-   ::set-parent-op [:map
-                    [:op [:= :set-parent]]
-                    [:id ::id]
-                    [:parent-id {:optional true} [:or nil? ::id]]
-                    [:pos {:optional true} ::pos]]
-   ::patch-props-op [:map
-                     [:op [:= :patch-props]]
+   ::place-op [:map
+               [:op [:= :place]]
+               [:id ::id]
+               [:parent-id {:optional true} [:or nil? ::id]]
+               [:pos {:optional true} ::pos]]
+   ::update-node-op [:map
+                     [:op [:= :update-node]]
                      [:id ::id]
                      [:props {:optional true} map?]
                      [:sys {:optional true} map?]
                      [:updates {:optional true} map?]]
-   ::purge-op [:map
-               [:op [:= :purge]]
+   ::prune-op [:map
+               [:op [:= :prune]]
                [:pred fn?]]
 
    ;; Edges primitive ops
@@ -49,22 +49,22 @@
                 [:dst ::id]]
 
    ;; Sugar ops (now with tight, closed shapes via multi-schema)
-   ::ins-op [:map
-             [:op [:= :ins]]
-             [:id ::id]
-             [:parent-id ::id]
-             [:type {:optional true} keyword?]
-             [:props {:optional true} map?]
-             [:pos {:optional true} ::pos]]
-   ::mv-op [:map
-            [:op [:= :mv]]
-            [:id ::id]
-            [:from-parent-id {:optional true} ::id]
-            [:to-parent-id ::id]
-            [:pos {:optional true} ::pos]]
-   ::del-op [:map
-             [:op [:= :del]]
-             [:id ::id]]
+   ::insert-op [:map
+                [:op [:= :insert]]
+                [:id ::id]
+                [:parent-id ::id]
+                [:type {:optional true} keyword?]
+                [:props {:optional true} map?]
+                [:pos {:optional true} ::pos]]
+   ::move-op [:map
+              [:op [:= :move]]
+              [:id ::id]
+              [:from-parent-id {:optional true} ::id]
+              [:to-parent-id ::id]
+              [:pos {:optional true} ::pos]]
+   ::delete-op [:map
+                [:op [:= :delete]]
+                [:id ::id]]
    ::reorder-op [:map
                  [:op [:= :reorder]]
                  [:id ::id]
@@ -77,14 +77,14 @@
                    [:op [:= :move-down]]
                    [:id ::id]]
    ::sugar-op [:multi {:dispatch :op}
-               [:ins ::ins-op]
-               [:mv ::mv-op]
-               [:del ::del-op]
+               [:insert ::insert-op]
+               [:move ::move-op]
+               [:delete ::delete-op]
                [:reorder ::reorder-op]
                [:move-up ::move-up-op]
                [:move-down ::move-down-op]]
 
-   ::op [:or ::ensure-node-op ::set-parent-op ::patch-props-op ::purge-op
+   ::op [:or ::create-node-op ::place-op ::update-node-op ::prune-op
          ::add-ref-op ::rm-ref-op ::sugar-op]
    ::tx [:or nil? ::op [:sequential ::op]]
 
@@ -95,9 +95,9 @@
 
    ::db [:map
          [:nodes [:map-of ::id ::node]]
-         [:children-by-parent-id [:map-of ::id [:vector ::id]]]
+         [:child-ids/by-parent [:map-of ::id [:vector ::id]]]
          [:derived {:optional true} map?]
-         [:edges {:optional true} ::edges]
+         [:refs {:optional true} ::edges]
          [:edge-registry {:optional true}
           [:map-of keyword?
            [:map
