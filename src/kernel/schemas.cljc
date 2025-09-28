@@ -94,6 +94,7 @@
            [:sys {:optional true} map?]]
 
    ::db [:map
+         [:version {:optional true} int?]
          [:nodes [:map-of ::id ::node]]
          [:child-ids/by-parent [:map-of ::id [:vector ::id]]]
          [:derived {:optional true} map?]

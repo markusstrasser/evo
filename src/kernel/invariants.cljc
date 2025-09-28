@@ -1,6 +1,19 @@
 (ns kernel.invariants
   "Invariant checking for tree kernel. Optional, flagged via assert? parameter.")
 
+(defn- ref-neighbors [db rel id]
+  (seq (get-in db [:refs rel id] #{})))
+
+(defn- reachable? [db rel start target]
+  (loop [q (conj clojure.lang.PersistentQueue/EMPTY start)
+         seen #{}]
+    (when-let [x (peek q)]
+      (cond
+        (= x target) true
+        (seen x) (recur (pop q) seen)
+        :else (recur (into (pop q) (remove seen (ref-neighbors db rel x)))
+                     (conj seen x))))))
+
 (defn check-invariants [db]
   (when-let [derived (:derived db)]
     (let [nodes (:nodes db)
@@ -65,11 +78,22 @@
           (assert (= orphan-ids expected-orphans)
                   (str "Orphan-ids vs reachable mismatch: " orphan-ids " vs " expected-orphans))))
 
-      ;; Edge invariants
+;; Edge invariants
       (when-let [E (:refs db)]
         (doseq [[rel m] E, [src dsts] m, dst dsts]
           (assert (contains? nodes src) (str "edge src missing: " rel " " src))
           (assert (contains? nodes dst) (str "edge dst missing: " rel " " dst))
           (assert (not= src dst) (str "self-edge on " rel " " src))))
+
+      ;; Edge registry constraint validation
+      (when-let [reg (:edge-registry db)]
+        (doseq [[rel {:keys [unique? acyclic?]}] reg
+                [src dsts] (get-in db [:refs rel])]
+          (when unique?
+            (assert (<= (count dsts) 1) (str "unique? violated for " rel " src " src)))
+          (when acyclic?
+            (doseq [d dsts]
+              (assert (not (reachable? db rel d src))
+                      (str "acyclic? violated for " rel " via " src "→" d))))))
 
       true)))
