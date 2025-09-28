@@ -18,6 +18,7 @@
             [kernel.responses :as R]
             [kernel.deck :as deck]
             [kernel.tx.normalize :as normalize]
+            [kernel.derive.registry :as derive-registry]
             [medley.core :as medley]))
 
 (def ^:const ROOT "root")
@@ -283,8 +284,8 @@
       (not (:version db)) (assoc :version 1))))
 
 (def ^:dynamic *derive-pass*
-  "Default derivation pass: Tier-A + Tier-B (clarity > perf)"
-  derive-full)
+  "Default derivation pass: Registry-based modular passes"
+  derive-registry/run)
 
 ;; verify-registry moved to end of file
 
