@@ -406,25 +406,39 @@
     :prune (fn [db m] (prune* db (:pred m)))
     :add-ref add-ref*
     :rm-ref rm-ref*
-    ;; sugar-ops - we need to import these
-    :insert #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/insert)]
-                                 (sugar-ops-ns db m)))
-               :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :insert}))))
-    :move #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move)]
-                               (sugar-ops-ns db m)))
-             :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move}))))
-    :delete #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/delete)]
-                                 (sugar-ops-ns db m)))
-               :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :delete}))))
-    :reorder #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/reorder)]
-                                  (sugar-ops-ns db m)))
-                :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :reorder}))))
-    :move-up #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move-up)]
-                                  (sugar-ops-ns db m)))
-                :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-up}))))
-    :move-down #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move-down)]
-                                    (sugar-ops-ns db m)))
-                  :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-down}))))
+    ;; sugar-ops - inline simple implementations to avoid circular deps
+    :insert (fn [db {:keys [id parent-id type props pos] :or {type :div props {}}}]
+              (assert id "insert: :id required")
+              (when (get-in db [:nodes id])
+                (throw (ex-info "insert: id already exists" {:id id})))
+              (-> db
+                  (create-node* {:id id :type type :props props})
+                  (place* {:id id :parent-id parent-id :pos (or pos :last)})))
+    :move (fn [db {:keys [id from-parent-id to-parent-id pos]}]
+            (assert (contains? (:nodes db) id) (str "move: node does not exist: " id))
+            (when (and from-parent-id (not (some #{id} (child-ids-of* db from-parent-id))))
+              (throw (ex-info "move: :from-parent-id does not contain id" {:id id :from-parent-id from-parent-id})))
+            (place* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
+    :delete (fn [db {:keys [id]}]
+              (prune* db (fn [_ x] (= x id))))
+    :reorder (fn [db {:keys [id parent-id pos]}]
+               (assert (contains? (:nodes db) id) (str "reorder: node does not exist: " id))
+               (let [cur-parent-id (get-in db [:derived :parent-id-of id])]
+                 (when (and cur-parent-id (not= parent-id cur-parent-id))
+                   (throw (ex-info "reorder: wrong parent-id" {:id id :given parent-id :actual cur-parent-id})))
+                 (when (nil? pos)
+                   (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
+                 (place* db {:id id :parent-id parent-id :pos pos})))
+    :move-up (fn [db {:keys [id]}]
+               (if-let [anchor (get-in db [:derived :order-prev-id-of id])]
+                 (let [p (get-in db [:derived :parent-id-of anchor])]
+                   (place* db {:id id :parent-id p :pos [:before anchor]}))
+                 db))
+    :move-down (fn [db {:keys [id]}]
+                 (if-let [anchor (get-in db [:derived :order-next-id-of id])]
+                   (let [p (get-in db [:derived :parent-id-of anchor])]
+                     (place* db {:id id :parent-id p :pos [:after anchor]}))
+                   db))
     (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
 
 (defn apply-tx+effects*
