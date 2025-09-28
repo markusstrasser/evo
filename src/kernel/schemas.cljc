@@ -120,6 +120,32 @@
                                             [:assert? {:optional true} boolean?]]]]
                    ::db]})
 
+;; --- Dynamic sugar op schemas ----------------------------------------------
+
+(defonce ^:private sugar-schemas* (atom {}))
+
+(defn make-schema
+  "Wrap a Malli form with our base registry."
+  [form] (m/schema [:schema {:registry registry} form]))
+
+(defn register-sugar-op-schema!
+  "Idempotently register (or replace) a sugar-op schema for :op kw."
+  [opkw form] (swap! sugar-schemas* assoc opkw (make-schema form)))
+
+(defn- core-op-schema-for [op]
+  (case op
+    :create-node (m/schema [:schema {:registry registry} ::create-node-op])
+    :place (m/schema [:schema {:registry registry} ::place-op])
+    :update-node (m/schema [:schema {:registry registry} ::update-node-op])
+    :prune (m/schema [:schema {:registry registry} ::prune-op])
+    :add-ref (m/schema [:schema {:registry registry} ::add-ref-op])
+    :rm-ref (m/schema [:schema {:registry registry} ::rm-ref-op])
+    nil))
+
+(defn op-schema-for
+  "Core first; then dynamic sugar; else nil (unknown op)."
+  [op] (or (core-op-schema-for op) (get @sugar-schemas* op)))
+
 (def op-schema (m/schema [:schema {:registry registry} ::op]))
 (def tx-schema (m/schema [:schema {:registry registry} ::tx]))
 (def db-schema (m/schema [:schema {:registry registry} ::db]))
@@ -131,7 +157,13 @@
                   {:what what
                    :errors (me/humanize (m/explain schema x))})))
 
-(defn validate-op! [x] (when-not (m/validate op-schema x) (ex! :op op-schema x)))
+(defn validate-op! [x]
+  (let [op (:op x)
+        s (op-schema-for op)]
+    (when-not s (throw (ex-info "Unknown :op" {:op op})))
+    (when-not (m/validate s x)
+      (throw (ex-info "Schema validation failed"
+                      {:what :op :errors (me/humanize (m/explain s x))})))))
 (defn validate-tx! [x] (when-not (m/validate tx-schema x) (ex! :tx tx-schema x)))
 (defn validate-db! [x] (when-not (m/validate db-schema x) (ex! :db db-schema x)))
 
