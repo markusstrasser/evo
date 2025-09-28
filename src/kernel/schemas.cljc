@@ -122,29 +122,44 @@
 
 ;; --- Dynamic sugar op schemas ----------------------------------------------
 
-(defonce ^:private sugar-schemas* (atom {}))
+;; Centralized Operation Registry: {op-kw -> {:schema S, :handler F, :axes #{...}, :doc ""}}
+(defonce ^:private op-registry* (atom {}))
 
 (defn make-schema
   "Wrap a Malli form with our base registry."
   [form] (m/schema [:schema {:registry registry} form]))
 
-(defn register-sugar-op-schema!
-  "Idempotently register (or replace) a sugar-op schema for :op kw."
-  [opkw form] (swap! sugar-schemas* assoc opkw (make-schema form)))
+(defn register-op!
+  "Idempotently register (or replace) an operation definition."
+  [opkw {:keys [schema handler axes doc] :as definition}]
+  (assert handler (str "Handler required for op: " opkw))
 
-(defn- core-op-schema-for [op]
-  (case op
-    :create-node (m/schema [:schema {:registry registry} ::create-node-op])
-    :place (m/schema [:schema {:registry registry} ::place-op])
-    :update-node (m/schema [:schema {:registry registry} ::update-node-op])
-    :prune (m/schema [:schema {:registry registry} ::prune-op])
-    :add-ref (m/schema [:schema {:registry registry} ::add-ref-op])
-    :rm-ref (m/schema [:schema {:registry registry} ::rm-ref-op])
-    nil))
+  ;; Determine the Malli schema object.
+  (let [s (cond
+            ;; If it's already a schema object, use it.
+            (m/schema? schema) schema
+            ;; If it's a keyword (e.g., ::create-node-op), assume it's a key in the registry and wrap it.
+            (keyword? schema) (make-schema schema)
+            ;; If it's a vector (malli form), compile it.
+            (vector? schema) (make-schema schema)
+            ;; If schema is missing
+            (nil? schema) nil
+            :else (throw (ex-info "Invalid schema format provided for op" {:op opkw :schema schema})))]
+
+    (swap! op-registry* assoc opkw (assoc definition :schema s :axes (or axes #{}) :doc doc))))
+
+(defn op-definition-for
+  "Retrieve the full definition map for an op, or nil if unknown."
+  [op] (get @op-registry* op))
+
+(defn registry-entries
+  "Get all registry entries for inspection."
+  []
+  @op-registry*)
 
 (defn op-schema-for
-  "Core first; then dynamic sugar; else nil (unknown op)."
-  [op] (or (core-op-schema-for op) (get @sugar-schemas* op)))
+  "Retrieve the compiled Malli schema for an op."
+  [op] (:schema (op-definition-for op)))
 
 (def op-schema (m/schema [:schema {:registry registry} ::op]))
 (def tx-schema (m/schema [:schema {:registry registry} ::tx]))
@@ -159,9 +174,11 @@
 
 (defn validate-op! [x]
   (let [op (:op x)
+        ;; Use the centralized lookup
         s (op-schema-for op)]
-    (when-not s (throw (ex-info "Unknown :op" {:op op})))
-    (when-not (m/validate s x)
+    ;; This error message is critical for the LLM agent
+    (when-not s (throw (ex-info "Unknown :op (Not found in registry)" {:op op})))
+    (when (and s (not (m/validate s x)))
       (throw (ex-info "Schema validation failed"
                       {:what :op :errors (me/humanize (m/explain s x))})))))
 (defn validate-tx! [x] (when-not (m/validate tx-schema x) (ex! :tx tx-schema x)))
