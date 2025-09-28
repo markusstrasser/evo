@@ -30,7 +30,7 @@
             :roots ["root" "palette"]}
         d (*derive-pass* db)]
     (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]))
-    (assert (contains? (get-in d [:derived :orphan-ids]) "palette")))
+    (assert (not (contains? (get-in d [:derived :orphan-ids]) "palette"))))
 
   ;; Effects verification
   (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
@@ -39,7 +39,7 @@
     (assert (= (map :effect effects) [:view/scroll-into-view])))
 
   ;; Backward compatibility
-  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}]
     (assert (= (:nodes (interpret* base {:op :ins :id "z" :parent-id "root"}))
                (:nodes (:db (interpret-bundle* base {:op :ins :id "z" :parent-id "root"})))))))
 
@@ -345,26 +345,38 @@
                     db victims)]
     ;; scrub victims from all child vectors
     (let [db2 (update db1 :children-by-parent-id
-               (fn [m]
-                 (into {} (for [[parent-id child-ids] m]
-                            [parent-id (vec (remove victims child-ids))]))))
+                      (fn [m]
+                        (into {} (for [[parent-id child-ids] m]
+                                   [parent-id (vec (remove victims child-ids))]))))
           db3 (update db2 :edges
-               (fn [E]
-                 (into {}
-                   (for [[rel m] (or E {})]
-                     [rel (into {}
-                            (keep (fn [[s ds]]
-                                    (when-not (victims s)
-                                      (let [ds' (into #{} (remove victims ds))]
-                                        (when (seq ds') [s ds']))))
-                                  m))]))))]
+                      (fn [E]
+                        (into {}
+                              (for [[rel m] (or E {})]
+                                [rel (into {}
+                                           (keep (fn [[s ds]]
+                                                   (when-not (victims s)
+                                                     (let [ds' (into #{} (remove victims ds))]
+                                                       (when (seq ds') [s ds']))))
+                                                 m))]))))]
       db3)))
+
+(defn- edge-ok? [db rel src dst]
+  (let [{:keys [acyclic? unique?]} (get-in db [:edge-registry rel] {})]
+    (and
+     (if unique?
+       (empty? (get-in db [:edges rel src] #{})) true)
+     (if acyclic?
+        ;; Simple check: if there's already a path from dst to src, adding src->dst creates a cycle
+       (not (contains? (get-in db [:edges rel dst] #{}) src))
+       true))))
 
 (defn add-ref* [db {:keys [rel src dst] :as m}]
   (assert (contains? (:nodes db) src) (str "add-ref*: src missing: " src))
   (assert (contains? (:nodes db) dst) (str "add-ref*: dst missing: " dst))
   (when (= src dst)
     (throw (ex-info "add-ref*: self-edge not allowed" {:op m :why :self-edge})))
+  (when-not (edge-ok? db rel src dst)
+    (throw (ex-info "add-ref*: registry constraint violation" {:op m :why :edge-constraint :rel rel :src src :dst dst})))
   (update-in db [:edges rel src] (fnil conj #{}) dst))
 
 (defn rm-ref* [db {:keys [rel src dst]}]
@@ -393,7 +405,7 @@
     :patch-props patch-props*
     :purge (fn [db m] (purge* db (:pred m)))
     :add-ref add-ref*
-    :rm-ref  rm-ref*
+    :rm-ref rm-ref*
     ;; sugar-ops - we need to import these
     :ins #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/ins)]
                               (sugar-ops-ns db m)))
@@ -425,12 +437,45 @@
      (loop [i 0, d (derive db), effs []]
        (if (= i (count ops))
          {:db d :effects effs}
-         (let [op (nth ops i)
-               _  (S/validate-op! op)
-               d1 (-> d ((dispatch (:op op)) op) derive)
-               _  (when assert? (inv/check-invariants d1))
-               es (effects/detect d d1 i op)]
-           (recur (inc i) d1 (into effs es))))))))
+         (let [op (nth ops i)]
+           (try
+             (S/validate-op! op)
+             (catch clojure.lang.ExceptionInfo e
+               (throw (ex-info (.getMessage e) (merge (ex-data e) {:op-index i :op op :why :schema}))))
+             (catch Throwable t
+               (throw (ex-info (.getMessage t) {:op-index i :op op :why :schema}))))
+           (let [d1 (try
+                      (-> d ((dispatch (:op op)) op) derive)
+                      (catch clojure.lang.ExceptionInfo e
+                        (throw (ex-info (.getMessage e) (merge (ex-data e) {:op-index i :op op :why :op}))))
+                      (catch Throwable t
+                        (throw (ex-info (.getMessage t) {:op-index i :op op :why :op}))))
+                 _ (when assert?
+                     (try
+                       (inv/check-invariants d1)
+                       (catch clojure.lang.ExceptionInfo e
+                         (throw (ex-info (.getMessage e) (merge (ex-data e) {:op-index i :op op :why :invariants}))))
+                       (catch Throwable t
+                         (throw (ex-info (.getMessage t) {:op-index i :op op :why :invariants})))))
+                 es (effects/detect d d1 i op)]
+             (recur (inc i) d1 (into effs es)))))))))
+
+(defn interpret-result*
+  "Total: never throws for op/schema/invariant errors.
+   Returns {:ok? bool, :db db, :effects [...], :error {:op-index i :op op :why kw :data m}}"
+  ([db tx] (interpret-result* db tx {}))
+  ([db tx {:keys [derive assert?] :or {derive *derive-pass* assert? false}}]
+   (try
+     (let [{:keys [db effects]} (interpret-bundle* db tx {:derive derive :assert? assert?})]
+       {:ok? true :db db :effects effects})
+     (catch clojure.lang.ExceptionInfo e
+       (let [{:keys [op-index op why] :as exd} (ex-data e)]
+         {:ok? false
+          :db db ;; original input db (call site decides rollback)
+          :effects []
+          :error {:op-index op-index :op op :why (or why :exception) :data exd}}))
+     (catch Throwable t
+       {:ok? false :db db :effects [] :error {:why :unexpected :message (.getMessage t)}}))))
 
 (defn interpret*
   "Backward-compatible: return only the db."
