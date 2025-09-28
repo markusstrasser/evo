@@ -2,7 +2,7 @@
   (:require [malli.core :as m]
             [malli.error :as me]
             [malli.instrument :as mi]
-            [malli.dev :as md]))
+            #?(:clj [malli.dev :as md])))
 
 ;; --- Registry ------------------------------------------------
 
@@ -137,5 +137,5 @@
 
 ;; Optional: turn on function instrumentation in dev REPL
 (defn instrument! []
-  (md/start!)
+  #?(:clj (md/start!))
   (mi/instrument!))
