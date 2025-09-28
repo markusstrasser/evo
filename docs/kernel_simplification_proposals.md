@@ -50,8 +50,8 @@ Create `src/kernel/derive.cljc` with a registry of pass descriptors (required ke
 
 **Implementation notes**
 1. Lift existing Tier-A/Tier-B bodies into `defpass` forms (e.g., `:parent-id-of`, `:preorder`).
-2. Add topo-sort validation so missing prerequisites fail fast.
-3. Update sanity checks to require the new namespace.
+2. Reuse Pathom’s pattern: retain `::pass-order` + `::index` atoms and run a topo-sort validator on load.
+3. Update sanity checks to require the new namespace and assert pass outputs match current derived maps.
 
 ---
 
@@ -288,9 +288,13 @@ Represent evaluation as an ordered vector of stage fns working on a context map:
 - Unit tests per stage rather than per loop branch.
 
 **Implementation notes**
-1. Introduce `kernel.tx.context` namespace to define context keys.
-2. Stage fns return updated context or `assoc ::error ...` to short-circuit.
-3. Keep backwards-compatible return shape by reading context at the end.
+1. Introduce `kernel.tx.context` namespace to define context keys and default reducers (mirroring MCP’s `thread-ctx`).
+2. Stage fns return updated context or `assoc ::error ...` to short-circuit; include logging hooks per stage.
+3. Keep backwards-compatible return shape by reading context at the end, so existing callers continue to work.
+
+**Trade-offs**
+- Requires strong diagnostics to inspect context mid-pipeline; provide tracing helpers.
+- Stage reordering can alter semantics—ship canonical order and regression tests.
 
 ---
 
@@ -304,7 +308,9 @@ Represent evaluation as an ordered vector of stage fns working on a context map:
 Order-dependent registration; discovering available ops requires scanning code.
 
 **Inspiration**
-- Reitit router compilation (`/Users/alien/Projects/inspo-clones/reitit/modules/reitit-core/src/reitit/core.cljc:1-160`).
+- Reitit router compilation (`reitit/core.cljc:1-220`) – routes defined as data and compiled into fast lookup tables.
+- HoneySQL clause registry (`honey/sql.cljc`) – clause ordering and formatters stored in vectors/maps, extensible via `register-clause!`.
+- Clojure MCP tool registry (`clojure_mcp/tool_system.clj`) – tool implementations stored as maps (`{:name :id :schema :tool-fn}`) and executed purely from data.
 
 **Proposed change**
 Store op definitions in data:
@@ -327,9 +333,9 @@ Store op definitions in data:
 - Introspection APIs (list ops, axes, docs) for tooling.
 
 **Implementation notes**
-1. Build `ops/compile` similar to `reitit.impl/fast-map` (fast keyword lookup).
-2. Auto-generate Malli union via `(malli/->union (map :schema ops))`.
-3. Adjust sugar ops to register themselves by conj’ing into the registry.
+1. Build `ops/compile` similar to `reitit.impl/fast-map`/`find-names` (fast keyword lookup + metadata extraction).
+2. Auto-generate Malli union via `(malli/->union (map :schema ops))` and cache the result.
+3. Adjust sugar ops to register themselves by conj’ing into the registry and add conflict detection like Reitit’s `conflicting-paths?`.
 
 ---
 
@@ -407,6 +413,10 @@ Introduce `kernel.simulator/mutation-log` that implements the adapter protocol b
 1. Port Replicant’s `log`, `set-parent`, and snapshot helpers (rename to avoid DOM terms).
 2. Provide translation functions from diff effect -> mutation log entries.
 3. Update sanity checks to use the simulator for richer assertions.
+
+**Trade-offs**
+- Simulator must stay aligned with effect schema; add tests to fail if a new effect lacks a simulator handler.
+- Recording full snapshots can grow logs; consider configurable depth for large scenes (e.g., game editors).
 
 ---
 
@@ -889,6 +899,85 @@ Missionary tasks can wrap callback-based handlers, giving adapters flexibility w
 1. Review `ring.util.async` to design the dual-arity call signature.
 2. Provide default implementations that bridge to missionary tasks.
 3. Update docs to explain synchronous vs asynchronous effect execution.
+
+---
+
+## Proposal 27 · Declarative Invariant Deck
+
+**Current touchpoints**
+- `src/kernel/invariants.cljc:1-109` encodes every rule inline with `doseq` + `assert` loops.
+- `src/kernel/sanity_checks.cljc:140-210` depends on exception message strings emitted by those asserts.
+
+**Pain**
+Invariant logic is monolithic and stringly typed; extending or disabling rules requires editing the big function and chasing message text throughout checks.
+
+**Inspiration**
+- Malli instrumentation registry (`malli/src/malli/instrument.clj:12-120`) stores instrumented entries as data and lets callers filter/enable them at runtime.
+
+**Proposed change**
+Define a registry of invariant maps (`{:id :adjacency-symmetry :requires #{:derived/parent-id-of} :check fn}`), compile it once, and have `check-invariants` run each `:check`, returning structured error maps. Provide helpers to enable/disable invariants or throw on the first failure.
+
+**Expected benefits**
+- Registry is introspectable (list active rules + docs).
+- Tests and adapters receive rich error maps instead of strings.
+- Rules can be toggled per environment (e.g., skip expensive ones in perf runs).
+
+**Implementation notes**
+1. Add `kernel.invariant_registry` with a `definvariant` macro mirroring Malli’s `collect!`.
+2. Port existing rules into the registry and update `check-invariants` / sanity checks to consume structured failures.
+3. Provide a compatibility wrapper that throws on the first failure so current callers continue to work during migration.
+
+---
+
+## Proposal 28 · Node Entity Lenses
+
+**Current touchpoints**
+- `src/kernel/introspect.cljc:19-64` and `src/kernel/sanity_checks.cljc:52-110` manually reach into `:nodes`/`:derived` maps.
+
+**Pain**
+Consumers memorise internal layout and repeat boilerplate to fetch parents, children, or props, making downstream tooling verbose and fragile.
+
+**Inspiration**
+- Datascript entity wrappers (`datascript/src/datascript/impl/entity.cljc:1-200`) expose records that behave like CLJ maps with lazily cached attributes.
+
+**Proposed change**
+Introduce `kernel.entity/entity` returning a `NodeEntity` record implementing a small protocol (`ent/id`, `ent/parent`, `ent/children`, `ent/props`). Internals handle lookups so callers treat nodes as first-class objects.
+
+**Expected benefits**
+- Ergonomic API for REPLs, tests, and adapters.
+- Centralises derived lookups, easing future schema changes.
+- Enables richer metadata (e.g., `ent/path`, `ent/subtree-size`) without touching every caller.
+
+**Implementation notes**
+1. Create `kernel/entity.cljc` (shared CLJ/CLJS) mirroring Datascript’s cross-platform tricks.
+2. Refactor tooling namespaces to consume the new API, ensuring no behaviour change.
+3. Add property tests comparing entity reads vs. raw map lookups to guard against regressions.
+
+---
+
+## Proposal 29 · Scenario Matrix for Sanity Checks
+
+**Current touchpoints**
+- `src/kernel/sanity_checks.cljc:19-225` reimplements custom harness helpers (`test-safely`, `test-throws`).
+
+**Pain**
+Adding a new scenario means duplicating try/catch boilerplate and string expectations; reporting is inconsistent.
+
+**Inspiration**
+- Malli’s table-driven tests (`malli/test/malli/transform_test.cljc:1-60`) declare input/output pairs while a generic harness handles assertions.
+
+**Proposed change**
+Represent each sanity check as a data map (`{:id :full-derivation :run fn :expect predicate :doc string}`) and run them through a generic `run-scenarios` executor that yields uniform result maps.
+
+**Expected benefits**
+- Dramatically less ceremony for new checks.
+- Structured outputs ready for dashboards/CLI.
+- Easy filtering (`run-scenarios (only #{:structure})`) and composition.
+
+**Implementation notes**
+1. Replace `test-safely`/`test-throws` with a scenario registry in `kernel.sanity_checks`.
+2. Provide adapters (`run-all`, `explain-failures`) that format results similar to Malli reports.
+3. Gradually migrate existing functions to thin wrappers around `run-scenarios` for backwards compatibility.
 
 ---
 ---
