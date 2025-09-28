@@ -1,6 +1,7 @@
 (ns kernel.responses
   (:require [malli.core :as m]
-            [kernel.schemas :as S]))
+            [kernel.schemas :as S]
+            [medley.core :as medley]))
 
 (def R
   {:status [:enum :ok :error :conflict :redirect :diag]
@@ -28,14 +29,14 @@
                 (throw (ex-info "Response shape invalid" {:resp m}))))
 
 (defn ok [{:keys [db effects trace]}]
-  (let [m (cond-> {:status :ok :db db :effects (vec (or effects []))}
-            trace (assoc :trace trace))]
+  (let [m (-> {:status :ok :db db :effects (vec (or effects []))}
+              (medley/assoc-some :trace trace))]
     (v! m) m))
 (defn error [{:keys [why data op-index op]}]
-  (let [error-data (cond-> {:why why}
-                     data (assoc :data data)
-                     op-index (assoc :op-index op-index)
-                     op (assoc :op op))
+  (let [error-data (-> {:why why}
+                       (medley/assoc-some :data data)
+                       (medley/assoc-some :op-index op-index)
+                       (medley/assoc-some :op op))
         m {:status :error :error error-data}]
     (v! m) m))
 (defn conflict [data] (let [m {:status :conflict :error {:why :conflict :data data}}] (v! m) m))
