@@ -52,3 +52,4 @@
     (let [p (get-in db [:derived :parent-id-of anchor])]
       (K/set-parent* db {:id id :parent-id p :pos [:after anchor]}))
     db))
+
