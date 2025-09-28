@@ -63,7 +63,7 @@
    "Full derivation by default"
    (fn []
      (let [base-db {:nodes {"root" {:type :root :props {}}}
-                    :children-by-parent-id {}}
+                    :child-ids/by-parent {}}
            derived-db (core/*derive-pass* base-db)
            derived (:derived derived-db)
 
@@ -72,7 +72,7 @@
            has-tier-a? (every? #(contains? derived %) tier-a-fields)
 
             ;; Check for key Tier-B fields  
-           tier-b-fields #{:preorder :position-of :reachable-ids :orphan-ids :doc-index-of}
+           tier-b-fields #{:preorder :order-index-of :order-prev-id-of :order-next-id-of :position-of :child-count-of :first-child-id-of :last-child-id-of :subtree-size-of :reachable-ids :orphan-ids :path-of}
            has-tier-b? (every? #(contains? derived %) tier-b-fields)]
 
        {:has-tier-a? has-tier-a?
@@ -86,31 +86,31 @@
 ;; ------------------------------------------------------------
 
 (defn no-op-guard
-  "Verify that set-parent* returns identical object when no change needed."
+  "Verify that place* returns identical object when no change needed."
   []
   (test-safely
    "No-op guard prevents unnecessary work"
    (fn []
      (let [base-db {:nodes {"root" {:type :root :props {}}
                             "child" {:type :div :props {}}}
-                    :children-by-parent-id {"root" ["child"]}}
+                    :child-ids/by-parent {"root" ["child"]}}
 
-            ;; Direct call to set-parent* with same parent + nil pos
-           result-db (core/set-parent* base-db {:id "child" :parent-id "root" :pos nil})
+            ;; Direct call to place* with same parent + nil pos
+           result-db (core/place* base-db {:id "child" :parent-id "root" :pos nil})
            direct-identical? (identical? base-db result-db)
 
-            ;; Via interpret* - core data should be unchanged  
+            ;; Via apply-tx* - core data should be unchanged
            derived-base (core/*derive-pass* base-db)
-           interpreted-result (core/interpret* derived-base {:op :set-parent :id "child" :parent-id "root"})
+           interpreted-result (core/apply-tx* derived-base {:op :place :id "child" :parent-id "root"})
 
-           base-adj (select-keys derived-base [:nodes :children-by-parent-id])
-           result-adj (select-keys interpreted-result [:nodes :children-by-parent-id])
+           base-adj (select-keys derived-base [:nodes :child-ids/by-parent])
+           result-adj (select-keys interpreted-result [:nodes :child-ids/by-parent])
            interpret-unchanged? (= base-adj result-adj)]
 
        {:direct-identical? direct-identical?
         :interpret-unchanged? interpret-unchanged?
         :passed? (and direct-identical? interpret-unchanged?)}))
-   "set-parent* returns same object when parent unchanged and pos=nil"))
+   "place* returns same object when parent unchanged and pos=nil"))
 
 ;; ------------------------------------------------------------  
 ;; Patch 3: Malli validation
@@ -119,7 +119,7 @@
 (defn malli-validation
   "Verify that Malli validation catches invalid operations at boundaries."
   []
-  (let [valid-db {:nodes {"root" {:type :root :props {}}} :children-by-parent-id {}}
+  (let [valid-db {:nodes {"root" {:type :root :props {}}} :child-ids/by-parent {}}
 
         ;; Test 1: Invalid DB
         db-test (test-throws
@@ -136,13 +136,13 @@
         ;; Test 3: Invalid OP
         op-test (test-throws
                  "Invalid OP validation"
-                 #(S/validate-op! {:op :ensure-node :id 123}) ; id should be string
+                 #(S/validate-op! {:op :create-node :id 123}) ; id should be string
                  "Schema validation failed")
 
-        ;; Test 4: Integration - interpret* catches invalid op
+        ;; Test 4: Integration - apply-tx* catches invalid op
         interpret-test (test-throws
-                        "interpret* validation integration"
-                        #(core/interpret* valid-db {:op :ensure-node :id 999})
+                        "apply-tx* validation integration"
+                        #(core/apply-tx* valid-db {:op :create-node :id 999})
                         "Schema validation failed")]
 
     {:db-validation (:passed? db-test)
@@ -165,9 +165,9 @@
          "ROOT must exist"
          #(inv/check-invariants
            {:nodes {"n1" {:type :div :props {}}}
-            :children-by-parent-id {}
+            :child-ids/by-parent {}
             :derived {:parent-id-of {} :child-ids-of {}}})
-         "ROOT node must exist")
+         "Root missing")
 
         ;; Test 2: ROOT cannot be a child
         root-not-child-test
@@ -175,9 +175,9 @@
          "ROOT cannot be child"
          #(inv/check-invariants
            {:nodes {"root" {:type :root :props {}} "n1" {:type :div :props {}}}
-            :children-by-parent-id {"n1" ["root"]}
+            :child-ids/by-parent {"n1" ["root"]}
             :derived {:parent-id-of {"root" "n1"} :child-ids-of {}}})
-         "ROOT cannot be a child")
+         "Root listed as a child")
 
         ;; Test 3: Child must exist in nodes
         child-exists-test
@@ -185,7 +185,7 @@
          "Child must exist in nodes"
          #(inv/check-invariants
            {:nodes {"root" {:type :root :props {}}}
-            :children-by-parent-id {"root" ["nonexistent"]}
+            :child-ids/by-parent {"root" ["nonexistent"]}
             :derived {:parent-id-of {} :child-ids-of {}}})
          "Child id missing from :nodes")
 
@@ -195,7 +195,7 @@
          "No self-parenting"
          #(inv/check-invariants
            {:nodes {"root" {:type :root :props {}} "n1" {:type :div :props {}}}
-            :children-by-parent-id {}
+            :child-ids/by-parent {}
             :derived {:parent-id-of {"n1" "n1"} :child-ids-of {}}})
          "Self-parenting detected")]
 
@@ -215,11 +215,11 @@
    "add-ref/rm-ref and purge scrub"
    (fn []
      (let [db0 {:nodes {"root" {:type :root} "a" {:type :div} "b" {:type :div}}
-                :children-by-parent-id {"root" ["a" "b"]}}
-           db1 (core/interpret* db0 [{:op :add-ref :rel :ref/mentions :src "a" :dst "b"}])
-           has-edge? (contains? (get-in db1 [:edges :ref/mentions "a"] #{}) "b")
-           db2 (core/interpret* db1 {:op :purge :pred (fn [_ x] (= x "b"))})
-           edge-dropped? (not (contains? (get-in db2 [:edges :ref/mentions "a"] #{}) "b"))]
+                :child-ids/by-parent {"root" ["a" "b"]}}
+           db1 (core/apply-tx* db0 [{:op :add-ref :rel :ref/mentions :src "a" :dst "b"}])
+           has-edge? (contains? (get-in db1 [:refs :ref/mentions "a"] #{}) "b")
+           db2 (core/apply-tx* db1 {:op :prune :pred (fn [_ x] (= x "b"))})
+           edge-dropped? (not (contains? (get-in db2 [:refs :ref/mentions "a"] #{}) "b"))]
        {:has-edge? has-edge?
         :edge-dropped? edge-dropped?
         :passed? (and has-edge? edge-dropped?)}))
@@ -231,10 +231,10 @@
    (fn []
      (let [db {:nodes {"root" {:type :root}
                        "a" {:type :div} "b" {:type :div}}
-               :children-by-parent-id {"root" ["a" "b"]}
-               :edges {:ref/mentions {"a" #{"b"}}}}
-           db' (core/interpret* db {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})
-           db'' (core/interpret* db' {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})]
+               :child-ids/by-parent {"root" ["a" "b"]}
+               :refs {:ref/mentions {"a" #{"b"}}}}
+           db' (core/apply-tx* db {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})
+           db'' (core/apply-tx* db' {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})]
        {:idempotent? (= db' db'')
         :passed? (= db' db'')}))
    "Removing an absent edge is a no-op"))
@@ -260,38 +260,107 @@
    "All patches working together"
    (fn []
      (let [;; Start with valid base
-           base {:nodes {"root" {:type :root :props {}}} :children-by-parent-id {}}
+           base {:nodes {"root" {:type :root :props {}}} :child-ids/by-parent {}}
 
             ;; Build up a small tree with full derivation
-           step1 (core/interpret* base {:op :ensure-node :id "parent" :type :div})
-           step2 (core/interpret* step1 {:op :set-parent :id "parent" :parent-id "root"})
-           step3 (core/interpret* step2 {:op :ensure-node :id "child" :type :span})
-           final (core/interpret* step3 {:op :set-parent :id "child" :parent-id "parent"})
+           step1 (core/apply-tx* base {:op :create-node :id "parent" :type :div})
+           step2 (core/apply-tx* step1 {:op :place :id "parent" :parent-id "root"})
+           step3 (core/apply-tx* step2 {:op :create-node :id "child" :type :span})
+           final (core/apply-tx* step3 {:op :place :id "child" :parent-id "parent"})
 
             ;; Verify full derivation
            has-full-derivation? (and (contains? (:derived final) :parent-id-of)
                                      (contains? (:derived final) :preorder))
 
             ;; Verify no-op guard (same parent, no pos change)
-           before-adj (select-keys final [:nodes :children-by-parent-id])
-           after-noop (core/interpret* final {:op :set-parent :id "child" :parent-id "parent"})
-           after-adj (select-keys after-noop [:nodes :children-by-parent-id])
+           before-adj (select-keys final [:nodes :child-ids/by-parent])
+           after-noop (core/apply-tx* final {:op :place :id "child" :parent-id "parent"})
+           after-adj (select-keys after-noop [:nodes :child-ids/by-parent])
            no-op-works? (= before-adj after-adj)
 
             ;; Verify invariants pass on valid structure
            invariants-pass? (try (inv/check-invariants final) true (catch Exception e false))
 
             ;; Verify tree structure is correct
-           child-ids (get-in final [:children-by-parent-id "parent"])
+           child-ids (get-in final [:child-ids/by-parent "parent"])
            tree-correct? (= child-ids ["child"])]
 
        {:full-derivation? has-full-derivation?
         :no-op-works? no-op-works?
         :invariants-pass? invariants-pass?
         :tree-correct? tree-correct?
-        :final-tree (:children-by-parent-id final)
+        :final-tree (:child-ids/by-parent final)
         :passed? (and has-full-derivation? no-op-works? invariants-pass? tree-correct?)}))
    "All patches work together in realistic tree building"))
+
+(defn multi-root-basics []
+  (test-safely
+   "Multi-root traversal + orphans allowed"
+   (fn []
+     (let [db {:nodes {"root" {:type :root}
+                       "palette" {:type :root}
+                       "a" {:type :div} "b" {:type :div}
+                       "p1" {:type :div} "p2" {:type :div}
+                       "loose" {:type :div}}
+               :child-ids/by-parent {"root" ["a" "b"] "palette" ["p1" "p2"]}
+               :roots ["root" "palette"]}
+           d (core/*derive-pass* db)]
+       {:preorder (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
+        :orphan? (contains? (get-in d [:derived :orphan-ids]) "loose")
+        :invariants-pass? (try (inv/check-invariants d) true (catch Exception _ false))
+        :passed? (and
+                  (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
+                  (contains? (get-in d [:derived :orphan-ids]) "loose")
+                  (inv/check-invariants d))}))
+   "Multi-root preorder is concatenated; orphans tracked; invariants hold"))
+
+(defn effects-skeleton-smoke []
+  (test-safely
+   "Effects emitted on :insert via apply-tx+effects*"
+   (fn []
+     (let [db0 {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+           {:keys [db effects]} (core/apply-tx+effects* db0 {:op :insert :id "x" :parent-id "root"})]
+       {:db-updated? (contains? (:nodes db) "x")
+        :has-effect? (= (map :effect effects) [:view/scroll-into-view])
+        :passed? (and (contains? (:nodes db) "x")
+                      (= (map :effect effects) [:view/scroll-into-view]))}))
+   "Bundle emits a named effect; state updated as before"))
+
+(defn repl-verification []
+  (test-safely
+   "Direct REPL verification of all features"
+   (fn []
+     ;; Multi-root sanity
+     (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
+               :child-ids/by-parent {"root" ["w"]}
+               :roots ["root" "palette"]}
+           d (core/*derive-pass* db)
+           preorder-correct? (= (get-in d [:derived :preorder]) ["root" "w" "palette"])
+           orphan-w? (not (contains? (get-in d [:derived :orphan-ids]) "w"))
+           invariants-ok? (try (inv/check-invariants d) true (catch Exception _ false))
+
+           ;; Effects seam visibility
+           base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+           bundle-result (core/apply-tx+effects* base [{:op :insert :id "a" :parent-id "root"}
+                                                       {:op :insert :id "b" :parent-id "root"}])
+           effects-count (count (:effects bundle-result))
+           effects-correct? (= (map :effect (:effects bundle-result))
+                               [:view/scroll-into-view :view/scroll-into-view])
+
+           ;; Backward compatibility
+           old-result (:nodes (core/apply-tx* base {:op :insert :id "z" :parent-id "root"}))
+           new-result (:nodes (:db (core/apply-tx+effects* base {:op :insert :id "z" :parent-id "root"})))
+           compat-ok? (= old-result new-result)]
+
+       {:preorder-correct? preorder-correct?
+        :orphan-w-not-included? orphan-w?
+        :invariants-pass? invariants-ok?
+        :effects-count effects-count
+        :effects-correct? effects-correct?
+        :backward-compat? compat-ok?
+        :passed? (and preorder-correct? orphan-w? invariants-ok?
+                      (= effects-count 2) effects-correct? compat-ok?)}))
+   "All REPL verification examples pass"))
 
 ;; ------------------------------------------------------------
 ;; Main test runner
@@ -306,12 +375,12 @@
         patch2 (no-op-guard)
         patch3 (malli-validation)
         patch4 (enhanced-invariants)
-        edges   (edges-basic)
-        idemp   (rm-ref-idempotent)
-        ws      (workspace-basic)
-        mr      (multi-root-basics)
-        eff     (effects-skeleton-smoke)
-        repl-v  (repl-verification)
+        edges (edges-basic)
+        idemp (rm-ref-idempotent)
+        ws (workspace-basic)
+        mr (multi-root-basics)
+        eff (effects-skeleton-smoke)
+        repl-v (repl-verification)
         integration (integration-test)
 
         all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws mr eff repl-v integration])]
@@ -367,75 +436,6 @@
   "Show detailed results for debugging."
   []
   (:details (run-all)))
-
-(defn multi-root-basics []
-  (test-safely
-   "Multi-root traversal + orphans allowed"
-   (fn []
-     (let [db {:nodes {"root" {:type :root}
-                       "palette" {:type :root}
-                       "a" {:type :div} "b" {:type :div}
-                       "p1" {:type :div} "p2" {:type :div}
-                       "loose" {:type :div}}
-               :children-by-parent-id {"root" ["a" "b"] "palette" ["p1" "p2"]}
-               :roots ["root" "palette"]}
-           d (core/*derive-pass* db)]
-       {:preorder (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
-        :orphan?  (contains? (get-in d [:derived :orphan-ids]) "loose")
-        :invariants-pass? (try (inv/check-invariants d) true (catch Exception _ false))
-        :passed? (and
-                   (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
-                   (contains? (get-in d [:derived :orphan-ids]) "loose")
-                   (inv/check-invariants d))}))
-   "Multi-root preorder is concatenated; orphans tracked; invariants hold"))
-
-(defn effects-skeleton-smoke []
-  (test-safely
-   "Effects emitted on :ins via interpret-bundle*"
-   (fn []
-     (let [db0 {:nodes {"root" {:type :root}} :children-by-parent-id {}}
-           {:keys [db effects]} (core/interpret-bundle* db0 {:op :ins :id "x" :parent-id "root"})]
-       {:db-updated? (contains? (:nodes db) "x")
-        :has-effect? (= (map :effect effects) [:view/scroll-into-view])
-        :passed? (and (contains? (:nodes db) "x")
-                      (= (map :effect effects) [:view/scroll-into-view]))}))
-   "Bundle emits a named effect; state updated as before"))
-
-(defn repl-verification []
-  (test-safely
-   "Direct REPL verification of all features"
-   (fn []
-     ;; Multi-root sanity
-     (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
-               :children-by-parent-id {"root" ["w"]}
-               :roots ["root" "palette"]}
-           d (core/*derive-pass* db)
-           preorder-correct? (= (get-in d [:derived :preorder]) ["root" "w" "palette"])
-           orphan-w? (not (contains? (get-in d [:derived :orphan-ids]) "w"))
-           invariants-ok? (try (inv/check-invariants d) true (catch Exception _ false))
-
-           ;; Effects seam visibility
-           base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
-           bundle-result (core/interpret-bundle* base [{:op :ins :id "a" :parent-id "root"}
-                                                       {:op :ins :id "b" :parent-id "root"}])
-           effects-count (count (:effects bundle-result))
-           effects-correct? (= (map :effect (:effects bundle-result))
-                               [:view/scroll-into-view :view/scroll-into-view])
-
-           ;; Backward compatibility
-           old-result (:nodes (core/interpret* base {:op :ins :id "z" :parent-id "root"}))
-           new-result (:nodes (:db (core/interpret-bundle* base {:op :ins :id "z" :parent-id "root"})))
-           compat-ok? (= old-result new-result)]
-
-       {:preorder-correct? preorder-correct?
-        :orphan-w-not-included? orphan-w?
-        :invariants-pass? invariants-ok?
-        :effects-count effects-count
-        :effects-correct? effects-correct?
-        :backward-compat? compat-ok?
-        :passed? (and preorder-correct? orphan-w? invariants-ok?
-                      (= effects-count 2) effects-correct? compat-ok?)}))
-   "All REPL verification examples pass"))
 
 (comment
   ;; REPL usage examples:

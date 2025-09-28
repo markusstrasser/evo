@@ -109,15 +109,15 @@
 
    ;; Function Schemas for instrumentation
    ::pos->index-fn [:=> [:cat ::db ::id ::id ::pos] int?]
-   ::set-parent-args [:map
-                      [:id ::id]
-                      [:parent-id {:optional true} [:or nil? ::id]]
-                      [:pos {:optional true} ::pos]]
-   ::set-parent*-fn [:=> [:cat ::db ::set-parent-args] ::db]
-   ::interpret*-fn [:=> [:cat ::db ::tx [:? [:map
-                                             [:derive {:optional true} fn?]
-                                             [:assert? {:optional true} :boolean]]]]
-                    ::db]})
+   ::place-args [:map
+                 [:id ::id]
+                 [:parent-id {:optional true} [:or nil? ::id]]
+                 [:pos {:optional true} ::pos]]
+   ::place*-fn [:=> [:cat ::db ::place-args] ::db]
+   ::apply-tx*-fn [:=> [:cat ::db ::tx [:? [:map
+                                            [:derive {:optional true} fn?]
+                                            [:assert? {:optional true} :boolean]]]]
+                   ::db]})
 
 (def op-schema (m/schema [:schema {:registry registry} ::op]))
 (def tx-schema (m/schema [:schema {:registry registry} ::tx]))
