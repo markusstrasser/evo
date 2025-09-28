@@ -97,7 +97,8 @@
          [:nodes [:map-of ::id ::node]]
          [:children-by-parent-id [:map-of ::id [:vector ::id]]]
          [:derived {:optional true} map?]
-         [:edges {:optional true} ::edges]]
+         [:edges {:optional true} ::edges]
+         [:roots {:optional true} [:vector ::id]]]
 
    ;; Function Schemas for instrumentation
    ::pos->index-fn [:=> [:cat ::db ::id ::id ::pos] int?]
