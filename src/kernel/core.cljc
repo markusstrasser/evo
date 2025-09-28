@@ -17,6 +17,7 @@
             [kernel.effects :as effects]
             [kernel.responses :as R]
             [kernel.deck :as deck]
+            [kernel.tx.normalize :as normalize]
             [medley.core :as medley]))
 
 (def ^:const ROOT "root")
@@ -628,7 +629,8 @@
          {:error {:why (or (:why exd) :validation) :message (.getMessage t) :data exd}
           :db db :effects []})))
 
-   (let [ops (->tx tx)
+   (let [raw-ops (->tx tx)
+         ops (normalize/normalize raw-ops)  ; Apply peephole optimizations
          config {:derive derive :assert? assert?}]
 
      (loop [i 0
