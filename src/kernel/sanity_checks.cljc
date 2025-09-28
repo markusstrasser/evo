@@ -1,16 +1,17 @@
-(ns evolver.sanity-checks
-  "REPL-friendly sanity checks for evolver patches.
+(ns kernel.sanity_checks
+  "REPL-friendly sanity checks for kernel patches.
    
    Usage in REPL:
-     (require '[evolver.sanity-checks :as check])
+     (require '[kernel.sanity_checks :as check])
      (check/run-all)              ; Run all checks
      (check/full-derivation)      ; Test specific patch
      (check/no-op-guard)          ; etc.
    
    Each function returns {:passed? boolean :details map}"
-  (:require [evolver.core :as core]
-            [evolver.schemas :as S]
-            [evolver.invariants :as inv]))
+  (:require [kernel.core :as core]
+            [kernel.schemas :as S]
+            [kernel.invariants :as inv]
+            [kernel.workspace :as WS]))
 
 ;; ------------------------------------------------------------
 ;; Test utilities
@@ -206,6 +207,49 @@
      :passed? (every? :passed? [root-exists-test root-not-child-test child-exists-test no-self-parent-test])}))
 
 ;; ------------------------------------------------------------
+;; New tests for edges primitive and workspace
+;; ------------------------------------------------------------
+
+(defn edges-basic []
+  (test-safely
+   "add-ref/rm-ref and purge scrub"
+   (fn []
+     (let [db0 {:nodes {"root" {:type :root} "a" {:type :div} "b" {:type :div}}
+                :children-by-parent-id {"root" ["a" "b"]}}
+           db1 (core/interpret* db0 [{:op :add-ref :rel :ref/mentions :src "a" :dst "b"}])
+           has-edge? (contains? (get-in db1 [:edges :ref/mentions "a"] #{}) "b")
+           db2 (core/interpret* db1 {:op :purge :pred (fn [_ x] (= x "b"))})
+           edge-dropped? (not (contains? (get-in db2 [:edges :ref/mentions "a"] #{}) "b"))]
+       {:has-edge? has-edge?
+        :edge-dropped? edge-dropped?
+        :passed? (and has-edge? edge-dropped?)}))
+   "Edges can be added and are scrubbed on purge"))
+
+(defn rm-ref-idempotent []
+  (test-safely
+   "rm-ref is idempotent"
+   (fn []
+     (let [db {:nodes {"root" {:type :root}
+                       "a" {:type :div} "b" {:type :div}}
+               :children-by-parent-id {"root" ["a" "b"]}
+               :edges {:ref/mentions {"a" #{"b"}}}}
+           db' (core/interpret* db {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})
+           db'' (core/interpret* db' {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})]
+       {:idempotent? (= db' db'')
+        :passed? (= db' db'')}))
+   "Removing an absent edge is a no-op"))
+
+(defn workspace-basic []
+  (test-safely
+   "workspace toggle collapsed"
+   (fn []
+     (let [ws0 (WS/empty-workspace)
+           ws1 (WS/toggle-collapsed ws0 "a")]
+       {:collapsed? (WS/collapsed? ws1 "a")
+        :passed? (WS/collapsed? ws1 "a")}))
+   "Collapsed toggles work"))
+
+;; ------------------------------------------------------------
 ;; Integration test
 ;; ------------------------------------------------------------
 
@@ -256,20 +300,26 @@
 (defn run-all
   "Run all sanity checks and return summary."
   []
-  (println "🧪 Running evolver patch sanity checks...\n")
+  (println "🧪 Running kernel patch sanity checks...\n")
 
   (let [patch1 (full-derivation)
         patch2 (no-op-guard)
         patch3 (malli-validation)
         patch4 (enhanced-invariants)
+        edges   (edges-basic)
+        idemp   (rm-ref-idempotent)
+        ws      (workspace-basic)
         integration (integration-test)
 
-        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 integration])]
+        all-passed? (every? :passed? [patch1 patch2 patch3 patch4 edges idemp ws integration])]
 
     (println (str "📋 Patch 1 - Full Derivation:  " (if (:passed? patch1) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 2 - No-op Guard:      " (if (:passed? patch2) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 3 - Malli Validation: " (if (:passed? patch3) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Patch 4 - Enhanced Checks:  " (if (:passed? patch4) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Edges Basic:                " (if (:passed? edges) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 rm-ref idempotent:          " (if (:passed? idemp) "✅ PASS" "❌ FAIL")))
+    (println (str "📋 Workspace:                  " (if (:passed? ws) "✅ PASS" "❌ FAIL")))
     (println (str "📋 Integration Test:           " (if (:passed? integration) "✅ PASS" "❌ FAIL")))
     (println)
     (println (str "🎯 Overall: " (if all-passed? "✅ ALL PATCHES WORKING" "❌ SOME ISSUES FOUND")))
@@ -279,11 +329,17 @@
                :patch-2 (:passed? patch2)
                :patch-3 (:passed? patch3)
                :patch-4 (:passed? patch4)
+               :edges (:passed? edges)
+               :idempotent (:passed? idemp)
+               :workspace (:passed? ws)
                :integration (:passed? integration)}
      :details {:full-derivation patch1
                :no-op-guard patch2
                :malli-validation patch3
                :enhanced-invariants patch4
+               :edges-basic edges
+               :rm-ref-idempotent idemp
+               :workspace-basic ws
                :integration-test integration}}))
 
 ;; ------------------------------------------------------------

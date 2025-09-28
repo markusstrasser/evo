@@ -1,4 +1,4 @@
-(ns evolver.core
+(ns kernel.core
   "Tiny, testable tree-edit kernel over a canonical value.
    Canonical DB:
      {:nodes                    {id {:type kw :props map}}
@@ -7,8 +7,8 @@
 
    The 4 CORE OPS! SHOULD NOT LEVERAGE :DERIVED ever"
   (:require [clojure.set :as set]
-            [evolver.invariants :as inv]
-            [evolver.schemas :as S]
+            [kernel.invariants :as inv]
+            [kernel.schemas :as S]
             [malli.core :as m]))
 
 (def ^:const ROOT "root")
@@ -211,7 +211,7 @@
 (defn pos->index
   "Convert position spec to insertion index.
    pos ∈ {nil,:first,:last, [:index i], [:before anchor-id], [:after anchor-id]}"
-  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/pos->index-fn])}
+  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/pos->index-fn])}
   [db parent-id id pos]
   (let [child-ids (get (:children-by-parent-id db) parent-id [])
         base (vec (remove #{id} child-ids))
@@ -252,7 +252,7 @@
    - parent-id=same   => reorder
    - parent-id≠same   => move-and-place
    Cycle-safe."
-  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/set-parent*-fn])}
+  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/set-parent*-fn])}
   [db {:keys [id parent-id pos]}]
   (assert id "set-parent*: :id required")
   (assert (contains? (:nodes db) id) (str "set-parent*: node does not exist: " id))
@@ -319,10 +319,31 @@
                           (update :children-by-parent-id dissoc id)))
                     db victims)]
     ;; scrub victims from all child vectors
-    (update db1 :children-by-parent-id
-            (fn [m]
-              (into {} (for [[parent-id child-ids] m]
-                         [parent-id (vec (remove victims child-ids))]))))))
+    (let [db2 (update db1 :children-by-parent-id
+               (fn [m]
+                 (into {} (for [[parent-id child-ids] m]
+                            [parent-id (vec (remove victims child-ids))]))))
+          db3 (update db2 :edges
+               (fn [E]
+                 (into {}
+                   (for [[rel m] (or E {})]
+                     [rel (into {}
+                            (keep (fn [[s ds]]
+                                    (when-not (victims s)
+                                      (let [ds' (into #{} (remove victims ds))]
+                                        (when (seq ds') [s ds']))))
+                                  m))]))))]
+      db3)))
+
+(defn add-ref* [db {:keys [rel src dst] :as m}]
+  (assert (contains? (:nodes db) src) (str "add-ref*: src missing: " src))
+  (assert (contains? (:nodes db) dst) (str "add-ref*: dst missing: " dst))
+  (when (= src dst)
+    (throw (ex-info "add-ref*: self-edge not allowed" {:op m :why :self-edge})))
+  (update-in db [:edges rel src] (fnil conj #{}) dst))
+
+(defn rm-ref* [db {:keys [rel src dst]}]
+  (update-in db [:edges rel src] (fnil disj #{}) dst))
 
 ;; ------------------------------------------------------------
 ;; Interpreter: derive AFTER EVERY OP (clarity > perf)
@@ -346,23 +367,25 @@
     :set-parent set-parent*
     :patch-props patch-props*
     :purge (fn [db m] (purge* db (:pred m)))
+    :add-ref add-ref*
+    :rm-ref  rm-ref*
     ;; sugar-ops - we need to import these
-    :ins #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/ins)]
+    :ins #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/ins)]
                               (sugar-ops-ns db m)))
             :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :ins}))))
-    :mv #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/mv)]
+    :mv #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/mv)]
                              (sugar-ops-ns db m)))
            :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :mv}))))
-    :del #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/del)]
+    :del #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/del)]
                               (sugar-ops-ns db m)))
             :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :del}))))
-    :reorder #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/reorder)]
+    :reorder #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/reorder)]
                                   (sugar-ops-ns db m)))
                 :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :reorder}))))
-    :move-up #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-up)]
+    :move-up #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move-up)]
                                   (sugar-ops-ns db m)))
                 :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-up}))))
-    :move-down #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'evolver.sugar-ops/move-down)]
+    :move-down #?(:clj (fn [db m] (let [sugar-ops-ns (requiring-resolve 'kernel.sugar-ops/move-down)]
                                     (sugar-ops-ns db m)))
                   :cljs (fn [db m] (throw (ex-info "Sugar ops not yet implemented in ClojureScript" {:op :move-down}))))
     (fn [_ _] (throw (ex-info "Unknown :op" {:op k})))))
@@ -372,7 +395,7 @@
    Options:
    - :derive  Function to derive state after each op (default: *derive-pass*)
    - :assert? Flag to run invariant checks after each op (default: false)"
-  {:malli/schema (m/schema [:schema {:registry S/registry} :evolver.schemas/interpret*-fn])}
+  {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/interpret*-fn])}
   ([db tx] (interpret* db tx {}))
   ([db tx {:keys [derive assert?]
            :or {derive *derive-pass* assert? false}}]

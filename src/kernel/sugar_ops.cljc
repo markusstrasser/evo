@@ -1,7 +1,7 @@
-(ns evolver.sugar-ops
+(ns kernel.sugar-ops
   "Sugar operations built from the 4 core primitives.
    Non-core helpers: ins, mv, del, reorder, move-up, move-down."
-  (:require [evolver.core :as K]))
+  (:require [kernel.core :as K]))
 
 (defn ins
   "Create + attach. Throws if :id already exists."

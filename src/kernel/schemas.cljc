@@ -1,4 +1,4 @@
-(ns evolver.schemas
+(ns kernel.schemas
   (:require [malli.core :as m]
             [malli.error :as me]
             [malli.instrument :as mi]
@@ -34,6 +34,19 @@
    ::purge-op [:map
                [:op [:= :purge]]
                [:pred fn?]]
+
+   ;; Edges primitive ops
+   ::edges [:map-of keyword? [:map-of ::id [:set ::id]]]
+   ::add-ref-op [:map
+                 [:op [:= :add-ref]]
+                 [:rel keyword?]
+                 [:src ::id]
+                 [:dst ::id]]
+   ::rm-ref-op [:map
+                [:op [:= :rm-ref]]
+                [:rel keyword?]
+                [:src ::id]
+                [:dst ::id]]
 
    ;; Sugar ops (now with tight, closed shapes via multi-schema)
    ::ins-op [:map
@@ -71,7 +84,8 @@
                [:move-up ::move-up-op]
                [:move-down ::move-down-op]]
 
-   ::op [:or ::ensure-node-op ::set-parent-op ::patch-props-op ::purge-op ::sugar-op]
+   ::op [:or ::ensure-node-op ::set-parent-op ::patch-props-op ::purge-op
+          ::add-ref-op ::rm-ref-op ::sugar-op]
    ::tx [:or nil? ::op [:sequential ::op]]
 
    ::node [:map
@@ -83,7 +97,7 @@
          [:nodes [:map-of ::id ::node]]
          [:children-by-parent-id [:map-of ::id [:vector ::id]]]
          [:derived {:optional true} map?]
-         [:edges {:optional true} map?]]
+         [:edges {:optional true} ::edges]]
 
    ;; Function Schemas for instrumentation
    ::pos->index-fn [:=> [:cat ::db ::id ::id ::pos] int?]
