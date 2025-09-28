@@ -5,6 +5,7 @@
   :dependencies
   [[no.cjohansen/replicant "2025.06.21"]
    [metosin/malli "0.19.1"]
+   [medley "1.4.0"]
    [datascript "1.7.5"]
    [binaryage/devtools "1.0.7"]
    [com.rpl/specter "1.1.4"]
