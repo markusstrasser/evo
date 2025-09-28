@@ -15,7 +15,8 @@
             [kernel.schemas :as S]
             [malli.core :as m]
             [kernel.effects :as effects]
-            [kernel.responses :as R]))
+            [kernel.responses :as R]
+            [medley.core :as medley]))
 
 (def ^:const ROOT "root")
 
@@ -179,11 +180,9 @@
                            (for [id all-ids]
                              [id (vec (get adj id []))]))
         ;; index-of: sibling position
-        index-of (reduce-kv
-                  (fn [m _ child-ids]
-                    (reduce (fn [m2 [i c]] (assoc m2 c i))
-                            m (map-indexed vector child-ids)))
-                  {} adj)
+        index-of (into {} (mapcat (fn [[_ child-ids]]
+                                    (map-indexed (fn [idx child] [child idx]) child-ids))
+                                  adj))
         ;; prev/next siblings
         {:keys [prev-id-of next-id-of]}
         (reduce-kv
