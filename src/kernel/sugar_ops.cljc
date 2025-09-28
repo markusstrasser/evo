@@ -3,9 +3,9 @@
             [kernel.opkit :refer [defop]]
             [kernel.schemas :as S]))
 
-;; alias registry names for brevity in schema forms
-(def Kid :kernel.schemas/id)
-(def Kpos :kernel.schemas/pos)
+;; Simple schema aliases to avoid circular dependencies
+(def Kid string?)
+(def Kpos any?)
 
 (defop :insert
   {:doc "Create node then place it under parent."
