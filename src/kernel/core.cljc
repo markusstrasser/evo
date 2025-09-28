@@ -199,7 +199,8 @@
 ;; ------------------------------------------------------------
 (defn derive-full [db]
   (let [core (derive-core db)]
-    (assoc db :derived (derive-dx db core))))
+    (cond-> (assoc db :derived (derive-dx db core))
+      (not (:version db)) (assoc :version 1))))
 
 (def ^:dynamic *derive-pass*
   "Default derivation pass: Tier-A + Tier-B (clarity > perf)"
@@ -360,15 +361,36 @@
                                                  m))]))))]
       db3)))
 
+(defn- ref-neighbors [db rel id]
+  (seq (get-in db [:refs rel id] #{})))
+
+(defn- reachable? [db rel start target]
+  (loop [q (conj clojure.lang.PersistentQueue/EMPTY start)
+         seen #{}]
+    (when-let [x (peek q)]
+      (cond
+        (= x target) true
+        (seen x) (recur (pop q) seen)
+        :else (recur (into (pop q) (remove seen (ref-neighbors db rel x)))
+                     (conj seen x))))))
+
 (defn- edge-ok? [db rel src dst]
   (let [{:keys [acyclic? unique?]} (get-in db [:edge-registry rel] {})]
     (and
-     (if unique?
-       (empty? (get-in db [:refs rel src] #{})) true)
-     (if acyclic?
-        ;; Simple check: if there's already a path from dst to src, adding src->dst creates a cycle
-       (not (contains? (get-in db [:refs rel dst] #{}) src))
-       true))))
+     (if unique? (empty? (get-in db [:refs rel src] #{})) true)
+     (if acyclic? (not (reachable? db rel dst src)) true))))
+
+(defn reachable?
+  "Public API: Check if target is reachable from start via edges of given rel."
+  [db rel start target]
+  (loop [q (conj clojure.lang.PersistentQueue/EMPTY start)
+         seen #{}]
+    (when-let [x (peek q)]
+      (cond
+        (= x target) true
+        (seen x) (recur (pop q) seen)
+        :else (recur (into (pop q) (remove seen (ref-neighbors db rel x)))
+                     (conj seen x))))))
 
 (defn add-ref* [db {:keys [rel src dst] :as m}]
   (assert (contains? (:nodes db) src) (str "add-ref*: src missing: " src))
