@@ -11,10 +11,10 @@
     (throw (ex-info "insert: id already exists" {:id id})))
   (-> db
       (K/create-node* {:id id :type type :props props})
-      (K/set-parent* {:id id :parent-id parent-id :pos (or pos :last)})))
+      (K/place* {:id id :parent-id parent-id :pos (or pos :last)})))
 
 (defn move
-  "Move-and-place via set-parent* (optionally validate :from-parent-id)."
+  "Move-and-place via place* (optionally validate :from-parent-id)."
   [db {:keys [id from-parent-id to-parent-id pos]}]
   (assert (contains? (:nodes db) id) (str "move: node does not exist: " id))
   (when (and from-parent-id (not (some #{id} (K/child-ids-of* db from-parent-id))))
@@ -27,7 +27,7 @@
   (K/prune* db (fn [_ x] (= x id))))
 
 (defn reorder
-  "Within-parent reorder via set-parent*. Uses :parent-id-of from Tier-A."
+  "Within-parent reorder via place*. Uses :parent-id-of from Tier-A."
   [db {:keys [id parent-id pos]}]
   (assert (contains? (:nodes db) id) (str "reorder: node does not exist: " id))
   (let [cur-parent-id (get-in db [:derived :parent-id-of id])]
