@@ -5,7 +5,7 @@
    Return a vector of effect maps; adapters run them."
   [prev next op-index op]
   (cond-> []
-    (= (:op op) :ins)
+    (= (:op op) :insert)
     (conj {:effect :view/scroll-into-view
-           :ids    [(:id op)]
-           :cause  {:op-index op-index :op (:op op)}})))
+           :ids [(:id op)]
+           :cause {:op-index op-index :op (:op op)}})))

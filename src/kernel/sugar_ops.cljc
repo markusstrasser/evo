@@ -1,30 +1,30 @@
 (ns kernel.sugar-ops
   "Sugar operations built from the 4 core primitives.
-   Non-core helpers: ins, mv, del, reorder, move-up, move-down."
+   Non-core helpers: insert, move, delete, reorder, move-up, move-down."
   (:require [kernel.core :as K]))
 
-(defn ins
+(defn insert
   "Create + attach. Throws if :id already exists."
   [db {:keys [id parent-id type props pos] :or {type :div props {}}}]
-  (assert id "ins: :id required")
+  (assert id "insert: :id required")
   (when (get-in db [:nodes id])
-    (throw (ex-info "ins: id already exists" {:id id})))
+    (throw (ex-info "insert: id already exists" {:id id})))
   (-> db
-      (K/ensure-node* {:id id :type type :props props})
+      (K/create-node* {:id id :type type :props props})
       (K/set-parent* {:id id :parent-id parent-id :pos (or pos :last)})))
 
-(defn mv
+(defn move
   "Move-and-place via set-parent* (optionally validate :from-parent-id)."
   [db {:keys [id from-parent-id to-parent-id pos]}]
-  (assert (contains? (:nodes db) id) (str "mv: node does not exist: " id))
+  (assert (contains? (:nodes db) id) (str "move: node does not exist: " id))
   (when (and from-parent-id (not (some #{id} (K/child-ids-of* db from-parent-id))))
-    (throw (ex-info "mv: :from-parent-id does not contain id" {:id id :from-parent-id from-parent-id})))
-  (K/set-parent* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
+    (throw (ex-info "move: :from-parent-id does not contain id" {:id id :from-parent-id from-parent-id})))
+  (K/place* db {:id id :parent-id to-parent-id :pos (or pos :last)}))
 
-(defn del
-  "Delete id (and its subtree) via purge*."
+(defn delete
+  "Delete id (and its subtree) via prune*."
   [db {:keys [id]}]
-  (K/purge* db (fn [_ x] (= x id))))
+  (K/prune* db (fn [_ x] (= x id))))
 
 (defn reorder
   "Within-parent reorder via set-parent*. Uses :parent-id-of from Tier-A."
@@ -35,21 +35,21 @@
       (throw (ex-info "reorder: wrong parent-id" {:id id :given parent-id :actual cur-parent-id})))
     (when (nil? pos)
       (throw (ex-info "reorder: target pos required" {:id id :parent-id parent-id})))
-    (K/set-parent* db {:id id :parent-id parent-id :pos pos})))
+    (K/place* db {:id id :parent-id parent-id :pos pos})))
 
 (defn move-up
-  "Move before doc-prev. Requires Tier-B DX pack."
+  "Move before order-prev. Requires Tier-B DX pack."
   [db {:keys [id]}]
-  (if-let [anchor (get-in db [:derived :doc-prev-id-of id])]
+  (if-let [anchor (get-in db [:derived :order-prev-id-of id])]
     (let [p (get-in db [:derived :parent-id-of anchor])]
-      (K/set-parent* db {:id id :parent-id p :pos [:before anchor]}))
+      (K/place* db {:id id :parent-id p :pos [:before anchor]}))
     db))
 
 (defn move-down
-  "Move after doc-next. Requires Tier-B DX pack."
+  "Move after order-next. Requires Tier-B DX pack."
   [db {:keys [id]}]
-  (if-let [anchor (get-in db [:derived :doc-next-id-of id])]
+  (if-let [anchor (get-in db [:derived :order-next-id-of id])]
     (let [p (get-in db [:derived :parent-id-of anchor])]
-      (K/set-parent* db {:id id :parent-id p :pos [:after anchor]}))
+      (K/place* db {:id id :parent-id p :pos [:after anchor]}))
     db))
 
