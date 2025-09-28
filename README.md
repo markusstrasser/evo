@@ -3,6 +3,8 @@
 A ClojureScript tree editor with a command-driven architecture for AI-assisted development.
 Underlying concept: edit algebra over a tree has four independent dimensions—existence, topology, order, attributes.
 
+
+
 ### Kernel OS
 Hard primitives (4): ensure-node, set-parent(id parent index?), patch-props, purge(pred). That’s it.
 The MLIR framing (Intent → Core Algebra → View Diff) fits perfectly; you’re already at the “Core Algebra” tier and it compiles cleanly from higher intents without touching the kernel.
