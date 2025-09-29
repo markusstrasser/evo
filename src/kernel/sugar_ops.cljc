@@ -1,5 +1,6 @@
 (ns kernel.sugar-ops
   (:require [kernel.core :as K]
+            [kernel.lens :as lens]
             [kernel.opkit :refer [defop]]
             [kernel.schemas :as S]))
 
@@ -32,7 +33,7 @@
             [:pos {:optional true} Kpos]]}
   (let [{:keys [id from-parent-id to-parent-id pos]} op]
     (when (and from-parent-id
-               (not (some #{id} (K/child-ids-of* db from-parent-id))))
+               (not (some #{id} (lens/children-of db from-parent-id))))
       (throw (ex-info "move: :from-parent-id does not contain id"
                       {:id id :from-parent-id from-parent-id})))
     (K/place* db {:id id :parent-id to-parent-id :pos (or pos :last)})))
