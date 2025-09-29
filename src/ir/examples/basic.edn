@@ -1,5 +1,0 @@
-[{:op :create-node :id "root" :type :doc :props {} :under :doc :at :last}
- {:op :create-node :id "a" :type :p :props {:t "A"} :under "root" :at :last}
- {:op :create-node :id "b" :type :p :props {:t "B"} :under "root" :at :last}
- {:op :place :id "b" :under "root" :at {:before "a"}}
- {:op :update-node :id "a" :props {:style {:bold true}}}]

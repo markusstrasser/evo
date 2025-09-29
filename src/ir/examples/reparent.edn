@@ -1,8 +1,0 @@
-[{:op :create-node :id "root" :type :doc :props {} :under :doc :at :last}
- {:op :create-node :id "h1" :type :h1 :props {:t "Header 1"} :under "root" :at :last}
- {:op :create-node :id "h2" :type :h2 :props {:t "Header 2"} :under "root" :at :last}
- {:op :create-node :id "subtree" :type :div :props {} :under "h1" :at :last}
- {:op :create-node :id "child1" :type :p :props {:t "Child 1"} :under "subtree" :at :last}
- {:op :create-node :id "child2" :type :p :props {:t "Child 2"} :under "subtree" :at :last}
- {:op :place :id "subtree" :under "h2" :at :last}
- {:op :place :id "child2" :under "subtree" :at {:before "child1"}}]
