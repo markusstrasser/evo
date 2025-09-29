@@ -2,7 +2,7 @@
   "Derivation pass registry - replaces monolithic derivation with named passes.
 
    Breaks derivation into independent, ordered passes that can be toggled,
-   timed, and reasoned about locally. Replaces derive-full with a declarative
+   timed, and reasoned about locally. Provides a declarative
    registry of named passes with explicit dependencies.
 
    Usage:
@@ -120,7 +120,7 @@
                           passes)
 
         ;; Start with zero in-degree passes
-        queue (into clojure.lang.PersistentQueue/EMPTY
+        queue (into #?(:clj clojure.lang.PersistentQueue/EMPTY :cljs #queue [])
                     (filter #(zero? (in-degree %)) (map :id passes)))
 
         result (loop [queue queue
