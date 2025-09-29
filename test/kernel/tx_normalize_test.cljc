@@ -1,5 +1,5 @@
-(ns kernel.tx-normalize-test
-  (:require [kernel.tx.normalize :as norm]
+(ns labs.temporal.tx.normalize-test
+  (:require [labs.temporal.tx.normalize :as norm]
             #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer-macros [deftest is testing]])))
 

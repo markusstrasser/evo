@@ -1,4 +1,4 @@
-(ns kernel.workspace)
+(ns labs.workspace)
 
 (defn empty-workspace [] {:collapsed #{}})
 

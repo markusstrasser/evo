@@ -1,4 +1,4 @@
-(ns kernel.responses
+(ns labs.responses
   (:require [malli.core :as m]
             [kernel.schemas :as S]
             [medley.core :as medley]))
