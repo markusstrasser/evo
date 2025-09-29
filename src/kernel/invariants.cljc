@@ -17,7 +17,7 @@
 (defn check-invariants [db]
   (when-let [derived (:derived db)]
     (let [nodes (:nodes db)
-          child-ids-by-parent (:child-ids/by-parent db)
+          child-ids-by-parent (:children-by-parent-id db)
           {:keys [parent-id-of child-ids-of index-of pre post subtree-size-of
                   id-by-pre reachable-ids orphan-ids]} derived
 
