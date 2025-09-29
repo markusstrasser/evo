@@ -2,29 +2,70 @@
   "Transaction interpreter: normalization, validation, execution pipeline."
   (:require [core.db :as db]
             [core.ops :as ops]
-            [core.schema :as schema]))
+            [core.schema :as schema]
+            [medley.core :as m]))
+
+(defn- find-index
+  "Find index of target-id in siblings vector. Returns -1 if not found.
+   Uses medley's indexed for idiomatic Clojure."
+  [siblings target-id]
+  (or (some (fn [[idx id]] (when (= id target-id) idx))
+            (m/indexed siblings))
+      -1))
+
+(defn- resolve-anchor-position
+  "Resolve :at anchor to concrete index within siblings list.
+
+   Handles:
+   - Keywords (:first, :last)
+   - Integer indices (used as-is)
+   - Relative anchors ({:before id}, {:after id})
+   - Falls back to fallback-idx for invalid anchors"
+  [siblings at fallback-idx]
+  (cond
+    (= at :first)  0
+    (= at :last)   (count siblings)
+    (integer? at)  at
+
+    (map? at)
+    (let [{:keys [before after]} at]
+      (cond
+        before (let [idx (find-index siblings before)]
+                 (if (neg? idx) fallback-idx idx))
+        after  (let [idx (find-index siblings after)]
+                 (if (neg? idx) fallback-idx (inc idx)))
+        :else  fallback-idx))
+
+    :else fallback-idx))
 
 (defn- is-noop-place?
-  "Check if a :place operation is a no-op (same parent and index)."
+  "Check if a :place operation is a no-op (same parent and index).
+
+   A place is a noop when:
+   1. The node stays under the same parent, AND
+   2. After applying the place logic (remove → resolve → insert),
+      the node ends up at the same index
+
+   Returns true for noop operations, nil for non-:place operations."
   [db op]
   (when (= (:op op) :place)
     (let [{:keys [id under at]} op
-          derived (:derived db)
-          current-parent (get-in derived [:parent-of id])
-          current-siblings (get (:children-by-parent db) current-parent [])
-          current-idx (.indexOf current-siblings id)
-          resolved-idx (case at
-                         :first 0
-                         :last (count current-siblings)
-                         (cond
-                           (integer? at) at
-                           (map? at) (cond
-                                       (:before at) (.indexOf current-siblings (:before at))
-                                       (:after at) (inc (.indexOf current-siblings (:after at)))
-                                       :else current-idx)
-                           :else current-idx))]
-      (and (= current-parent under)
-           (= current-idx resolved-idx)))))
+          current-parent (get-in db [:derived :parent-of id])]
+
+      ;; If changing parents, definitely not a noop
+      (when (= current-parent under)
+        (let [current-siblings (get-in db [:children-by-parent current-parent] [])
+              current-idx (find-index current-siblings id)
+
+              ;; Mimic place operation: remove node from siblings
+              siblings-without-node (vec (remove #(= % id) current-siblings))
+
+              ;; Resolve anchor in the siblings list WITHOUT the node
+              target-idx (resolve-anchor-position siblings-without-node at current-idx)]
+
+          ;; After inserting at target-idx, the node will be at target-idx
+          ;; It's a noop if that position equals where it started
+          (= current-idx target-idx))))))
 
 (defn- remove-noop-places
   "Filter out no-op :place operations."
