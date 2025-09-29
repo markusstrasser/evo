@@ -1,8 +1,10 @@
 ### REPL Integration
-- **Dev utilities**: `src/dev.clj` - unified ClojureScript REPL bridge
-- **Auto-connection**: `(init!)` connects to shadow-cljs nREPL
-- **Smart evaluation**: `(cljs! "code")` for browser, `(clj! "code")` for Clojure
-- **Environment health**: `(preflight-check!)` validates full stack
+- **Dev utilities**: `dev/` - generic ClojureScript development tools
+  - `dev/repl.clj` - shadow-cljs REPL bridge (connect!, init!, cljs!, clj!)
+  - `dev/health.clj` - build health checks (preflight-check!, cache-stats)
+  - `dev/fixtures.cljc` - test data builders (make-db, gen-linear-tree, etc.)
+- **Quick start**: `(require '[repl :as repl]) (repl/init!)`
+- **Documentation**: See `dev/README.md` for workflows
 
 ### Investigation Tactics That Worked
 - `bat`, `rg`, and targeted file reads kept exploration token-efficient.

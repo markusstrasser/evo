@@ -4,129 +4,168 @@
 
 ```clojure
 ;; Load dev environment
-(load-file "src/dev.clj")
+(require '[repl :as repl])
 
-;; Initialize REPL connection
-(init!)
+;; Initialize REPL (loads core.{db,ops,interpret}, fixtures)
+(repl/init!)
 
-;; Check everything is working
-(preflight-check!)
+;; Build test data
+(require '[fixtures :as fix])
+(def tree (fix/gen-balanced-tree 2 3))
 ```
 
-## Dev Environment API
+## Dev Environment Structure
 
-See **[AGENTS.md](./AGENTS.md)** for complete architecture and testing infrastructure.
+Located in `dev/` directory:
+- **`repl.clj`** - Shadow-cljs REPL bridge (connect!, init!, cljs!, clj!)
+- **`health.clj`** - Build health checks (preflight-check!, cache-stats)
+- **`fixtures.cljc`** - Test data builders (make-db, gen-linear-tree, etc.)
+- **`README.md`** - Complete workflow documentation
 
-### Core Functions
+## Core Functions
 
-#### Connection & Setup
-- `(init!)` - Auto-connect to shadow-cljs nREPL, establishes browser REPL
-- `(disconnect!)` - Clean shutdown of connections
-- `(status)` - Show connection and environment status
-- `(preflight-check!)` - Validate full stack (shadow-cljs, browser, nREPL)
+### REPL Connection (`dev/repl.clj`)
+- `(repl/connect!)` - Connect to shadow-cljs REPL for :frontend build
+- `(repl/init!)` - Load core namespaces and fixtures
+- `(repl/cljs! "code")` - Evaluate ClojureScript in browser
+- `(repl/clj! "code")` - Evaluate Clojure in JVM
 
-#### Code Evaluation
-- `(cljs! "code")` - Evaluate ClojureScript in browser context
-- `(clj! "code")` - Evaluate Clojure in Node.js context  
-- `(smart-eval! "code")` - Auto-detect context and evaluate appropriately
+### Health Checks (`dev/health.clj`)
+- `(h/preflight-check!)` - Validate environment (shadow-cljs, cache)
+- `(h/cache-stats)` - Show cache sizes (.shadow-cljs, out, target)
+- `(h/clear-caches!)` - Nuclear option: clear all caches
+- `(h/check-shadow-conflicts)` - Detect process conflicts
 
-#### Application State
-- `(inspect-store)` - View current application state
-- `(inspect-store :path [:selection])` - View specific state path
-- `(reload-app!)` - Reload application without losing REPL connection
+### Test Fixtures (`dev/fixtures.cljc`)
+- `(fix/make-db nodes children-map)` - Build custom db shape
+- `(fix/gen-linear-tree depth)` - Generate chain: root→n1→n2→...
+- `(fix/gen-flat-tree count)` - Generate root with N children
+- `(fix/gen-balanced-tree depth branch)` - Generate balanced tree
+- `fix/simple-tree` - Predefined 3-node tree
+- `fix/empty-db` - Minimal empty database
 
-#### Testing & Debugging
-- `(trigger-command! :toggle-selection {:target-id "node-123"})` - Dispatch commands
-- `(simulate-keypress! "ArrowDown")` - Simulate keyboard input
-- `(set-test-state! {:nodes [...] :selection [...]})` - Set up test scenarios
-- `(count-nodes)` - Get current node count
-- `(dom-snapshot!)` - Capture DOM state for debugging
+## Development Workflows
 
-#### DOM Utilities
-- `(get-dom-element "#selector")` - Query DOM elements
-- `(assert-dom-count ".node" 5)` - Assert element counts for testing
-- `(clear-console!)` - Clear browser console
+### 1. Build Test Data
+```clojure
+(require '[fixtures :as fix])
 
-## Testing Workflows
+;; Custom tree
+(def db (fix/make-db {"root" {:type :div :props {}}
+                      "child" {:type :span :props {}}}
+                     {"root" ["child"]}))
+
+;; Generated trees
+(def linear (fix/gen-linear-tree 5))
+(def flat (fix/gen-flat-tree 10))
+(def balanced (fix/gen-balanced-tree 3 2))
+```
+
+### 2. Test Operations
+```clojure
+(require '[core.ops :as ops])
+
+;; Build incrementally
+(def db (-> (fix/make-db {} {})
+            (ops/create-node "root" :div {})
+            (ops/create-node "header" :header {})
+            (ops/place "header" "root" :first)))
+
+;; Verify structure
+(:nodes db)
+(:children-by-parent db)
+(:roots db)
+```
+
+### 3. Validate Invariants
+```clojure
+(require '[core.db :as db])
+
+;; Re-derive should be stable
+(= (:derived my-db)
+   (:derived (db/derive my-db)))
+
+;; Roots should be correct
+(db/roots-of my-db)
+```
+
+## Testing
 
 ### Running Tests
 ```bash
-# All Node.js tests with validation
+# All tests
 npm test
 
-# ClojureScript tests via REPL
-npm run test:cljs
-
-# Environment validation only  
-npm run validate-env
+# Specific test file
+npx shadow-cljs compile test
+node out/tests.js
 ```
 
 ### Interactive Testing
 ```clojure
-;; Set up a test scenario
-(set-test-state! {:nodes [{:id "test-1" :content "Hello"}
-                          {:id "test-2" :content "World"}]
-                  :selection []})
+;; Build scenario
+(def scenario (fix/gen-flat-tree 5))
+(def db (:db scenario))
 
-;; Interact with the application
-(simulate-keypress! "ArrowDown")
-(trigger-command! :toggle-selection {:target-id "test-1"})
+;; Apply operations
+(def updated (ops/create-node db "new" :span {}))
+(def placed (ops/place updated "new" (:root-id scenario) :last))
 
-;; Verify results
-(inspect-store :path [:selection])
-(count-nodes)
-```
-
-### Test Result Analysis
-```bash
-# View latest test results
-cat ./test-results/latest-node-results.txt
-
-# Check logs for debugging
-ls ./logs/
+;; Verify
+(get (:children-by-parent placed) (:root-id scenario))
 ```
 
 ## Architecture Patterns
 
-### Command Pattern
-All user actions become transactions:
+### Pure Operations
+All operations are pure functions:
 ```clojure
-;; Intent functions return transaction vectors
-(defn toggle-selection-intent [target-id]
-  [{:op :update-view 
-    :path [:selection] 
-    :value (toggle-selection @current-state target-id)}])
+(ops/create-node db id type props)  ; → new db
+(ops/place db id parent-id at)      ; → new db
+(ops/update-node db id props)       ; → new db
 ```
 
-### Pure Functions (Kernel)
-Utility functions never mutate:
+### Canonical DB Shape
 ```clojure
-;; Always return new values
-(selected? state node-id)     ; → boolean
-(toggle-selection state id)   ; → new state
-(node-exists? state id)       ; → boolean
+{:nodes {id {:type :div :props {}}}
+ :children-by-parent {parent-id [child-ids]}
+ :roots #{root-ids}
+ :derived {:parent-id-of {id parent-id}
+           :index-of {id index}}}
 ```
 
-### REPL-Driven Development
-1. Write function in file
-2. Evaluate with `(cljs! "(require '[my.namespace :as ns] :reload)")`
-3. Test interactively: `(cljs! "(ns/my-function test-data)")`
-4. Verify in browser: `(inspect-store)` or `(dom-snapshot!)`
+### Fixtures for Testing
+Use fixtures to avoid repetitive setup:
+```clojure
+;; Instead of building manually
+(def db {:nodes {...} :children-by-parent {...} ...})
 
-## Error Troubleshooting
+;; Use fixture
+(def db (:db (fix/gen-balanced-tree 2 3)))
+```
 
-### Connection Issues
-- **nREPL not found**: Check `shadow-cljs watch frontend` is running
-- **Browser disconnected**: Refresh localhost:8080, run `(init!)` again
-- **Port conflicts**: Default ports 7888-7900, checks automatically
+## Troubleshooting
 
-### Test Failures
-- **"0 failures, 0 errors"** is success pattern
-- Check `./logs/` for detailed error messages
-- Use `(preflight-check!)` to validate environment
+### Environment Issues
+```clojure
+;; Check health
+(require '[health :as h])
+(h/preflight-check!)
+
+;; View cache stats
+(h/cache-stats)
+
+;; Clear if needed
+(h/clear-caches!)
+```
 
 ### Common Patterns
-- **Always use** `npx shadow-cljs` in scripts
-- **Project-local files** only (no /tmp dependencies)  
-- **Environment validation** before operations
-- **REPL reload** with `:reload` flag for latest code
+- **Always use** fixtures for test data
+- **Project-local files** only (no /tmp dependencies)
+- **Pure functions** for all operations
+- **Validate** with db/derive after changes
+
+## See Also
+- `dev/README.md` - Complete dev tooling documentation
+- `src/core/db.clj` - Canonical db shape and invariants
+- `src/core/ops.clj` - Three core operations
