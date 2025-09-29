@@ -1,4 +1,7 @@
-Short answer: negotiation ≠ “just plugins,” but it’s not magic either. It’s a typed, constraint-solved, multi-dispatch layer sitting above plugins that (a) chooses among competing handlers at runtime, (b) proves why something can’t run (capability gaps), and (c) records the choice so replays are deterministic. Classic plugins are “if intent X then call fn Y.” Negotiation is “given X + world W + constraints C, select a plan from many candidates whose requires ⊆ provides(W) and best satisfies C; else return a structured gap.” That unlocks fallback, optimization, and explainability. It’s not more “genius”; it’s a different contract.
+
+negotiation ≠ “just plugins,” but it’s not magic either. It’s a typed, constraint-solved, multi-dispatch layer sitting above plugins that (a) chooses among competing handlers at runtime, (b) proves why something can’t run (capability gaps), and (c) records the choice so replays are deterministic. Classic plugins are “if intent X then call fn Y.” Negotiation is “given X + world W + constraints C, select a plan from many candidates whose requires ⊆ provides(W) and best satisfies C; else return a structured gap.” That unlocks fallback, optimization, and explainability. It’s not more “genius”; it’s a different contract.
+
+> this is basically coercion graphs from my proseflow project in 2020
 
 What changes concretely vs your current register-intent/derive/validate:
 •	Multiplicity & ranking: many candidates per intent; selection is late-bound by context (latency budget, collab mode, device). Plugins today are single-target dispatch.
@@ -71,3 +74,40 @@ ok    (filter #(clojure.set/subset? (:requires % #{}) @world) cands)]
 {:gap :missing-capability :required (reduce clojure.set/union #{} (map :requires cands))})))
 
 Net: you can ship “simple plugins” (structure, graph, etc.) immediately. By enforcing plan+requires+cost and a world placeholder now, you’ve already installed the socket for real negotiation later—no refactors, just add multiple candidates and a selector.
+
+
+
+## Action
+
+Label the underlying problem: Selection, not dispatch. Plugins give handlers; negotiation chooses plans with preconditions and costs under a typed world.
+
+Freeze these contracts (tiny, testable):
+•	Capability manifest (per module)
+{:module :structure/wrap   :provides #{:intent/structure.wrap}   :requires #{:cap/tree :cap/order}   :cost (fn [ctx] 3) ; pure, deterministic   :lower (fn [db intent ctx] [{:op :k/create ...} ...])}
+•	World (host state): #{:cap/tree :cap/order :cap/view-diff ...} (namespaced, versioned).
+•	Plan / Gap types
+Plan := {:id kw :requires set :ops vector :cost int}
+Gap  := {:gap :missing-capability :required set :context ctx-snapshot}
+•	Evaluator (single choke point):
+(negotiate db intent ctx world) -> {plan|gap} then (interpret db plan.ops)
+Log {:candidate plan.id :world-hash (hash world) :ctx-fingerprint ...}.
+•	Laws/tests: (1) deterministic selection under same world, intent, ctx; (2) tx associativity; (3) place idempotence; (4) derive==recompute after each op.
+
+Minimal algorithm (ranked filter, no solver theater):
+1.	collect candidates for intent
+2.	filter by requires ⊆ world
+3.	compute pure cost(ctx); pick arg-min with stable tie-break (:id)
+4.	none? return Gap (machine-actionable)
+5.	apply plan; trace decision.
+
+Where your text should land
+
+Replace most of Part IV with a 1-page “Negotiation Core Spec” (the above). Then keep a short “Formalisms appendix”:
+•	Operads → your architectural wiring diagrams (legal composition patterns).
+•	Session types → protocol for multi-round intents (e.g., collab merge) if/when you add them.
+•	Refinement types → capability constraints you want statically checked later.
+Everything else is optional frosting.
+
+Why this isn’t “just plugins”
+
+In one line: plugins provide handlers; negotiation proves satisfiability and optimality under a typed world and returns actionable gaps. That buys fallback, policy pruning, and reproducible plans—things a dispatch table can’t do.
