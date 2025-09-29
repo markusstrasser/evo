@@ -19,7 +19,16 @@
     "clean": "npm run clean:shadow && npm run clean:npm && npm run clean:install",
     "clean:shadow": "npx shadow-cljs stop && rm -rf .shadow-cljs out target .cljs_node_repl",
     "clean:npm": "npm cache clean --force",
-    "clean:install": "npm install"
+    "clean:install": "npm install",
+    "check": "npm run check:lint && npm run check:compile",
+    "check:lint": "clj-kondo --lint src test --fail-level error",
+    "check:compile": "npx shadow-cljs compile test",
+    "check:isolation": "./dev/scripts/check-core-isolation.sh",
+    "fix": "npm run fix:cache",
+    "fix:cache": "rm -rf .shadow-cljs node_modules out target && npm install",
+    "fix:deps": "npm outdated && npm update",
+    "agent:preflight": "./dev/scripts/preflight.sh",
+    "agent:health": "./dev/scripts/agent-env-check.sh"
   },
   "dependencies": {
     "concurrently": "^9.2.1"
