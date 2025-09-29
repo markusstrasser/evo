@@ -7,27 +7,27 @@
 ;; --- Registry ------------------------------------------------
 
 (def registry
-  {::id [:string {:min 1}]
-   ::pos [:or nil?
-          [:enum :first :last]
-          [:tuple [:= :index] int?]
-          [:tuple [:= :before] ::id]
-          [:tuple [:= :after] ::id]]
+  {::node-id [:string {:min 1}]
+   ::anchor [:or nil?
+             [:enum :first :last]
+             [:tuple [:= :index] int?]
+             [:tuple [:= :before-id] ::node-id]
+             [:tuple [:= :after-id] ::node-id]]
 
    ;; Core ops (closed)
    ::create-node-op [:map
                      [:op [:= :create-node]]
-                     [:id ::id]
-                     [:type {:optional true} keyword?]
+                     [:node-id ::node-id]
+                     [:node-type {:optional true} keyword?]
                      [:props {:optional true} map?]]
    ::place-op [:map
                [:op [:= :place]]
-               [:id ::id]
-               [:parent-id {:optional true} [:or nil? ::id]]
-               [:pos {:optional true} ::pos]]
+               [:node-id ::node-id]
+               [:parent-id {:optional true} [:or nil? ::node-id]]
+               [:anchor {:optional true} ::anchor]]
    ::update-node-op [:map
                      [:op [:= :update-node]]
-                     [:id ::id]
+                     [:node-id ::node-id]
                      [:props {:optional true} map?]
                      [:sys {:optional true} map?]
                      [:updates {:optional true} map?]]
@@ -36,46 +36,46 @@
                [:pred fn?]]
 
    ;; Edges primitive ops
-   ::edges [:map-of keyword? [:map-of ::id [:set ::id]]]
+   ::edges [:map-of keyword? [:map-of ::node-id [:set ::node-id]]]
    ::add-ref-op [:map
                  [:op [:= :add-ref]]
-                 [:rel keyword?]
-                 [:src ::id]
-                 [:dst ::id]]
+                 [:relation keyword?]
+                 [:source-id ::node-id]
+                 [:target-id ::node-id]]
    ::rm-ref-op [:map
                 [:op [:= :rm-ref]]
-                [:rel keyword?]
-                [:src ::id]
-                [:dst ::id]]
+                [:relation keyword?]
+                [:source-id ::node-id]
+                [:target-id ::node-id]]
 
    ;; Sugar ops (now with tight, closed shapes via multi-schema)
    ::insert-op [:map
                 [:op [:= :insert]]
-                [:id ::id]
-                [:parent-id ::id]
-                [:type {:optional true} keyword?]
+                [:node-id ::node-id]
+                [:parent-id ::node-id]
+                [:node-type {:optional true} keyword?]
                 [:props {:optional true} map?]
-                [:pos {:optional true} ::pos]]
+                [:anchor {:optional true} ::anchor]]
    ::move-op [:map
               [:op [:= :move]]
-              [:id ::id]
-              [:from-parent-id {:optional true} ::id]
-              [:to-parent-id ::id]
-              [:pos {:optional true} ::pos]]
+              [:node-id ::node-id]
+              [:from-parent-id {:optional true} ::node-id]
+              [:target-parent-id ::node-id]
+              [:anchor {:optional true} ::anchor]]
    ::delete-op [:map
                 [:op [:= :delete]]
-                [:id ::id]]
+                [:node-id ::node-id]]
    ::reorder-op [:map
                  [:op [:= :reorder]]
-                 [:id ::id]
-                 [:parent-id ::id]
-                 [:pos ::pos]]
+                 [:node-id ::node-id]
+                 [:parent-id ::node-id]
+                 [:anchor ::anchor]]
    ::move-up-op [:map
                  [:op [:= :move-up]]
-                 [:id ::id]]
+                 [:node-id ::node-id]]
    ::move-down-op [:map
                    [:op [:= :move-down]]
-                   [:id ::id]]
+                   [:node-id ::node-id]]
    ::sugar-op [:multi {:dispatch :op}
                [:insert ::insert-op]
                [:move ::move-op]
@@ -89,14 +89,14 @@
    ::tx [:or nil? ::op [:sequential ::op]]
 
    ::node [:map
-           [:type keyword?]
+           [:node-type keyword?]
            [:props {:optional true} map?]
            [:sys {:optional true} map?]]
 
    ::db [:map
          [:version {:optional true} int?]
-         [:nodes [:map-of ::id ::node]]
-         [:child-ids/by-parent [:map-of ::id [:vector ::id]]]
+         [:nodes [:map-of ::node-id ::node]]
+         [:children-by-parent-id [:map-of ::node-id [:vector ::node-id]]]
          [:derived {:optional true} map?]
          [:refs {:optional true} ::edges]
          [:edge-registry {:optional true}
@@ -106,19 +106,19 @@
             [:unique? {:optional true} boolean?] ;; at most one dst per (rel,src)
             [:src-type {:optional true} any?] ;; predicates or keywords you check in op
             [:dst-type {:optional true} any?]]]]
-         [:roots {:optional true} [:vector ::id]]]
+         [:roots {:optional true} [:vector ::node-id]]]
 
    ;; Function Schemas for instrumentation
-   ::pos->index-fn [:=> [:cat ::db ::id ::id ::pos] int?]
+   ::pos->index-fn [:=> [:cat ::db ::node-id ::node-id ::anchor] int?]
    ::place-args [:map
-                 [:id ::id]
-                 [:parent-id {:optional true} [:or nil? ::id]]
-                 [:pos {:optional true} ::pos]]
+                 [:node-id ::node-id]
+                 [:parent-id {:optional true} [:or nil? ::node-id]]
+                 [:anchor {:optional true} ::anchor]]
    ::place*-fn [:=> [:cat ::db ::place-args] ::db]
    ::apply-tx+effects*-fn [:=> [:cat ::db ::tx [:? [:map
-                                                  [:assert? {:optional true} boolean?]
-                                                  [:pipeline {:optional true} vector?]
-                                                  [:trace? {:optional true} boolean?]]]]
+                                                    [:assert? {:optional true} boolean?]
+                                                    [:pipeline {:optional true} vector?]
+                                                    [:trace? {:optional true} boolean?]]]]
                            [:map
                             [:db ::db]
                             [:effects vector?]
