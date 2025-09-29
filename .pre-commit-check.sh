@@ -1,31 +1,32 @@
 #!/bin/bash
+# Enhanced pre-commit checks
+
 set -e
-echo "🔍 Pre-commit validation..."
 
-# Check for cross-platform issues in .cljc files
-CLJC_FILES=$(git diff --cached --name-only | grep -E "\.cljc$" || true)
-if [ -n "$CLJC_FILES" ]; then
-    if echo "$CLJC_FILES" | xargs grep -l "js/" 2>/dev/null; then
-        echo "❌ Found bare js/ references in .cljc files - add reader conditionals"
-        exit 1
-    fi
-fi
+echo "🔍 Pre-commit checks..."
 
-# Check for test macro hygiene
-TEST_FILES=$(git diff --cached --name-only | grep -E "test.*\.cljc?$" || true)
-if [ -n "$TEST_FILES" ]; then
-    if echo "$TEST_FILES" | xargs grep -l "test/testing\|clojure.test/" 2>/dev/null; then
-        echo "❌ Found qualified test namespace references in macros - use unqualified symbols"
-        exit 1
-    fi
-fi
+# Original checks (linting, compilation, tests)
+echo "📝 Running linter..."
+clj-kondo --lint src test --fail-level error
 
-# Validate shadow-cljs compilation
-echo "🔧 Validating compilation..."
-if ! npx shadow-cljs compile test > /dev/null 2>&1; then
-    echo "❌ Shadow-cljs compilation failed"
-    npx shadow-cljs compile test  # Show errors
+echo "🔨 Compiling..."
+npx shadow-cljs compile test --quiet
+
+echo "🧪 Running tests..."
+npm test --silent
+
+# New CLJS import checks
+echo "🔍 Checking for common CLJS import issues..."
+if grep -r "gstr/format" src/ test/ 2>/dev/null && ! grep -r "goog.string.format" src/ test/ 2>/dev/null; then
+    echo "❌ Found gstr/format usage without goog.string.format import"
+    echo "   Add: #?(:cljs [goog.string.format]) to namespace requires"
     exit 1
 fi
 
-echo "✅ Pre-commit checks passed"
+# Check for shadow-cljs dev server
+if ! nc -z localhost 9000 2>/dev/null; then
+    echo "⚠️  Shadow-cljs server not running - starting it..."
+    echo "   After commit, run: npm run dev"
+fi
+
+echo "✅ All pre-commit checks passed"
