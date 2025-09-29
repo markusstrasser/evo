@@ -1,5 +1,11 @@
 # TBD
 
+
+## MOTTO
+Build → Learn → Extract → Generalize
+**Not: Theorize → Propose → Analyze → Repeat**
+
+## Assume
 * AI-assisted development.
 * Assume it's mostly for LLMs to patch in events, features and change uis on the
   fly generatively
@@ -8,7 +14,6 @@
 * There should be plugins later on ... it's an editor but also later a chatbot
   and genui thing where the LLM REPL-s in commands and forms
 
-AGENT:
 > You’re not building a UI framework; you’re carving a UI IR + interpreter
 > that’s LLM-native and human (cognitive complexity) friendly.
 
