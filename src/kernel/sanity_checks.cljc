@@ -542,6 +542,38 @@
   []
   (:details (run-all)))
 
+(defn three-op-kernel-basic
+  "Sanity check for the three-op kernel implementation."
+  []
+  (test-safely "three-op-kernel-basic"
+               (fn []
+                 (require '[core.interpret :as interp])
+                 (require '[core.db :as db])
+
+      ;; Test basic three-op workflow
+                 (let [empty-db (db/empty-db)
+                       ops [{:op :create-node :id "test1" :type :text :props {:content "Hello"}}
+                            {:op :place :id "test1" :under :doc :at :last}
+                            {:op :update-node :id "test1" :props {:content "World"}}]
+                       result (interp/interpret empty-db ops)]
+
+        ;; Assert no issues
+                   (assert (empty? (:issues result)) "Should have no issues")
+
+        ;; Assert correct final state
+                   (assert (= "World" (get-in result [:db :nodes "test1" :props :content]))
+                           "Should have updated content")
+
+        ;; Assert validation passes
+                   (let [validation (interp/validate (:db result))]
+                     (assert (:ok? validation) "Database should be valid"))
+
+                   {:ops-applied (count (:trace result))
+                    :final-content (get-in result [:db :nodes "test1" :props :content])
+                    :validation-passed (:ok? (interp/validate (:db result)))}))
+
+               "Three-op kernel should handle basic create/place/update workflow"))
+
 (comment
   ;; REPL usage examples:
 
