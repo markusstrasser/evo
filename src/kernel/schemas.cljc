@@ -115,10 +115,16 @@
                  [:parent-id {:optional true} [:or nil? ::id]]
                  [:pos {:optional true} ::pos]]
    ::place*-fn [:=> [:cat ::db ::place-args] ::db]
-   ::apply-tx*-fn [:=> [:cat ::db ::tx [:? [:map
-                                            [:derive {:optional true} fn?]
-                                            [:assert? {:optional true} boolean?]]]]
-                   ::db]})
+   ::apply-tx+effects*-fn [:=> [:cat ::db ::tx [:? [:map
+                                                  [:assert? {:optional true} boolean?]
+                                                  [:pipeline {:optional true} vector?]
+                                                  [:trace? {:optional true} boolean?]]]]
+                           [:map
+                            [:db ::db]
+                            [:effects vector?]
+                            [:error {:optional true} map?]
+                            [:findings {:optional true} vector?]
+                            [:trace {:optional true} vector?]]]})
 
 ;; --- Dynamic sugar op schemas ----------------------------------------------
 
