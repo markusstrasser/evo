@@ -3,60 +3,60 @@
 
 (defn create-node
   "Create a node shell. Idempotent - if node exists, no change.
-   
+
    Args:
-     db - database 
+     db - database
      id - node identifier
-     type - node type keyword
+     node-type - node type keyword
      props - node properties map
-     
+
    Returns:
      Updated database"
-  [db id type props]
+  [db id node-type props]
   (if (contains? (:nodes db) id)
     db ; idempotent - node already exists
-    (assoc-in db [:nodes id] {:type type :props props})))
+    (assoc-in db [:nodes id] {:type node-type :props props})))
+
+(defn- find-anchor-index
+  "Find index of target-id in siblings, returning -1 if not found."
+  [siblings target-id]
+  (.indexOf siblings target-id))
+
+(defn- resolve-relative-anchor
+  "Resolve {:before id} or {:after id} to concrete index.
+   Returns append-position if target not found."
+  [siblings anchor-map append-position]
+  (let [[relation target-id] (or (find anchor-map :before)
+                                  (find anchor-map :after))
+        target-idx (find-anchor-index siblings target-id)]
+    (if (neg? target-idx)
+      append-position
+      (cond-> target-idx
+        (= relation :after) inc))))
 
 (defn- resolve-at-position
   "Resolve :at anchor to concrete index within siblings list.
-   
+
+   Anchor types:
+     - integer: direct index (clamped to [0, count])
+     - :first/:last: start or end position
+     - {:before id}: insert before target (or end if not found)
+     - {:after id}: insert after target (or end if not found)
+
    Args:
      siblings - vector of sibling IDs
      at - anchor specification
-     
+
    Returns:
      Concrete index (clamped to valid range)"
   [siblings at]
-  (let [max-idx (count siblings)]
+  (let [append-position (count siblings)]
     (cond
-      (integer? at)
-      (max 0 (min at max-idx))
-
-      (= at :first)
-      0
-
-      (= at :last)
-      max-idx
-
-      (map? at)
-      (cond
-        (:before at)
-        (let [target-id (:before at)
-              target-idx (.indexOf siblings target-id)]
-          (if (>= target-idx 0)
-            target-idx
-            max-idx)) ; if target not found, append at end
-
-        (:after at)
-        (let [target-id (:after at)
-              target-idx (.indexOf siblings target-id)]
-          (if (>= target-idx 0)
-            (inc target-idx)
-            max-idx)) ; if target not found, append at end
-
-        :else max-idx)
-
-      :else max-idx)))
+      (integer? at)     (max 0 (min at append-position))
+      (= at :first)     0
+      (= at :last)      append-position
+      (map? at)         (resolve-relative-anchor siblings at append-position)
+      :else             append-position)))
 
 (defn place
   "Move node to new parent at specified position. Removes from current parent first.
@@ -99,15 +99,15 @@
     (assoc-in db-removed [:children-by-parent under] new-siblings)))
 
 (defn- deep-merge
-  "Recursively merge maps. For nested maps, merge recursively. 
+  "Recursively merge maps. For nested maps, merge recursively.
    For non-map values, the new value overwrites the old."
-  [old new]
+  [old-val new-val]
   (cond
-    (and (map? old) (map? new))
-    (merge-with deep-merge old new)
+    (and (map? old-val) (map? new-val))
+    (merge-with deep-merge old-val new-val)
 
     :else
-    new))
+    new-val))
 
 (defn update-node
   "Update node properties using recursive merge.
