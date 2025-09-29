@@ -1,4 +1,4 @@
-(ns kernel.deck
+(ns labs.diagnostics.deck
   "Invariant checking deck - data-driven, configurable finding system.
 
    Replaces brittle assert with structured findings registry.
@@ -7,7 +7,8 @@
    Usage:
      (deck/run db {:when #{:post} :level>= :warn})
      => [{:rule :node-exists :level :error :at [:child-ids/by-parent \"parent1\"] :msg \"...\"}]"
-  (:require [medley.core :as medley]))
+  (:require [medley.core :as medley]
+            [clojure.string :as str]))
 
 (def ^:private rules
   "Registry of invariant checking rules. Each rule specifies:
@@ -98,11 +99,11 @@
   (if (empty? findings)
     "✅ No invariant violations found"
     (str "❌ Found " (count findings) " violation(s):\n"
-         (clojure.string/join "\n"
-           (map-indexed
-             (fn [i {:keys [rule level msg]}]
-               (str "  " (inc i) ". [" (name level) "] " (name rule) ": " msg))
-             findings)))))
+         (str/join "\n"
+                   (map-indexed
+                    (fn [i {:keys [rule level msg]}]
+                      (str "  " (inc i) ". [" (name level) "] " (name rule) ": " msg))
+                    findings)))))
 
 (comment
   ;; REPL usage examples:

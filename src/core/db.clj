@@ -73,7 +73,7 @@
          :post (into {} (map-indexed (fn [idx id] [id idx]) post-vec))
          :id-by-pre (into {} (map-indexed (fn [idx id] [idx id]) pre-vec))}))))
 
-(defn derive
+(defn derive-indexes
   "Recompute all derived maps from canonical DB state. O(n) operation."
   [db]
   (let [{:keys [children-by-parent roots]} db
@@ -145,8 +145,8 @@
         (when (= child parent)
           (error! "Node %s is its own parent" child)))
 
-      ;; :derived == (derive (assoc db :derived {}))
-      (let [recomputed-derived (:derived (derive (assoc db :derived {})))]
+      ;; :derived == (derive-indexes (assoc db :derived {}))
+      (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
         (when (not= derived recomputed-derived)
           (error! ":derived is stale - does not match recomputed version")))
 

@@ -41,7 +41,7 @@
     (let [db (-> (db/empty-db)
                  (ops/create-node "node1" :text {:content "Hello"})
                  (ops/place "node1" :doc :last))
-          derived (db/derive db)]
+          derived (db/derive-indexes db)]
       (is (= ["node1"] (get-in db [:children-by-parent :doc])))
       (is (= :doc (get-in derived [:derived :parent-of "node1"])))
       (is (= 0 (get-in derived [:derived :index-of "node1"])))))
@@ -88,7 +88,7 @@
                  (ops/place "parent" :doc :last)
                  (ops/place "child1" "parent" :first)
                  (ops/place "child2" "parent" :last))
-          derived-db (db/derive db)
+          derived-db (db/derive-indexes db)
           derived (:derived derived-db)]
 
       (is (= :doc (get-in derived [:parent-of "parent"])))
@@ -109,7 +109,7 @@
     (let [db (-> (db/empty-db)
                  (ops/create-node "node1" :text {})
                  (ops/place "node1" :doc :last)
-                 (db/derive))
+                 (db/derive-indexes))
           result (db/validate db)]
       (is (:ok? result))
       (is (empty? (:errors result)))))
@@ -152,7 +152,7 @@
                  (ops/create-node "child" :text {})
                  (ops/place "parent" :doc :last)
                  (ops/place "child" "parent" :last)
-                 (db/derive))
+                 (db/derive-indexes))
           ops [{:op :place :id "parent" :under "child" :at :last}] ; would create cycle
           result (interp/interpret db ops)]
 
@@ -162,7 +162,7 @@
   (testing "Duplicate create issues warning but doesn't change db"
     (let [db (-> (db/empty-db)
                  (ops/create-node "node1" :text {:content "Original"})
-                 (db/derive))
+                 (db/derive-indexes))
           ops [{:op :create-node :id "node1" :type :text :props {:content "New"}}]
           result (interp/interpret db ops)]
 
@@ -174,7 +174,7 @@
   (testing "Adjacent update operations are merged"
     (let [db (-> (db/empty-db)
                  (ops/create-node "node1" :text {:a 1})
-                 (db/derive))
+                 (db/derive-indexes))
           ops [{:op :update-node :id "node1" :props {:b 2}}
                {:op :update-node :id "node1" :props {:c 3}}]
           result (interp/interpret db ops)]
@@ -187,7 +187,7 @@
     (let [db (-> (db/empty-db)
                  (ops/create-node "node1" :text {})
                  (ops/place "node1" :doc 0)
-                 (db/derive))
+                 (db/derive-indexes))
           ops [{:op :place :id "node1" :under :doc :at 0}] ; same position
           result (interp/interpret db ops)]
 
@@ -201,7 +201,7 @@
                  (ops/create-node "node3" :text {})
                  (ops/place "node1" :doc :last)
                  (ops/place "node2" :doc :last)
-                 (db/derive))
+                 (db/derive-indexes))
           ops [{:op :place :id "node3" :under :doc :at {:before "missing"}}] ; invalid anchor
           result (interp/interpret db ops)]
 

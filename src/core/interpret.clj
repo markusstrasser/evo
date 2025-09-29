@@ -173,7 +173,7 @@
   [db txs]
   (let [normalized-ops (normalize-ops db txs)
         [final-db issues] (validate-ops db normalized-ops)
-        derived-db (db/derive final-db)
+        derived-db (db/derive-indexes final-db)
 
         ;; Simple trace - just the operations that were applied
         applied-ops (take (- (count normalized-ops) (count issues)) normalized-ops)
@@ -184,10 +184,10 @@
      :trace trace}))
 
 ;; Public API functions matching the spec
-(defn derive
+(defn derive-db
   "Recompute derived state for database."
   [db]
-  (db/derive db))
+  (db/derive-indexes db))
 
 (defn validate
   "Validate database invariants."

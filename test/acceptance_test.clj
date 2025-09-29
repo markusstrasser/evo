@@ -1,6 +1,6 @@
 (ns acceptance-test
   "End-to-end acceptance tests for the refactored system."
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing]]
             [clojure.edn :as edn]
             [core.db :as db]
             [core.interpret :as interpret]

@@ -1,7 +1,7 @@
 (ns legacy-compat-replay-test
   "Golden replay tests using legacy compatibility layer."
   (:require [clojure.edn :as edn]
-            [clojure.test :refer :all]
+            [clojure.test :refer [deftest is testing]]
             [core.db :as db]
             [core.interpret :as interpret]
             [legacy.compat :as compat]))
