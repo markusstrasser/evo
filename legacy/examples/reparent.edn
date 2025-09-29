@@ -1,0 +1,5 @@
+[{:op :insert :id "parent" :type :div :under "root" :at :last}
+ {:op :insert :id "child1" :type :text :props {:content "First"} :under "parent" :at :last}
+ {:op :insert :id "child2" :type :text :props {:content "Second"} :under "parent" :at :last}
+ {:op :move :id "child1" :target-parent-id "root" :anchor :last}
+ {:op :reorder :id "child2" :parent-id "parent" :anchor :first}]
