@@ -5,7 +5,7 @@
   (seq (get-in db [:refs rel id] #{})))
 
 (defn- reachable? [db rel start target]
-  (loop [q (conj clojure.lang.PersistentQueue/EMPTY start)
+  (loop [q (conj #?(:clj clojure.lang.PersistentQueue/EMPTY :cljs #queue []) start)
          seen #{}]
     (when-let [x (peek q)]
       (cond
