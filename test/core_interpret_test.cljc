@@ -1,6 +1,7 @@
 (ns core-interpret-test
   "Tests for core.interpret - transaction pipeline"
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.set :as set]
             [core.db :as db]
             [core.interpret :as interp]))
 
@@ -13,10 +14,10 @@
 (defn db-diff
   "Extract meaningful differences between two dbs for assertions."
   [before after]
-  {:nodes-added (clojure.set/difference (set (keys (:nodes after)))
-                                        (set (keys (:nodes before))))
-   :nodes-removed (clojure.set/difference (set (keys (:nodes before)))
-                                          (set (keys (:nodes after))))
+  {:nodes-added (set/difference (set (keys (:nodes after)))
+                                (set (keys (:nodes before))))
+   :nodes-removed (set/difference (set (keys (:nodes before)))
+                                  (set (keys (:nodes after))))
    :children-changed (into {}
                            (for [parent (keys (:children-by-parent after))
                                  :let [before-children (get (:children-by-parent before) parent [])
