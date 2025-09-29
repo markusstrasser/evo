@@ -1141,3 +1141,16 @@ Derive an `:index-path` vector for every node and add `kernel.path` utilities mi
 - **Proposal 73 · `defeffect` Macro for Effect Detection Registry** — build a registry of effect detectors with consistent payloads and toggles (`docs/ideas/proposal_73_defeffect_registry.md`).
 - **Proposal 74 · `deferror` Macro for Uniform Kernel Exceptions** — eliminate ad hoc `ex-info` usage with structured, registered error definitions (`docs/ideas/proposal_74_deferror_macro.md`).
 - **Proposal 75 · `defschema` Macro for Malli Registry Entries** — replace the literal schema map with macro-registered entries that carry docs and union metadata (`docs/ideas/proposal_75_defschema_registry.md`).
+
+## Additional proposals (2025-09-29 cont.)
+
+- **Proposal 76 · Kakoune-Style Selection Intents** — make selections the primary lowering artefact for move/indent/outdent, mirroring Kakoune’s range-first model (`docs/ideas/proposal_76_kakoune_selection_intents.md`).
+- **Proposal 77 · Bevy-Style Schedule Gates** — turn the pipeline vector into a stage schedule with per-stage `run?` predicates (`docs/ideas/proposal_77_bevy_schedule_gates.md`).
+- **Proposal 78 · Salsa Query Groups** — declare cached derived queries with explicit input slots so we can invalidate lazily (`docs/ideas/proposal_78_salsa_derived_queries.md`).
+- **Proposal 79 · Expresso Rule Declarations** — express invariants as declarative rules with guards, returning counterexample bindings (`docs/ideas/proposal_79_expresso_rule_declarations.md`).
+- **Proposal 80 · HoneySQL Intent Builder** — replace ad-hoc tx vectors with a clause DSL that is easy to extend (`docs/ideas/proposal_80_honeysql_intent_builder.md`).
+- **Proposal 81 · Aero Profiles** — centralise instrumentation flags via profile-aware EDN config (`docs/ideas/proposal_81_aero_profiled_configs.md`).
+- **Proposal 82 · Core.Typed Guardrails** — add optional static types for kernel primitives to catch contract violations earlier (`docs/ideas/proposal_82_coretyped_guardrails.md`).
+- **Proposal 83 · Vlojure Visual EDN** — render tx traces as vedn tokens for human and LLM comprehension (`docs/ideas/proposal_83_vlojure_visual_edn.md`).
+- **Proposal 84 · Neovim Extmark Anchors** — maintain stable cursor anchors that survive text splices (`docs/ideas/proposal_84_neovim_extmark_anchors.md`).
+- **Proposal 85 · MCP Tool Registry** — unify extension registration and validation through an MCP-inspired multimethod hub (`docs/ideas/proposal_85_mcp_tool_registry.md`).
