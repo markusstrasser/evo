@@ -1,7 +1,8 @@
 (ns core.db
   "Canonical DB shape, derive function, and invariants for the three-op kernel."
   (:require [clojure.set :as set]
-            #?(:cljs [goog.string :as gstr])))
+            #?(:cljs [goog.string :as gstr])
+            #?(:cljs [goog.string.format])))
 
 (defn empty-db
   "Create an empty database with canonical shape."
@@ -96,60 +97,55 @@
   "Validate database invariants. Returns {:ok? bool :errors [...]}"
   [db]
   (let [{:keys [nodes children-by-parent roots derived]} db
-        errors (atom [])]
 
-    (letfn [(error! [msg & args]
-              (swap! errors conj (apply #?(:clj format :cljs gstr/format) msg args)))]
+        errors (concat
+                (for [[parent children] children-by-parent
+                      child children
+                      :when (not (contains? nodes child))]
+                  #?(:clj (format "Child %s of parent %s does not exist in :nodes" child parent)
+                     :cljs (gstr/format "Child %s of parent %s does not exist in :nodes" child parent)))
 
-      ;; Every child in :children-by-parent exists in :nodes
-      (doseq [[parent children] children-by-parent
-              child children]
-        (when-not (contains? nodes child)
-          (error! "Child %s of parent %s does not exist in :nodes" child parent)))
+                (for [[parent children] children-by-parent
+                      :when (not= (count children) (count (set children)))]
+                  #?(:clj (format "Parent %s has duplicate children: %s" parent children)
+                     :cljs (gstr/format "Parent %s has duplicate children: %s" parent children)))
 
-      ;; No duplicate siblings
-      (doseq [[parent children] children-by-parent]
-        (when (not= (count children) (count (set children)))
-          (error! "Parent %s has duplicate children: %s" parent children)))
+                (let [child->parents (group-by first
+                                               (for [[parent children] children-by-parent
+                                                     child children]
+                                                 [child parent]))]
+                  (for [[child parent-entries] child->parents
+                        :when (> (count parent-entries) 1)]
+                    #?(:clj (format "Child %s has multiple parents: %s" child (map second parent-entries))
+                       :cljs (gstr/format "Child %s has multiple parents: %s" child (map second parent-entries)))))
 
-;; Unique parent per id
-      (let [child->parents (group-by first
-                                     (for [[parent children] children-by-parent
-                                           child children]
-                                       [child parent]))]
-        (doseq [[child parent-entries] child->parents]
-          (when (> (count parent-entries) 1)
-            (error! "Child %s has multiple parents: %s"
-                    child (map second parent-entries)))))
+                (for [parent (keys children-by-parent)
+                      :when (not (or (contains? roots parent)
+                                     (contains? nodes parent)))]
+                  #?(:clj (format "Parent %s is neither in :roots nor :nodes" parent)
+                     :cljs (gstr/format "Parent %s is neither in :roots nor :nodes" parent)))
 
-      ;; Parents are either in :roots or existing IDs
-      (doseq [parent (keys children-by-parent)]
-        (when-not (or (contains? roots parent)
-                      (contains? nodes parent))
-          (error! "Parent %s is neither in :roots nor :nodes" parent)))
+                (let [has-cycle? (fn has-cycle? [id visited]
+                                   (cond
+                                     (contains? visited id) true
+                                     (contains? roots id) false
+                                     :else (let [parent (get-in derived [:parent-of id])]
+                                             (if parent
+                                               (has-cycle? parent (conj visited id))
+                                               false))))]
+                  (for [id (keys nodes)
+                        :when (has-cycle? id #{})]
+                    #?(:clj (format "Node %s is part of a cycle" id)
+                       :cljs (gstr/format "Node %s is part of a cycle" id))))
 
-      ;; Cycle-free check - walk upward from each node
-      (letfn [(has-cycle? [id visited]
-                (cond
-                  (contains? visited id) true
-                  (contains? roots id) false
-                  :else (let [parent (get-in derived [:parent-of id])]
-                          (if parent
-                            (has-cycle? parent (conj visited id))
-                            false))))]
-        (doseq [id (keys nodes)]
-          (when (has-cycle? id #{})
-            (error! "Node %s is part of a cycle" id))))
+                (for [[child parent] (get derived :parent-of)
+                      :when (= child parent)]
+                  #?(:clj (format "Node %s is its own parent" child)
+                     :cljs (gstr/format "Node %s is its own parent" child)))
 
-      ;; id ≠ parent check
-      (doseq [[child parent] (get derived :parent-of)]
-        (when (= child parent)
-          (error! "Node %s is its own parent" child)))
+                (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
+                  (when (not= derived recomputed-derived)
+                    [":derived is stale - does not match recomputed version"])))]
 
-      ;; :derived == (derive-indexes (assoc db :derived {}))
-      (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
-        (when (not= derived recomputed-derived)
-          (error! ":derived is stale - does not match recomputed version")))
-
-      {:ok? (empty? @errors)
-       :errors @errors})))
+    {:ok? (empty? errors)
+     :errors (vec errors)}))
