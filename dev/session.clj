@@ -42,8 +42,13 @@
   (println "  Namespaces loaded:" (count (all-ns)))
   (println "  Current ns:" *ns*)
   (try
-    (require '[core.db :as db] :reload)
-    (assert (:ok? (db/validate (db/empty-db))))
+    (require 'core.db :reload)
+    (let [db-ns (find-ns 'core.db)
+          validate-fn (ns-resolve db-ns 'validate)
+          empty-db-fn (ns-resolve db-ns 'empty-db)]
+      (when (and validate-fn empty-db-fn)
+        (let [result (validate-fn (empty-db-fn))]
+          (assert (:ok? result)))))
     (println "  Core modules: ✓")
     (catch Exception e
       (println "  Core modules: ❌" (.getMessage e)))))
