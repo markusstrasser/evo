@@ -1,11 +1,11 @@
 (ns kernel.tree-index
-  (:require [kernel.core :as K]))
+  (:require [kernel.derive.registry :as registry]))
 
 (defn build [db]
-  (let [{:keys [parent-id-of child-ids-of index-of pre post id-by-pre]}
-        (or (some-> db :derived (select-keys
-              [:parent-id-of :child-ids-of :index-of :pre :post :id-by-pre]))
-            (K/derive-core db))]
+  (let [derived-db (if (:derived db) db (registry/run db))
+        {:keys [parent-id-of child-ids-of index-of pre post id-by-pre]}
+        (select-keys (:derived derived-db)
+                     [:parent-id-of :child-ids-of :index-of :pre :post :id-by-pre])]
     {:parent-of   #(get parent-id-of %)
      :children-of #(get child-ids-of % [])
      :index-of    #(get index-of %)
