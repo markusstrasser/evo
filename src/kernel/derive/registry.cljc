@@ -25,19 +25,19 @@
     :doc "Derive parent-id map from child adjacency lists"
     :run (fn [db]
            (let [parent-id-of (reduce-kv
-                                (fn [m parent-id child-ids]
-                                  (reduce #(assoc %1 %2 parent-id) m child-ids))
-                                {}
-                                (:child-ids/by-parent db))]
+                               (fn [m parent-id child-ids]
+                                 (reduce #(assoc %1 %2 parent-id) m child-ids))
+                               {}
+                               (:children-by-parent-id db))]
              (assoc-in db [:derived :parent-id-of] parent-id-of)))}
 
    {:id :index-of
-    :after #{}  ; Can run independently of parent-id-of
+    :after #{} ; Can run independently of parent-id-of
     :doc "Derive sibling index map"
     :run (fn [db]
            (let [index-of (into {} (mapcat (fn [[_ child-ids]]
                                              (map-indexed (fn [idx child] [child idx]) child-ids))
-                                           (:child-ids/by-parent db)))]
+                                           (:children-by-parent-id db)))]
              (assoc-in db [:derived :index-of] index-of)))}
 
    {:id :child-ids-of
@@ -45,7 +45,7 @@
     :doc "Ensure every node has child-ids vector (possibly empty)"
     :run (fn [db]
            (let [nodes (:nodes db)
-                 adj (:child-ids/by-parent db)
+                 adj (:children-by-parent-id db)
                  all-ids (set (concat (keys nodes)
                                       (keys adj)
                                       (mapcat identity (vals adj))))
@@ -61,7 +61,7 @@
            (let [child-ids-of (get-in db [:derived :child-ids-of])
                  roots (or (:roots db) ["root"])
                  preorder (loop [result []
-                                stack (vec (reverse roots))]
+                                 stack (vec (reverse roots))]
                             (if (empty? stack)
                               result
                               (let [node (peek stack)
@@ -76,33 +76,33 @@
     :run (fn [db]
            (let [child-ids-of (get-in db [:derived :child-ids-of])
                  roots (or (:roots db) ["root"])
-                 {:keys [pre post id-by-pre]}
-                 (loop [pre {} post {} id-by-pre {} counter 0 stack (mapv vector (reverse roots) (repeat false))]
+                 {:keys [preorder-index postorder-index id-by-pre]}
+                 (loop [preorder-index {} postorder-index {} id-by-pre {} counter 0 stack (mapv vector (reverse roots) (repeat false))]
                    (if (empty? stack)
-                     {:pre pre :post post :id-by-pre id-by-pre}
+                     {:preorder-index preorder-index :postorder-index postorder-index :id-by-pre id-by-pre}
                      (let [[node visited?] (peek stack)
                            rest-stack (pop stack)]
                        (if visited?
                          ;; Post-visit: assign post number
-                         (recur pre
-                                (assoc post node counter)
+                         (recur preorder-index
+                                (assoc postorder-index node counter)
                                 id-by-pre
                                 (inc counter)
                                 rest-stack)
                          ;; Pre-visit: assign pre number and push children + post marker
                          (let [children (get child-ids-of node [])
-                               new-pre (assoc pre node counter)
+                               new-pre (assoc preorder-index node counter)
                                new-id-by-pre (assoc id-by-pre counter node)]
                            (recur new-pre
-                                  post
+                                  postorder-index
                                   new-id-by-pre
                                   (inc counter)
                                   (-> rest-stack
-                                      (conj [node true])  ; Post marker
+                                      (conj [node true]) ; Post marker
                                       (into (mapv vector (reverse children) (repeat false))))))))))]
              (-> db
-                 (assoc-in [:derived :pre] pre)
-                 (assoc-in [:derived :post] post)
+                 (assoc-in [:derived :preorder-index] preorder-index)
+                 (assoc-in [:derived :postorder-index] postorder-index)
                  (assoc-in [:derived :id-by-pre] id-by-pre))))}])
 
 (defn- topo-sort
@@ -162,7 +162,7 @@
          passes-with-deps (if only
                             (let [pass-map (into {} (map (juxt :id identity)) passes)
                                   needed (loop [queue (seq only)
-                                               result #{}]
+                                                result #{}]
                                            (if (empty? queue)
                                              result
                                              (let [current (first queue)
@@ -224,16 +224,16 @@
 
   ;; Basic derivation
   (def test-db {:nodes {"root" {:type :root} "child" {:type :div}}
-                :child-ids/by-parent {"root" ["child"]}})
-  (run test-db)  ; => db with full :derived data
+                :children-by-parent-id {"root" ["child"]}})
+  (run test-db) ; => db with full :derived data
 
   ;; Partial derivation
   (run test-db {:only #{:parent-id-of :index-of}})
 
   ;; Timing analysis
-  (timing-run test-db)  ; => {:db ... :timings [{:id :parent-id-of :ms 0.1} ...]}
+  (timing-run test-db) ; => {:db ... :timings [{:id :parent-id-of :ms 0.1} ...]}
 
   ;; Pass inspection
-  (enabled-passes)  ; => [:parent-id-of :index-of :child-ids-of :preorder :pre-post]
-  (describe-pass :parent-id-of)  ; => {:id :parent-id-of :after #{} ...}
+  (enabled-passes) ; => [:parent-id-of :index-of :child-ids-of :preorder :pre-post]
+  (describe-pass :parent-id-of) ; => {:id :parent-id-of :after #{} ...}
   )
