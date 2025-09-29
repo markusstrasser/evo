@@ -12,6 +12,8 @@
 ### Standing Instructions Recap
 - Maintain kernel transaction architecture, invariants, and instrumentation focus when proposing changes.
 - Prefer synchronous/pure patterns unless async is explicitly justified.
-- When redundancy/tooling gaps appear (traces, sanity checks), favor registry/bus abstractions over ad hoc atoms.
-- Document GC-aware cleanup and peephole optimization considerations for future work.
 - Skip running tests for docs-only changes; note "Tests: not run" when applicable.
+
+
+--
+IF you need better semantic search check @docs/SemanticSearch.md

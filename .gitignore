@@ -4,8 +4,8 @@ public/js
 .agentlog
 .clojure-mcp
 repomix-output.xml
-docs/ideas/*
 out
+
 /out
 ./out
 /target
@@ -33,6 +33,10 @@ pom.xml.asc
 test-results/
 logs/
 *.log
+
+# Semtools / semantic search workspace caches
+.semtools/
+.parse/
 
 .hgignore
 .hg/
