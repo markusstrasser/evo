@@ -1,0 +1,154 @@
+(ns core.db
+  "Canonical DB shape, derive function, and invariants for the three-op kernel."
+  (:require [clojure.set :as set]))
+
+(defn empty-db
+  "Create an empty database with canonical shape."
+  []
+  {:nodes {}
+   :children-by-parent {}
+   :roots #{:doc :trash}
+   :derived {:parent-of {}
+             :index-of {}
+             :prev-id-of {}
+             :next-id-of {}
+             :pre {}
+             :post {}
+             :id-by-pre {}}})
+
+(defn- compute-parent-of
+  "Compute :parent-of map from :children-by-parent."
+  [children-by-parent]
+  (into {}
+        (for [[parent children] children-by-parent
+              child children]
+          [child parent])))
+
+(defn- compute-index-of
+  "Compute :index-of map - position of each child within its parent's children list."
+  [children-by-parent]
+  (into {}
+        (for [[_parent children] children-by-parent
+              [idx child] (map-indexed vector children)]
+          [child idx])))
+
+(defn- compute-siblings
+  "Compute prev/next sibling relationships."
+  [children-by-parent]
+  (let [prev-next (for [[_parent children] children-by-parent
+                        [prev curr next] (partition 3 1 (concat [nil] children [nil]))
+                        :when curr]
+                    [curr prev next])]
+    {:prev-id-of (into {} (map (fn [[curr prev _next]] [curr prev]) prev-next))
+     :next-id-of (into {} (map (fn [[curr _prev next]] [curr next]) prev-next))}))
+
+(defn- compute-traversal
+  "Compute pre-order and post-order traversal indexes."
+  [children-by-parent roots]
+  (let [pre-order (atom [])
+        post-order (atom [])
+        pre-counter (atom 0)
+        post-counter (atom 0)]
+
+    (letfn [(visit [id]
+              (let [pre-idx @pre-counter]
+                (swap! pre-order conj id)
+                (swap! pre-counter inc)
+
+                (doseq [child (get children-by-parent id [])]
+                  (visit child))
+
+                (let [post-idx @post-counter]
+                  (swap! post-order conj id)
+                  (swap! post-counter inc)
+                  [pre-idx post-idx])))]
+
+      (doseq [root roots]
+        (when (contains? children-by-parent root)
+          (visit root)))
+
+      (let [pre-vec @pre-order
+            post-vec @post-order]
+        {:pre (into {} (map-indexed (fn [idx id] [id idx]) pre-vec))
+         :post (into {} (map-indexed (fn [idx id] [id idx]) post-vec))
+         :id-by-pre (into {} (map-indexed (fn [idx id] [idx id]) pre-vec))}))))
+
+(defn derive
+  "Recompute all derived maps from canonical DB state. O(n) operation."
+  [db]
+  (let [{:keys [children-by-parent roots]} db
+        parent-of (compute-parent-of children-by-parent)
+        index-of (compute-index-of children-by-parent)
+        {:keys [prev-id-of next-id-of]} (compute-siblings children-by-parent)
+        {:keys [pre post id-by-pre]} (compute-traversal children-by-parent roots)]
+
+    (assoc db :derived
+           {:parent-of parent-of
+            :index-of index-of
+            :prev-id-of prev-id-of
+            :next-id-of next-id-of
+            :pre pre
+            :post post
+            :id-by-pre id-by-pre})))
+
+(defn validate
+  "Validate database invariants. Returns {:ok? bool :errors [...]}"
+  [db]
+  (let [{:keys [nodes children-by-parent roots derived]} db
+        errors (atom [])]
+
+    (letfn [(error! [msg & args]
+              (swap! errors conj (apply format msg args)))]
+
+      ;; Every child in :children-by-parent exists in :nodes
+      (doseq [[parent children] children-by-parent
+              child children]
+        (when-not (contains? nodes child)
+          (error! "Child %s of parent %s does not exist in :nodes" child parent)))
+
+      ;; No duplicate siblings
+      (doseq [[parent children] children-by-parent]
+        (when (not= (count children) (count (set children)))
+          (error! "Parent %s has duplicate children: %s" parent children)))
+
+;; Unique parent per id
+      (let [child->parents (group-by first
+                                     (for [[parent children] children-by-parent
+                                           child children]
+                                       [child parent]))]
+        (doseq [[child parent-entries] child->parents]
+          (when (> (count parent-entries) 1)
+            (error! "Child %s has multiple parents: %s"
+                    child (map second parent-entries)))))
+
+      ;; Parents are either in :roots or existing IDs
+      (doseq [parent (keys children-by-parent)]
+        (when-not (or (contains? roots parent)
+                      (contains? nodes parent))
+          (error! "Parent %s is neither in :roots nor :nodes" parent)))
+
+      ;; Cycle-free check - walk upward from each node
+      (letfn [(has-cycle? [id visited]
+                (cond
+                  (contains? visited id) true
+                  (contains? roots id) false
+                  :else (let [parent (get-in derived [:parent-of id])]
+                          (if parent
+                            (has-cycle? parent (conj visited id))
+                            false))))]
+        (doseq [id (keys nodes)]
+          (when (has-cycle? id #{})
+            (error! "Node %s is part of a cycle" id))))
+
+      ;; id ≠ parent check
+      (doseq [[child parent] (get derived :parent-of)]
+        (when (= child parent)
+          (error! "Node %s is its own parent" child)))
+
+      ;; :derived == (derive (assoc db :derived {}))
+      (let [recomputed-derived (:derived (derive (assoc db :derived {})))]
+        (when (not= derived recomputed-derived)
+          (error! ":derived is stale - does not match recomputed version")))
+
+      {:ok? (empty? @errors)
+       :errors @errors})))
