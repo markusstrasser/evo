@@ -1,5 +1,7 @@
 (ns core.db
   "Canonical DB shape, derive function, and invariants for the three-op kernel."
+  (:require [medley.core :as m]
+            [clojure.set :as set])
   #?(:cljs (:require [goog.string :as gstr]
                      [goog.string.format])))
 
@@ -37,42 +39,51 @@
   "Compute prev/next sibling relationships."
   [children-by-parent]
   (let [prev-next (for [[_parent children] children-by-parent
-                        [prev curr next] (partition 3 1 (concat [nil] children [nil]))
+                        [prev-sib curr next-sib] (partition 3 1 (concat [nil] children [nil]))
                         :when curr]
-                    [curr prev next])]
-    {:prev-id-of (into {} (map (fn [[curr prev _next]] [curr prev]) prev-next))
-     :next-id-of (into {} (map (fn [[curr _prev next]] [curr next]) prev-next))}))
+                    [curr prev-sib next-sib])]
+    {:prev-id-of (into {} (map (fn [[curr prev-sib _]] [curr prev-sib]) prev-next))
+     :next-id-of (into {} (map (fn [[curr _ next-sib]] [curr next-sib]) prev-next))}))
 
 (defn- compute-traversal
-  "Compute pre-order and post-order traversal indexes."
+  "Compute pre-order and post-order traversal indexes.
+
+   Returns a map with:
+   - :pre      - map of id->index in pre-order traversal
+   - :post     - map of id->index in post-order traversal
+   - :id-by-pre - map of index->id for pre-order lookup"
   [children-by-parent roots]
-  (let [pre-order (atom [])
-        post-order (atom [])
-        pre-counter (atom 0)
-        post-counter (atom 0)]
+  (letfn [(visit-node [state id]
+            ;; Record pre-order visit before children
+            (let [state-with-pre (update state :pre-order conj id)
+                  children (get children-by-parent id [])
 
-    (letfn [(visit [id]
-              (let [pre-idx @pre-counter]
-                (swap! pre-order conj id)
-                (swap! pre-counter inc)
+                  ;; Visit all children, threading state through
+                  state-after-children (reduce visit-node state-with-pre children)]
 
-                (doseq [child (get children-by-parent id [])]
-                  (visit child))
+              ;; Record post-order visit after children
+              (update state-after-children :post-order conj id)))
 
-                (let [post-idx @post-counter]
-                  (swap! post-order conj id)
-                  (swap! post-counter inc)
-                  [pre-idx post-idx])))]
+          (visit-root [state root]
+            (if (contains? children-by-parent root)
+              (visit-node state root)
+              state))]
 
-      (doseq [root roots]
-        (when (contains? children-by-parent root)
-          (visit root)))
+    ;; Visit all roots, threading state through reduce
+    (let [initial-state {:pre-order [] :post-order []}
+          final-state (reduce visit-root initial-state roots)
+          {:keys [pre-order post-order]} final-state
 
-      (let [pre-vec @pre-order
-            post-vec @post-order]
-        {:pre (into {} (map-indexed (fn [idx id] [id idx]) pre-vec))
-         :post (into {} (map-indexed (fn [idx id] [id idx]) post-vec))
-         :id-by-pre (into {} (map-indexed (fn [idx id] [idx id]) pre-vec))}))))
+          ;; Build index maps from traversal vectors
+          ;; m/indexed returns seq of [index element] pairs
+          id->pre-idx (into {} (map (fn [[idx id]] [id idx]) (m/indexed pre-order)))
+          id->post-idx (into {} (map (fn [[idx id]] [id idx]) (m/indexed post-order)))
+          ;; For id-by-pre, we want {index id}
+          pre-idx->id (into {} (m/indexed pre-order))]
+
+      {:pre id->pre-idx
+       :post id->post-idx
+       :id-by-pre pre-idx->id})))
 
 (defn derive-indexes
   "Recompute all derived maps from canonical DB state. O(n) operation."
@@ -92,59 +103,108 @@
             :post post
             :id-by-pre id-by-pre})))
 
+;; =============================================================================
+;; Validation Helpers
+;; =============================================================================
+
+(defn- fmt
+  "Cross-platform format helper."
+  [template & args]
+  (apply #?(:clj format :cljs gstr/format) template args))
+
+(defn- validate-children-exist
+  "Check that all children in :children-by-parent exist in :nodes."
+  [nodes children-by-parent]
+  (for [[parent children] children-by-parent
+        child children
+        :when (not (contains? nodes child))]
+    (fmt "Child %s of parent %s does not exist in :nodes" child parent)))
+
+(defn- validate-no-duplicate-children
+  "Check that no parent has duplicate children."
+  [children-by-parent]
+  (for [[parent children] children-by-parent
+        :let [duplicates (m/filter-vals #(> % 1) (frequencies children))]
+        :when (seq duplicates)]
+    (fmt "Parent %s has duplicate children: %s" parent (keys duplicates))))
+
+(defn- validate-single-parent
+  "Check that each child has at most one parent."
+  [children-by-parent]
+  (let [child->parents (->> children-by-parent
+                            (mapcat (fn [[parent children]]
+                                      (map #(vector % parent) children)))
+                            (group-by first)
+                            (m/filter-vals #(> (count %) 1)))]
+    (for [[child parent-entries] child->parents]
+      (fmt "Child %s has multiple parents: %s" child (map second parent-entries)))))
+
+(defn- validate-parents-exist
+  "Check that all parents are either roots or nodes."
+  [children-by-parent roots nodes]
+  (let [valid-parents (set/union roots (set (keys nodes)))]
+    (for [parent (keys children-by-parent)
+          :when (not (contains? valid-parents parent))]
+      (fmt "Parent %s is neither in :roots nor :nodes" parent))))
+
+(defn- detect-cycle
+  "Check if id has a cycle by walking up the parent chain.
+   Returns true if cycle detected, false otherwise."
+  [id parent-of roots]
+  (loop [current id
+         visited #{}]
+    (cond
+      (contains? visited current) true
+      (contains? roots current) false
+      :else (if-some [parent (get parent-of current)]
+              (recur parent (conj visited current))
+              false))))
+
+(defn- validate-no-cycles
+  "Check that no node is part of a cycle."
+  [nodes derived roots]
+  (let [parent-of (get derived :parent-of)]
+    (for [id (keys nodes)
+          :when (detect-cycle id parent-of roots)]
+      (fmt "Node %s is part of a cycle" id))))
+
+(defn- validate-no-self-parent
+  "Check that no node is its own parent."
+  [derived]
+  (for [[child parent] (get derived :parent-of)
+        :when (= child parent)]
+    (fmt "Node %s is its own parent" child)))
+
+(defn- validate-derived-fresh
+  "Check that :derived matches a fresh recomputation."
+  [db]
+  (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
+    (when (not= (:derived db) recomputed-derived)
+      [":derived is stale - does not match recomputed version"])))
+
 (defn validate
-  "Validate database invariants. Returns {:ok? bool :errors [...]}"
+  "Validate database invariants. Returns {:ok? bool :errors [...]}.
+
+   Checks performed:
+   - All children in :children-by-parent exist in :nodes
+   - No parent has duplicate children
+   - Each child has at most one parent
+   - All parents are either in :roots or :nodes
+   - No cycles in the parent chain
+   - No node is its own parent
+   - :derived indexes are fresh"
   [db]
   (let [{:keys [nodes children-by-parent roots derived]} db
 
-        errors (concat
-                (for [[parent children] children-by-parent
-                      child children
-                      :when (not (contains? nodes child))]
-                  #?(:clj (format "Child %s of parent %s does not exist in :nodes" child parent)
-                     :cljs (gstr/format "Child %s of parent %s does not exist in :nodes" child parent)))
-
-                (for [[parent children] children-by-parent
-                      :when (not= (count children) (count (set children)))]
-                  #?(:clj (format "Parent %s has duplicate children: %s" parent children)
-                     :cljs (gstr/format "Parent %s has duplicate children: %s" parent children)))
-
-                (let [child->parents (group-by first
-                                               (for [[parent children] children-by-parent
-                                                     child children]
-                                                 [child parent]))]
-                  (for [[child parent-entries] child->parents
-                        :when (> (count parent-entries) 1)]
-                    #?(:clj (format "Child %s has multiple parents: %s" child (map second parent-entries))
-                       :cljs (gstr/format "Child %s has multiple parents: %s" child (map second parent-entries)))))
-
-                (for [parent (keys children-by-parent)
-                      :when (not (or (contains? roots parent)
-                                     (contains? nodes parent)))]
-                  #?(:clj (format "Parent %s is neither in :roots nor :nodes" parent)
-                     :cljs (gstr/format "Parent %s is neither in :roots nor :nodes" parent)))
-
-                (let [has-cycle? (fn has-cycle? [id visited]
-                                   (cond
-                                     (contains? visited id) true
-                                     (contains? roots id) false
-                                     :else (let [parent (get-in derived [:parent-of id])]
-                                             (if parent
-                                               (has-cycle? parent (conj visited id))
-                                               false))))]
-                  (for [id (keys nodes)
-                        :when (has-cycle? id #{})]
-                    #?(:clj (format "Node %s is part of a cycle" id)
-                       :cljs (gstr/format "Node %s is part of a cycle" id))))
-
-                (for [[child parent] (get derived :parent-of)
-                      :when (= child parent)]
-                  #?(:clj (format "Node %s is its own parent" child)
-                     :cljs (gstr/format "Node %s is its own parent" child)))
-
-                (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
-                  (when (not= derived recomputed-derived)
-                    [":derived is stale - does not match recomputed version"])))]
+        errors (->> [(validate-children-exist nodes children-by-parent)
+                     (validate-no-duplicate-children children-by-parent)
+                     (validate-single-parent children-by-parent)
+                     (validate-parents-exist children-by-parent roots nodes)
+                     (validate-no-cycles nodes derived roots)
+                     (validate-no-self-parent derived)
+                     (validate-derived-fresh db)]
+                    (apply concat)
+                    vec)]
 
     {:ok? (empty? errors)
-     :errors (vec errors)}))
+     :errors errors}))
