@@ -4,7 +4,7 @@
             [core.db :as db]
             [core.interpret :as interp]))
 
-(defn create-op [id type] {:op :create-node :id id :type type :props {}})
+(defn create-op [id node-type] {:op :create-node :id id :type node-type :props {}})
 (defn place-op [id under at] {:op :place :id id :under under :at at})
 (defn update-op [id props] {:op :update-node :id id :props props})
 
