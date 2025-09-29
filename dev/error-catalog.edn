@@ -92,4 +92,40 @@
   
   :extract-port
   {:regex ":\\d{4,5}"
-   :context :port-conflict}}}
+   :context :port-conflict}}} :goog-string-format-missing
+ {:pattern "goog.string.format is not a function"
+  :description "Missing goog.string.format import in ClojureScript"
+  :remedy ["Add to namespace requires: #?(:cljs [goog.string.format])"
+           "Common when using gstr/format in CLJS code"]
+  :auto-fix "Add import to ns form"
+  :confidence :high
+  :frequency :common}
+
+ :repl-connection-failed
+ {:pattern "Unable to reach the nREPL"
+  :description "REPL server unreachable or down"
+  :remedy ["Check shadow-cljs server: nc -z localhost 9000"
+           "Restart dev server: npm run dev"
+           "Check for port conflicts: lsof -i :9000"]
+  :auto-fix "dev/scripts/restart-dev-env.sh"
+  :confidence :medium
+  :frequency :occasional}
+
+ :shadow-cljs-compilation-failed
+ {:pattern "Build failed|Compilation failed"
+  :description "Shadow-cljs build/compilation errors"
+  :remedy ["Check syntax errors in source files"
+           "Verify all dependencies are installed: npm install"
+           "Clear shadow-cljs cache: npx shadow-cljs clean"]
+  :auto-fix "npx shadow-cljs clean && npm install"
+  :confidence :medium
+  :frequency :common}
+
+ :test-timeout
+ {:pattern "Test timeout|Execution timeout"
+  :description "Tests taking too long or hanging"
+  :remedy ["Check for infinite loops in test code"
+           "Increase timeout in test runner"
+           "Check REPL responsiveness: npm run agent:health"]
+  :confidence :low
+  :frequency :rare}
