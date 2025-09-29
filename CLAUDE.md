@@ -11,7 +11,9 @@
 - **Docs**: `dev/README.md`
 
 ### NPM Commands
-- `npm run check` - lint + compile
+- `npm run lint` - run clj-kondo linter
+- `npm run check` - lint + compile (full check)
+- `npm test` - run test suite
 - `npm run fix:cache` - clear all caches
 - `npm run agent:health` - environment diagnostics
 - `npm run agent:preflight` - pre-flight checks (needs dev server)
@@ -24,7 +26,10 @@
 
 ### Dev Quality Gates
 - **Pre-commit**: `.pre-commit-check.sh` - enhanced with CLJS import validation
-- **Linting**: `.clj-kondo/config.edn` - enforces kernel/shell boundaries
+- **Linting**: `.clj-kondo/config.edn` - comprehensive rules based on STYLE.md
+  - Catches: invalid arity, shadowed vars, redundant code, unused bindings
+  - Enforces: consistent aliases (m, set, str), no refer-all
+  - Style: prefers pure functions, explicit data flow
 - **Module Deps**: Core kernel modules isolated from shell concerns
 
 ### Standing Instructions
