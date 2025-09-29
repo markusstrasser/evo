@@ -1,13 +1,13 @@
 (ns labs.structure.wrap
   "Structural editing operations as lowerings to 3-op kernel.
    Each operation returns a sequence of {create,place,update} ops."
-  (:require [core.schema :refer [gen-id]]))
+  (:require [core.schema :as schema]))
 
 (defn wrap-range
   "Wrap a range of sibling nodes under a new parent.
    Returns sequence of 3-ops: create wrapper, then place each child under wrapper."
   [{:keys [parent ids new-id type props]}]
-  (let [wrapper-id (or new-id (gen-id))]
+  (let [wrapper-id (or new-id (schema/gen-id))]
     (concat
       ;; Create wrapper at position of first child
      [{:op :create-node
@@ -38,7 +38,7 @@
   "Split node at cursor position, creating new sibling.
    Requires adapter-level cursor/content handling."
   [{:keys [node-id split-point new-id type]}]
-  (let [new-node-id (or new-id (gen-id))]
+  (let [new-node-id (or new-id (schema/gen-id))]
     [{:op :update-node :id node-id :props {:split-at split-point}}
      {:op :create-node :id new-node-id :type (or type :text) :props {:split-from node-id}}
      {:op :place :id new-node-id :under :same-parent :at {:after node-id}}]))

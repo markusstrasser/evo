@@ -1,5 +1,6 @@
 (ns kernel.lens-test
   (:require [kernel.lens :as lens]
+            [clojure.string :as str]
             #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer-macros [deftest is testing]])))
 

@@ -118,6 +118,11 @@
    :InterpretResult (m/validator InterpretResult)
    :ValidateResult (m/validator ValidateResult)})
 
+(defn gen-id
+  "Generate a unique ID string."
+  []
+  (str "id-" (System/currentTimeMillis) "-" (rand-int 1000)))
+
 (defn describe-ops
   "Return compiled Malli schemas for all operations and core types."
   []
