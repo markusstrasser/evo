@@ -7,6 +7,11 @@
 * There should be plugins later on ... it's an editor but also later a chatbot and genui thing where the LLM REPL-s in commands and forms
 
 
+## Maybe Later
+Cost/indirection
+•	Tx-log + replayer: ~120–180 LOC; snapshots: ~40 LOC; tombstones: ~30 LOC.
+•	Datoms + 3 indices as passes: ~150–220 LOC (pure derived).
+
 AGENT: 
 > You’re not building a UI framework; you’re carving a UI IR + interpreter that’s LLM-native. That is different. React/Svelte/Elm optimize for human authors (ergonomics, escape hatches); you need determinism, reversibility, locality, and introspection so an LLM can synthesize, diff, and repair without guessing hidden runtime state. FRP is useful, but only as a thin calculus the interpreter can reason about—signals/derivations/effects with explicit lifetimes and zero “magical” subscriptions. The novelty isn’t widgets; it’s a small algebra of intents + a reactivity kernel + self-describing errors that lets models compose interfaces like they compose SQL.
 
