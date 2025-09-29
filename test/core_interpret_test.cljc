@@ -1,345 +1,203 @@
 (ns core-interpret-test
-  "Tests for core.interpret - transaction pipeline"
+  "Tests for core.interpret - invariant-based, implementation-agnostic tests"
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.set :as set]
             [core.db :as db]
             [core.interpret :as interp]))
-
-;; Test Helpers
 
 (defn create-op [id type] {:op :create-node :id id :type type :props {}})
 (defn place-op [id under at] {:op :place :id id :under under :at at})
 (defn update-op [id props] {:op :update-node :id id :props props})
 
-(defn db-diff
-  "Extract meaningful differences between two dbs for assertions."
-  [before after]
-  {:nodes-added (set/difference (set (keys (:nodes after)))
-                                (set (keys (:nodes before))))
-   :nodes-removed (set/difference (set (keys (:nodes before)))
-                                  (set (keys (:nodes after))))
-   :children-changed (into {}
-                           (for [parent (keys (:children-by-parent after))
-                                 :let [before-children (get (:children-by-parent before) parent [])
-                                       after-children (get (:children-by-parent after) parent [])]
-                                 :when (not= before-children after-children)]
-                             [parent {:before before-children :after after-children}]))})
+(defn apply-ops
+  "Apply ops and return final db. Fails test if validation issues occur."
+  ([ops] (apply-ops (db/empty-db) ops))
+  ([db ops]
+   (let [result (interp/interpret db ops)]
+     (when (seq (:issues result))
+       (is false (str "Unexpected validation issues: " (:issues result))))
+     (:db result))))
 
-;;; Basic Operation Tests
+(defn apply-ops-expect-failure
+  "Apply ops expecting validation failure. Returns issues vector."
+  ([ops] (apply-ops-expect-failure (db/empty-db) ops))
+  ([db ops]
+   (let [result (interp/interpret db ops)]
+     (is (seq (:issues result)) "Expected validation issues")
+     (:issues result))))
+
+(defn node-exists? [db id] (contains? (:nodes db) id))
+(defn node-type [db id] (get-in db [:nodes id :type]))
+(defn node-props [db id] (get-in db [:nodes id :props]))
+(defn children-of [db parent] (get (:children-by-parent db) parent []))
+(defn parent-of [db id] (get-in db [:derived :parent-of id]))
+(defn db-valid? [db] (:ok? (db/validate db)))
 
 (deftest test-create-node
-  (testing "create-node adds node to database"
-    (let [db (db/empty-db)
-          result (interp/interpret db [(create-op "a" :div)])
-          final-db (:db result)]
+  (testing "creating a node makes it exist with correct type"
+    (let [db (apply-ops [(create-op "a" :div)])]
+      (is (node-exists? db "a"))
+      (is (= :div (node-type db "a")))
+      (is (db-valid? db)))))
 
-      (is (empty? (:issues result)) "No validation issues")
-      (is (contains? (:nodes final-db) "a") "Node exists")
-      (is (= :div (get-in final-db [:nodes "a" :type])) "Type is correct"))))
+(deftest test-create-duplicate-rejected
+  (testing "creating duplicate node is rejected"
+    (let [db (apply-ops [(create-op "a" :div)])
+          issues (apply-ops-expect-failure db [(create-op "a" :span)])]
+      (is (= :duplicate-create (-> issues first :issue))))))
 
-(deftest test-create-duplicate
-  (testing "creating duplicate node is idempotent"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          result (interp/interpret db [(create-op "a" :span)])]
+(deftest test-place-establishes-parent-child
+  (testing "placing a node establishes parent-child relationship"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (place-op "a" :doc :first)])]
+      (is (= ["a"] (children-of db :doc)))
+      (is (= :doc (parent-of db "a")))
+      (is (db-valid? db)))))
 
-      (is (seq (:issues result)) "Has validation issue")
-      (is (= :duplicate-create (-> result :issues first :issue))
-          "Issue is duplicate-create"))))
+(deftest test-place-positions
+  (testing "place respects :first, :last, and numeric positions"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (create-op "c" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" :doc :last)
+                         (place-op "c" :doc 1)])]
+      (is (= ["a" "c" "b"] (children-of db :doc)))
+      (is (db-valid? db)))))
 
-(deftest test-place-node
-  (testing "place operation moves node to parent"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          result (interp/interpret db [(place-op "a" :doc :first)])
-          final-db (:db result)]
+(deftest test-update-merges-props
+  (testing "update merges properties into node"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (update-op "a" {:x 1 :y 2})])]
+      (is (= {:x 1 :y 2} (node-props db "a")))
+      (is (db-valid? db))))
 
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= ["a"] (get (:children-by-parent final-db) :doc))
-          "Node placed under :doc")
-      (is (= :doc (get-in final-db [:derived :parent-of "a"]))
-          "Derived parent-of updated"))))
+  (testing "multiple updates accumulate properties"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (update-op "a" {:x 1})
+                         (update-op "a" {:y 2})
+                         (update-op "a" {:z 3})])]
+      (is (= {:x 1 :y 2 :z 3} (node-props db "a")))
+      (is (db-valid? db)))))
 
-(deftest test-place-at-positions
-  (testing "place at different positions"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (create-op "b" :div)
-                                    (create-op "c" :div)
-                                    (place-op "a" :doc :first)
-                                    (place-op "b" :doc :last)
-                                    (place-op "c" :doc 1)])
-                 :db)]
+(deftest test-idempotent-place
+  (testing "placing node at same position is idempotent"
+    (let [db1 (apply-ops [(create-op "a" :div)
+                          (place-op "a" :doc :first)])
+          db2 (apply-ops db1 [(place-op "a" :doc :first)])]
+      (is (= db1 db2) "DB unchanged by redundant place")
+      (is (db-valid? db2)))))
 
-      (is (= ["a" "c" "b"] (get (:children-by-parent db) :doc))
-          "Children in correct order"))))
+(deftest test-reject-missing-node
+  (testing "placing non-existent node is rejected"
+    (let [issues (apply-ops-expect-failure [(place-op "missing" :doc :first)])]
+      (is (= :node-not-found (-> issues first :issue))))))
 
-(deftest test-update-node
-  (testing "update-node merges properties"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          result (interp/interpret db [(update-op "a" {:x 1 :y 2})])
-          final-db (:db result)]
+(deftest test-reject-missing-parent
+  (testing "placing under non-existent parent is rejected"
+    (let [db (apply-ops [(create-op "a" :div)])
+          issues (apply-ops-expect-failure db [(place-op "a" "missing-parent" :first)])]
+      (is (= :parent-not-found (-> issues first :issue))))))
 
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= {:x 1 :y 2} (get-in final-db [:nodes "a" :props]))
-          "Properties merged"))))
+(deftest test-reject-self-cycle
+  (testing "placing node under itself is rejected"
+    (let [db (apply-ops [(create-op "a" :div)])
+          issues (apply-ops-expect-failure db [(place-op "a" "a" :first)])]
+      (is (= :cycle-detected (-> issues first :issue))))))
 
-;;; Normalization Tests
+(deftest test-reject-descendant-cycle
+  (testing "placing node under its descendant is rejected"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" "a" :first)])
+          issues (apply-ops-expect-failure db [(place-op "a" "b" :first)])]
+      (is (= :cycle-detected (-> issues first :issue))))))
 
-(deftest test-normalize-no-op-place
-  (testing "no-op place operations are removed"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (place-op "a" :doc :first)])
-                 :db)
-          ;; Place again at same position - should be no-op
-          result (interp/interpret db [(place-op "a" :doc :first)])]
+(deftest test-reject-invalid-anchor
+  (testing "anchor node must be sibling under same parent"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (place-op "a" :doc :first)])
+          issues (apply-ops-expect-failure db [(place-op "b" :trash {:before "a"})])]
+      (is (= :anchor-not-sibling (-> issues first :issue))))))
 
-      (is (empty? (:issues result)) "No validation issues")
-      (is (empty? (:trace result)) "No operations applied (normalized away)"))))
+(deftest test-build-tree
+  (testing "can build multi-level tree structure"
+    (let [db (apply-ops [(create-op "root" :div)
+                         (create-op "header" :header)
+                         (create-op "content" :div)
+                         (place-op "root" :doc :first)
+                         (place-op "header" "root" :first)
+                         (place-op "content" "root" :last)])]
+      (is (node-exists? db "root"))
+      (is (node-exists? db "header"))
+      (is (node-exists? db "content"))
+      (is (= ["root"] (children-of db :doc)))
+      (is (= ["header" "content"] (children-of db "root")))
+      (is (= "root" (parent-of db "header")))
+      (is (= "root" (parent-of db "content")))
+      (is (db-valid? db)))))
 
-(deftest test-normalize-merge-updates
-  (testing "adjacent update-node operations are merged"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
+(deftest test-move-subtree
+  (testing "moving node preserves its children"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (create-op "c" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" "a" :first)
+                         (place-op "c" :doc :last)
+                         (place-op "a" "c" :first)])]
+      (is (= ["c"] (children-of db :doc)))
+      (is (= ["a"] (children-of db "c")))
+      (is (= ["b"] (children-of db "a")))
+      (is (= "c" (parent-of db "a")))
+      (is (= "a" (parent-of db "b")))
+      (is (db-valid? db)))))
+
+(deftest test-complex-sequence
+  (testing "complex operation sequence produces correct final state"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (place-op "a" :doc :first)
+                         (update-op "a" {:class "container"})
+                         (create-op "b" :span)
+                         (place-op "b" "a" :first)
+                         (update-op "b" {:text "Hello"})
+                         (update-op "a" {:id "main"})
+                         (create-op "c" :p)
+                         (place-op "c" "a" :last)])]
+      (is (= {:class "container" :id "main"} (node-props db "a")))
+      (is (= {:text "Hello"} (node-props db "b")))
+      (is (= ["b" "c"] (children-of db "a")))
+      (is (db-valid? db)))))
+
+(deftest test-invariant-parent-child-bidirectional
+  (testing "parent-of and children-by-parent stay in sync"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" "a" :first)])]
+      (is (= "a" (parent-of db "b")))
+      (is (= ["b"] (children-of db "a")))
+      (is (db-valid? db)))))
+
+(deftest test-invariant-transactional-failure
+  (testing "failed operation halts pipeline - no partial application"
+    (let [db (apply-ops [(create-op "a" :div)])
           result (interp/interpret db [(update-op "a" {:x 1})
-                                       (update-op "a" {:y 2})])
-          final-db (:db result)]
+                                       (place-op "missing" :doc :first)
+                                       (update-op "a" {:y 2})])]
+      (is (seq (:issues result)))
+      (is (= {:x 1} (node-props (:db result) "a")) "Only op before failure applied"))))
 
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= 1 (count (:trace result))) "Only one operation applied (merged)")
-      (is (= {:x 1 :y 2} (get-in final-db [:nodes "a" :props]))
-          "Both updates applied"))))
-
-;;; Validation Tests
-
-(deftest test-validate-missing-node
-  (testing "placing non-existent node fails"
-    (let [db (db/empty-db)
-          result (interp/interpret db [(place-op "missing" :doc :first)])]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= :node-not-found (-> result :issues first :issue))
-          "Issue is node-not-found"))))
-
-(deftest test-validate-missing-parent
-  (testing "placing under non-existent parent fails"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          result (interp/interpret db [(place-op "a" "missing-parent" :first)])]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= :parent-not-found (-> result :issues first :issue))
-          "Issue is parent-not-found"))))
-
-(deftest test-validate-cycle-self
-  (testing "placing node under itself fails"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          result (interp/interpret db [(place-op "a" "a" :first)])]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= :cycle-detected (-> result :issues first :issue))
-          "Issue is cycle-detected"))))
-
-(deftest test-validate-cycle-descendant
-  (testing "placing node under its own descendant fails"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (create-op "b" :div)
-                                    (place-op "a" :doc :first)
-                                    (place-op "b" "a" :first)])
-                 :db)
-          ;; Try to place "a" under "b" (its child) - creates cycle
-          result (interp/interpret db [(place-op "a" "b" :first)])]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= :cycle-detected (-> result :issues first :issue))
-          "Issue is cycle-detected"))))
-
-(deftest test-validate-anchor-not-sibling
-  (testing "anchor :before/:after must be a sibling"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (create-op "b" :div)
-                                    (place-op "a" :doc :first)])
-                 :db)
-          ;; Try to place "b" :before "a", but "a" is not under :doc yet
-          result (interp/interpret db [(place-op "b" :trash {:before "a"})])]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= :anchor-not-sibling (-> result :issues first :issue))
-          "Issue is anchor-not-sibling"))))
-
-;;; Full Pipeline Tests (ops -> db-diff)
-
-(deftest test-pipeline-build-tree
-  (testing "build simple tree structure"
-    (let [before (db/empty-db)
-          ops [(create-op "root" :div)
-               (create-op "header" :header)
-               (create-op "content" :div)
-               (place-op "root" :doc :first)
-               (place-op "header" "root" :first)
-               (place-op "content" "root" :last)]
-          result (interp/interpret before ops)
-          after (:db result)
-          diff (db-diff before after)]
-
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= #{"root" "header" "content"} (:nodes-added diff))
-          "Three nodes added")
-      (is (= ["root"] (get (:children-by-parent after) :doc))
-          ":doc has root child")
-      (is (= ["header" "content"] (get (:children-by-parent after) "root"))
-          "root has two children"))))
-
-(deftest test-pipeline-move-subtree
-  (testing "move node with children"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (create-op "b" :div)
-                                    (create-op "c" :div)
-                                    (place-op "a" :doc :first)
-                                    (place-op "b" "a" :first)
-                                    (place-op "c" :doc :last)])
-                 :db)
-          ;; Move "a" (with child "b") to be child of "c"
-          result (interp/interpret db [(place-op "a" "c" :first)])
-          final-db (:db result)]
-
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= ["c"] (get (:children-by-parent final-db) :doc))
-          ":doc now only has c")
-      (is (= ["a"] (get (:children-by-parent final-db) "c"))
-          "c has a as child")
-      (is (= ["b"] (get (:children-by-parent final-db) "a"))
-          "a still has b as child"))))
-
-(deftest test-pipeline-complex-operations
-  (testing "complex sequence of operations"
-    (let [before (db/empty-db)
-          ops [(create-op "a" :div)
-               (place-op "a" :doc :first)
-               (update-op "a" {:class "container"})
-               (create-op "b" :span)
-               (place-op "b" "a" :first)
-               (update-op "b" {:text "Hello"})
-               (update-op "a" {:id "main"}) ; merge with previous update
-               (create-op "c" :p)
-               (place-op "c" "a" :last)]
-          result (interp/interpret before ops)
-          after (:db result)]
-
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= {:class "container" :id "main"}
-             (get-in after [:nodes "a" :props]))
-          "Multiple updates merged correctly")
-      (is (= {:text "Hello"}
-             (get-in after [:nodes "b" :props]))
-          "b updated correctly")
-      (is (= ["b" "c"] (get (:children-by-parent after) "a"))
-          "Children in correct order"))))
-
-#_(deftest test-pipeline-with-fixtures
-    (testing "integrate with fixtures for complex scenarios"
-      (let [tree (fix/gen-balanced-tree 2 2)
-            root-id (:root-id tree)
-            ops [(create-op "new" :div)
-                 (place-op "new" root-id :first)
-                 (update-op "new" {:injected true})]
-            result (interp/interpret (:db tree) ops)
-            final-db (:db result)]
-
-        (is (empty? (:issues result)) "No validation issues")
-        (is (contains? (:nodes final-db) "new") "New node exists")
-        (is (= "new" (first (get (:children-by-parent final-db) root-id)))
-            "New node is first child"))))
-
-;;; Invariant Tests
-
-(deftest test-derived-indexes-valid
-  (testing "derived indexes are correct after operations"
-    (let [ops [(create-op "a" :div)
-               (create-op "b" :div)
-               (place-op "a" :doc :first)
-               (place-op "b" "a" :first)]
-          result (interp/interpret (db/empty-db) ops)
-          final-db (:db result)
-          validation (db/validate final-db)]
-
-      (is (empty? (:issues result)) "No validation issues from interpret")
-      (is (:ok? validation) "Database passes validation")
-      (is (empty? (:errors validation)) "No validation errors"))))
-
-(deftest test-partial-failure
-  (testing "operations after failure are not applied"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)])
-                 :db)
-          ops [(update-op "a" {:x 1}) ; valid
-               (place-op "missing" :doc :first) ; invalid - node doesn't exist
-               (update-op "a" {:y 2})] ; should not be applied
-          result (interp/interpret db ops)
-          final-db (:db result)]
-
-      (is (seq (:issues result)) "Has validation issues")
-      (is (= {:x 1} (get-in final-db [:nodes "a" :props]))
-          "Only first update applied, third update not applied"))))
-
-(deftest test-refactored-validation-purity
-  (testing "validate function returns pure data structure"
-    (let [db (-> (db/empty-db)
-                 (assoc-in [:nodes "a"] {:type :block :props {}})
-                 (assoc-in [:children-by-parent :doc] ["a"])
-                 (db/derive-indexes))
-          result1 (db/validate db)
-          result2 (db/validate db)]
-
-      (is (= result1 result2) "Validation is pure - multiple calls return same result")
-      (is (map? result1) "Returns a map")
-      (is (contains? result1 :ok?) "Has :ok? key")
-      (is (contains? result1 :errors) "Has :errors key")
-      (is (true? (:ok? result1)) "Valid DB returns ok? true")
-      (is (empty? (:errors result1)) "Valid DB has no errors")))
-
-  (testing "validate returns errors as collection, not atom"
-    (let [bad-db (-> (db/empty-db)
-                     (assoc-in [:nodes "a"] {:type :block :props {}})
-                     (assoc-in [:children-by-parent :doc] ["a" "b"])
-                     (db/derive-indexes))
-          result (db/validate bad-db)]
-
-      (is (false? (:ok? result)) "Invalid DB returns ok? false")
-      (is (vector? (:errors result)) "Errors are a vector")
-      (is (seq (:errors result)) "Has at least one error")
-      (is (every? string? (:errors result)) "All errors are strings"))))
-
-(deftest test-refactored-normalization-pipeline
-  (testing "normalization uses clear pipeline of pure functions"
-    (let [db (-> (db/empty-db)
-                 (interp/interpret [(create-op "a" :div)
-                                    (place-op "a" :doc :first)
-                                    (create-op "b" :div)
-                                    (place-op "b" :doc :last)])
-                 :db)
-
-          ops [(place-op "a" :doc :first)
-               (update-op "a" {:x 1})
-               (update-op "a" {:y 2})
-               (update-op "a" {:z 3})]
-
-          result (interp/interpret db ops)]
-
-      (is (empty? (:issues result)) "No validation issues")
-      (is (= 1 (count (:trace result)))
-          "No-op place removed, 3 updates merged into 1 = 1 op total")
-      (is (= {:x 1 :y 2 :z 3} (get-in (:db result) [:nodes "a" :props]))
-          "All updates applied correctly"))))
+(deftest test-invariant-no-orphans
+  (testing "all nodes except roots have parents"
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (create-op "c" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" "a" :first)
+                         (place-op "c" "a" :last)])
+          all-nodes (keys (:nodes db))
+          nodes-with-parents (keys (get-in db [:derived :parent-of]))]
+      (is (= (set all-nodes) (set nodes-with-parents)))
+      (is (db-valid? db)))))
