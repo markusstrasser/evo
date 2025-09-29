@@ -1,0 +1,49 @@
+{:checks
+ {:shadow-conflict
+  {:desc "No stale shadow-cljs processes"
+   :command "pgrep -f 'shadow-cljs' | wc -l"
+   :expect "0"
+   :severity :warn}
+  
+  :dev-server
+  {:desc "Dev server running on port 8080"
+   :command "lsof -i :8080 | grep LISTEN | wc -l"
+   :expect "1"
+   :severity :error}
+  
+  :nrepl-port
+  {:desc "nREPL server running on port 7888"
+   :command "lsof -i :7888 | grep LISTEN | wc -l"
+   :expect "1"
+   :severity :error}
+  
+  :compilation
+  {:desc "Shadow-cljs test build compiles"
+   :command "npx shadow-cljs compile test 2>&1 | grep -i 'build completed' | wc -l"
+   :expect "1"
+   :severity :error}
+  
+  :lint
+  {:desc "clj-kondo passes with no errors"
+   :command "clj-kondo --lint src test --fail-level error 2>&1 | grep -i 'error' | wc -l"
+   :expect "0"
+   :severity :error}
+  
+  :cache-size
+  {:desc "Shadow-cljs cache not bloated"
+   :command "du -sm .shadow-cljs 2>/dev/null | awk '{print $1}'"
+   :expect "<500"
+   :severity :warn}}
+ 
+ :auto-fix
+ {:stale-cache
+  {:desc "Clear all caches and reinstall"
+   :command "rm -rf .shadow-cljs node_modules out target && npm install"}
+  
+  :port-conflict
+  {:desc "Kill process on port 8080"
+   :command "lsof -ti :8080 | xargs kill -9"}
+  
+  :nrepl-restart
+  {:desc "Kill and restart nREPL"
+   :command "lsof -ti :7888 | xargs kill -9 && npm run mcp &"}}}

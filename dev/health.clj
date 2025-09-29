@@ -100,12 +100,39 @@
         (println (:err result))
         false))))
 
+(defn check-repl-state
+  "Check current REPL state and return diagnostics.
+   Returns map with namespace counts, loaded libs, warnings."
+  []
+  (let [all-ns (try (count (all-ns)) (catch Exception _ 0))
+        loaded-libs (try (count (loaded-libs)) (catch Exception _ 0))
+        cljs-warnings (try
+                        (when-let [w (resolve 'cljs.analyzer/*cljs-warnings*)]
+                          (count (deref w)))
+                        (catch Exception _ 0))
+        cache-age (try
+                    (let [cache-file (io/file ".shadow-cljs/nrepl.port")]
+                      (when (.exists cache-file)
+                        (let [modified (.lastModified cache-file)
+                              now (System/currentTimeMillis)
+                              age-seconds (quot (- now modified) 1000)]
+                          age-seconds)))
+                    (catch Exception _ nil))]
+    {:namespaces all-ns
+     :loaded-libs loaded-libs
+     :cljs-warnings (or cljs-warnings 0)
+     :cache-age-seconds cache-age
+     :healthy? (and (> all-ns 0) (= cljs-warnings 0))}))
+
 (comment
   ;; Quick health check
   (preflight-check!)
 
   ;; Check cache sizes
   (cache-stats)
+
+  ;; Check REPL state
+  (check-repl-state)
 
   ;; Nuclear option: clear everything
   (clear-caches!)
