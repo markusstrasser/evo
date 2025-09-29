@@ -12,11 +12,19 @@
             [kernel.schemas :as S]
             [kernel.invariants :as inv]
             [kernel.workspace :as WS]
+            [kernel.derive.registry :as registry]
             [kernel.sugar-ops])) ; Load sugar ops to extend multimethod
 
 ;; ------------------------------------------------------------
 ;; Test utilities
 ;; ------------------------------------------------------------
+
+;; Temporary wrapper for tests - extracts :db from new API
+(defn- apply-tx* [db tx]
+  (let [result (core/apply-tx+effects* db tx)]
+    (if-let [error (:error result)]
+      (throw (ex-info (:message error) error))
+      (:db result))))
 
 (defn test-safely
   "Execute test function and return pass/fail with details."
@@ -58,14 +66,14 @@
 ;; ------------------------------------------------------------
 
 (defn full-derivation
-  "Verify that *derive-pass* produces both Tier-A and Tier-B derived data."
+  "Verify that registry produces both Tier-A and Tier-B derived data."
   []
   (test-safely
    "Full derivation by default"
    (fn []
      (let [base-db {:nodes {"root" {:type :root :props {}}}
                     :child-ids/by-parent {}}
-           derived-db (core/*derive-pass* base-db)
+           derived-db (registry/run base-db)
            derived (:derived derived-db)
 
             ;; Check for key Tier-A fields
@@ -101,8 +109,8 @@
            direct-identical? (identical? base-db result-db)
 
             ;; Via apply-tx* - core data should be unchanged
-           derived-base (core/*derive-pass* base-db)
-           interpreted-result (core/apply-tx* derived-base {:op :place :id "child" :parent-id "root"})
+           derived-base (registry/run base-db)
+           interpreted-result (apply-tx* derived-base {:op :place :id "child" :parent-id "root"})
 
            base-adj (select-keys derived-base [:nodes :child-ids/by-parent])
            result-adj (select-keys interpreted-result [:nodes :child-ids/by-parent])
@@ -143,7 +151,7 @@
         ;; Test 4: Integration - apply-tx* catches invalid op
         interpret-test (test-throws
                         "apply-tx* validation integration"
-                        #(core/apply-tx* valid-db {:op :create-node :id 999})
+                        #(apply-tx* valid-db {:op :create-node :id 999})
                         "Schema validation failed")]
 
     {:db-validation (:passed? db-test)
@@ -217,9 +225,9 @@
    (fn []
      (let [db0 {:nodes {"root" {:type :root} "a" {:type :div} "b" {:type :div}}
                 :child-ids/by-parent {"root" ["a" "b"]}}
-           db1 (core/apply-tx* db0 [{:op :add-ref :rel :ref/mentions :src "a" :dst "b"}])
+           db1 (apply-tx* db0 [{:op :add-ref :rel :ref/mentions :src "a" :dst "b"}])
            has-edge? (contains? (get-in db1 [:refs :ref/mentions "a"] #{}) "b")
-           db2 (core/apply-tx* db1 {:op :prune :pred (fn [_ x] (= x "b"))})
+           db2 (apply-tx* db1 {:op :prune :pred (fn [_ x] (= x "b"))})
            edge-dropped? (not (contains? (get-in db2 [:refs :ref/mentions "a"] #{}) "b"))]
        {:has-edge? has-edge?
         :edge-dropped? edge-dropped?
@@ -234,8 +242,8 @@
                        "a" {:type :div} "b" {:type :div}}
                :child-ids/by-parent {"root" ["a" "b"]}
                :refs {:ref/mentions {"a" #{"b"}}}}
-           db' (core/apply-tx* db {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})
-           db'' (core/apply-tx* db' {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})]
+           db' (apply-tx* db {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})
+           db'' (apply-tx* db' {:op :rm-ref :rel :ref/mentions :src "a" :dst "b"})]
        {:idempotent? (= db' db'')
         :passed? (= db' db'')}))
    "Removing an absent edge is a no-op"))
@@ -264,10 +272,10 @@
            base {:nodes {"root" {:type :root :props {}}} :child-ids/by-parent {}}
 
             ;; Build up a small tree with full derivation
-           step1 (core/apply-tx* base {:op :create-node :id "parent" :type :div})
-           step2 (core/apply-tx* step1 {:op :place :id "parent" :parent-id "root"})
-           step3 (core/apply-tx* step2 {:op :create-node :id "child" :type :span})
-           final (core/apply-tx* step3 {:op :place :id "child" :parent-id "parent"})
+           step1 (apply-tx* base {:op :create-node :id "parent" :type :div})
+           step2 (apply-tx* step1 {:op :place :id "parent" :parent-id "root"})
+           step3 (apply-tx* step2 {:op :create-node :id "child" :type :span})
+           final (apply-tx* step3 {:op :place :id "child" :parent-id "parent"})
 
             ;; Verify full derivation
            has-full-derivation? (and (contains? (:derived final) :parent-id-of)
@@ -275,7 +283,7 @@
 
             ;; Verify no-op guard (same parent, no pos change)
            before-adj (select-keys final [:nodes :child-ids/by-parent])
-           after-noop (core/apply-tx* final {:op :place :id "child" :parent-id "parent"})
+           after-noop (apply-tx* final {:op :place :id "child" :parent-id "parent"})
            after-adj (select-keys after-noop [:nodes :child-ids/by-parent])
            no-op-works? (= before-adj after-adj)
 
@@ -305,7 +313,7 @@
                        "loose" {:type :div}}
                :child-ids/by-parent {"root" ["a" "b"] "palette" ["p1" "p2"]}
                :roots ["root" "palette"]}
-           d (core/*derive-pass* db)]
+           d (registry/run db)]
        {:preorder (= (get-in d [:derived :preorder]) ["root" "a" "b" "palette" "p1" "p2"])
         :orphan? (contains? (get-in d [:derived :orphan-ids]) "loose")
         :invariants-pass? (try (inv/check-invariants d) true (catch Exception _ false))
@@ -335,7 +343,7 @@
      (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div}}
                :child-ids/by-parent {"root" ["w"]}
                :roots ["root" "palette"]}
-           d (core/*derive-pass* db)
+           d (registry/run db)
            preorder-correct? (= (get-in d [:derived :preorder]) ["root" "w" "palette"])
            orphan-w? (not (contains? (get-in d [:derived :orphan-ids]) "w"))
            invariants-ok? (try (inv/check-invariants d) true (catch Exception _ false))
@@ -349,7 +357,7 @@
                                [:view/scroll-into-view :view/scroll-into-view])
 
            ;; Backward compatibility
-           old-result (:nodes (core/apply-tx* base {:op :insert :id "z" :parent-id "root"}))
+           old-result (:nodes (apply-tx* base {:op :insert :id "z" :parent-id "root"}))
            new-result (:nodes (:db (core/apply-tx+effects* base {:op :insert :id "z" :parent-id "root"})))
            compat-ok? (= old-result new-result)]
 
@@ -414,7 +422,7 @@
    "defop: schema + dispatch"
    (fn []
      (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
-           db' (core/apply-tx* base {:op :insert :id "i" :parent-id "root"})
+           db' (apply-tx* base {:op :insert :id "i" :parent-id "root"})
            ok? (contains? (:nodes db') "i")]
        {:registered? (some? (S/op-schema-for :insert))
         :apply-op? ok?
