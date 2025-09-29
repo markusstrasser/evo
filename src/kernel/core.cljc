@@ -76,14 +76,14 @@
     ;; Build parent map from adjacency
     (let [parent-id-of (reduce-kv (fn [m parent-id child-ids]
                                     (reduce #(assoc %1 %2 parent-id) m child-ids))
-                                  {} (:child-ids/by-parent db))]
+                                  {} (:children-by-parent-id db))]
       ;; Walk up from new-parent-id and see if we reach id
       (loop [current new-parent-id
              visited #{}]
         (cond
-          (nil? current) false  ; reached root without finding id
-          (= current id) true   ; found id - would be a cycle
-          (visited current) false  ; loop in existing structure, but not involving id
+          (nil? current) false ; reached root without finding id
+          (= current id) true ; found id - would be a cycle
+          (visited current) false ; loop in existing structure, but not involving id
           :else (recur (parent-id-of current) (conj visited current)))))))
 
 ;; ------------------------------------------------------------
@@ -92,53 +92,59 @@
 
 (defn create-node*
   "Idempotent create of a node shell; never attaches to a parent."
-  [db {:keys [id type props] :or {type :div props {}}}]
-  (assert id "create-node*: :id required")
-  (if (lens/node-exists? db id)
-    db
-    (assoc-in db [:nodes id] {:type type :props props})))
+  [db {:keys [id type props node-id node-type] :or {type :div props {}}}]
+  (let [id (or id node-id)
+        type (or type node-type :div)]
+    (assert id "create-node*: :id or :node-id required")
+    (if (lens/node-exists? db id)
+      db
+      (assoc-in db [:nodes id] {:type type :props props}))))
 
 (defn place*
   "Topology + order in one op.
-   {:id ... :parent-id p-or-nil :pos (see pos->index)}
+   {:id ... :parent-id p-or-nil :pos (see pos->index)} or
+   {:node-id ... :parent-id p-or-nil :anchor (see pos->index)}
    - parent-id=nil    => detach only
    - parent-id=same   => reorder
    - parent-id≠same   => move-and-place
    Cycle-safe."
   {:malli/schema (m/schema [:schema {:registry S/registry} :kernel.schemas/place*-fn])}
-  [db {:keys [id parent-id pos]}]
-  (assert id "place*: :id required")
-  (assert (lens/node-exists? db id) (str "place*: node does not exist: " id))
-  (when (and parent-id (not (lens/node-exists? db parent-id)))
-    (throw (ex-info "place*: parent-id does not exist" {:parent-id parent-id})))
-  (when (cycle? db id parent-id)
-    (throw (ex-info "place*: cycle/invalid parent" {:id id :parent-id parent-id})))
-  (let [old-parent-id (lens/parent-of db id)]
-    (if (and (= parent-id old-parent-id) (nil? pos))
-      db
-      (let [db1 (if old-parent-id
-                  (update-in db [:child-ids/by-parent old-parent-id]
-                             (fn [children] (vec (remove #{id} children))))
-                  db)]
-        (if (nil? parent-id)
-          db1
-          (let [child-ids (lens/children-of db1 parent-id)
-                base (vec (remove #{id} child-ids))
-                i (pos->index db1 parent-id id pos)
-                v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
-            (assert (= (count v) (count (distinct v))) "place*: duplicate children detected")
-            (assoc-in db1 [:child-ids/by-parent parent-id] v)))))))
+  [db {:keys [id parent-id pos node-id anchor]}]
+  (let [id (or id node-id)
+        pos (or pos anchor)]
+    (assert id "place*: :id or :node-id required")
+    (assert (lens/node-exists? db id) (str "place*: node does not exist: " id))
+    (when (and parent-id (not (lens/node-exists? db parent-id)))
+      (throw (ex-info "place*: parent-id does not exist" {:parent-id parent-id})))
+    (when (cycle? db id parent-id)
+      (throw (ex-info "place*: cycle/invalid parent" {:id id :parent-id parent-id})))
+    (let [old-parent-id (lens/parent-of db id)]
+      (if (and (= parent-id old-parent-id) (nil? pos))
+        db
+        (let [db1 (if old-parent-id
+                    (update-in db [:children-by-parent-id old-parent-id]
+                               (fn [children] (vec (remove #{id} children))))
+                    db)]
+          (if (nil? parent-id)
+            db1
+            (let [child-ids (lens/children-of db1 parent-id)
+                  base (vec (remove #{id} child-ids))
+                  i (pos->index db1 parent-id id pos)
+                  v (vec (concat (subvec base 0 i) [id] (subvec base i)))]
+              (assert (= (count v) (count (distinct v))) "place*: duplicate children detected")
+              (assoc-in db1 [:children-by-parent-id parent-id] v))))))))
 
 (defn update-node*
   "Deep-merge-ish updates: map values merge, scalars replace."
-  [db {:keys [id props sys updates]}]
-  (assert id "update-node*: :id required")
-  (let [u (cond-> {}
-            (some? props) (assoc :props props)
-            (some? sys) (assoc :sys sys)
-            (map? updates) (merge updates))
-        deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
-    (update-in db [:nodes id] #(merge-with deep % u))))
+  [db {:keys [id props sys updates node-id]}]
+  (let [id (or id node-id)]
+    (assert id "update-node*: :id or :node-id required")
+    (let [u (cond-> {}
+              (some? props) (assoc :props props)
+              (some? sys) (assoc :sys sys)
+              (map? updates) (merge updates))
+          deep (fn m [a b] (if (and (map? a) (map? b)) (merge-with m a b) b))]
+      (update-in db [:nodes id] #(merge-with deep % u)))))
 
 (defn- subtree-ids
   "Get all node IDs in subtree rooted at node-id (inclusive)."
@@ -163,10 +169,10 @@
         db1 (reduce (fn [d id]
                       (-> d
                           (update :nodes dissoc id)
-                          (update :child-ids/by-parent dissoc id)))
+                          (update :children-by-parent-id dissoc id)))
                     db victims)]
     ;; scrub victims from all child vectors
-    (let [db2 (update db1 :child-ids/by-parent
+    (let [db2 (update db1 :children-by-parent-id
                       (fn [m]
                         (into {} (for [[parent-id child-ids] m]
                                    [parent-id (vec (remove victims child-ids))]))))
@@ -201,17 +207,23 @@
      (if unique? (empty? (get-in db [:refs rel src] #{})) true)
      (if acyclic? (not (reachable? db rel dst src)) true))))
 
-(defn add-ref* [db {:keys [rel src dst] :as m}]
-  (assert (lens/node-exists? db src) (str "add-ref*: src missing: " src))
-  (assert (lens/node-exists? db dst) (str "add-ref*: dst missing: " dst))
-  (when (= src dst)
-    (throw (ex-info "add-ref*: self-edge not allowed" {:op m :why :self-edge})))
-  (when-not (edge-ok? db rel src dst)
-    (throw (ex-info "add-ref*: registry constraint violation" {:op m :why :edge-constraint :rel rel :src src :dst dst})))
-  (update-in db [:refs rel src] (fnil conj #{}) dst))
+(defn add-ref* [db {:keys [rel src dst relation source-id target-id] :as m}]
+  (let [rel (or rel relation)
+        src (or src source-id)
+        dst (or dst target-id)]
+    (assert (lens/node-exists? db src) (str "add-ref*: src missing: " src))
+    (assert (lens/node-exists? db dst) (str "add-ref*: dst missing: " dst))
+    (when (= src dst)
+      (throw (ex-info "add-ref*: self-edge not allowed" {:op m :why :self-edge})))
+    (when-not (edge-ok? db rel src dst)
+      (throw (ex-info "add-ref*: registry constraint violation" {:op m :why :edge-constraint :rel rel :src src :dst dst})))
+    (update-in db [:refs rel src] (fnil conj #{}) dst)))
 
-(defn rm-ref* [db {:keys [rel src dst]}]
-  (update-in db [:refs rel src] (fnil disj #{}) dst))
+(defn rm-ref* [db {:keys [rel src dst relation source-id target-id]}]
+  (let [rel (or rel relation)
+        src (or src source-id)
+        dst (or dst target-id)]
+    (update-in db [:refs rel src] (fnil disj #{}) dst)))
 
 ;; ------------------------------------------------------------
 ;; Operation registry (multimethod-based dispatch)
@@ -347,7 +359,7 @@
           :db db :effects []})))
 
    (let [raw-ops (->tx tx)
-         ops (normalize/normalize raw-ops)  ; Apply peephole optimizations
+         ops (normalize/normalize raw-ops) ; Apply peephole optimizations
          config {:assert? assert?}]
 
      (loop [i 0
@@ -356,7 +368,7 @@
             trace []]
        (if (= i (count ops))
          ;; Transaction Success - run deck checks
-         (let [findings (deck/run current-db {:when #{:post}})]
+         (let [findings (deck/run current-db {:when #{:postorder-index}})]
            (cond-> {:db current-db :effects all-effects :findings findings}
              (seq trace) (assoc :trace trace)))
 
@@ -382,7 +394,6 @@
 ;; ------------------------------------------------------------
 ;; Public API Wrappers
 ;; ------------------------------------------------------------
-
 
 (defn run-tx
   "Total transaction processor: never throws."
@@ -426,7 +437,7 @@
 
   ;; Multi-root traversal
   (let [db {:nodes {"root" {:type :root} "palette" {:type :root} "w" {:type :div} "orphan" {:type :span}}
-            :child-ids/by-parent {"root" ["w"]}
+            :children-by-parent-id {"root" ["w"]}
             :roots ["root" "palette"]}
         d (registry/run db)]
     (assert (= (get-in d [:derived :preorder]) ["root" "w" "palette"]) "Multi-root preorder incorrect")
@@ -436,14 +447,14 @@
     (assert (contains? (:derived d) :preorder) "Should have preorder"))
 
   ;; Core operations work through the registry system
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         {:keys [db effects]} (apply-tx+effects* base {:op :create-node :id "x" :type :div})]
     (assert (contains? (:nodes db) "x") "create-node should create node")
     (assert (empty? effects) "create-node should emit no effects")
     (assert (every? map? effects) "All effects should be data maps"))
 
   ;; Data-driven registry dispatch
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}]
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}]
     ;; Core primitives work directly
     (assert (contains? (:nodes (apply-op base {:op :create-node :id "test-core"})) "test-core") "Core ops must work")
     ;; run-tx uses the registry
@@ -455,7 +466,7 @@
          (catch Exception e (assert (re-find #"Unknown :op" (.getMessage e)) "Should give clear error message"))))
 
   ;; Declarative pipeline error handling
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         error-result (run-tx base [{:op :create-node :id "a"}
                                    {:op :place :id "a" :parent-id "NONEXISTENT"}])]
     (assert (not (:ok? error-result)) "Invalid transaction should fail")
@@ -465,7 +476,7 @@
     (assert (empty? (:effects error-result)) "No effects on error"))
 
   ;; Cycle detection prevents infinite nesting
-  (let [base {:nodes {"a" {:type :div} "b" {:type :div}} :child-ids/by-parent {}}
+  (let [base {:nodes {"a" {:type :div} "b" {:type :div}} :children-by-parent-id {}}
         tx [{:op :place :id "a" :parent-id "b"}
             {:op :place :id "b" :parent-id "a"}]
         result (run-tx base tx)]
@@ -474,7 +485,7 @@
     (assert (re-find #"cycle" (get-in result [:error :message])) "Error should mention cycle"))
 
   ;; Schema validation catches malformed operations
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         bad-ops [{:op :create-node} ; missing :id
                  {:op :place :id "nonexistent"} ; node doesn't exist
                  {:op :unknown-thing :data "whatever"}] ; unknown op
@@ -484,7 +495,7 @@
     (assert (every? #(= (:db %) base) results) "DB should remain unchanged on all failures"))
 
   ;; Pipeline stage isolation
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         op {:op :create-node :id "test" :type :div}]
     ;; Each stage should work independently
     (let [ctx1 (stage:validate-schema {:db-before base :op op :op-index 0 :config {}})
@@ -502,7 +513,7 @@
       (assert (coll? (:effects ctx5)) "Should have effects collection")))
 
   ;; Transaction atomicity
-  (let [base {:nodes {"root" {:type :root} "a" {:type :div}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root} "a" {:type :div}} :children-by-parent-id {}}
         failing-tx [{:op :create-node :id "b" :type :div}
                     {:op :place :id "b" :parent-id "NONEXISTENT"}]
         result (run-tx base failing-tx)]
@@ -511,7 +522,7 @@
     (assert (not (contains? (:nodes (:db result)) "b")) "Failed tx should not create intermediate nodes"))
 
   ;; Response builders work correctly
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         success-result (evaluate base [{:op :create-node :id "test"}])
         error-result (evaluate base [{:op :unknown-op}])]
     (assert (= (:status success-result) :ok) "Success should have :ok status")
@@ -520,7 +531,7 @@
     (assert (contains? (:error error-result) :why) "Error should include error details"))
 
   ;; Transaction optimization works correctly
-  (let [base {:nodes {"root" {:type :root}} :child-ids/by-parent {}}
+  (let [base {:nodes {"root" {:type :root}} :children-by-parent-id {}}
         ops-before [{:op :create-node :id "temp" :type :div}
                     {:op :update-node :id "keep" :props {:a 1}}
                     {:op :update-node :id "keep" :props {:b 2}}
@@ -532,7 +543,7 @@
 
   ;; Lens functions provide correct navigation
   (let [tree-db {:nodes {"root" {:type :root} "parent" {:type :div} "child1" {:type :span} "child2" {:type :span}}
-                 :child-ids/by-parent {"root" ["parent"] "parent" ["child1" "child2"]}}
+                 :children-by-parent-id {"root" ["parent"] "parent" ["child1" "child2"]}}
         derived-db (registry/run tree-db)]
     (assert (= (lens/children-of tree-db "parent") ["child1" "child2"]) "Children lookup should work")
     (assert (= (lens/parent-of derived-db "child1") "parent") "Parent lookup should work")
@@ -542,17 +553,17 @@
 
   ;; Registry system provides all expected derivations
   (let [complex-db {:nodes {"root" {:type :root} "a" {:type :div} "b" {:type :span} "c" {:type :p}}
-                    :child-ids/by-parent {"root" ["a"] "a" ["b" "c"]}}
+                    :children-by-parent-id {"root" ["a"] "a" ["b" "c"]}}
         derived (registry/run complex-db)]
     (assert (every? #(contains? (:derived derived) %)
-                    [:parent-id-of :index-of :child-ids-of :preorder :pre :post :id-by-pre])
+                    [:parent-id-of :index-of :child-ids-of :preorder :preorder-index :postorder-index :id-by-pre])
             "Registry should provide all core derivations")
     (assert (= (get-in derived [:derived :preorder]) ["root" "a" "b" "c"]) "Preorder should be correct")
     (assert (= (get-in derived [:derived :parent-id-of "b"]) "a") "Parent mapping should be correct")
     (assert (= (get-in derived [:derived :index-of "c"]) 1) "Index mapping should be correct"))
 
   ;; Deck system provides structured findings instead of throwing
-  (let [invalid-db {:nodes {"root" {:type :root}} :child-ids/by-parent {"root" ["nonexistent"]}}
+  (let [invalid-db {:nodes {"root" {:type :root}} :children-by-parent-id {"root" ["nonexistent"]}}
         derived-invalid (registry/run invalid-db)
         findings (deck/run derived-invalid)]
     (assert (vector? findings) "Deck should return findings vector")
