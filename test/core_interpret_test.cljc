@@ -284,12 +284,62 @@
     (let [db (-> (db/empty-db)
                  (interp/interpret [(create-op "a" :div)])
                  :db)
-          ops [(update-op "a" {:x 1})          ; valid
+          ops [(update-op "a" {:x 1}) ; valid
                (place-op "missing" :doc :first) ; invalid - node doesn't exist
-               (update-op "a" {:y 2})]          ; should not be applied
+               (update-op "a" {:y 2})] ; should not be applied
           result (interp/interpret db ops)
           final-db (:db result)]
 
       (is (seq (:issues result)) "Has validation issues")
       (is (= {:x 1} (get-in final-db [:nodes "a" :props]))
           "Only first update applied, third update not applied"))))
+
+(deftest test-refactored-validation-purity
+  (testing "validate function returns pure data structure"
+    (let [db (-> (db/empty-db)
+                 (assoc-in [:nodes "a"] {:type :block :props {}})
+                 (assoc-in [:children-by-parent :doc] ["a"])
+                 (db/derive-indexes))
+          result1 (db/validate db)
+          result2 (db/validate db)]
+
+      (is (= result1 result2) "Validation is pure - multiple calls return same result")
+      (is (map? result1) "Returns a map")
+      (is (contains? result1 :ok?) "Has :ok? key")
+      (is (contains? result1 :errors) "Has :errors key")
+      (is (true? (:ok? result1)) "Valid DB returns ok? true")
+      (is (empty? (:errors result1)) "Valid DB has no errors")))
+
+  (testing "validate returns errors as collection, not atom"
+    (let [bad-db (-> (db/empty-db)
+                     (assoc-in [:nodes "a"] {:type :block :props {}})
+                     (assoc-in [:children-by-parent :doc] ["a" "b"])
+                     (db/derive-indexes))
+          result (db/validate bad-db)]
+
+      (is (false? (:ok? result)) "Invalid DB returns ok? false")
+      (is (vector? (:errors result)) "Errors are a vector")
+      (is (seq (:errors result)) "Has at least one error")
+      (is (every? string? (:errors result)) "All errors are strings"))))
+
+(deftest test-refactored-normalization-pipeline
+  (testing "normalization uses clear pipeline of pure functions"
+    (let [db (-> (db/empty-db)
+                 (interp/interpret [(create-op "a" :div)
+                                    (place-op "a" :doc :first)
+                                    (create-op "b" :div)
+                                    (place-op "b" :doc :last)])
+                 :db)
+
+          ops [(place-op "a" :doc :first)
+               (update-op "a" {:x 1})
+               (update-op "a" {:y 2})
+               (update-op "a" {:z 3})]
+
+          result (interp/interpret db ops)]
+
+      (is (empty? (:issues result)) "No validation issues")
+      (is (= 1 (count (:trace result)))
+          "No-op place removed, 3 updates merged into 1 = 1 op total")
+      (is (= {:x 1 :y 2 :z 3} (get-in (:db result) [:nodes "a" :props]))
+          "All updates applied correctly"))))
