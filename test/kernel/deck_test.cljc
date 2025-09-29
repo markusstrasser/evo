@@ -1,5 +1,5 @@
-(ns kernel.deck-test
-  (:require [kernel.deck :as deck]
+(ns labs.diagnostics.deck-test
+  (:require [labs.diagnostics.deck :as deck]
             [clojure.string :as str]
             #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer-macros [deftest is testing]])))

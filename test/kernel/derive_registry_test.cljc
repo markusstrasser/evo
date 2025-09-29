@@ -1,5 +1,5 @@
-(ns kernel.derive-registry-test
-  (:require [kernel.derive.registry :as registry]
+(ns labs.derive.registry-test
+  (:require [labs.derive.registry :as registry]
             #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer-macros [deftest is testing]])))
 
@@ -144,7 +144,7 @@
     ;; We can't easily test this without modifying the passes registry,
     ;; so we test the behavior indirectly by ensuring current passes work
     (is (does-not-throw?
-          (registry/run test-db)))))
+         (registry/run test-db)))))
 
 (deftest test-minimal-passes
   (testing "minimal pass sets work correctly"

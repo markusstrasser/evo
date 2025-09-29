@@ -1,4 +1,4 @@
-(ns kernel.lens
+(ns labs.lens
   "Path lenses - pure getters for tree navigation and introspection.
 
    These functions make specs/tests readable and let agents 'ask where am I?'
@@ -129,22 +129,22 @@
                :index-of {"parent" 0 "child1" 0 "child2" 1}}})
 
   ;; Basic navigation
-  (children-of test-db "root")        ; => ["parent"]
-  (children-of test-db "parent")      ; => ["child1" "child2"]
-  (parent-of test-db "child1")        ; => "parent"
-  (index-of test-db "child2")         ; => 1
+  (children-of test-db "root") ; => ["parent"]
+  (children-of test-db "parent") ; => ["child1" "child2"]
+  (parent-of test-db "child1") ; => "parent"
+  (index-of test-db "child2") ; => 1
 
   ;; Path operations
-  (path-to-root test-db "child2")     ; => ["child2" "parent" "root"]
-  (siblings test-db "child1")         ; => ["child1" "child2"]
-  (prev-id test-db "child2")          ; => "child1"
-  (next-id test-db "child1")          ; => "child2"
+  (path-to-root test-db "child2") ; => ["child2" "parent" "root"]
+  (siblings test-db "child1") ; => ["child1" "child2"]
+  (prev-id test-db "child2") ; => "child1"
+  (next-id test-db "child1") ; => "child2"
 
   ;; Predicates
-  (is-root? test-db "root")           ; => true
-  (is-leaf? test-db "child1")         ; => true
-  (depth-of test-db "child2")         ; => 2
+  (is-root? test-db "root") ; => true
+  (is-leaf? test-db "child1") ; => true
+  (depth-of test-db "child2") ; => 2
 
   ;; Debugging
-  (explain test-db "child2")          ; => "id=child2 at /root/parent/child2 index=1 type=:span [LEAF]"
+  (explain test-db "child2") ; => "id=child2 at /root/parent/child2 index=1 type=:span [LEAF]"
   )

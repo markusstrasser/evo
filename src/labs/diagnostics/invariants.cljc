@@ -1,4 +1,4 @@
-(ns kernel.invariants
+(ns labs.diagnostics.invariants
   "Invariant checking for tree kernel. Optional, flagged via assert? parameter.")
 
 (defn- ref-neighbors [db rel id]

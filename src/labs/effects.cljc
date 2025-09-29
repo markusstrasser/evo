@@ -1,4 +1,4 @@
-(ns kernel.effects)
+(ns labs.effects)
 
 (defn detect
   "Pure detector: look at prev & next db and the op applied.

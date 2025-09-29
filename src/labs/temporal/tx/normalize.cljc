@@ -1,4 +1,4 @@
-(ns kernel.tx.normalize
+(ns labs.temporal.tx.normalize
   "Transaction peephole optimizer - pre-flight normalizer for operation sequences.
 
    Applies minimal, safe local rules to clean up redundant or inefficient
@@ -26,10 +26,10 @@
   [ops]
   (let [;; Build index of create operations by ID
         creates (into {} (keep-indexed
-                           (fn [i op]
-                             (when (= :create-node (:op op))
-                               [(:id op) i]))
-                           ops))
+                          (fn [i op]
+                            (when (= :create-node (:op op))
+                              [(:id op) i]))
+                          ops))
 
         ;; Find IDs that have both create and delete
         cancelled-ids (into #{}
@@ -103,23 +103,23 @@
   (def ops1 [{:op :create-node :id "temp" :type :div}
              {:op :delete :id "temp"}
              {:op :create-node :id "keep" :type :span}])
-  (normalize ops1)  ; => [{:op :create-node :id "keep" :type :span}]
+  (normalize ops1) ; => [{:op :create-node :id "keep" :type :span}]
 
   ;; Test noop reorder removal
   (def ops2 [{:op :reorder :id "item" :pos nil}
              {:op :create-node :id "real" :type :div}])
-  (normalize ops2)  ; => [{:op :create-node :id "real" :type :div}]
+  (normalize ops2) ; => [{:op :create-node :id "real" :type :div}]
 
   ;; Test patch merging
   (def ops3 [{:op :update-node :id "item" :props {:a 1}}
              {:op :update-node :id "item" :props {:b 2}}
              {:op :create-node :id "other" :type :div}
              {:op :update-node :id "item" :props {:c 3}}])
-  (normalize ops3)  ; => [{:op :update-node :id "item" :props {:a 1 :b 2}}
+  (normalize ops3) ; => [{:op :update-node :id "item" :props {:a 1 :b 2}}
                     ;     {:op :create-node :id "other" :type :div}
                     ;     {:op :update-node :id "item" :props {:c 3}}]
 
   ;; Test idempotence
   (let [ops [{:op :create-node :id "x"} {:op :delete :id "x"}]]
-    (= (normalize ops) (normalize (normalize ops))))  ; => true
+    (= (normalize ops) (normalize (normalize ops)))) ; => true
   )

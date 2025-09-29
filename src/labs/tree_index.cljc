@@ -1,4 +1,4 @@
-(ns kernel.tree-index
+(ns labs.tree-index
   (:require [kernel.derive.registry :as registry]))
 
 (defn build [db]

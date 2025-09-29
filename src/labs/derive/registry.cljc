@@ -1,4 +1,4 @@
-(ns kernel.derive.registry
+(ns labs.derive.registry
   "Derivation pass registry - replaces monolithic derivation with named passes.
 
    Breaks derivation into independent, ordered passes that can be toggled,
