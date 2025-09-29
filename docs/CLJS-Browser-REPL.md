@@ -2,7 +2,7 @@
 
 ## Overview
 
-Complete solution for MCP agents to seamlessly evaluate ClojureScript code in browser context via shadow-cljs. This guide solves the "process isolation challenge" that previously blocked browser REPL access.
+Generic REPL tooling for shadow-cljs development. No application-specific assumptions.
 
 ## Quick Start
 
@@ -10,52 +10,48 @@ Complete solution for MCP agents to seamlessly evaluate ClojureScript code in br
 ;; 1. Ensure shadow-cljs is running
 ;; npm run dev
 
-;; 2. One-command setup
-(require '[dev-mcp :as dmcp])
-(dmcp/init!)
+;; 2. Load REPL helpers
+(require '[repl :as repl])
 
-;; 3. Evaluate ClojureScript in browser
-(dmcp/cljs! "(js/console.log \"Hello browser!\")")
-(dmcp/cljs! "js/document.title")  ; → "Evolver"
-(dmcp/cljs! "(keys @@evolver.core/store)")  ; → (:past :present :future :view)
+;; 3. Initialize environment
+(repl/init!)  ; Loads core.{db,ops,interpret}, fixtures
+
+;; 4. Evaluate ClojureScript in browser
+(repl/cljs! "(js/console.log \"Hello browser!\")")
+(repl/cljs! "js/document.title")
 ```
 
 ## Architecture
 
 ```
-MCP REPL          Shadow-cljs Server       Browser
-(Port 7888)  ←→   (Port 55449 nREPL)  ←→   (WebSocket)
-    ↑                     ↑                     ↑
-  AI Agent          Compilation             Live App
-  Tooling           Hot Reload              DOM APIs
+REPL             Shadow-cljs Server       Browser
+            ←→   (Port 55449 nREPL)  ←→   (WebSocket)
+                       ↑                     ↑
+                 Compilation             Live App
+                 Hot Reload              DOM APIs
 ```
 
-**Key Insight**: Use nREPL client pattern to connect TO shadow-cljs rather than trying to hijack its process.
+**Key**: Use shadow-cljs REPL API to evaluate code in browser context.
 
 ## Core Functions
 
-### Connection Management (`src/dev.clj`)
+### Connection Management (`dev/repl.clj`)
 
 ```clojure
-(dev/connect-to-shadow!)        ; Connect to shadow-cljs nREPL
-(dev/switch-to-frontend!)       ; Switch to ClojureScript context
-(dev/status)                    ; Check connection status  
-(dev/disconnect-shadow!)        ; Clean disconnect
+(repl/connect!)  ; Connect to shadow-cljs REPL for :frontend build
+(repl/init!)     ; Load core namespaces + fixtures
+(repl/cljs! "code")  ; Evaluate ClojureScript in browser
+(repl/clj! "code")   ; Evaluate Clojure in JVM
 ```
 
-### Evaluation
+### Health Checks (`dev/health.clj`)
 
 ```clojure
-(dev/cljs! "code")              ; Raw ClojureScript evaluation
-(dev/shadow-eval "code")        ; Low-level nREPL message handling
-```
-
-### Simplified Interface (`src/dev-mcp.clj`)
-
-```clojure
-(dmcp/init!)                    ; Auto-connect + context switch
-(dmcp/cljs! "code")             ; Convenient evaluation
-(dmcp/help!)                    ; Usage documentation
+(require '[health :as h])
+(h/preflight-check!)       ; Validate environment
+(h/cache-stats)            ; Show cache sizes
+(h/check-shadow-conflicts) ; Detect process conflicts
+(h/clear-caches!)          ; Nuclear option
 ```
 
 ## Usage Patterns
@@ -63,118 +59,78 @@ MCP REPL          Shadow-cljs Server       Browser
 ### Basic Browser Interaction
 ```clojure
 ;; DOM access
-(dmcp/cljs! "js/document.title")
-(dmcp/cljs! "js/document.querySelector(\".node\")")
+(repl/cljs! "js/document.title")
+(repl/cljs! "js/document.querySelector(\".node\")")
 
-;; Console output  
-(dmcp/cljs! "(js/console.log \"Debug info:\" some-data)")
+;; Console output
+(repl/cljs! "(js/console.log \"Debug info\")")
 
 ;; Browser APIs
-(dmcp/cljs! "js/localStorage.getItem(\"key\")")
-```
-
-### Application State Access
-```clojure
-;; View store structure
-(dmcp/cljs! "(keys @@evolver.core/store)")
-
-;; Get current view state
-(dmcp/cljs! "(:view @@evolver.core/store)")
-
-;; Access specific data
-(dmcp/cljs! "(get-in @@evolver.core/store [:nodes \"node-id\"])")
+(repl/cljs! "js/localStorage.getItem(\"key\")")
 ```
 
 ### Development Operations
 ```clojure
-;; Reload application
-(dmcp/cljs! "(evolver.core/main)")
+;; Test core operations in browser
+(repl/cljs! "(require '[core.ops :as ops])")
+(repl/cljs! "(ops/create-node {} \"id\" :div {})")
 
-;; Trigger app commands
-(dmcp/cljs! "(evolver.dispatcher/dispatch! [:select-node {:id \"n1\"}])")
-
-;; Test functions interactively
-(dmcp/cljs! "(evolver.intents/navigation-intent @db :nav-down {})")
+;; Load test fixtures
+(repl/cljs! "(require '[fixtures :as fix])")
+(repl/cljs! "(fix/gen-flat-tree 5)")
 ```
 
-## Prerequisites & Environment
+## Prerequisites
 
 ### Required Running Processes
 1. **Shadow-cljs server**: `npm run dev` (creates nREPL on port 55449)
 2. **Browser connection**: Open http://localhost:8080
-3. **MCP REPL**: Connected to project nREPL (port 7888)
 
-### Dependency Requirements
-```clojure
-;; In deps.edn (already configured)
-{:deps {shadow-cljs/shadow-cljs {:mvn/version "2.x.x"}
-        nrepl/nrepl {:mvn/version "1.3.1"}}}
+### File Structure
 ```
-
-### File Dependencies
-- `src/dev.clj` - Core bridge implementation
-- `src/dev_mcp.clj` - Simplified MCP interface
+dev/
+  repl.clj        - REPL bridge
+  health.clj      - Health checks
+  fixtures.cljc   - Test data builders
+```
 
 ## Error Recovery
 
 ### Connection Issues
 ```clojure
-;; Check if shadow-cljs is running
-(dmcp/cljs! "(+ 1 1)")  ; Should return 2
+;; Test basic evaluation
+(repl/cljs! "(+ 1 1)")  ; Should return 2
 
-;; If connection lost, reconnect
-(dev/disconnect-shadow!)
-(dmcp/init!)
-```
-
-### Context Problems
-```clojure
-;; If getting "No such namespace: js" errors
-(dev/switch-to-frontend!)
-
-;; Verify browser context
-(dmcp/cljs! "js/console.log(\"Browser context active\")")
+;; Reconnect if needed
+(repl/connect!)
 ```
 
 ### Common Error Messages
 - **"shadow-cljs has not been started yet!"** → Run `npm run dev`
-- **"Connection refused"** → Check shadow-cljs nREPL port (55449)
-- **"No such namespace: js"** → Switch to ClojureScript context
-- **"is not ISeqable"** → Use `@@store` not `@store` for app state
+- **"Connection refused"** → Check shadow-cljs is running on port 55449
+- **"No such namespace"** → Ensure namespace is loaded in browser build
 
 ## Advanced Usage
 
-### Context Switching
-```clojure
-;; Work in ClojureScript
-(dmcp/cljs! "(js/console.log \"In browser\")")
-
-;; Switch back to Clojure  
-(dmcp/cljs! ":cljs/quit")
-(+ 1 2 3)  ; Now in Clojure context
-
-;; Return to ClojureScript
-(dev/switch-to-frontend!)
-```
-
-### Direct nREPL Control
-```clojure
-;; Access raw nREPL connection
-(dev/shadow-eval "(js/performance.now)")
-
-;; Send custom nREPL messages
-(nrepl/message dev/*shadow-connection* 
-               {:op "eval" :code "js/document.title"})
-```
-
 ### Multi-Expression Evaluation
 ```clojure
-(dmcp/cljs! "
+(repl/cljs! "
 (def debug-data {:timestamp (js/Date.now)
-                 :title js/document.title
-                 :store-keys (keys @@evolver.core/store)})
+                 :title js/document.title})
 (js/console.log \"Debug:\" debug-data)
 debug-data")
+```
+
+### Working with Fixtures
+```clojure
+;; Load fixtures in browser context
+(repl/cljs! "(require '[fixtures :as fix])")
+(repl/cljs! "(def tree (fix/gen-balanced-tree 2 3))")
+(repl/cljs! "(:db tree)")
+
+;; Test operations
+(repl/cljs! "(require '[core.ops :as ops])")
+(repl/cljs! "(ops/create-node (:db tree) \"new\" :span {})")
 ```
 
 ## Integration with Chrome DevTools
@@ -184,54 +140,40 @@ When browser is open at http://localhost:8080, ClojureScript evaluation automati
 - **Sources tab**: Hot reload changes
 - **Application tab**: LocalStorage/DOM modifications
 
-Use Chrome DevTools for visual verification of programmatic changes made via MCP.
-
-## Performance Considerations
-
-- **Connection reuse**: Single nREPL connection handles multiple evaluations
-- **Session persistence**: ClojureScript context maintained across calls
-- **Hot reload preserved**: Shadow-cljs development workflow unaffected
-- **Memory impact**: Minimal - leverages existing shadow-cljs infrastructure
-
 ## Troubleshooting Checklist
 
 1. **Shadow-cljs running?** `ps aux | grep shadow`
 2. **Browser connected?** Visit http://localhost:8080
 3. **nREPL responsive?** `lsof -i :55449`
-4. **Context correct?** Try `(dmcp/cljs! "js/window")`
-5. **App loaded?** Check browser console for errors
-
-## Future Enhancements
-
-- [ ] Auto-detect shadow-cljs nREPL port
-- [ ] Health monitoring with auto-reconnection
-- [ ] Support for multiple shadow-cljs builds
-- [ ] Integration with Chrome DevTools MCP
-- [ ] Error-specific recovery suggestions
+4. **Basic eval works?** `(repl/cljs! "(+ 1 2)")`
 
 ## Success Validation
 
-Run this test sequence to verify complete integration:
+Run this test sequence:
 
 ```clojure
-(require '[dev-mcp :as dmcp])
-(dmcp/init!)
-(dmcp/cljs! "(+ 1 2 3)")  ; → 6
-(dmcp/cljs! "js/document.title")  ; → "Evolver"  
-(dmcp/cljs! "(js/console.log \"✅ Integration working!\")")
-(dmcp/cljs! "(keys @@evolver.core/store)")  ; → (:past :present :future :view)
+(require '[repl :as repl])
+(repl/init!)
+(repl/cljs! "(+ 1 2 3)")  ; → 6
+(repl/cljs! "js/document.title")  ; → Page title
+(repl/cljs! "(js/console.log \"✅ Integration working!\")")
 ```
 
-If all four evaluations succeed, ClojureScript browser REPL integration is fully functional.
+If all evaluations succeed, ClojureScript browser REPL is functional.
 
 ---
 
 ## Summary
 
-This solution provides **zero-friction ClojureScript evaluation** from MCP by:
-1. **Respecting process boundaries** via nREPL client pattern
-2. **Automating complex setup** with one-command initialization  
-3. **Handling context switching** transparently
-4. **Providing clear error recovery** for common failure modes
+This tooling provides **zero-friction ClojureScript evaluation** by:
+1. **Using shadow-cljs REPL API** for browser evaluation
+2. **Providing simple helpers** (connect!, init!, cljs!)
+3. **No application assumptions** - works with any ClojureScript project
+4. **Clean separation** - REPL bridge separate from application code
 
-The result: MCP agents can seamlessly develop, test, and debug ClojureScript applications in live browser context without architectural workarounds or manual setup steps.
+The result: Simple, generic REPL tooling for ClojureScript development.
+
+## See Also
+- `dev/README.md` - Complete dev tooling documentation
+- `docs/DEV.md` - Development workflows
+- Shadow-cljs documentation: https://shadow-cljs.github.io/
