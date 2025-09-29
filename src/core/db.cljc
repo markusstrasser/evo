@@ -1,8 +1,7 @@
 (ns core.db
   "Canonical DB shape, derive function, and invariants for the three-op kernel."
-  (:require [clojure.set :as set]
-            #?(:cljs [goog.string :as gstr])
-            #?(:cljs [goog.string.format])))
+  #?(:cljs (:require [goog.string :as gstr]
+                     [goog.string.format])))
 
 (defn empty-db
   "Create an empty database with canonical shape."
