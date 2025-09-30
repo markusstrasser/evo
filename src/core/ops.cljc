@@ -58,44 +58,91 @@
       (map? at)         (resolve-relative-anchor siblings at append-position)
       :else             append-position)))
 
+(defn- remove-child-from-parent
+  "Remove child-id from its current parent's children list.
+   If parent's children become empty, removes the parent key entirely.
+
+   Args:
+     db - database
+     parent - parent ID or root keyword
+     children - parent's children vector
+     child-id - ID to remove
+
+   Returns:
+     Updated database (or unchanged if child not found)"
+  [db parent children child-id]
+  (let [filtered-children (filterv #(not= % child-id) children)]
+    (cond
+      ;; Child wasn't in this parent's list - no change
+      (= (count filtered-children) (count children))
+      db
+
+      ;; Parent now has no children - remove parent key
+      (empty? filtered-children)
+      (update db :children-by-parent dissoc parent)
+
+      ;; Parent still has children - update list
+      :else
+      (assoc-in db [:children-by-parent parent] filtered-children))))
+
+(defn- remove-from-current-parent
+  "Remove node from whichever parent currently contains it.
+   Scans all parents to find and remove the node.
+
+   Args:
+     db - database
+     node-id - node to remove
+
+   Returns:
+     Database with node removed from its current parent"
+  [db node-id]
+  (reduce-kv
+   (fn [acc parent children]
+     (remove-child-from-parent acc parent children node-id))
+   db
+   (:children-by-parent db)))
+
+(defn- insert-child-at-position
+  "Insert child-id into siblings at the specified position.
+
+   Args:
+     siblings - vector of current sibling IDs
+     child-id - ID to insert
+     target-idx - index where child should be inserted
+
+   Returns:
+     Vector with child-id inserted at target-idx"
+  [siblings child-id target-idx]
+  (into []
+        (concat (take target-idx siblings)
+                [child-id]
+                (drop target-idx siblings))))
+
 (defn place
   "Move node to new parent at specified position. Removes from current parent first.
-   
+
    Args:
      db - database
      id - node to move
-     under - parent (ID or root keyword)  
+     under - parent (ID or root keyword)
      at - position anchor
-     
+
    Returns:
      Updated database"
   [db id under at]
-  (let [children-by-parent (:children-by-parent db)
+  ;; Step 1: Remove node from wherever it currently lives
+  (let [db-removed (remove-from-current-parent db id)
 
-        ;; Remove from current parent (if any)
-        db-removed (reduce-kv
-                    (fn [acc parent children]
-                      (let [filtered-children (vec (remove #(= % id) children))]
-                        (if (= (count filtered-children) (count children))
-                          acc ; id not found in this parent's children
-                          (if (empty? filtered-children)
-                            (update acc :children-by-parent dissoc parent)
-                            (assoc-in acc [:children-by-parent parent] filtered-children)))))
-                    db
-                    children-by-parent)
+        ;; Step 2: Get target parent's current children
+        current-siblings (get-in db-removed [:children-by-parent under] [])
 
-        ;; Get current siblings under new parent
-        current-siblings (get (:children-by-parent db-removed) under [])
-
-        ;; Resolve position
+        ;; Step 3: Resolve the position anchor to a concrete index
         target-idx (resolve-at-position current-siblings at)
 
-        ;; Insert at target position
-        new-siblings (vec (concat
-                           (take target-idx current-siblings)
-                           [id]
-                           (drop target-idx current-siblings)))]
+        ;; Step 4: Insert node at the resolved position
+        new-siblings (insert-child-at-position current-siblings id target-idx)]
 
+    ;; Step 5: Update database with new parent-child relationship
     (assoc-in db-removed [:children-by-parent under] new-siblings)))
 
 (defn- deep-merge
