@@ -7,18 +7,92 @@ Any changes made here will be overwritten. Edit CLAUDE.md instead. -->
 To begin the session read the ENTIRE most recent overview.md inside the docs/
 folder.
 
-You can use the gemini cli tool and repomix to get inspiration from the best-of
-projects.
+You can use the gemini, codex, and opencode CLI tools with repomix to get
+inspiration from the best-of projects.
 
+### Research Workflow
+
+**Path**: `~/Projects/best/{projectname}`
+
+**1. Explore structure first (for large repos):**
 ```bash
-# Run repomix on external project (copies to clipboard), then pipe to gemini
-repomix ${HOME}/Projects/best/{projectname} --copy --output /dev/null --include "src/**,README.md" > /dev/null 2>&1 && pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y
+# Check size and structure
+tree -L 3 -d ~/Projects/best/{projectname}
+tokei ~/Projects/best/{projectname}  # Token/LOC counts
+
+# For large repos (>50MB), zoom into subdirectories
+tree -L 2 ~/Projects/best/clojurescript/src/main/clojure
 ```
 
-This extracts the codebase with repomix and pipes it into gemini chatbot. If there's an error that it overflows the token limit, you can ls the path and maybe give a subdir.
+**2. Query with focused paths:**
+```bash
+# Small repos (<10MB): include full src
+repomix ~/Projects/best/{projectname} --copy --output /dev/null \
+  --include "src/**,README.md" > /dev/null 2>&1 && \
+  pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y -p "YOUR_QUESTION"
 
-The path is `${HOME}/Projects/best/{projectname}`. Here are the projects, you know most for
-sure:
+# Large repos: zoom into specific subdirs (saves context, gets deeper insights)
+repomix ~/Projects/best/clojurescript/src/main/clojure/cljs \
+  --include "compiler.clj,analyzer.cljc" \
+  --copy --output /dev/null > /dev/null 2>&1 && \
+  pbpaste | gemini -y -p "YOUR_QUESTION"
+```
+
+**3. Use prompt template** (see `templates/research-prompt.md`):
+```
+How does {PROJECT} implement {FEATURE}?
+Focus on: 1) {MECH_1} 2) {MECH_2} 3) {MECH_3} 4) {MECH_4}
+Show code patterns.
+```
+
+**4. Parallel queries** (for multiple repos):
+```bash
+# Edit research/questions.edn, then:
+scripts/parallel-research.sh research/questions.edn
+# Results in: research/results/
+```
+
+### LLM Provider CLIs
+
+**Gemini** (context-prompt, content-prompt MCP servers available):
+```bash
+gemini -y -p "question"
+gemini --allowed-mcp-server-names -p "question"
+
+# Session management (manual save/resume)
+gemini
+> /chat save architecture-research
+> ... ask questions ...
+> /chat list
+> /chat resume architecture-research
+
+# Or track session in file
+gemini --session-summary session.txt
+```
+
+
+```bash
+codex --model gpt-5 --reasoning-effort high -p "question"  # Max reasoning
+
+# Session continuity
+codex --continue  # Resume last session
+codex --resume    # Choose which session to resume
+# Sessions stored in: ~/.codex/sessions/*.jsonl
+```
+
+
+**Multi-turn Research Pattern**:
+```bash
+# Initial query
+codex --model gpt-5 --reasoning-effort high -p "...prompt"
+```
+
+**Note**: Research and refactor agents use even split across providers for
+diverse perspectives.
+
+### Available Projects
+
+The path is `~/Projects/best/{projectname}`. Here are the projects:
 
 <projects-for-inspiration>
 adapton.rust, aero, athens, bevy, claude-code, clerk, cljfmt, clojure, clojure-mcp, clojurescript, 
