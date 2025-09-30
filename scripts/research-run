@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Run research and output to numbered spine structure
+# Usage: scripts/research-run --slug "derived-indexes" --question "How to..." [--models gemini,codex,grok]
+
+set -euo pipefail
+
+# Parse args
+SLUG=""
+QUESTION=""
+MODELS="gemini,codex,grok"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --slug) SLUG="$2"; shift 2 ;;
+    --question) QUESTION="$2"; shift 2 ;;
+    --models) MODELS="$2"; shift 2 ;;
+    *) echo "Unknown: $1"; exit 1 ;;
+  esac
+done
+
+if [[ -z "$SLUG" || -z "$QUESTION" ]]; then
+  echo "Usage: scripts/research-run --slug 'name' --question 'How...?' [--models gemini,codex]"
+  exit 1
+fi
+
+# Setup
+DATE=$(date +%Y-%m-%d)
+RUN_DIR="docs/research/10-research/${DATE}--${SLUG}"
+mkdir -p "$RUN_DIR/outputs"
+
+# Save question
+cat > "$RUN_DIR/question.md" << EOF
+# Research Question
+
+$QUESTION
+
+**Date:** $DATE
+**Models:** $MODELS
+EOF
+
+# Load context
+OVERVIEW=$(cat docs/research/00-context/overview.md)
+
+# Run queries (simplified - use best-repos-research or architectural-proposals pattern)
+IFS=',' read -ra MODEL_ARRAY <<< "$MODELS"
+for model in "${MODEL_ARRAY[@]}"; do
+  output="$RUN_DIR/outputs/${model}.md"
+  
+  prompt="<context>
+$OVERVIEW
+</context>
+
+<question>
+$QUESTION
+</question>"
+
+  case "$model" in
+    gemini)
+      echo "$prompt" | gemini --allowed-mcp-server-names "" -y > "$output" 2>&1
+      ;;
+    codex)
+      echo "$prompt" | codex exec -m gpt-5-codex -c model_reasoning_effort="high" - > "$output" 2>&1
+      ;;
+    grok)
+      echo "$prompt" | scripts/grok > "$output" 2>&1
+      ;;
+  esac
+  
+  echo "✓ $model: $(wc -l < "$output") lines"
+done
+
+# Metadata
+cat > "$RUN_DIR/metadata.json" << EOF
+{
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "slug": "${DATE}--${SLUG}",
+  "type": "research",
+  "models": $(echo "$MODELS" | jq -R 'split(",")'),
+  "question": $(echo "$QUESTION" | jq -R),
+  "outputs": $(ls -1 "$RUN_DIR/outputs" | jq -R -s 'split("\n")[:-1]')
+}
+EOF
+
+echo ""
+echo "✓ Research complete: $RUN_DIR"
+echo ""
+echo "Next: Analyze with Codex:"
+echo "  scripts/analyze-battle-test $RUN_DIR/outputs"
