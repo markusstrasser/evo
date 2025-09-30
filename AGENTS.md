@@ -109,3 +109,5 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `deps.edn` - Clojure dependencies and aliases
 - `package.json` - npm scripts for dev workflow
 - `.clj-kondo/config.edn` - linting rules and module boundaries
+### Git Hooks
+Run `scripts/install-hooks.sh` after cloning to install pre-commit hook that syncs CLAUDE.md → AGENTS.md.
