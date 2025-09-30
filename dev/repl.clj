@@ -1,5 +1,6 @@
 (ns repl
-  "REPL connection and evaluation helpers for shadow-cljs development.")
+  "REPL connection and evaluation helpers for shadow-cljs development."
+  (:require [clojure.test :as t]))
 
 ;; NOTE: This namespace is intentionally minimal. It only provides
 ;; connection helpers for any ClojureScript project, with no assumptions
@@ -53,6 +54,29 @@
        (require '[core.interpret :as interpret])
        (println "✅ Loaded: core.{db,ops,interpret}"))))
 
+(defn rt!
+  "Run tests in specified namespaces. If none provided, runs all tests.
+   Usage: (rt! 'kernel.permutation-test)
+          (rt! 'kernel.permutation-test 'struct.reorder-test)"
+  [& test-nses]
+  #?(:clj
+     (if (seq test-nses)
+       (apply t/run-tests test-nses)
+       (t/run-all-tests #".*-test$"))
+     :cljs
+     (println "⚠️ rt! is a JVM-only function.")))
+
+(defn rq!
+  "Quick test - run a single test namespace after requiring it.
+   Usage: (rq! 'kernel.permutation-test)"
+  [test-ns]
+  #?(:clj
+     (do
+       (require test-ns :reload)
+       (t/run-tests test-ns))
+     :cljs
+     (println "⚠️ rq! is a JVM-only function.")))
+
 (comment
   ;; Quick start workflow:
   (connect!)  ; Connect to shadow-cljs
@@ -63,4 +87,9 @@
 
   ;; Evaluate CLJ on JVM:
   (clj! '(println "Hello from JVM"))
+
+  ;; Run tests:
+  (rt! 'kernel.permutation-test)      ; Run specific test
+  (rq! 'kernel.permutation-test)      ; Reload and run
+  (rt!)                                ; Run all tests
   )
