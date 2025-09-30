@@ -3,7 +3,15 @@
     "allow": [
       "mcp__clojure-shadow-cljs__read_file",
       "mcp__clojure-shadow-cljs__clojure_edit",
-      "mcp__jetbrains__get_file_text_by_path"
+      "mcp__jetbrains__get_file_text_by_path",
+      "mcp__context7__resolve-library-id",
+      "WebFetch(domain:github.com)",
+      "Read(//Users/alien/Projects/best/**)",
+      "Bash(repomix:*)",
+      "Bash(/dev/null)",
+      "Bash(pbpaste)",
+      "Bash(gemini:*)",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": []
