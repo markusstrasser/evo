@@ -7,10 +7,8 @@ You can use the gemini cli tool and repomix to get inspiration from the best-of
 projects.
 
 ```bash
-# Navigate to project, run repomix (copies to clipboard), then pipe to gemini
-cd ${HOME}/Projects/best/{projectname}
-repomix --copy --output /dev/null --include "src/**,README.md" > /dev/null 2>&1
-pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y
+# Run repomix on external project (copies to clipboard), then pipe to gemini
+repomix ${HOME}/Projects/best/{projectname} --copy --output /dev/null --include "src/**,README.md" > /dev/null 2>&1 && pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y
 ```
 
 This extracts the codebase with repomix and pipes it into gemini chatbot. If there's an error that it overflows the token limit, you can ls the path and maybe give a subdir.
