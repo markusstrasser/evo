@@ -48,24 +48,30 @@
 
    Returns true for noop operations, nil for non-:place operations."
   [db op]
-  (when (= (:op op) :place)
-    (let [{:keys [id under at]} op
-          current-parent (get-in db [:derived :parent-of id])]
+  (let [{:keys [id under at]} op]
+    (cond
+      ;; Early exit: not a place operation
+      (not= (:op op) :place)
+      nil
 
-      ;; If changing parents, definitely not a noop
-      (when (= current-parent under)
-        (let [current-siblings (get-in db [:children-by-parent current-parent] [])
-              current-idx (find-index current-siblings id)
+      ;; Early exit: changing parents is never a noop
+      (not= under (get-in db [:derived :parent-of id]))
+      nil
 
-              ;; Mimic place operation: remove node from siblings
-              siblings-without-node (vec (remove #(= % id) current-siblings))
+      ;; Same parent: check if position changes
+      :else
+      (let [current-siblings (get-in db [:children-by-parent under] [])
+            current-idx (find-index current-siblings id)
 
-              ;; Resolve anchor in the siblings list WITHOUT the node
-              target-idx (resolve-anchor-position siblings-without-node at current-idx)]
+            ;; Mimic place operation: remove node from siblings
+            siblings-without-node (vec (remove #(= % id) current-siblings))
 
-          ;; After inserting at target-idx, the node will be at target-idx
-          ;; It's a noop if that position equals where it started
-          (= current-idx target-idx))))))
+            ;; Resolve anchor in the siblings list WITHOUT the node
+            target-idx (resolve-anchor-position siblings-without-node at current-idx)]
+
+        ;; After inserting at target-idx, the node will be at target-idx
+        ;; It's a noop if that position equals where it started
+        (= current-idx target-idx)))))
 
 (defn- remove-noop-places
   "Filter out no-op :place operations."
@@ -95,94 +101,165 @@
        (remove-noop-places db)
        merge-adjacent-updates))
 
-(defn- validate-op
-  "Validate a single operation. Returns vector of issues."
-  [db op op-index]
-  (let [issue (fn [issue-kw hint]
-                {:issue issue-kw
-                 :op op
-                 :at op-index
-                 :hint hint})
+;; =============================================================================
+;; Validation helpers - smaller, focused functions
+;; =============================================================================
 
-        schema-issue (when-not (schema/valid-op? op)
-                       [(issue :invalid-schema
-                               (str "Operation does not match schema: " (schema/explain-op op)))])
+(defn- make-issue
+  "Create an issue map with operation context."
+  [op op-index issue-kw hint]
+  {:issue issue-kw
+   :op op
+   :at op-index
+   :hint hint})
+
+(defn- descendant-of?
+  "Check if potential-descendant is a descendant of potential-ancestor.
+   Walks up the parent chain until reaching a root or detecting the ancestor."
+  [db potential-ancestor potential-descendant]
+  (let [parent-of (get-in db [:derived :parent-of])
+        roots (:roots db)]
+    (loop [current potential-descendant]
+      (cond
+        (nil? current) false
+        (= current potential-ancestor) true
+        (contains? roots current) false
+        :else (recur (get parent-of current))))))
+
+(defn- would-create-cycle?
+  "Check if placing node-id under parent would create a cycle.
+   A cycle occurs when:
+   1. node-id equals parent (self-parent)
+   2. parent is a descendant of node-id (would create loop)"
+  [db node-id parent]
+  (or (= node-id parent)
+      (and (string? parent)
+           (descendant-of? db node-id parent))))
+
+(defn- valid-parent?
+  "Check if parent is valid (either a root or an existing node)."
+  [db parent]
+  (or (contains? (:roots db) parent)
+      (contains? (:nodes db) parent)))
+
+(defn- anchor-in-siblings?
+  "Check if anchor-id exists in siblings list."
+  [siblings anchor-id]
+  (some #(= % anchor-id) siblings))
+
+(defn- validate-anchor
+  "Validate relative anchor (:before or :after).
+   Returns issue vector if anchor is invalid, empty vector otherwise."
+  [db op op-index under at]
+  (let [siblings (get-in db [:children-by-parent under] [])]
+    (cond
+      (:before at)
+      (when-not (anchor-in-siblings? siblings (:before at))
+        [(make-issue op op-index :anchor-not-sibling
+                     (str "Anchor :before " (:before at) " is not a sibling under " under))])
+
+      (:after at)
+      (when-not (anchor-in-siblings? siblings (:after at))
+        [(make-issue op op-index :anchor-not-sibling
+                     (str "Anchor :after " (:after at) " is not a sibling under " under))])
+
+      :else [])))
+
+(defn- validate-create-node
+  "Validate :create-node operation."
+  [db op op-index]
+  (let [{:keys [id]} op]
+    (if (contains? (:nodes db) id)
+      [(make-issue op op-index :duplicate-create
+                   (str "Node " id " already exists"))]
+      [])))
+
+(defn- validate-place
+  "Validate :place operation."
+  [db op op-index]
+  (let [{:keys [id under at]} op
+        node-exists? (contains? (:nodes db) id)]
+    (->> [(when-not node-exists?
+            (make-issue op op-index :node-not-found
+                        (str "Node " id " does not exist")))
+
+          (when-not (valid-parent? db under)
+            (make-issue op op-index :parent-not-found
+                        (str "Parent " under " does not exist")))
+
+          ;; Only validate anchor if node exists (otherwise anchor check is moot)
+          (when (and (map? at) node-exists?)
+            (validate-anchor db op op-index under at))
+
+          ;; Only check for cycles if both node and parent exist
+          (when (and node-exists? (valid-parent? db under)
+                     (would-create-cycle? db id under))
+            (make-issue op op-index :cycle-detected
+                        (str "Cannot place " id " under " under " - would create cycle")))]
+         (remove nil?)
+         flatten
+         vec)))
+
+(defn- validate-update-node
+  "Validate :update-node operation."
+  [db op op-index]
+  (let [{:keys [id]} op]
+    (if (contains? (:nodes db) id)
+      []
+      [(make-issue op op-index :node-not-found
+                   (str "Node " id " does not exist"))])))
+
+(defn- validate-op
+  "Validate a single operation. Returns vector of issues.
+
+   Validation pipeline:
+   1. Check schema validity
+   2. Validate operation-specific constraints
+
+   Each validator returns a vector of issues (empty if valid)."
+  [db op op-index]
+  (let [schema-issues (when-not (schema/valid-op? op)
+                        [(make-issue op op-index :invalid-schema
+                                     (str "Operation does not match schema: " (schema/explain-op op)))])
 
         op-issues (case (:op op)
-                    :create-node
-                    (let [{:keys [id]} op]
-                      (when (contains? (:nodes db) id)
-                        [(issue :duplicate-create (str "Node " id " already exists"))]))
+                    :create-node (validate-create-node db op op-index)
+                    :place (validate-place db op op-index)
+                    :update-node (validate-update-node db op op-index)
+                    [(make-issue op op-index :unknown-op
+                                 (str "Unknown operation: " (:op op)))])]
 
-                    :place
-                    (let [{:keys [id under at]} op
-                          derived (:derived db)]
-                      (concat
-                       (when-not (contains? (:nodes db) id)
-                         [(issue :node-not-found (str "Node " id " does not exist"))])
+    (vec (concat schema-issues op-issues))))
 
-                       (when-not (or (contains? (:roots db) under)
-                                     (contains? (:nodes db) under))
-                         [(issue :parent-not-found (str "Parent " under " does not exist"))])
-
-                       (when (map? at)
-                         (let [siblings (get (:children-by-parent db) under [])]
-                           (cond
-                             (:before at)
-                             (when-not (some #(= % (:before at)) siblings)
-                               [(issue :anchor-not-sibling
-                                       (str "Anchor :before " (:before at) " is not a sibling under " under))])
-
-                             (:after at)
-                             (when-not (some #(= % (:after at)) siblings)
-                               [(issue :anchor-not-sibling
-                                       (str "Anchor :after " (:after at) " is not a sibling under " under))]))))
-
-                       (when (contains? (:nodes db) id)
-                         (let [is-descendant? (fn is-descendant? [potential-ancestor potential-descendant]
-                                                (loop [current potential-descendant]
-                                                  (cond
-                                                    (nil? current) false
-                                                    (= current potential-ancestor) true
-                                                    (contains? (:roots db) current) false
-                                                    :else (recur (get-in derived [:parent-of current])))))]
-                           (when (or (= id under)
-                                     (and (string? under) (is-descendant? id under)))
-                             [(issue :cycle-detected
-                                     (str "Cannot place " id " under " under " - would create cycle"))])))))
-
-                    :update-node
-                    (let [{:keys [id]} op]
-                      (when-not (contains? (:nodes db) id)
-                        [(issue :node-not-found (str "Node " id " does not exist"))]))
-
-                    [(issue :unknown-op (str "Unknown operation: " (:op op)))])]
-
-    (vec (concat schema-issue op-issues))))
+(defn- apply-op
+  "Apply a single operation to the database."
+  [db {:keys [op id props under at] node-type :type}]
+  (case op
+    :create-node (ops/create-node db id node-type props)
+    :place       (ops/place db id under at)
+    :update-node (ops/update-node db id props)))
 
 (defn- validate-ops
-  "Validate all operations in sequence, accumulating issues."
+  "Validate all operations in sequence, accumulating issues.
+
+   Processes operations one at a time:
+   - Validates each operation against current DB state
+   - Applies valid operations to maintain DB state
+   - Stops on first error, returning DB and accumulated issues
+
+   Returns: [final-db issues]"
   [db ops]
-  (loop [all-issues []
-         current-db db
-         remaining-ops ops
-         op-index 0]
-    (if (empty? remaining-ops)
-      [current-db all-issues]
-      (let [op (first remaining-ops)
-            op-issues (validate-op current-db op op-index)]
-        (if (seq op-issues)
-          ;; Has issues - stop processing and return current state with issues
-          [current-db (into all-issues op-issues)]
-          ;; No issues - apply the op and continue
-          (let [updated-db (case (:op op)
-                             :create-node (ops/create-node current-db (:id op) (:type op) (:props op))
-                             :place (ops/place current-db (:id op) (:under op) (:at op))
-                             :update-node (ops/update-node current-db (:id op) (:props op)))]
-            (recur all-issues
-                   updated-db
-                   (rest remaining-ops)
-                   (inc op-index))))))))
+  (let [indexed-ops (m/indexed ops)
+
+        step-fn (fn [[current-db all-issues] [op-index op]]
+                  (let [op-issues (validate-op current-db op op-index)]
+                    (if (seq op-issues)
+                      ;; Error found - stop processing
+                      (reduced [current-db (into all-issues op-issues)])
+                      ;; Valid - apply and continue
+                      [(apply-op current-db op) all-issues])))]
+
+    (reduce step-fn [db []] indexed-ops)))
 
 (defn interpret
   "Interpret a transaction sequence. 
