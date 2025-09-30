@@ -128,28 +128,62 @@
           "from-to: src and dst must have the same length")
 
   (let [n (count src)
-        ;; Build index map: element -> [indices in dst where it appears]
+        ;; Build index map: element -> queue of indices in dst where it appears
         dst-indices (reduce (fn [m idx]
                               (update m (nth dst idx) (fnil conj []) idx))
                             {}
-                            (range n))
-        ;; For each position in src, find where that element goes in dst
-        result (loop [i 0
-                      remaining dst-indices
-                      perm {}]
-                 (if (>= i n)
-                   perm
-                   (let [elem (nth src i)
-                         [dst-idx & rest] (get remaining elem)
-                         remaining' (if (seq rest)
-                                      (assoc remaining elem rest)
-                                      (dissoc remaining elem))]
-                     (recur (inc i)
-                            remaining'
-                            (if (= i dst-idx)
-                              perm  ; Fixed point
-                              (assoc perm i dst-idx))))))]
-    result))
+                            (range n))]
+    ;; For each position in src, consume one dst index for that element
+    (-> (reduce (fn [[perm remaining] src-idx]
+                  (let [elem (nth src src-idx)
+                        [dst-idx & rest-indices] (get remaining elem)
+                        remaining' (if (seq rest-indices)
+                                     (assoc remaining elem rest-indices)
+                                     (dissoc remaining elem))
+                        perm' (if (= src-idx dst-idx)
+                                perm  ; Fixed point, elide
+                                (assoc perm src-idx dst-idx))]
+                    [perm' remaining']))
+                [{} dst-indices]
+                (range n))
+        first)))
+
+(defn- gcd
+  "Greatest common divisor using Euclidean algorithm."
+  [a b]
+  (if (zero? b) a (recur b (mod a b))))
+
+(defn- lcm
+  "Least common multiple of two integers."
+  [a b]
+  (quot (* a b) (gcd a b)))
+
+(defn- trace-cycle
+  "Find cycle length starting from index i in permutation p.
+   Returns [cycle-length visited-set]."
+  [p start visited]
+  (loop [curr start
+         len 0
+         vis visited]
+    (let [vis' (conj vis curr)
+          nxt (get p curr curr)
+          len' (inc len)]
+      (if (= nxt start)
+        [len' vis']
+        (recur nxt len' vis')))))
+
+(defn- find-cycle-lengths
+  "Extract all cycle lengths from permutation p."
+  [p]
+  (loop [unvisited (keys p)
+         visited #{}
+         lengths []]
+    (if-let [start (first unvisited)]
+      (if (contains? visited start)
+        (recur (rest unvisited) visited lengths)
+        (let [[cycle-len visited'] (trace-cycle p start visited)]
+          (recur (rest unvisited) visited' (conj lengths cycle-len))))
+      lengths)))
 
 (defn order
   "Compute the order of permutation p (minimal n where p^n = identity-perm).
@@ -159,32 +193,9 @@
   [p]
   (if (empty? p)
     1
-    (let [;; Find all cycles
-          cycles (loop [remaining (keys p)
-                        visited #{}
-                        cycles []]
-                   (if-let [start (first remaining)]
-                     (if (contains? visited start)
-                       (recur (rest remaining) visited cycles)
-                       (let [;; Trace cycle from start
-                             [cycle-len visited']
-                             (loop [curr start
-                                    len 0
-                                    vis visited]
-                               (let [vis' (conj vis curr)
-                                     next (get p curr curr)
-                                     len' (inc len)]
-                                 (if (= next start)
-                                   [len' vis']
-                                   (recur next len' vis'))))]
-                         (recur (rest remaining) visited' (conj cycles cycle-len))))
-                     cycles))
-          ;; LCM of all cycle lengths
-          gcd (fn gcd [a b]
-                (if (zero? b) a (recur b (mod a b))))
-          lcm (fn [a b]
-                (quot (* a b) (gcd a b)))]
-      (reduce lcm 1 cycles))))
+    (->> p
+         find-cycle-lengths
+         (reduce lcm 1))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Utilities
