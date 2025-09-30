@@ -1,3 +1,33 @@
+## The Start
+
+To begin the session read the ENTIRE most recent overview.md inside the docs/
+folder.
+
+You can use the gemini cli tool and repomix to get inspiration from the best-of
+projects.
+
+```bash
+# Navigate to project, run repomix (copies to clipboard), then pipe to gemini
+cd ${HOME}/Projects/best/{projectname}
+repomix --copy --output /dev/null --include "src/**,README.md" > /dev/null 2>&1
+pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y
+```
+
+This extracts the codebase with repomix and pipes it into gemini chatbot. If there's an error that it overflows the token limit, you can ls the path and maybe give a subdir.
+
+The path is `${HOME}/Projects/best/{projectname}`. Here are the projects, you know most for
+sure:
+
+<projects-for-inspiration>
+adapton.rust, aero, athens, bevy, claude-code, clerk, cljfmt, clojure, clojure-mcp, clojurescript, 
+Common-Metadata-Repository, component-docs, compojure, conduit, core.async, core.logic, core.typed, 
+datalevin, datascript, editscript, electric, environ, exa-mcp-server, expresso, fastmcp, garden, honeysql, 
+integrant, javelin, kakoune, logseq, malli, meander, medley, Miscellaneous, missionary, morphdom, neanderthal, 
+neovim, onyx, opencode, overtone, pathom3, portal, prosemirror, quil, re-frame, re-frame-10x, Reactive-Programming, 
+reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.py, tree-sitter, unison, vlojure, xi-editor, zed
+</projects-for-inspiration>
+
+
 ### Dev Tooling
 - **REPL**: `dev/repl.clj` - shadow-cljs bridge (`connect!`, `init!`, `cljs!`, `clj!`)
 - **Health**: `dev/health.clj` - diagnostics (`preflight-check!`, `cache-stats`, `check-repl-state`)
@@ -17,6 +47,7 @@
 - **Docs**: `dev/README.md`
 
 ### NPM Commands
+
 - `npm run lint` - run clj-kondo linter
 - `npm run check` - lint + compile (full check)
 - `npm test` - run test suite
@@ -24,22 +55,26 @@
 - `npm run agent:health` - environment diagnostics
 - `npm run agent:preflight` - pre-flight checks (needs dev server)
 - `npm run repl:health` - quick REPL diagnostics
-- `npm run docs:overview` - generate AI architectural overview (default: all sections, src/)
+- `npm run docs:overview` - generate AI architectural overview (default: all
+  sections, src/)
 
 ### Investigation Tactics
+
 - `bat`, `rg`, targeted file reads for token efficiency
 - Check error-catalog.edn for self-diagnosis patterns
 - Use semantic search: `@docs/SemanticSearch.md`
 
 ### Dev Quality Gates
+
 - **Pre-commit**: `.pre-commit-check.sh` - enhanced with CLJS import validation
 - **Linting**: `.clj-kondo/config.edn` - comprehensive rules based on STYLE.md
-  - Catches: invalid arity, shadowed vars, redundant code, unused bindings
-  - Enforces: consistent aliases (m, set, str), no refer-all
-  - Style: prefers pure functions, explicit data flow
+    - Catches: invalid arity, shadowed vars, redundant code, unused bindings
+    - Enforces: consistent aliases (m, set, str), no refer-all
+    - Style: prefers pure functions, explicit data flow
 - **Module Deps**: Core kernel modules isolated from shell concerns
 
 ### Standing Instructions
+
 - Maintain kernel transaction architecture, invariants, instrumentation focus
 - Prefer synchronous/pure patterns unless async explicitly justified
 - Skip tests for docs-only changes; note "Tests: not run"
@@ -47,22 +82,27 @@
 ### Quick Reference Index
 
 **Core Architecture:**
+
 - `src/core/db.cljc` - canonical DB shape, validation, derived indexes
-- `src/core/ops.cljc` - three core operations (create, place, update)  
-- `src/core/interpret.cljc` - transaction pipeline (normalize → validate → apply)
+- `src/core/ops.cljc` - three core operations (create, place, update)
+- `src/core/interpret.cljc` - transaction pipeline (normalize → validate →
+  apply)
 - `src/core/schema.cljc` - Malli schemas for operations and data
 
 **Testing:**
+
 - `test/core_interpret_test.cljc` - comprehensive operation and pipeline tests
 - `dev/fixtures.cljc` - test data generators and utilities
 
 **Development:**
+
 - `dev/session.clj` - REPL management (`quick-health-check!`)
 - `dev/error-catalog.edn` - common issues with auto-remediation
 - `dev/scripts/health-check.sh` - environment validation
 - `.pre-commit-check.sh` - quality gates with CLJS validation
 
 **Config & Setup:**
+
 - `shadow-cljs.edn` - ClojureScript build config
 - `deps.edn` - Clojure dependencies and aliases
 - `package.json` - npm scripts for dev workflow
