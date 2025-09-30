@@ -11,7 +11,8 @@
       "Bash(/dev/null)",
       "Bash(pbpaste)",
       "Bash(gemini:*)",
-      "mcp__context7__get-library-docs"
+      "mcp__context7__get-library-docs",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
