@@ -1,0 +1,80 @@
+;; Architectural Questions for Proposal Generation
+;; Each question targets a different aspect of the system
+;; Used to generate diverse architectural proposals from LLMs
+
+{:questions
+ [
+  ;; Q1: Core Kernel Simplification
+  {:id :kernel
+   :focus "Core 3-Operation Kernel"
+   :prompt "Given this tree database architecture with a 3-operation kernel (create, place, update),
+how would you simplify or abstract the core operations?
+
+Consider:
+- Could the operations be unified or reduced?
+- Are there missing primitives that would make higher-level features easier?
+- Could the canonical state model be simpler while maintaining power?
+- What would make the kernel more debuggable?
+
+Focus on architectural simplicity and expressiveness, not performance."}
+
+  ;; Q2: Derived Index Architecture
+  {:id :indexes
+   :focus "Derived Index System"
+   :prompt "This system maintains derived indexes (parent-of, pre/post traversal, siblings) computed from canonical state.
+
+How would you decouple or redesign the derived index architecture?
+
+Consider:
+- Alternative approaches to index invalidation and recomputation
+- Could indexes be more composable or pluggable?
+- Better abstractions for \"computed view\" patterns?
+- How to make index computation more debuggable and testable?
+
+Focus on architectural clarity and maintainability."}
+
+  ;; Q3: Transaction Pipeline
+  {:id :pipeline
+   :focus "Transaction Pipeline (NORMALIZE → VALIDATE → APPLY → DERIVE)"
+   :prompt "Operations flow through a strict pipeline: NORMALIZE → VALIDATE → APPLY → DERIVE.
+
+How would you improve or rethink this pipeline architecture?
+
+Consider:
+- Could phases be more composable or reorderable?
+- Better error handling and rollback patterns?
+- How to make the pipeline more transparent for debugging?
+- Alternative models (event sourcing, CQRS, etc.) that fit the problem better?
+
+Focus on architectural elegance and debuggability."}
+
+  ;; Q4: Extensibility Model
+  {:id :extensibility
+   :focus "Plugin and Extensibility Model"
+   :prompt "The system uses 'intents' that compile to core operations. Higher-level features (delete, indent, move) are built on the 3-op kernel.
+
+How would you redesign the extensibility and composition model?
+
+Consider:
+- Better abstractions for intent → operations compilation?
+- How to make plugins composable and testable?
+- Alternative models: middleware, interceptors, multimethods, protocols?
+- How to make the extension points more discoverable?
+
+Focus on expressiveness and composability."}
+
+  ;; Q5: Developer Experience
+  {:id :dx
+   :focus "Developer Experience (REPL, Tooling, Debugging)"
+   :prompt "Developers (humans and LLMs) use CLI, tests, REPL, and MCP tools to work with this system.
+
+How would you improve the developer experience and tooling architecture?
+
+Consider:
+- Better REPL introspection and debugging tools?
+- How to make the system more 'observable' during development?
+- Better error messages, validation feedback, and development guards?
+- What tools or abstractions would make understanding the system easier?
+
+Focus on making the system delightful to work with, especially for debugging."}
+ ]}
