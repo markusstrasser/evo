@@ -1,0 +1,330 @@
+#!/bin/bash
+# Generate architectural proposals from multiple LLMs
+# Usage: scripts/architectural-proposals [output-dir]
+
+set -euo pipefail
+
+# Load environment variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+  set -a
+  source "$PROJECT_ROOT/.env"
+  set +a
+fi
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+OUTPUT_DIR="${1:-$PROJECT_ROOT/research/proposals/$(date +%Y-%m-%d-%H-%M)}"
+
+OVERVIEW_FILE="$PROJECT_ROOT/docs/2025-09-30-19-34-src-overview.md"
+QUESTIONS_FILE="$PROJECT_ROOT/research/architectural-questions.edn"
+RANKER_PROMPT="$PROJECT_ROOT/research/proposal-ranker-prompt.md"
+
+# Check prerequisites
+echo -e "${BLUE}=== Architectural Proposal Generation ===${NC}"
+echo ""
+
+if [[ ! -f "$OVERVIEW_FILE" ]]; then
+  echo -e "${RED}Error: Overview file not found: $OVERVIEW_FILE${NC}"
+  exit 1
+fi
+
+if [[ ! -f "$QUESTIONS_FILE" ]]; then
+  echo -e "${RED}Error: Questions file not found: $QUESTIONS_FILE${NC}"
+  exit 1
+fi
+
+if [[ ! -f "$RANKER_PROMPT" ]]; then
+  echo -e "${RED}Error: Ranker prompt not found: $RANKER_PROMPT${NC}"
+  exit 1
+fi
+
+# Check API keys
+missing_keys=()
+[[ -z "${GROK_API_KEY:-}" ]] && missing_keys+=("GROK_API_KEY")
+
+if [[ ${#missing_keys[@]} -gt 0 ]]; then
+  echo -e "${YELLOW}Warning: Missing API keys: ${missing_keys[*]}${NC}"
+  echo -e "${YELLOW}Some providers will be skipped.${NC}"
+  echo ""
+fi
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR/proposals"
+mkdir -p "$OUTPUT_DIR/rankings"
+
+echo -e "${GREEN}Output directory: $OUTPUT_DIR${NC}"
+echo ""
+
+# Parse questions from EDN (simplified - assumes specific format)
+# Extract questions manually (proper EDN parser would be better)
+questions=(
+  "kernel:Core 3-Operation Kernel"
+  "indexes:Derived Index System"
+  "pipeline:Transaction Pipeline"
+  "extensibility:Plugin and Extensibility Model"
+  "dx:Developer Experience"
+)
+
+# Read overview content
+overview_content=$(cat "$OVERVIEW_FILE")
+
+# Function to extract question prompt from EDN
+get_question_prompt() {
+  local question_id="$1"
+  # This is a hack - proper EDN parsing would be better
+  # For now, we'll use the simplified approach
+  case "$question_id" in
+    kernel)
+      echo "Given this tree database architecture with a 3-operation kernel (create, place, update), how would you simplify or abstract the core operations? Consider: Could the operations be unified or reduced? Are there missing primitives that would make higher-level features easier? Could the canonical state model be simpler while maintaining power? What would make the kernel more debuggable? Focus on architectural simplicity and expressiveness, not performance."
+      ;;
+    indexes)
+      echo "This system maintains derived indexes (parent-of, pre/post traversal, siblings) computed from canonical state. How would you decouple or redesign the derived index architecture? Consider: Alternative approaches to index invalidation and recomputation. Could indexes be more composable or pluggable? Better abstractions for 'computed view' patterns? How to make index computation more debuggable and testable? Focus on architectural clarity and maintainability."
+      ;;
+    pipeline)
+      echo "Operations flow through a strict pipeline: NORMALIZE → VALIDATE → APPLY → DERIVE. How would you improve or rethink this pipeline architecture? Consider: Could phases be more composable or reorderable? Better error handling and rollback patterns? How to make the pipeline more transparent for debugging? Alternative models (event sourcing, CQRS, etc.) that fit the problem better? Focus on architectural elegance and debuggability."
+      ;;
+    extensibility)
+      echo "The system uses 'intents' that compile to core operations. Higher-level features (delete, indent, move) are built on the 3-op kernel. How would you redesign the extensibility and composition model? Consider: Better abstractions for intent → operations compilation? How to make plugins composable and testable? Alternative models: middleware, interceptors, multimethods, protocols? How to make the extension points more discoverable? Focus on expressiveness and composability."
+      ;;
+    dx)
+      echo "Developers (humans and LLMs) use CLI, tests, REPL, and MCP tools to work with this system. How would you improve the developer experience and tooling architecture? Consider: Better REPL introspection and debugging tools? How to make the system more 'observable' during development? Better error messages, validation feedback, and development guards? What tools or abstractions would make understanding the system easier? Focus on making the system delightful to work with, especially for debugging."
+      ;;
+  esac
+}
+
+# Generate proposals
+echo -e "${BLUE}=== Generating 15 Proposals (5 questions × 3 providers) ===${NC}"
+echo ""
+
+providers=("gemini" "codex" "grok")
+proposal_count=0
+pids=()
+
+for question in "${questions[@]}"; do
+  question_id="${question%%:*}"
+  question_title="${question#*:}"
+
+  question_prompt=$(get_question_prompt "$question_id")
+
+  echo -e "${YELLOW}Question: $question_title${NC}"
+
+  for provider in "${providers[@]}"; do
+    output_file="$OUTPUT_DIR/proposals/${provider}-${question_id}.md"
+
+    # Build full prompt
+    full_prompt=$(cat <<EOF
+<context>
+PROJECT OVERVIEW:
+
+$overview_content
+</context>
+
+<question>
+ARCHITECTURAL QUESTION:
+
+$question_prompt
+
+Provide a concrete architectural proposal with:
+1. Core idea (1-2 paragraphs)
+2. Key benefits (specific to simplicity, readability, debuggability, expressiveness)
+3. Implementation sketch (pseudocode or structure)
+4. Tradeoffs and risks
+5. How it improves developer experience (REPL, debugging, testing)
+
+Be specific and concrete. Focus on architectural elegance over performance.
+</question>
+EOF
+)
+
+    # Skip if API key missing
+    if [[ "$provider" == "grok" && -z "${GROK_API_KEY:-}" ]]; then
+      echo "  ⊘ $provider: skipped (no API key)"
+      continue
+    fi
+
+    # Launch provider-specific query
+    case "$provider" in
+      gemini)
+        (
+          echo "$full_prompt" | \
+            gemini --allowed-mcp-server-names "" -y > "$output_file" 2>&1 && \
+            echo "$(date +%H:%M:%S) ✓ gemini-${question_id}" || \
+            echo "$(date +%H:%M:%S) ✗ gemini-${question_id} FAILED"
+        ) &
+        pids+=($!)
+        ;;
+      codex)
+        (
+          # Use codex exec without --full-auto (Q&A mode, not agent mode)
+          echo "$full_prompt" | \
+            codex exec -m gpt-5-codex -c model_reasoning_effort="high" - > "$output_file" 2>&1 && \
+            echo "$(date +%H:%M:%S) ✓ codex-${question_id}" || \
+            echo "$(date +%H:%M:%S) ✗ codex-${question_id} FAILED"
+        ) &
+        pids+=($!)
+        ;;
+      grok)
+        (
+          echo "$full_prompt" | \
+            "$SCRIPT_DIR/grok" -m grok-4-latest > "$output_file" 2>&1 && \
+            echo "$(date +%H:%M:%S) ✓ grok-${question_id}" || \
+            echo "$(date +%H:%M:%S) ✗ grok-${question_id} FAILED"
+        ) &
+        pids+=($!)
+        ;;
+    esac
+
+    proposal_count=$((proposal_count + 1))
+    echo "  → $provider: $output_file"
+  done
+
+  echo ""
+done
+
+echo -e "${BLUE}Waiting for all $proposal_count proposals to complete...${NC}"
+echo -e "${YELLOW}Note: Codex with reasoning-effort=high may take 2-5 minutes per query${NC}"
+echo ""
+
+# Wait for all proposals with progress tracking
+total_pids=${#pids[@]}
+while true; do
+  completed=0
+  for pid in "${pids[@]}"; do
+    if ! kill -0 $pid 2>/dev/null; then
+      ((completed++))
+    fi
+  done
+
+  if [[ $completed -eq $total_pids ]]; then
+    break
+  fi
+
+  echo -ne "\r  Progress: $completed/$total_pids completed...  "
+  sleep 3
+done
+
+echo ""
+echo -e "${GREEN}✓ All proposals generated${NC}"
+echo ""
+
+# Collect all proposals for ranking
+echo -e "${BLUE}=== Collecting Proposals for Ranking ===${NC}"
+echo ""
+
+all_proposals=""
+proposal_num=1
+
+for question in "${questions[@]}"; do
+  question_id="${question%%:*}"
+  question_title="${question#*:}"
+
+  for provider in "${providers[@]}"; do
+    proposal_file="$OUTPUT_DIR/proposals/${provider}-${question_id}.md"
+
+    if [[ -f "$proposal_file" ]]; then
+      file_size=$(wc -c < "$proposal_file")
+
+      if [[ $file_size -gt 100 ]]; then
+        # For codex, skip reasoning (first ~1430 lines)
+        if [[ "$provider" == "codex" ]]; then
+          proposal_text=$(tail -n +1430 "$proposal_file" 2>/dev/null || cat "$proposal_file")
+        else
+          proposal_text=$(cat "$proposal_file")
+        fi
+
+        all_proposals+="
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROPOSAL #$proposal_num: $provider - $question_title
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$proposal_text
+
+"
+        proposal_num=$((proposal_num + 1))
+        echo "  ✓ Proposal #$((proposal_num - 1)): $provider-${question_id}"
+      else
+        echo "  ⊘ Skipped (empty): $provider-${question_id}"
+      fi
+    else
+      echo "  ✗ Missing: $provider-${question_id}"
+    fi
+  done
+done
+
+echo ""
+echo -e "${GREEN}Collected $((proposal_num - 1)) valid proposals${NC}"
+echo ""
+
+# Generate rankings
+echo -e "${BLUE}=== Generating Rankings ===${NC}"
+echo ""
+
+ranker_context=$(cat "$RANKER_PROMPT")
+
+# Build ranking prompt once
+rank_prompt=$(cat <<EOF
+$ranker_context
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROJECT OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$overview_content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROPOSALS TO RANK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$all_proposals
+EOF
+)
+
+# Codex ranking
+echo -e "${YELLOW}Ranking with Codex...${NC}"
+echo "$rank_prompt" | \
+  codex exec -m gpt-5-codex -c model_reasoning_effort="high" --full-auto - > \
+  "$OUTPUT_DIR/rankings/codex-ranking.md" 2>&1 && \
+  echo "  ✓ Codex ranking complete" || \
+  echo "  ✗ Codex ranking FAILED"
+
+# Grok ranking
+if [[ -n "${GROK_API_KEY:-}" ]]; then
+  echo -e "${YELLOW}Ranking with Grok...${NC}"
+  echo "$rank_prompt" | \
+    "$SCRIPT_DIR/grok" -m grok-4-latest > \
+    "$OUTPUT_DIR/rankings/grok-ranking.md" 2>&1 && \
+    echo "  ✓ Grok ranking complete" || \
+    echo "  ✗ Grok ranking FAILED"
+else
+  echo "  ⊘ Grok ranking skipped (no API key)"
+fi
+
+echo ""
+echo -e "${GREEN}✓ Rankings complete${NC}"
+echo ""
+
+# Summary
+echo -e "${BLUE}=== Summary ===${NC}"
+echo ""
+echo "Proposals directory:  $OUTPUT_DIR/proposals/"
+echo "Rankings directory:   $OUTPUT_DIR/rankings/"
+echo ""
+echo "Generated files:"
+ls -lh "$OUTPUT_DIR/proposals/" | grep -v "^total" | awk '{print "  " $9 " (" $5 ")"}'
+echo ""
+ls -lh "$OUTPUT_DIR/rankings/" | grep -v "^total" | awk '{print "  " $9 " (" $5 ")"}'
+echo ""
+echo -e "${GREEN}✓ Complete!${NC}"
+echo ""
+echo "Next steps:"
+echo "  1. Review rankings: cat $OUTPUT_DIR/rankings/*.md"
+echo "  2. Read top proposals: bat $OUTPUT_DIR/proposals/{codex,gemini,grok}-*.md"
+echo "  3. Compare rankings: diff $OUTPUT_DIR/rankings/codex-ranking.md $OUTPUT_DIR/rankings/grok-ranking.md"
