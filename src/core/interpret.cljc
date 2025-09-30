@@ -262,28 +262,46 @@
     (reduce step-fn [db []] indexed-ops)))
 
 (defn interpret
-  "Interpret a transaction sequence. 
-   
+  "Interpret a transaction sequence.
+
    Pipeline: normalize → validate → apply → derive → trace
-   
+
    Args:
      db - starting database
      txs - vector of operations
-     
+   Options (optional map):
+     :tx-id - transaction ID for trace (default: system time)
+     :seed - random seed for deterministic testing (default: system time)
+     :notes - human-readable notes for this transaction
+
    Returns:
-     {:db final-db :issues [...] :trace [...]}"
-  [db txs]
-  (let [normalized-ops (normalize-ops db txs)
-        [final-db issues] (validate-ops db normalized-ops)
-        derived-db (db/derive-indexes final-db)
+     {:db final-db :issues [...] :trace [...]}
 
-        ;; Simple trace - just the operations that were applied
-        applied-ops (take (- (count normalized-ops) (count issues)) normalized-ops)
-        trace (mapv (fn [op] {:type :op-applied :op op}) applied-ops)]
+   Trace format:
+   [{:tx-id <id> :seed <seed> :ops [<ops>] :notes \"...\" :num-applied <n>} ...]"
+  ([db txs] (interpret db txs nil))
+  ([db txs {:keys [tx-id seed notes] :as opts}]
+   (let [tx-id (or tx-id #?(:clj (System/currentTimeMillis)
+                           :cljs (.now js/Date)))
+         seed (or seed #?(:clj (System/currentTimeMillis)
+                         :cljs (.now js/Date)))
+         normalized-ops (normalize-ops db txs)
+         [final-db issues] (validate-ops db normalized-ops)
+         derived-db (db/derive-indexes final-db)
 
-    {:db derived-db
-     :issues issues
-     :trace trace}))
+         ;; Deterministic trace with all context
+         num-applied (- (count normalized-ops) (count issues))
+         applied-ops (take num-applied normalized-ops)
+         trace-entry {:tx-id tx-id
+                      :seed seed
+                      :ops normalized-ops
+                      :applied-ops applied-ops
+                      :num-applied num-applied
+                      :notes (or notes "")}]
+
+     {:db derived-db
+      :issues issues
+      :trace [trace-entry]})))
 
 ;; Public API functions matching the spec
 (defn derive-db

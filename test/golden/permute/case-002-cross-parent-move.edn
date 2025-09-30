@@ -1,0 +1,17 @@
+{:name "Cross-parent move"
+ :description "Move B and C from P to Q"
+ :db {:nodes {"P" {:type :container :props {}}
+              "Q" {:type :container :props {}}
+              "A" {:type :p :props {:text "A"}}
+              "B" {:type :p :props {:text "B"}}
+              "C" {:type :p :props {:text "C"}}
+              "X" {:type :p :props {:text "X"}}}
+      :children-by-parent {"P" ["A" "B" "C"]
+                           "Q" ["X"]}
+      :roots #{:doc :trash}}
+ :intent {:intent :move
+          :selection ["B" "C"]
+          :parent "Q"
+          :anchor :last}
+ :expected-order {"P" ["A"]
+                  "Q" ["X" "B" "C"]}}

@@ -1,0 +1,14 @@
+{:name "Non-contiguous selection, same parent"
+ :description "Move B and D after A within parent P"
+ :db {:nodes {"P" {:type :container :props {}}
+              "A" {:type :p :props {:text "A"}}
+              "B" {:type :p :props {:text "B"}}
+              "C" {:type :p :props {:text "C"}}
+              "D" {:type :p :props {:text "D"}}}
+      :children-by-parent {"P" ["A" "B" "C" "D"]}
+      :roots #{:doc :trash}}
+ :intent {:intent :reorder
+          :selection ["B" "D"]
+          :parent "P"
+          :anchor {:after "A"}}
+ :expected-order {"P" ["A" "B" "D" "C"]}}
