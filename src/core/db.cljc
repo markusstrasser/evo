@@ -97,23 +97,12 @@
    merges in results from registered plugins."
   [db]
   (let [{:keys [children-by-parent roots]} db
-        parent-of (compute-parent-of children-by-parent)
-        index-of (compute-index-of children-by-parent)
-        {:keys [prev-id-of next-id-of]} (compute-siblings children-by-parent)
-        {:keys [pre post id-by-pre]} (compute-traversal children-by-parent roots)
-        core-derived {:parent-of parent-of
-                      :index-of index-of
-                      :prev-id-of prev-id-of
-                      :next-id-of next-id-of
-                      :pre pre
-                      :post post
-                      :id-by-pre id-by-pre}
-        ;; Run plugins to get additional derived data
-        db-with-core-derived (assoc db :derived core-derived)
-        plugin-data (plugins/run-all db-with-core-derived)]
-
-    ;; Merge plugin data into derived (plugins can add new keys but not override core)
-    (assoc db :derived (merge core-derived plugin-data))))
+        core-derived (merge {:parent-of (compute-parent-of children-by-parent)
+                             :index-of (compute-index-of children-by-parent)}
+                            (compute-siblings children-by-parent)
+                            (compute-traversal children-by-parent roots))
+        db-with-core (assoc db :derived core-derived)]
+    (assoc db :derived (merge core-derived (plugins/run-all db-with-core)))))
 
 ;; =============================================================================
 ;; Validation Helpers
@@ -207,7 +196,6 @@
    - :derived indexes are fresh"
   [db]
   (let [{:keys [nodes children-by-parent roots derived]} db
-
         errors (->> [(validate-children-exist nodes children-by-parent)
                      (validate-no-duplicate-children children-by-parent)
                      (validate-single-parent children-by-parent)
@@ -215,8 +203,8 @@
                      (validate-no-cycles nodes derived roots)
                      (validate-no-self-parent derived)
                      (validate-derived-fresh db)]
-                    (apply concat)
+                    (mapcat identity)
+                    (remove nil?)
                     vec)]
-
     {:ok? (empty? errors)
      :errors errors}))
