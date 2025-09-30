@@ -7,8 +7,49 @@ Any changes made here will be overwritten. Edit CLAUDE.md instead. -->
 To begin the session read the ENTIRE most recent overview.md inside the docs/
 folder.
 
-You can use the gemini, codex, and opencode CLI tools with repomix to get
+You can use the gemini, codex, grok, and opencode CLI tools with repomix to get
 inspiration from the best-of projects.
+
+### Environment Validation
+
+**CRITICAL**: Always verify environment before running research scripts.
+
+**Quick Check:**
+```bash
+# Verify API keys
+test -f .env && echo "✓ .env found" || echo "✗ .env missing"
+env | grep -E "(GROK|GEMINI|OPENAI)_API_KEY" | cut -d= -f1
+
+# Full validation
+scripts/validate-proposal-setup
+```
+
+**API Keys:**
+- Store in `.env` (gitignored, auto-sourced by scripts)
+- Required: `GROK_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`
+
+### Output Validation Protocol
+
+**ALWAYS verify output after running research scripts:**
+
+```bash
+# After any research/proposal script
+LATEST=$(ls -td research/{proposals,results}/* 2>/dev/null | head -1)
+
+# Check for errors (files < 1KB are usually error messages)
+find "$LATEST" -name "*.md" -size -1k
+
+# Verify content
+head -20 "$LATEST"/**/*.md | grep -c "^#"  # Should have headers
+
+# Check for error messages
+grep -i "error\|failed\|not found" "$LATEST"/**/*.md
+```
+
+**Before claiming "complete":**
+1. Check file sizes (should be > 5KB)
+2. Read first 20 lines - look for actual content, not errors
+3. Verify expected structure (markdown headers, sections)
 
 ### Research Workflow
 
@@ -72,14 +113,30 @@ gemini --session-summary session.txt
 
 
 ```bash
-codex --model gpt-5 --reasoning-effort high -p "question"  # Max reasoning
+# Interactive (for questions/answers)
+codex -m gpt-5-codex -c model_reasoning_effort="high" "your question"
+
+# Non-interactive batch (for agents/automation)
+echo "prompt" | codex exec -m gpt-5-codex -c model_reasoning_effort="high" --full-auto -
+
+# IMPORTANT:
+# - Use regular codex for Q&A (safer, interactive)
+# - Use codex exec --full-auto ONLY for agents/automation
+# - ALWAYS use model_reasoning_effort="high" for code review/taste
 
 # Session continuity
-codex --continue  # Resume last session
-codex --resume    # Choose which session to resume
+codex --resume    # Resume last session
 # Sessions stored in: ~/.codex/sessions/*.jsonl
 ```
 
+**Grok** (curl wrapper at `scripts/grok`):
+```bash
+scripts/grok -p "question"
+scripts/grok -m grok-4-latest -p "question"
+echo "question" | scripts/grok
+
+# Requires: export XAI_API_KEY="your-key"
+```
 
 **Multi-turn Research Pattern**:
 ```bash
@@ -89,6 +146,47 @@ codex --model gpt-5 --reasoning-effort high -p "...prompt"
 
 **Note**: Research and refactor agents use even split across providers for
 diverse perspectives.
+
+**Parallel Query Protocol**:
+- **No duplicate prompts**: Same prompt goes to each model once only
+- **Vary questions**: Parallel queries should ask different questions or use different perspectives
+- **Add variation**: Use UUIDs, timestamps, or perspective tags to ensure unique responses
+- **Example perspectives**: "structural analysis", "performance patterns", "comparative design"
+- **See**: `research/CLI_REFERENCE.md` for tested syntax and duplicate prevention patterns
+
+**Architectural Proposals Workflow**:
+```bash
+# Generate 15 architectural proposals + 2 rankings (fully automated)
+scripts/architectural-proposals
+
+# Uses: project overview (not source) to avoid implementation bias
+# Covers: kernel, indexes, pipeline, extensibility, DX
+# Output: research/proposals/YYYY-MM-DD-HH-MM/{proposals,rankings}/
+# See: research/ARCHITECTURAL_PROPOSALS.md for details
+```
+
+**Best-of Repos Research** (15 parallel queries):
+```bash
+# Query 5 best/ repos with 3 models each (15 parallel)
+scripts/best-repos-research ["custom question"]
+
+# Default: Analyze core data structures and operations
+# Repos: datascript, reitit, re-frame, meander, specter
+# Models: gemini, codex, grok (NO --full-auto for research)
+# Output: research/results/YYYY-MM-DD-HH-MM/{repo}-{model}.md
+# Cache: .repomix-cache/ (repomix results cached for speed)
+```
+
+**Analyze Battle-Test Results** (Codex synthesis):
+```bash
+# Analyze all results with Codex (pipes ALL context, no summarization)
+scripts/analyze-battle-test [results-dir]
+
+# Uses Codex reasoning-effort=high for pattern analysis
+# Finds: consensus patterns, repo-specific insights, outliers
+# Shows live progress (new output as it arrives)
+# Output: {results-dir}/analysis.md
+```
 
 ### Available Projects
 
@@ -176,6 +274,21 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `dev/error-catalog.edn` - common issues with auto-remediation
 - `dev/scripts/health-check.sh` - environment validation
 - `.pre-commit-check.sh` - quality gates with CLJS validation
+
+**Research & Analysis:**
+
+- `research/CLI_REFERENCE.md` - Battle-tested CLI syntax (gemini, codex, grok)
+- `research/ARCHITECTURAL_PROPOSALS.md` - Proposal generation workflow docs
+- `research/architectural-questions.edn` - Question templates
+- `research/proposal-ranker-prompt.md` - Ranking criteria
+- `.agentlog/session-*.md` - Past session learnings and failure modes
+
+**Common Failure Modes:**
+
+- **Codex batch mode**: Use `codex exec ... -` not `codex -p -`
+- **API keys**: Scripts auto-source `.env`, verify with `env | grep API_KEY`
+- **Empty output**: Check file sizes after runs (< 1KB = error)
+- **Gemini timeouts**: Use `--allowed-mcp-server-names ""` for batch
 
 **Config & Setup:**
 
