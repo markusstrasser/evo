@@ -18,6 +18,73 @@
   [db parent-id]
   (get-in db [:children-by-parent parent-id] []))
 
+(defn- throw-missing-target
+  "Throw consistent error for missing sibling target."
+  [anchor-type target-id parent-id kids]
+  (throw (ex-info (str "Anchor " anchor-type " references unknown sibling")
+                  {:reason ::missing-target
+                   :anchor-type anchor-type
+                   :target-id target-id
+                   :parent-id parent-id
+                   :available-siblings kids
+                   :suggest {:replace-anchor :at-end}})))
+
+(defn- throw-out-of-bounds
+  "Throw consistent error for out-of-bounds index."
+  [idx n parent-id]
+  (throw (ex-info "Anchor index out of bounds"
+                  {:reason ::oob
+                   :idx idx
+                   :n n
+                   :parent-id parent-id
+                   :suggest {:replace-anchor :at-end}})))
+
+(defn- resolve-before
+  "Resolve {:before id} anchor."
+  [kids parent-id target-id]
+  (let [i (.indexOf kids target-id)]
+    (when (neg? i)
+      (throw-missing-target :before target-id parent-id kids))
+    {:idx i :normalized-anchor {:before target-id}}))
+
+(defn- resolve-after
+  "Resolve {:after id} anchor."
+  [kids parent-id target-id]
+  (let [i (.indexOf kids target-id)]
+    (when (neg? i)
+      (throw-missing-target :after target-id parent-id kids))
+    {:idx (inc i) :normalized-anchor {:after target-id}}))
+
+(defn- resolve-at-index
+  "Resolve {:at-index i} anchor."
+  [n parent-id i]
+  (when-not (int? i)
+    (throw (ex-info "Anchor :at-index must be integer"
+                    {:reason ::bad-anchor
+                     :anchor {:at-index i}
+                     :index-value i})))
+  (when (or (neg? i) (> i n))
+    (throw-out-of-bounds i n parent-id))
+  {:idx i :normalized-anchor {:at-index i}})
+
+(defn- resolve-map-anchor
+  "Resolve map-based anchor ({:before/:after/:at-index ...})."
+  [kids n parent-id anchor]
+  (cond
+    (contains? anchor :before)
+    (resolve-before kids parent-id (:before anchor))
+
+    (contains? anchor :after)
+    (resolve-after kids parent-id (:after anchor))
+
+    (contains? anchor :at-index)
+    (resolve-at-index n parent-id (:at-index anchor))
+
+    :else
+    (throw (ex-info "Invalid map anchor - must have :before, :after, or :at-index"
+                    {:reason ::bad-anchor
+                     :anchor anchor}))))
+
 (defn ->index
   "Resolve Anchor within parent's children vector.
 
@@ -32,84 +99,26 @@
   (let [kids (children db parent-id)
         n (count kids)]
     (cond
-      ;; Keyword anchors (with aliases)
       (or (= anchor :first) (= anchor :at-start))
       {:idx 0 :normalized-anchor :first}
 
       (or (= anchor :last) (= anchor :at-end))
       {:idx n :normalized-anchor :last}
 
-      ;; Map anchors
       (map? anchor)
-      (cond
-        ;; {:before id}
-        (contains? anchor :before)
-        (let [target-id (:before anchor)
-              i (.indexOf kids target-id)]
-          (when (neg? i)
-            (throw (ex-info "Anchor :before references unknown sibling"
-                           {:reason ::missing-target
-                            :anchor-type :before
-                            :target-id target-id
-                            :parent-id parent-id
-                            :available-siblings kids
-                            :suggest {:replace-anchor :at-end}})))
-          {:idx i :normalized-anchor {:before target-id}})
+      (resolve-map-anchor kids n parent-id anchor)
 
-        ;; {:after id}
-        (contains? anchor :after)
-        (let [target-id (:after anchor)
-              i (.indexOf kids target-id)]
-          (when (neg? i)
-            (throw (ex-info "Anchor :after references unknown sibling"
-                           {:reason ::missing-target
-                            :anchor-type :after
-                            :target-id target-id
-                            :parent-id parent-id
-                            :available-siblings kids
-                            :suggest {:replace-anchor :at-end}})))
-          {:idx (inc i) :normalized-anchor {:after target-id}})
-
-        ;; {:at-index i}
-        (contains? anchor :at-index)
-        (let [i (:at-index anchor)]
-          (when-not (int? i)
-            (throw (ex-info "Anchor :at-index must be integer"
-                           {:reason ::bad-anchor
-                            :anchor anchor
-                            :index-value i})))
-          (when (or (neg? i) (> i n))
-            (throw (ex-info "Anchor :at-index out of bounds"
-                           {:reason ::oob
-                            :idx i
-                            :n n
-                            :parent-id parent-id
-                            :suggest {:replace-anchor :at-end}})))
-          {:idx i :normalized-anchor {:at-index i}})
-
-        :else
-        (throw (ex-info "Invalid map anchor - must have :before, :after, or :at-index"
-                       {:reason ::bad-anchor
-                        :anchor anchor})))
-
-      ;; Direct integer (treat as :at-index)
       (int? anchor)
       (do
         (when (or (neg? anchor) (> anchor n))
-          (throw (ex-info "Integer anchor out of bounds"
-                         {:reason ::oob
-                          :idx anchor
-                          :n n
-                          :parent-id parent-id
-                          :suggest {:replace-anchor :at-end}})))
+          (throw-out-of-bounds anchor n parent-id))
         {:idx anchor :normalized-anchor {:at-index anchor}})
 
-      ;; Unknown anchor type
       :else
       (throw (ex-info "Unknown anchor type"
-                     {:reason ::bad-anchor
-                      :anchor anchor
-                      :expected "One of: :at-start, :at-end, {:before id}, {:after id}, {:at-index i}, or integer"})))))
+                      {:reason ::bad-anchor
+                       :anchor anchor
+                       :expected "One of: :at-start, :at-end, {:before id}, {:after id}, {:at-index i}, or integer"})))))
 
 (defn normalize-intent
   "Lifts {:into parent-id anchor?} to {:parent parent-id :anchor anchor'}.
