@@ -6,6 +6,7 @@
     "build": "npx shadow-cljs release app",
     "test": "npx shadow-cljs compile test && node out/tests.js",
     "lint": "npm run check:lint",
+    "lint:fresh": "rm -rf .clj-kondo/.cache && npm run check:lint",
     "lint:fix": "clj-kondo --lint src test --config-dir .clj-kondo",
     "check": "npm run check:lint && npm run check:compile",
     "check:lint": "clj-kondo --lint src test --fail-level error",
