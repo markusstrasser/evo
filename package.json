@@ -13,7 +13,8 @@
     "fix:cache": "npx shadow-cljs clean && rm -rf .shadow-cljs out target .cpcache node_modules/.cache",
     "agent:health": "dev/scripts/health-check.sh",
     "agent:preflight": "dev/scripts/preflight.sh",
-    "repl:health": "clj -M:dev -e '(require \"[session :as s]\") (s/quick-health-check!)'"
+    "repl:health": "clj -M:dev -e '(require \"[session :as s]\") (s/quick-health-check!)'",
+    "docs:overview": "scripts/generate-overview.sh"
   },
   "devDependencies": {
     "shadow-cljs": "^2.28.10"
