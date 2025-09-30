@@ -7,6 +7,12 @@
 - **Errors**: `dev/error-catalog.edn` - error taxonomy with remedies and auto-fixes
 - **Preflight**: `dev/preflight.edn` + `dev/scripts/preflight.sh` - startup checks
 - **Health Check**: `dev/scripts/health-check.sh` - dev environment diagnostics
+- **AI Overview**: `scripts/generate-overview.sh` - AI repo info script (uses repomix/bat + gemini)
+  - Generate architectural docs from codebase
+  - Target: `-t src/` (dir/files), sections by name/number (1-9)
+  - Focus: `-p "text"` appends custom prompt for specific analysis
+  - Examples: `performance`, `1-3`, `-t src/core/db.cljc ops`, `-p "Focus on cycles" 1`
+  - Auto-runs on git merge if `src/` changes (`.git/hooks/post-merge`)
 - **Quick start**: `(require '[repl :as repl]) (repl/init!)`
 - **Docs**: `dev/README.md`
 
@@ -18,6 +24,7 @@
 - `npm run agent:health` - environment diagnostics
 - `npm run agent:preflight` - pre-flight checks (needs dev server)
 - `npm run repl:health` - quick REPL diagnostics
+- `npm run docs:overview` - generate AI architectural overview (default: all sections, src/)
 
 ### Investigation Tactics
 - `bat`, `rg`, targeted file reads for token efficiency
