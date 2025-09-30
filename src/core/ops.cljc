@@ -119,7 +119,7 @@
                 (drop target-idx siblings))))
 
 (defn place
-  "Move node to new parent at specified position. Removes from current parent first.
+  "Move node to new parent at specified position. Three phases: remove, resolve, insert.
 
    Args:
      db - database
@@ -130,20 +130,11 @@
    Returns:
      Updated database"
   [db id under at]
-  ;; Step 1: Remove node from wherever it currently lives
-  (let [db-removed (remove-from-current-parent db id)
-
-        ;; Step 2: Get target parent's current children
-        current-siblings (get-in db-removed [:children-by-parent under] [])
-
-        ;; Step 3: Resolve the position anchor to a concrete index
-        target-idx (resolve-at-position current-siblings at)
-
-        ;; Step 4: Insert node at the resolved position
-        new-siblings (insert-child-at-position current-siblings id target-idx)]
-
-    ;; Step 5: Update database with new parent-child relationship
-    (assoc-in db-removed [:children-by-parent under] new-siblings)))
+  (let [db-after-remove (remove-from-current-parent db id)
+        siblings (get-in db-after-remove [:children-by-parent under] [])
+        target-idx (resolve-at-position siblings at)
+        updated-siblings (insert-child-at-position siblings id target-idx)]
+    (assoc-in db-after-remove [:children-by-parent under] updated-siblings)))
 
 (defn- deep-merge
   "Recursively merge maps. For nested maps, merge recursively.
