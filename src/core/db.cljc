@@ -54,31 +54,35 @@
    - :id-by-pre - map of index->id for pre-order lookup"
   [children-by-parent roots]
   (letfn [(visit-node [state id]
-            ;; Record pre-order visit before children
+            ;; Pre-order: record node BEFORE visiting children
             (let [state-with-pre (update state :pre-order conj id)
                   children (get children-by-parent id [])
+                  ;; Recursively visit all children, threading state
+                  state-with-children (reduce visit-node state-with-pre children)]
+              ;; Post-order: record node AFTER visiting children
+              (update state-with-children :post-order conj id)))]
 
-                  ;; Visit all children, threading state through
-                  state-after-children (reduce visit-node state-with-pre children)]
+    ;; 1. Traverse tree from all roots, accumulating pre/post vectors
+    (let [{:keys [pre-order post-order]}
+          (reduce (fn [state root]
+                    ;; Only visit roots that have children or are leaves
+                    (if (contains? children-by-parent root)
+                      (visit-node state root)
+                      state))
+                  {:pre-order [] :post-order []}
+                  roots)
 
-              ;; Record post-order visit after children
-              (update state-after-children :post-order conj id)))
-
-          (visit-root [state root]
-            (if (contains? children-by-parent root)
-              (visit-node state root)
-              state))]
-
-    ;; Visit all roots, threading state through reduce
-    (let [initial-state {:pre-order [] :post-order []}
-          final-state (reduce visit-root initial-state roots)
-          {:keys [pre-order post-order]} final-state
-
-          ;; Build index maps from traversal vectors
-          ;; m/indexed returns seq of [index element] pairs
-          id->pre-idx (into {} (map (fn [[idx id]] [id idx]) (m/indexed pre-order)))
-          id->post-idx (into {} (map (fn [[idx id]] [id idx]) (m/indexed post-order)))
-          ;; For id-by-pre, we want {index id}
+          ;; 2. Convert traversal vectors to lookup maps
+          ;; For pre/post: id -> index (e.g., "n1" -> 1)
+          ;; For id-by-pre: index -> id (e.g., 1 -> "n1")
+          id->pre-idx (->> pre-order
+                           m/indexed
+                           (map (fn [[idx id]] [id idx]))
+                           (into {}))
+          id->post-idx (->> post-order
+                            m/indexed
+                            (map (fn [[idx id]] [id idx]))
+                            (into {}))
           pre-idx->id (into {} (m/indexed pre-order))]
 
       {:pre id->pre-idx
