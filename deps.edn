@@ -1,4 +1,4 @@
-{:paths   ["src" "test" "agent"]
+{:paths   ["src" "test" "dev" "agent"]
  :deps
  {no.cjohansen/replicant                {:mvn/version "2025.06.21"}
   org.clojure/clojurescript             {:mvn/version "1.12.42"}
@@ -16,11 +16,19 @@
 
  :aliases {;; nREPL server for AI to connect to
            ;; Include all paths you want available for development
-           :nrepl {:extra-paths ["src" "test" "agent"]
+           :nrepl {:extra-paths ["src" "test" "dev" "agent"]
                    :extra-deps  {nrepl/nrepl {:mvn/version "1.3.1"}}
                    ;; this allows nrepl to interrupt runaway repl evals
                    :jvm-opts    ["-Djdk.attach.allowAttachSelf"]
-                   :main-opts   ["-m" "nrepl.cmdline" "--port" "7888"]}}}
+                   :main-opts   ["-m" "nrepl.cmdline" "--port" "7888"]}
+
+           ;; Test runner with property-based testing
+           :test {:extra-paths ["test"]
+                  :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+                  :main-opts   ["-m" "kaocha.runner"]
+                  :exec-fn     kaocha.runner/exec-fn
+                  :exec-args   {:color? true
+                                :fail-fast? false}}}}
 
 
 

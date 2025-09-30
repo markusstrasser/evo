@@ -1,7 +1,8 @@
 (ns core.db
   "Canonical DB shape, derive function, and invariants for the three-op kernel."
   (:require [medley.core :as m]
-            [clojure.set :as set])
+            [clojure.set :as set]
+            [plugins.registry :as plugins])
   #?(:cljs (:require [goog.string :as gstr]
                      [goog.string.format])))
 
@@ -90,22 +91,29 @@
        :id-by-pre pre-idx->id})))
 
 (defn derive-indexes
-  "Recompute all derived maps from canonical DB state. O(n) operation."
+  "Recompute all derived maps from canonical DB state. O(n) operation.
+
+   Computes core derived indexes (parent-of, index-of, etc.) and then
+   merges in results from registered plugins."
   [db]
   (let [{:keys [children-by-parent roots]} db
         parent-of (compute-parent-of children-by-parent)
         index-of (compute-index-of children-by-parent)
         {:keys [prev-id-of next-id-of]} (compute-siblings children-by-parent)
-        {:keys [pre post id-by-pre]} (compute-traversal children-by-parent roots)]
+        {:keys [pre post id-by-pre]} (compute-traversal children-by-parent roots)
+        core-derived {:parent-of parent-of
+                      :index-of index-of
+                      :prev-id-of prev-id-of
+                      :next-id-of next-id-of
+                      :pre pre
+                      :post post
+                      :id-by-pre id-by-pre}
+        ;; Run plugins to get additional derived data
+        db-with-core-derived (assoc db :derived core-derived)
+        plugin-data (plugins/run-all db-with-core-derived)]
 
-    (assoc db :derived
-           {:parent-of parent-of
-            :index-of index-of
-            :prev-id-of prev-id-of
-            :next-id-of next-id-of
-            :pre pre
-            :post post
-            :id-by-pre id-by-pre})))
+    ;; Merge plugin data into derived (plugins can add new keys but not override core)
+    (assoc db :derived (merge core-derived plugin-data))))
 
 ;; =============================================================================
 ;; Validation Helpers

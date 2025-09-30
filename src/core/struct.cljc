@@ -8,7 +8,9 @@
    - :update-node
 
    Design principle: Delete is archive by design - nodes are moved to :trash,
-   never destroyed. This maintains referential integrity and enables undo.")
+   never destroyed. This maintains referential integrity and enables undo."
+  (:require [kernel.permutation :as perm]
+            [plugins.siblings-order :as so]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 
@@ -74,6 +76,50 @@
 (defmethod compile-intent :outdent
   [DB {:keys [id]}]
   (outdent-ops DB id))
+
+;; ── Reorder intents ───────────────────────────────────────────────────────────
+
+(defn- realize-permutation->places
+  "Convert a permutation into a sequence of :place operations.
+
+   Strategy: Emit places in destination order with stable {:after prev} anchors.
+   This ensures children end up in the target order after all places are applied."
+  [DB parent p]
+  (let [src (vec (get-in DB [:children-by-parent parent] []))
+        dst (perm/arrange src p)]
+    (vec
+     (map-indexed
+      (fn [i id]
+        {:op :place
+         :id id
+         :under parent
+         :at (if (zero? i)
+               :first
+               {:after (nth dst (dec i))})})
+      dst))))
+
+(defmethod compile-intent :reorder/children
+  [DB {:keys [parent order]}]
+  ;; Reorder children to an explicit target order.
+  ;; Intent: {:type :reorder/children, :parent P, :order [id1 id2 ...]}
+  (let [p (so/target-permutation DB parent (vec order))]
+    (realize-permutation->places DB parent p)))
+
+(defn- splice-after
+  "Remove ids from items and re-insert after pivot (or at start if pivot is nil)."
+  [items ids after]
+  (let [items' (vec (remove (set ids) items))
+        i      (if after (inc (.indexOf items' after)) 0)]
+    (vec (concat (subvec items' 0 i) ids (subvec items' i)))))
+
+(defmethod compile-intent :reorder/move-blocks
+  [DB {:keys [parent ids after]}]
+  ;; Move contiguous selection after pivot.
+  ;; Intent: {:type :reorder/move-blocks, :parent P, :ids [...], :after pivot}
+  (let [src (vec (get-in DB [:children-by-parent parent] []))
+        dst (splice-after src ids after)
+        p   (perm/from-to src dst)]
+    (realize-permutation->places DB parent p)))
 
 (defmethod compile-intent :default
   [_DB _]
