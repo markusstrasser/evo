@@ -11,7 +11,7 @@ This directory contains deep technical analysis of the most innovative patterns 
 
 ### Language & Runtime Systems
 - **[sci.insights.md](./sci.insights.md)** - Small Clojure Interpreter with security sandboxing and cross-platform execution
-- **[malli.insights.md](malli.insights.md)** - Schema-as-data validation system with transformation pipelines
+- **[malli.insights.md](../research/10-research/malli.insights.md)** - Schema-as-data validation system with transformation pipelines
 
 ## 🧠 Most Ingenious Patterns Summary
 
