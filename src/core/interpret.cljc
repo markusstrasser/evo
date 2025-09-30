@@ -38,6 +38,15 @@
 
     :else fallback-idx))
 
+(defn- same-position-after-place?
+  "Check if node would end up at the same index after place operation.
+   Simulates remove → resolve anchor → insert to find final position."
+  [siblings id at]
+  (let [current-idx (find-index siblings id)
+        siblings-without-node (vec (remove #(= % id) siblings))
+        target-idx (resolve-anchor-position siblings-without-node at current-idx)]
+    (= current-idx target-idx)))
+
 (defn- is-noop-place?
   "Check if a :place operation is a no-op (same parent and index).
 
@@ -47,31 +56,14 @@
       the node ends up at the same index
 
    Returns true for noop operations, nil for non-:place operations."
-  [db op]
-  (let [{:keys [id under at]} op]
-    (cond
-      ;; Early exit: not a place operation
-      (not= (:op op) :place)
-      nil
-
-      ;; Early exit: changing parents is never a noop
-      (not= under (get-in db [:derived :parent-of id]))
-      nil
-
-      ;; Same parent: check if position changes
-      :else
-      (let [current-siblings (get-in db [:children-by-parent under] [])
-            current-idx (find-index current-siblings id)
-
-            ;; Mimic place operation: remove node from siblings
-            siblings-without-node (vec (remove #(= % id) current-siblings))
-
-            ;; Resolve anchor in the siblings list WITHOUT the node
-            target-idx (resolve-anchor-position siblings-without-node at current-idx)]
-
-        ;; After inserting at target-idx, the node will be at target-idx
-        ;; It's a noop if that position equals where it started
-        (= current-idx target-idx)))))
+  [db {:keys [op id under at] :as _op}]
+  (when (= op :place)
+    (let [current-parent (get-in db [:derived :parent-of id])]
+      (and (= under current-parent)
+           (same-position-after-place?
+            (get-in db [:children-by-parent under] [])
+            id
+            at)))))
 
 (defn- remove-noop-places
   "Filter out no-op :place operations."
@@ -249,17 +241,16 @@
 
    Returns: [final-db issues]"
   [db ops]
-  (let [indexed-ops (m/indexed ops)
-
-        step-fn (fn [[current-db all-issues] [op-index op]]
-                  (let [op-issues (validate-op current-db op op-index)]
-                    (if (seq op-issues)
-                      ;; Error found - stop processing
-                      (reduced [current-db (into all-issues op-issues)])
-                      ;; Valid - apply and continue
-                      [(apply-op current-db op) all-issues])))]
-
-    (reduce step-fn [db []] indexed-ops)))
+  (reduce
+   (fn [[current-db all-issues] [op-index op]]
+     (let [op-issues (validate-op current-db op op-index)]
+       (if (seq op-issues)
+         ;; Stop on first error
+         (reduced [current-db (into all-issues op-issues)])
+         ;; Apply valid operation and continue
+         [(apply-op current-db op) all-issues])))
+   [db []]
+   (m/indexed ops)))
 
 (defn interpret
   "Interpret a transaction sequence.
@@ -280,8 +271,9 @@
    Trace format:
    [{:tx-id <id> :seed <seed> :ops [<ops>] :notes \"...\" :num-applied <n>} ...]"
   ([db txs] (interpret db txs nil))
-  ([db txs {:keys [tx-id seed notes] :as opts}]
-   (let [tx-id (or tx-id #?(:clj (System/currentTimeMillis)
+  ([db txs opts]
+   (let [{:keys [tx-id seed notes]} opts
+         tx-id (or tx-id #?(:clj (System/currentTimeMillis)
                            :cljs (.now js/Date)))
          seed (or seed #?(:clj (System/currentTimeMillis)
                          :cljs (.now js/Date)))
