@@ -6,6 +6,8 @@ public/js
 repomix-output.xml
 out
 .env
+*.env
+
 legacy_deprecated
 /out
 ./out
