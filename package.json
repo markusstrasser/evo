@@ -12,7 +12,7 @@
     "agent:health": "dev/bin/health-check.sh",
     "agent:preflight": "dev/bin/preflight.sh",
     "repl:health": "clj -M:dev -e '(require (quote [repl.session :as s])) (s/quick-health-check!)'",
-    "docs:overview": "scripts/generate-overview.sh",
+    "docs:overview": "scripts/generate-overview.sh --source",
     "kb:thin": "uv run ~/Projects/best/thin_repos.py"
   },
   "devDependencies": {
