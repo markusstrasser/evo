@@ -1,118 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AI Repository Information Script
-# Generate architectural overview using repomix/bat and gemini
-# Usage: ./scripts/generate-overview.sh [OPTIONS] [SECTIONS...]
+# AI Repository Overview Generator
+# Uses repomix + gemini to generate architectural overviews
 #
-# Examples:
-#   ./scripts/generate-overview.sh                              # All sections, src/
-#   ./scripts/generate-overview.sh -t src/core/db.cljc          # Single file
-#   ./scripts/generate-overview.sh -t "src/core/*.cljc"         # Multiple files (glob)
-#   ./scripts/generate-overview.sh -t test/ performance         # test/ dir, perf section
-#   ./scripts/generate-overview.sh performance                  # Section by name
-#   ./scripts/generate-overview.sh 1 3 5                        # Sections by index
-#   ./scripts/generate-overview.sh 1-3                          # Range of sections
-
-# Section mapping: name -> index
-declare -A SECTION_MAP=(
-  ["data-model"]="1"
-  ["db"]="1"
-  ["operations"]="2"
-  ["ops"]="2"
-  ["pipeline"]="3"
-  ["interpret"]="3"
-  ["validation"]="4"
-  ["schema"]="5"
-  ["struct"]="6"
-  ["structural"]="6"
-  ["usage"]="7"
-  ["patterns"]="7"
-  ["invariants"]="8"
-  ["guarantees"]="8"
-  ["performance"]="9"
-  ["perf"]="9"
-)
-
-# Section index -> section block in EXCERPT.md (line ranges)
-declare -A SECTION_LINES=(
-  ["1"]="116:127"   # Data Model
-  ["2"]="129:141"   # Core Operations
-  ["3"]="143:151"   # Transaction Pipeline
-  ["4"]="153:160"   # Validation Semantics
-  ["5"]="162:169"   # Schema Contracts
-  ["6"]="171:183"   # Structural Editing Layer
-  ["7"]="185:188"   # Usage Patterns
-  ["8"]="190:195"   # Key Invariants & Guarantees
-  ["9"]="197:205"   # Performance Characteristics
-)
-
-# Section index -> section name
-declare -A SECTION_NAMES=(
-  ["1"]="Data Model (core.db)"
-  ["2"]="Core Operations (core.ops)"
-  ["3"]="Transaction Pipeline (core.interpret)"
-  ["4"]="Validation Semantics"
-  ["5"]="Schema Contracts (core.schema - Malli)"
-  ["6"]="Structural Editing Layer (core.struct)"
-  ["7"]="Usage Patterns"
-  ["8"]="Key Invariants & Guarantees"
-  ["9"]="Performance Characteristics"
-)
+# Usage:
+#   ./scripts/generate-overview.sh --auto              # Generate both overviews (for git hooks)
+#   ./scripts/generate-overview.sh --source            # Generate source overview only
+#   ./scripts/generate-overview.sh --project           # Generate project overview only
+#   ./scripts/generate-overview.sh -t path/to/code     # Custom overview (no prompt template)
 
 show_help() {
   cat <<EOF
-AI Repository Information Script
+AI Repository Overview Generator
 
-Usage: $0 [OPTIONS] [SECTIONS...]
+USAGE:
+  $0 [OPTIONS]
 
-Generate architectural documentation by extracting codebase with repomix/bat
-and processing with Gemini AI. Sections can be specified by name or number.
+MODES:
+  --auto              Generate both AUTO-SOURCE-OVERVIEW.md and AUTO-PROJECT-OVERVIEW.md
+                      (Used by git post-merge hook)
+
+  --source            Generate source code overview
+                      - Uses EXCERPT.md prompt template
+                      - Target: src/
+                      - Output: timestamped file in docs/overviews/
+
+  --project           Generate project structure overview
+                      - Uses PROJECT-GUIDE.md prompt template
+                      - Target: . (root, excludes src/, test/, artifacts)
+                      - Output: timestamped file in docs/overviews/
+
+  -t, --target PATH   Generate custom overview for specified path
+                      - No prompt template used (direct repomix → gemini)
+                      - Output: timestamped file in docs/overviews/
 
 OPTIONS:
-  -h, --help              Show this help message
-  --auto                  Auto mode: generate both overviews for git hooks
-                          - AUTO-SOURCE-OVERVIEW.md (from src/)
-                          - AUTO-PROJECT-OVERVIEW.md (from root)
-  -t, --target PATH       Target directory or file(s) (default: src/)
-                          - Directory: uses repomix
-                          - File(s): uses bat (supports globs)
-                          - Root (".") uses PROJECT-GUIDE.md prompt
-  -p, --append-prompt TXT Additional prompt text appended at the end
-                          (use for focus/specific instructions)
-
-SECTIONS (1-9):
-  1  data-model, db          Data Model (core.db)
-  2  operations, ops         Core Operations (core.ops)
-  3  pipeline, interpret     Transaction Pipeline (core.interpret)
-  4  validation              Validation Semantics
-  5  schema                  Schema Contracts (core.schema - Malli)
-  6  struct, structural      Structural Editing Layer (core.struct)
-  7  usage, patterns         Usage Patterns
-  8  invariants, guarantees  Key Invariants & Guarantees
-  9  performance, perf       Performance Characteristics
+  -h, --help          Show this help message
+  -p, --prompt TEXT   Additional focus/instructions appended to prompt
 
 EXAMPLES:
-  $0                                         Generate all sections from src/
-  $0 -t src/core/db.cljc performance        Performance section for single file
-  $0 -t "src/core/*.cljc" 1-3               Sections 1-3 for core modules
-  $0 -t test/ validation                     Validation section for test dir
-  $0 performance                             Performance section from src/
-  $0 1 3 5                                   Sections 1, 3, 5 from src/
-  $0 data-model ops                          Data model and ops from src/
-  $0 -p "Focus on async patterns" pipeline  Pipeline with specific focus
-  $0 -t src/core/ -p "Explain indexes" 1    Data model with focus on indexes
+  $0 --auto                              # Post-merge: generate both overviews
+  $0 --source                            # Manual source overview
+  $0 --project                           # Manual project overview
+  $0 -t src/core/ -p "Focus on indexes"  # Custom: core modules with focus
+  $0 -t docs/                            # Custom: documentation overview
 
 OUTPUT:
-  Saves to docs/overviews/YYYY-MM-DD-HH-MM-overview.md and prints to stdout
+  - Auto mode: AUTO-SOURCE-OVERVIEW.md, AUTO-PROJECT-OVERVIEW.md (gitignored)
+  - Manual mode: docs/overviews/YYYY-MM-DD-HH-MM-<target>-overview.md
+
+REQUIREMENTS:
+  - repomix (for directory scanning)
+  - bat (for file reading, optional)
+  - gemini CLI (for AI processing)
 EOF
 }
 
 # Parse arguments
-TARGET="src/"
+MODE=""
+TARGET=""
 APPEND_PROMPT=""
-REQUESTED_SECTIONS=()
-AUTO_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -121,10 +69,19 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --auto)
-      AUTO_MODE=true
+      MODE="auto"
+      shift
+      ;;
+    --source)
+      MODE="source"
+      shift
+      ;;
+    --project)
+      MODE="project"
       shift
       ;;
     -t|--target)
+      MODE="custom"
       if [[ -z "${2:-}" ]]; then
         echo "Error: --target requires an argument" >&2
         exit 1
@@ -132,123 +89,111 @@ while [[ $# -gt 0 ]]; do
       TARGET="$2"
       shift 2
       ;;
-    -p|--append-prompt)
+    -p|--prompt)
       if [[ -z "${2:-}" ]]; then
-        echo "Error: --append-prompt requires an argument" >&2
+        echo "Error: --prompt requires an argument" >&2
         exit 1
       fi
       APPEND_PROMPT="$2"
       shift 2
       ;;
     *)
-      # Section argument
-      arg="$1"
-      if [[ "$arg" =~ ^[0-9]+-[0-9]+$ ]]; then
-        # Range: 1-3
-        start="${arg%-*}"
-        end="${arg#*-}"
-        for ((i=start; i<=end; i++)); do
-          REQUESTED_SECTIONS+=("$i")
-        done
-      elif [[ "$arg" =~ ^[0-9]+$ ]]; then
-        # Numeric index
-        REQUESTED_SECTIONS+=("$arg")
-      else
-        # Section name
-        lower_arg="${arg,,}"  # lowercase
-        if [[ -n "${SECTION_MAP[$lower_arg]:-}" ]]; then
-          REQUESTED_SECTIONS+=("${SECTION_MAP[$lower_arg]}")
-        else
-          echo "Error: Unknown section name '$arg'" >&2
-          echo "Run with --help to see available sections" >&2
-          exit 1
-        fi
-      fi
-      shift
+      echo "Error: Unknown option: $1" >&2
+      echo "Run with --help for usage" >&2
+      exit 1
       ;;
   esac
 done
 
-# Default to all sections if none specified
-if [[ ${#REQUESTED_SECTIONS[@]} -eq 0 ]]; then
-  REQUESTED_SECTIONS=(1 2 3 4 5 6 7 8 9)
+# Validate mode
+if [[ -z "$MODE" ]]; then
+  echo "Error: No mode specified. Use --auto, --source, --project, or -t <path>" >&2
+  echo "Run with --help for usage" >&2
+  exit 1
 fi
 
-# Remove duplicates and sort
-REQUESTED_SECTIONS=($(printf '%s\n' "${REQUESTED_SECTIONS[@]}" | sort -nu))
-
-# Validate section numbers
-for section in "${REQUESTED_SECTIONS[@]}"; do
-  if [[ ! "$section" =~ ^[1-9]$ ]]; then
-    echo "Error: Invalid section number '$section' (must be 1-9)" >&2
-    exit 1
-  fi
-done
-
-# Auto mode: generate both overviews and exit
-if [[ "$AUTO_MODE" == "true" ]]; then
-  echo "📦 Auto Mode: Generating both overviews..."
+# Auto mode: generate both and exit
+if [[ "$MODE" == "auto" ]]; then
+  echo "📦 Auto Mode: Generating dual overviews..."
   echo ""
 
-  # Generate source overview
-  echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md (from src/)..."
-  "$0" -t src/ > AUTO-SOURCE-OVERVIEW.md
+  echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md..."
+  "$0" --source > AUTO-SOURCE-OVERVIEW.md 2>&1
   echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
+  echo ""
 
-  # Generate project overview
-  echo "📂 Generating AUTO-PROJECT-OVERVIEW.md (from root)..."
-  "$0" -t . > AUTO-PROJECT-OVERVIEW.md
+  echo "📂 Generating AUTO-PROJECT-OVERVIEW.md..."
+  "$0" --project > AUTO-PROJECT-OVERVIEW.md 2>&1
   echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
 
   exit 0
 fi
+
+# Set target and prompt based on mode
+case "$MODE" in
+  source)
+    TARGET="src/"
+    PROMPT_FILE="EXCERPT.md"
+    ;;
+  project)
+    TARGET="."
+    PROMPT_FILE="PROJECT-GUIDE.md"
+    ;;
+  custom)
+    # Target already set via -t
+    PROMPT_FILE=""
+    ;;
+esac
 
 # Generate timestamp and output filename
 TIMESTAMP=$(date '+%Y-%m-%d-%H-%M')
 TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
 mkdir -p "docs/overviews"
 OUTPUT_FILE="docs/overviews/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
-TEMP_PROMPT="/tmp/gemini-prompt-${TIMESTAMP}.txt"
-TEMP_INSTRUCTIONS="/tmp/excerpt-filtered-${TIMESTAMP}.md"
-TEMP_CONTENT="/tmp/content-${TIMESTAMP}.txt"
 
-echo "📦 AI Repository Information Script"
+TEMP_CONTENT="/tmp/repomix-content-${TIMESTAMP}.txt"
+TEMP_PROMPT="/tmp/gemini-prompt-${TIMESTAMP}.txt"
+
+echo "📦 AI Repository Overview Generator"
+echo "   Mode: ${MODE}"
 echo "   Target: ${TARGET}"
-echo "   Sections: ${REQUESTED_SECTIONS[*]}"
-echo "   Timestamp: ${TIMESTAMP}"
+if [[ -n "$PROMPT_FILE" ]]; then
+  echo "   Prompt: ${PROMPT_FILE}"
+fi
+echo "   Output: ${OUTPUT_FILE}"
 echo ""
 
-# Step 1: Extract content based on target type
+# Step 1: Extract content
 echo "1️⃣  Extracting content..."
 
-# Expand glob patterns
+# Expand glob if needed
 TARGET_EXPANDED=($(eval echo "$TARGET"))
 
 if [[ ${#TARGET_EXPANDED[@]} -eq 1 ]] && [[ -d "${TARGET_EXPANDED[0]}" ]]; then
-  # Single directory - use repomix
+  # Directory: use repomix
   echo "   Method: repomix (directory)"
 
   if [[ "$TARGET" == "." ]]; then
-    # Root mode: exclude src/, test/, build artifacts
+    # Root mode: exclude code and artifacts
     repomix --copy --output /dev/null \
-      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**" \
+      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**" \
       > /dev/null 2>&1
   else
-    # Source mode: include target directory
+    # Normal directory
     repomix --copy --output /dev/null --include "${TARGET}**" > /dev/null 2>&1
   fi
 
   pbpaste > "$TEMP_CONTENT"
+
 elif [[ ${#TARGET_EXPANDED[@]} -ge 1 ]]; then
-  # File(s) - use bat
+  # Files: use bat
   echo "   Method: bat (${#TARGET_EXPANDED[@]} file(s))"
-  # Check if bat is available
+
   if ! command -v bat &> /dev/null; then
-    echo "Error: bat not found. Install with 'brew install bat' or use a directory target." >&2
+    echo "Error: bat not found. Install with 'brew install bat'" >&2
     exit 1
   fi
 
-  # Validate files exist
   for file in "${TARGET_EXPANDED[@]}"; do
     if [[ ! -f "$file" ]]; then
       echo "Error: File not found: $file" >&2
@@ -256,91 +201,71 @@ elif [[ ${#TARGET_EXPANDED[@]} -ge 1 ]]; then
     fi
   done
 
-  # Use bat with plain style and line numbers
   bat --style=plain --paging=never "${TARGET_EXPANDED[@]}" > "$TEMP_CONTENT"
+
 else
   echo "Error: Target not found: $TARGET" >&2
   exit 1
 fi
 
-# Step 2: Build instructions based on target type
-echo "2️⃣  Building instructions..."
+# Step 2: Build prompt
+echo "2️⃣  Building prompt..."
 
-# Determine which prompt to use
-if [[ "$TARGET" == "." ]]; then
-  # Root mode: use PROJECT-GUIDE.md
-  if [[ ! -f "PROJECT-GUIDE.md" ]]; then
-    echo "Error: PROJECT-GUIDE.md not found" >&2
+if [[ -n "$PROMPT_FILE" ]]; then
+  # Use prompt template
+  if [[ ! -f "$PROMPT_FILE" ]]; then
+    echo "Error: Prompt file not found: $PROMPT_FILE" >&2
     exit 1
   fi
-  cp PROJECT-GUIDE.md "$TEMP_INSTRUCTIONS"
-else
-  # Source mode: use EXCERPT.md with section filtering
 
-  # Extract base content (everything before "## Sections to Include")
-  sed -n '1,102p' EXCERPT.md > "$TEMP_INSTRUCTIONS"
-
-  # Add "Sections to Include" header
-  echo "" >> "$TEMP_INSTRUCTIONS"
-  echo "## Sections to Include (in order)" >> "$TEMP_INSTRUCTIONS"
-  echo "" >> "$TEMP_INSTRUCTIONS"
-
-  # Always include the Header section (lines 105-114)
-  sed -n '105,114p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
-  echo "" >> "$TEMP_INSTRUCTIONS"
-
-  # Add each requested section
-  for section in "${REQUESTED_SECTIONS[@]}"; do
-    line_range="${SECTION_LINES[$section]}"
-    start_line="${line_range%:*}"
-    end_line="${line_range#*:}"
-    sed -n "${start_line},${end_line}p" EXCERPT.md >> "$TEMP_INSTRUCTIONS"
-    echo "" >> "$TEMP_INSTRUCTIONS"
-  done
-
-  # Add style guidelines and remaining content (line 207 onwards)
-  sed -n '207,$p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
-fi
-
-# Step 3: Combine with extracted content
-echo "3️⃣  Combining instructions with content..."
-{
-  echo '<instructions>'
-  cat "$TEMP_INSTRUCTIONS"
-  echo '</instructions>'
-  echo ''
-  echo '<codebase>'
-  cat "$TEMP_CONTENT"
-  echo '</codebase>'
-
-  # Add append-prompt if provided
-  if [[ -n "$APPEND_PROMPT" ]]; then
+  {
+    echo '<instructions>'
+    cat "$PROMPT_FILE"
+    echo '</instructions>'
     echo ''
-    echo '<additional-focus>'
-    echo "$APPEND_PROMPT"
-    echo '</additional-focus>'
-  fi
-} > "${TEMP_PROMPT}"
+    echo '<codebase>'
+    cat "$TEMP_CONTENT"
+    echo '</codebase>'
 
-# Step 4: Pipe to gemini with 30 second timeout
-echo "4️⃣  Generating overview with Gemini (timeout: 30s)..."
-if timeout 30s bash -c "cat '${TEMP_PROMPT}' | gemini --allowed-mcp-server-names context-prompt content-prompt -y > '${OUTPUT_FILE}' 2>&1"; then
-  echo "✅ Overview generated successfully!"
+    if [[ -n "$APPEND_PROMPT" ]]; then
+      echo ''
+      echo '<additional-focus>'
+      echo "$APPEND_PROMPT"
+      echo '</additional-focus>'
+    fi
+  } > "$TEMP_PROMPT"
+
 else
-  echo "⚠️  Warning: Gemini timed out or failed (continuing anyway)"
+  # Custom mode: no template, simple prompt
+  {
+    echo "Generate a concise architectural overview of the following codebase."
+    echo "Focus on:"
+    echo "- High-level structure and organization"
+    echo "- Key modules and their responsibilities"
+    echo "- Important patterns and conventions"
+    echo "- Data flow and architecture"
+    echo ""
+    echo "Be terse and technical. Use bullet points and diagrams where helpful."
+
+    if [[ -n "$APPEND_PROMPT" ]]; then
+      echo ""
+      echo "Additional focus:"
+      echo "$APPEND_PROMPT"
+    fi
+
+    echo ""
+    echo "───────────────────────────────────────────────────────────────────"
+    echo ""
+    cat "$TEMP_CONTENT"
+  } > "$TEMP_PROMPT"
 fi
 
-# Step 5: Clean up
-rm -f "${TEMP_PROMPT}" "${TEMP_INSTRUCTIONS}" "${TEMP_CONTENT}"
+# Step 3: Process with gemini
+echo "3️⃣  Processing with gemini..."
+cat "$TEMP_PROMPT" | gemini -y > "$OUTPUT_FILE"
 
-# Output the full markdown
+# Cleanup
+rm -f "$TEMP_CONTENT" "$TEMP_PROMPT"
+
 echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "📄 Generated Overview (${#REQUESTED_SECTIONS[@]} sections):"
-for section in "${REQUESTED_SECTIONS[@]}"; do
-  echo "   ${section}. ${SECTION_NAMES[$section]}"
-done
-echo "   Output: ${OUTPUT_FILE}"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo ""
-cat "${OUTPUT_FILE}"
+echo "✅ Overview generated: $OUTPUT_FILE"
