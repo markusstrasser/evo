@@ -13,17 +13,18 @@
    - Algorithmic bias correction (not prompt-based 'be unbiased')
    - Pure functions with explicit data flow
    - Parallelizable evaluation rounds"
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [medley.core :as m]))
 
 ;; =============================================================================
 ;; Configuration & Constants
 
 (def default-config
   "Default evaluation configuration."
-  {:max-length 500               ; chars per proposal (verbosity mitigation)
-   :rounds 3                     ; evaluation passes
-   :temperature 0.0              ; deterministic scoring
-   :position-weights [0.9 0.95 1.0 1.05 1.10]  ; calibration for 5 positions
+  {:max-length 500 ; chars per proposal (verbosity mitigation)
+   :rounds 3 ; evaluation passes
+   :temperature 0.0 ; deterministic scoring
+   :position-weights [0.9 0.95 1.0 1.05 1.10] ; calibration for 5 positions
    :criteria [{:name "Functional Correctness" :weight 0.3}
               {:name "Complexity (Simplicity)" :weight 0.2}
               {:name "Maintainability" :weight 0.2}
@@ -46,10 +47,7 @@
 (defn normalize-proposals
   "Normalize all proposals in the map."
   [proposals max-length]
-  (into {}
-        (map (fn [[id text]]
-               [id (normalize-proposal text max-length)])
-             proposals)))
+  (m/map-vals #(normalize-proposal % max-length) proposals))
 
 ;; =============================================================================
 ;; Prompt Generation
@@ -106,7 +104,7 @@
         (map-indexed
          (fn [idx id]
            (let [raw-score (get scores id)
-                 weight (get weights idx 1.0)]  ; default 1.0 if not enough weights
+                 weight (get weights idx 1.0)] ; default 1.0 if not enough weights
              [id (* raw-score weight)]))
          order)))
 
@@ -139,6 +137,38 @@
         variance (mean squared-diffs)]
     (Math/sqrt variance)))
 
+(defn- transpose-scores
+  "Transpose rounds-results from [{id -> score}] to {id -> [scores]}."
+  [rounds-results]
+  (reduce
+   (fn [acc round-scores]
+     (reduce (fn [m [id score]]
+               (update m id (fnil conj []) score))
+             acc
+             round-scores))
+   {}
+   rounds-results))
+
+(defn- score-confidence
+  "Calculate confidence level from standard deviation."
+  [stddev]
+  (cond
+    (< stddev 0.5) :high
+    (< stddev 1.0) :medium
+    :else :low))
+
+(defn- aggregate-score-list
+  "Compute statistics for a list of scores."
+  [score-list]
+  (let [med (median score-list)
+        avg (mean score-list)
+        sd (std-dev score-list)]
+    {:median med
+     :mean avg
+     :stddev sd
+     :scores score-list
+     :confidence (score-confidence sd)}))
+
 (defn aggregate-scores
   "Aggregate scores from multiple rounds into final ranking.
 
@@ -147,32 +177,9 @@
    Uses median (not mean) for robustness to outliers.
    Confidence based on consistency across rounds (low stddev = high confidence)."
   [rounds-results]
-  ;; rounds-results is seq of maps: [{id -> score} {id -> score} ...]
-  ;; Transpose to: {id -> [score1 score2 score3]}
-  (let [scores-by-id (reduce
-                      (fn [acc round-scores]
-                        (reduce
-                         (fn [acc2 [id score]]
-                           (update acc2 id (fnil conj []) score))
-                         acc
-                         round-scores))
-                      {}
-                      rounds-results)]
-    (into {}
-          (map (fn [[id score-list]]
-                 (let [med (median score-list)
-                       avg (mean score-list)
-                       sd (std-dev score-list)
-                       confidence (cond
-                                    (< sd 0.5) :high
-                                    (< sd 1.0) :medium
-                                    :else :low)]
-                   [id {:median med
-                        :mean avg
-                        :stddev sd
-                        :scores score-list
-                        :confidence confidence}]))
-               scores-by-id))))
+  (->> rounds-results
+       transpose-scores
+       (m/map-vals aggregate-score-list)))
 
 (defn rank-proposals
   "Sort proposals by median score (descending).
@@ -191,8 +198,8 @@
    Calls evaluator-fn with prompt and order.
 
    Returns map of {proposal-id -> score}."
-  [proposals order _criteria evaluator-fn]
-  (let [prompt (make-evaluation-prompt proposals order _criteria)]
+  [proposals order criteria evaluator-fn]
+  (let [prompt (make-evaluation-prompt proposals order criteria)]
     ;; evaluator-fn takes prompt, returns parsed scores
     (evaluator-fn prompt order)))
 
@@ -264,7 +271,7 @@
   (defn mock-evaluator [_prompt order]
     (into {}
           (map (fn [id]
-                 [id (+ 5.0 (* (rand) 5.0))])  ; scores 5-10
+                 [id (+ 5.0 (* (rand) 5.0))]) ; scores 5-10
                order)))
 
   (def result (evaluate mock-proposals {:rounds 3} mock-evaluator))
