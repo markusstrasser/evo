@@ -29,13 +29,13 @@
 1. `AUTO-SOURCE-OVERVIEW.md` - The code/logic (kernel implementation)
 2. `AUTO-PROJECT-OVERVIEW.md` - The project structure (tooling, docs, research)
 
-For historical overviews, see `docs/overviews/`.
+Prompts: `AUTO-SOURCE-OVERVIEW-PROMPT.md`, `AUTO-PROJECT-OVERVIEW-PROMPT.md`
 
 You can use the gemini, codex, grok, and opencode CLI tools with repomix to get
 inspiration from the best-of projects.
 
 USE gemini for high token-count queries (lots of text at once) 
-USE codex at max settings for questions around style, refactorings, and architecture (it's elegant and powerful)
+USE codex at max settings for questions around taste, style, refactorings, and architecture (it's elegant and powerful)
 
 
 For dev tooling and infrastructure: keep it simple - I'm a solo developer using AI agents as helpers. Focus on the 80/20, not performance or production use.
@@ -241,7 +241,7 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
 - `dev/health.clj` - Environment diagnostics
 - `dev/error-catalog.edn` - Error taxonomy with auto-fixes
-- `scripts/generate-overview.sh` - Generate overviews (--source, --project, --auto, -t path)
+- `scripts/generate-overview.sh` - Generate overviews (--source, --project, --auto, -t path, -m model)
 
 ### NPM Commands
 
@@ -340,3 +340,5 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 Run `scripts/install-hooks.sh` after cloning to install pre-commit hook.
 
 **Note**: AGENTS.md is a symlink to CLAUDE.md - edit CLAUDE.md only.
+- ALWAYS TEST and SPOT CHECK YOUR EDITS before the end of the session!
+- For testing scripts that use gemini, you can test faster using the dumber model:  "gemini --model gemini-2.5-flash"
