@@ -22,6 +22,19 @@
                    :jvm-opts    ["-Djdk.attach.allowAttachSelf"]
                    :main-opts   ["-m" "nrepl.cmdline" "--port" "7888"]}
 
+           ;; MCP dev-diagnostics server (minimal deps)
+           :mcp {:extra-paths ["mcp" "dev"]
+                 :extra-deps {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.12.1"}
+                              org.clojure/data.json {:mvn/version "2.5.1"}
+                              org.slf4j/slf4j-simple {:mvn/version "2.0.9"}}
+                 :main-opts  ["-m" "servers.dev-diagnostics"]}
+
+           ;; Full clojure-mcp server with shadow-cljs support
+           :mcp-shadow-dual {:extra-deps {io.github.bhauman/clojure-mcp
+                                          {:git/sha "2dd09e595df7bb9b01a7c811955a354777253dc2"}}
+                             :exec-fn clojure-mcp.main/start-mcp-server
+                             :exec-args {:port 55449}} ; shadow-cljs nREPL port from npm run dev
+
            ;; Test runner with property-based testing
            :test {:extra-paths ["test"]
                   :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
