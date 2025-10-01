@@ -25,8 +25,9 @@
 
 ## The Start
 
-To begin the session read the ENTIRE most recent overview.md inside the docs/
-folder.
+**Start here**: Read `AUTO-PROJECT-OVERVIEW.md` (auto-generated from src/ on merge).
+
+For historical overviews, see `docs/overviews/`.
 
 You can use the gemini, codex, grok, and opencode CLI tools with repomix to get
 inspiration from the best-of projects.
