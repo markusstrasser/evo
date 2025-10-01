@@ -25,7 +25,9 @@
 
 ## The Start
 
-**Start here**: Read `AUTO-PROJECT-OVERVIEW.md` (auto-generated from src/ on merge).
+**Start here**: Read both auto-generated overviews (created on src/ merge):
+1. `AUTO-SOURCE-OVERVIEW.md` - The code/logic (kernel implementation)
+2. `AUTO-PROJECT-OVERVIEW.md` - The project structure (tooling, docs, research)
 
 For historical overviews, see `docs/overviews/`.
 
