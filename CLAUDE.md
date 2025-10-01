@@ -241,7 +241,7 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
 - `dev/health.clj` - Environment diagnostics
 - `dev/error-catalog.edn` - Error taxonomy with auto-fixes
-- `scripts/generate-overview.sh` - Generate AI architectural docs
+- `scripts/generate-overview.sh` - Generate overviews (--source, --project, --auto, -t path)
 
 ### NPM Commands
 
