@@ -22,22 +22,23 @@ MODES:
                       (Used by git post-merge hook)
 
   --source            Generate source code overview
-                      - Uses EXCERPT.md prompt template
+                      - Uses AUTO-SOURCE-OVERVIEW-PROMPT.md template
                       - Target: src/
-                      - Output: timestamped file in docs/overviews/
+                      - Output: timestamped file in project root
 
   --project           Generate project structure overview
-                      - Uses PROJECT-GUIDE.md prompt template
-                      - Target: . (root, excludes src/, test/, artifacts)
-                      - Output: timestamped file in docs/overviews/
+                      - Uses AUTO-PROJECT-OVERVIEW-PROMPT.md template
+                      - Target: . (root, excludes src/, test/, artifacts, research)
+                      - Output: timestamped file in project root
 
   -t, --target PATH   Generate custom overview for specified path
                       - No prompt template used (direct repomix → gemini)
-                      - Output: timestamped file in docs/overviews/
+                      - Output: timestamped file in current directory
 
 OPTIONS:
   -h, --help          Show this help message
   -p, --prompt TEXT   Additional focus/instructions appended to prompt
+  -m, --model MODEL   Gemini model to use (default: gemini-2.5-pro, fast: gemini-2.5-flash)
 
 EXAMPLES:
   $0 --auto                              # Post-merge: generate both overviews
@@ -61,6 +62,7 @@ EOF
 MODE=""
 TARGET=""
 APPEND_PROMPT=""
+GEMINI_MODEL="gemini-2.5-pro"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -97,6 +99,14 @@ while [[ $# -gt 0 ]]; do
       APPEND_PROMPT="$2"
       shift 2
       ;;
+    -m|--model)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --model requires an argument" >&2
+        exit 1
+      fi
+      GEMINI_MODEL="$2"
+      shift 2
+      ;;
     *)
       echo "Error: Unknown option: $1" >&2
       echo "Run with --help for usage" >&2
@@ -118,26 +128,42 @@ if [[ "$MODE" == "auto" ]]; then
   echo ""
 
   echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md..."
-  "$0" --source > AUTO-SOURCE-OVERVIEW.md 2>&1
-  echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
+  SOURCE_OUT=$("$0" --source 2>&1 | tee /dev/stderr | grep "✅ Overview generated:" | awk '{print $NF}')
+  if [[ -f "$SOURCE_OUT" ]]; then
+    cp "$SOURCE_OUT" AUTO-SOURCE-OVERVIEW.md
+    echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
+  else
+    echo "✗ Failed to generate source overview" >&2
+    exit 1
+  fi
   echo ""
 
   echo "📂 Generating AUTO-PROJECT-OVERVIEW.md..."
-  "$0" --project > AUTO-PROJECT-OVERVIEW.md 2>&1
-  echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
+  PROJECT_OUT=$("$0" --project 2>&1 | tee /dev/stderr | grep "✅ Overview generated:" | awk '{print $NF}')
+  if [[ -f "$PROJECT_OUT" ]]; then
+    cp "$PROJECT_OUT" AUTO-PROJECT-OVERVIEW.md
+    echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
+  else
+    echo "✗ Failed to generate project overview" >&2
+    exit 1
+  fi
 
   exit 0
 fi
+
+# Get absolute path to script directory (for prompt files)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Set target and prompt based on mode
 case "$MODE" in
   source)
     TARGET="src/"
-    PROMPT_FILE="EXCERPT.md"
+    PROMPT_FILE="$PROJECT_ROOT/AUTO-SOURCE-OVERVIEW-PROMPT.md"
     ;;
   project)
     TARGET="."
-    PROMPT_FILE="PROJECT-GUIDE.md"
+    PROMPT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW-PROMPT.md"
     ;;
   custom)
     # Target already set via -t
@@ -148,8 +174,15 @@ esac
 # Generate timestamp and output filename
 TIMESTAMP=$(date '+%Y-%m-%d-%H-%M')
 TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-mkdir -p "docs/overviews"
-OUTPUT_FILE="docs/overviews/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+
+# Determine output location based on mode
+if [[ "$MODE" == "custom" ]]; then
+  # Custom mode: write to current directory
+  OUTPUT_FILE="${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+else
+  # Source/project modes: write to project root
+  OUTPUT_FILE="$PROJECT_ROOT/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+fi
 
 TEMP_CONTENT="/tmp/repomix-content-${TIMESTAMP}.txt"
 TEMP_PROMPT="/tmp/gemini-prompt-${TIMESTAMP}.txt"
@@ -174,9 +207,9 @@ if [[ ${#TARGET_EXPANDED[@]} -eq 1 ]] && [[ -d "${TARGET_EXPANDED[0]}" ]]; then
   echo "   Method: repomix (directory)"
 
   if [[ "$TARGET" == "." ]]; then
-    # Root mode: exclude code and artifacts
+    # Root mode: exclude code, artifacts, and research results (to avoid confusing the model)
     repomix --copy --output /dev/null \
-      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**" \
+      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**,docs/research/**,research/**,2025-*-overview.md,AUTO-*.md" \
       > /dev/null 2>&1
   else
     # Normal directory
@@ -260,9 +293,25 @@ else
   } > "$TEMP_PROMPT"
 fi
 
-# Step 3: Process with gemini
-echo "3️⃣  Processing with gemini..."
-cat "$TEMP_PROMPT" | gemini -y > "$OUTPUT_FILE"
+# Step 3: Token count check (prevent quota exhaustion)
+PROMPT_SIZE=$(wc -c < "$TEMP_PROMPT")
+PROMPT_TOKENS=$((PROMPT_SIZE / 4))  # Rough estimate: 1 token ≈ 4 chars
+
+# Gemini-2.5-flash limit: 1M tokens/min, Pro: 2M tokens/min
+if [[ "$GEMINI_MODEL" == *"flash"* ]]; then
+  TOKEN_LIMIT=1000000
+else
+  TOKEN_LIMIT=2000000
+fi
+
+if [[ $PROMPT_TOKENS -gt $TOKEN_LIMIT ]]; then
+  echo "⚠️  Warning: Prompt size (~${PROMPT_TOKENS} tokens) exceeds ${GEMINI_MODEL} limit (${TOKEN_LIMIT} tokens/min)" >&2
+  echo "   Consider using --model gemini-2.5-flash or reducing input size" >&2
+fi
+
+# Process with gemini (disable MCP servers for batch processing)
+echo "3️⃣  Processing with gemini (~${PROMPT_TOKENS} tokens)..."
+cat "$TEMP_PROMPT" | gemini -y --model "$GEMINI_MODEL" --allowed-mcp-server-names > "$OUTPUT_FILE"
 
 # Cleanup
 rm -f "$TEMP_CONTENT" "$TEMP_PROMPT"
