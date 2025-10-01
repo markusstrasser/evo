@@ -12,7 +12,8 @@
    - Handle errors gracefully
    - Temperature 0 for deterministic scoring"
   (:require [clojure.java.shell :as shell]
-            [clojure.data.json :as json]))
+            [clojure.data.json :as json]
+            [medley.core :as m]))
 
 ;; =============================================================================
 ;; API Call Implementations
@@ -25,7 +26,7 @@
                 temperature 0.0}}]
   (let [result (shell/sh "gemini"
                          "--model" model
-                         "-y"  ; non-interactive
+                         "-y" ; non-interactive
                          "-p" prompt
                          :env (merge (into {} (System/getenv))
                                      {"GEMINI_TEMPERATURE" (str temperature)}))]
@@ -107,20 +108,19 @@
     (let [json-str (extract-json response)
           parsed (json/read-str json-str :key-fn identity)
           ;; Convert string keys \"1\", \"2\", ... to proposal IDs
-          scores (into {}
-                       (map (fn [[k v]]
-                              (let [idx (dec (Integer/parseInt k))
-                                    id (nth order idx)
-                                    ;; Handle both simple scores and nested criterion scores
-                                    score (if (map? v)
-                                            ;; Average all criterion scores
-                                            (let [criterion-vals (vals v)
-                                                  sum (reduce + criterion-vals)]
-                                              (/ sum (count criterion-vals)))
-                                            ;; Simple numeric score
-                                            v)]
-                                [id (double score)]))
-                            parsed))]
+          scores (m/map-kv
+                  (fn [k v]
+                    (let [idx (dec (Integer/parseInt k))
+                          id (nth order idx)
+                          ;; Handle both simple scores and nested criterion scores
+                          score (if (map? v)
+                                  ;; Average all criterion scores
+                                  (let [criterion-vals (vals v)]
+                                    (/ (reduce + criterion-vals) (count criterion-vals)))
+                                  ;; Simple numeric score
+                                  v)]
+                      [id (double score)]))
+                  parsed)]
       {:success true
        :scores scores})
     (catch Exception e
@@ -131,56 +131,49 @@
 ;; =============================================================================
 ;; Evaluator Functions
 
+(defn- make-provider-evaluator
+  "Create evaluator function for a specific provider.
+   
+   Unifies the common pattern across all providers:
+   - Call API with prompt and options
+   - Parse response into scores
+   - Throw informative errors on failure
+   
+   api-call-fn: function that takes (prompt, opts) and returns result map
+   provider-name: string for error messages (e.g. \"Gemini\", \"Codex\")"
+  [api-call-fn provider-name opts]
+  (fn [prompt order]
+    (let [result (api-call-fn prompt opts)]
+      (if (:success result)
+        (let [parsed (parse-scores (:output result) order)]
+          (if (:success parsed)
+            (:scores parsed)
+            (throw (ex-info (str "Failed to parse " provider-name " response")
+                            {:result result
+                             :parsed parsed}))))
+        (throw (ex-info (str provider-name " API call failed")
+                        {:error (:error result)}))))))
+
 (defn make-gemini-evaluator
   "Create evaluator function that uses Gemini API."
   ([]
    (make-gemini-evaluator {}))
   ([opts]
-   (fn [prompt order]
-     (let [result (call-gemini prompt opts)]
-       (if (:success result)
-         (let [parsed (parse-scores (:output result) order)]
-           (if (:success parsed)
-             (:scores parsed)
-             (throw (ex-info "Failed to parse Gemini response"
-                             {:result result
-                              :parsed parsed}))))
-         (throw (ex-info "Gemini API call failed"
-                         {:error (:error result)})))))))
+   (make-provider-evaluator call-gemini "Gemini" opts)))
 
 (defn make-codex-evaluator
   "Create evaluator function that uses Codex API."
   ([]
    (make-codex-evaluator {}))
   ([opts]
-   (fn [prompt order]
-     (let [result (call-codex prompt opts)]
-       (if (:success result)
-         (let [parsed (parse-scores (:output result) order)]
-           (if (:success parsed)
-             (:scores parsed)
-             (throw (ex-info "Failed to parse Codex response"
-                             {:result result
-                              :parsed parsed}))))
-         (throw (ex-info "Codex API call failed"
-                         {:error (:error result)})))))))
+   (make-provider-evaluator call-codex "Codex" opts)))
 
 (defn make-grok-evaluator
   "Create evaluator function that uses Grok API."
   ([]
    (make-grok-evaluator {}))
   ([opts]
-   (fn [prompt order]
-     (let [result (call-grok prompt opts)]
-       (if (:success result)
-         (let [parsed (parse-scores (:output result) order)]
-           (if (:success parsed)
-             (:scores parsed)
-             (throw (ex-info "Failed to parse Grok response"
-                             {:result result
-                              :parsed parsed}))))
-         (throw (ex-info "Grok API call failed"
-                         {:error (:error result)})))))))
+   (make-provider-evaluator call-grok "Grok" opts)))
 
 ;; =============================================================================
 ;; Unified API
