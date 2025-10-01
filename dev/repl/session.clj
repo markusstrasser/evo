@@ -1,4 +1,4 @@
-(ns session
+(ns repl.session
   "REPL session management utilities"
   (:require [clojure.java.io :as io]
             [clojure.edn :as edn]))
