@@ -56,88 +56,118 @@
    - Structured output easier to parse
    - Context injection for domain-specific evaluation"
   [proposals order {:keys [criteria context model-hint]}]
-  (str
-   ;; System context
-   (when context (format-context-xml context))
+  (str/trim
+   (str
+    ;; System context
+    (when context (format-context-xml context))
 
-   ;; Role and task definition
-   "<task>\n"
-   "You are an expert software architecture evaluator.\n\n"
-   "Your task: Evaluate the architectural proposals below using the specified criteria.\n"
-   "Score each proposal independently on a scale of 1-10 (10 = best).\n"
-   "</task>\n\n"
+    ;; Role and task definition
+    "
+<task>
+You are an expert software architecture evaluator.
 
-   ;; Criteria with XML structure
-   (format-criteria-xml criteria)
-   "\n\n"
+Your task: Evaluate the architectural proposals below using the specified criteria.
+Score each proposal independently on a scale of 1-10 (10 = best).
+</task>
 
-   ;; Proposals with XML structure
-   (format-proposals-xml proposals order)
-   "\n\n"
+"
+    ;; Criteria with XML structure
+    (format-criteria-xml criteria)
+    "
 
-   ;; Instructions section
-   "<instructions>\n"
-   "1. Evaluate each proposal against ALL criteria listed above\n"
-   "2. Consider the criteria weights when forming your judgment\n"
-   "3. Be objective - ignore position, length, or writing style\n"
-   "4. Output ONLY valid JSON, no explanation or commentary\n"
-   "\n"
-   "Output format:\n"
-   "{\n"
-   "  \"1\": <score_1_to_10>,\n"
-   "  \"2\": <score_1_to_10>,\n"
-   "  ...\n"
-   "}\n"
-   "</instructions>\n\n"
+"
+    ;; Proposals with XML structure
+    (format-proposals-xml proposals order)
+    "
 
-   ;; Model-specific hints
-   (when (= model-hint :claude)
-     "<thinking>\nBefore scoring, briefly consider:\n- Does each proposal satisfy the functional requirements?\n- Which design is simplest while still being complete?\n- What are the maintainability implications?\n</thinking>\n\n")
+"
+    ;; Instructions section
+    "
+<instructions>
+1. Evaluate each proposal against ALL criteria listed above
+2. Consider the criteria weights when forming your judgment
+3. Be objective - ignore position, length, or writing style
+4. Output ONLY valid JSON, no explanation or commentary
 
-   ;; Final output directive
-   "<output>\nProvide your scores as JSON now:\n</output>"))
+Output format:
+{
+  \"1\": <score_1_to_10>,
+  \"2\": <score_1_to_10>,
+  ...
+}
+</instructions>
+
+"
+    ;; Model-specific hints
+    (when (= model-hint :claude)
+      "
+<thinking>
+Before scoring, briefly consider:
+- Does each proposal satisfy the functional requirements?
+- Which design is simplest while still being complete?
+- What are the maintainability implications?
+</thinking>
+
+")
+
+    ;; Final output directive
+    "
+<output>
+Provide your scores as JSON now:
+</output>")))
 
 (defn make-xml-evaluation-prompt-with-reasoning
   "Generate prompt that asks for explicit reasoning before scores.
 
    Research shows this improves calibration and reduces bias."
   [proposals order {:keys [criteria context]}]
-  (str
-   (when context (format-context-xml context))
+  (str/trim
+   (str
+    (when context (format-context-xml context))
 
-   "<task>\n"
-   "You are an expert software architecture evaluator.\n\n"
-   "Evaluate architectural proposals using structured reasoning:\n"
-   "1. First, analyze each proposal's strengths/weaknesses\n"
-   "2. Then, assign scores based on criteria\n"
-   "</task>\n\n"
+    "
+<task>
+You are an expert software architecture evaluator.
 
-   (format-criteria-xml criteria)
-   "\n\n"
+Evaluate architectural proposals using structured reasoning:
+1. First, analyze each proposal's strengths/weaknesses
+2. Then, assign scores based on criteria
+</task>
 
-   (format-proposals-xml proposals order)
-   "\n\n"
+"
+    (format-criteria-xml criteria)
+    "
 
-   "<instructions>\n"
-   "For each proposal:\n"
-   "1. List 2-3 key strengths\n"
-   "2. List 2-3 key weaknesses\n"
-   "3. Assign score based on criteria weights\n"
-   "\n"
-   "Output format:\n"
-   "{\n"
-   "  \"reasoning\": {\n"
-   "    \"1\": {\"strengths\": [...], \"weaknesses\": [...]},\n"
-   "    \"2\": {\"strengths\": [...], \"weaknesses\": [...]},...\n"
-   "  },\n"
-   "  \"scores\": {\n"
-   "    \"1\": <score>,\n"
-   "    \"2\": <score>,...\n"
-   "  }\n"
-   "}\n"
-   "</instructions>\n\n"
+"
+    (format-proposals-xml proposals order)
+    "
 
-   "<output>\nProvide your evaluation as JSON now:\n</output>"))
+"
+    "
+<instructions>
+For each proposal:
+1. List 2-3 key strengths
+2. List 2-3 key weaknesses
+3. Assign score based on criteria weights
+
+Output format:
+{
+  \"reasoning\": {
+    \"1\": {\"strengths\": [...], \"weaknesses\": [...]},
+    \"2\": {\"strengths\": [...], \"weaknesses\": [...]},...
+  },
+  \"scores\": {
+    \"1\": <score>,
+    \"2\": <score>,...
+  }
+}
+</instructions>
+
+"
+    "
+<output>
+Provide your evaluation as JSON now:
+</output>")))
 
 ;; =============================================================================
 ;; Enhanced Criteria Definitions
@@ -206,5 +236,4 @@
     test-proposals
     [:a :b :c]
     {:criteria enhanced-criteria
-     :context nil}))
-  )
+     :context nil})))
