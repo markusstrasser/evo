@@ -10,6 +10,12 @@ folder.
 You can use the gemini, codex, grok, and opencode CLI tools with repomix to get
 inspiration from the best-of projects.
 
+USE gemini for high token-count queries (lots of text at once) 
+USE codex at max settings for questions around style, refactorings, and architecture (it's elegant and powerful)
+
+
+For dev tooling and infrastructure: leep it simple: I'm a solo developer using AI agents as helpers. Let's focus on the 80/20 and NOT performance or production use.
+
 ### Environment Validation
 
 **CRITICAL**: Always verify environment before running research scripts.
@@ -203,21 +209,20 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 
 ### Dev Tooling
-- **REPL**: `dev/repl.clj` - shadow-cljs bridge (`connect!`, `init!`, `cljs!`, `clj!`)
+- **REPL**: `dev/repl/init.clj` - shadow-cljs bridge (`connect!`, `init!`, `cljs!`, `clj!`)
+- **Session**: `dev/repl/session.clj` - REPL state persistence (`save-session!`, `restore-session!`, `quick-health-check!`)
 - **Health**: `dev/health.clj` - diagnostics (`preflight-check!`, `cache-stats`, `check-repl-state`)
-- **Session**: `dev/session.clj` - REPL state persistence (`save-session!`, `restore-session!`, `quick-health-check!`)
 - **Fixtures**: `dev/fixtures.cljc` - test data builders (`make-db`, `gen-linear-tree`)
 - **Config**: `dev/config.edn` - central config (paths, ports, timeouts)
 - **Errors**: `dev/error-catalog.edn` - error taxonomy with remedies and auto-fixes
-- **Preflight**: `dev/preflight.edn` + `dev/scripts/preflight.sh` - startup checks
-- **Health Check**: `dev/scripts/health-check.sh` - dev environment diagnostics
+- **Commands**: `dev/bin/` - dev commands (health-check.sh, preflight.sh)
 - **AI Overview**: `scripts/generate-overview.sh` - AI repo info script (uses repomix/bat + gemini)
   - Generate architectural docs from codebase
   - Target: `-t src/` (dir/files), sections by name/number (1-9)
   - Focus: `-p "text"` appends custom prompt for specific analysis
   - Examples: `performance`, `1-3`, `-t src/core/db.cljc ops`, `-p "Focus on cycles" 1`
   - Auto-runs on git merge if `src/` changes (`.git/hooks/post-merge`)
-- **Quick start**: `(require '[repl :as repl]) (repl/init!)`
+- **Quick start**: `(require '[dev.repl.init :as repl]) (repl/init!)`
 - **Docs**: `dev/README.md`
 
 ### NPM Commands
@@ -270,10 +275,28 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 **Development:**
 
-- `dev/session.clj` - REPL management (`quick-health-check!`)
+- `dev/repl/` - REPL utilities (init.clj, session.clj)
+- `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
 - `dev/error-catalog.edn` - common issues with auto-remediation
-- `dev/scripts/health-check.sh` - environment validation
 - `.pre-commit-check.sh` - quality gates with CLJS validation
+
+**MCP Integration:**
+
+- `docs/MCP.md` - Complete MCP reference (config, failure modes, patterns)
+- `mcp/servers/dev_diagnostics.clj` - Minimal MCP server (Java SDK)
+- `mcp/shared/` - Shared MCP utilities (future)
+- `.mcp.json` - Project MCP server config
+- `~/.claude.json` - Global/project-scoped MCP config
+- `~/Projects/best/modelcontextprotocol/docs/` - Full MCP spec (121 MDX files)
+  - `docs/learn/architecture.mdx` - Protocol concepts
+  - `docs/develop/build-server.mdx` - Server guide
+  - `specification/` - Versioned specs (2024-11-05, 2025-03-26, 2025-06-18)
+
+**Research Sources:**
+
+- `docs/research/sources/repos.edn` - Best-of repos with LOC, trees, README snippets
+- `docs/research/sources/update-repos.sh` - Regenerate repo stats (tokei + tree)
+- `~/Projects/best/` - Cloned reference repos for inspiration
 
 **Research & Analysis:**
 
