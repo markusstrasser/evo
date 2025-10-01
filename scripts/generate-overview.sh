@@ -71,9 +71,13 @@ and processing with Gemini AI. Sections can be specified by name or number.
 
 OPTIONS:
   -h, --help              Show this help message
+  --auto                  Auto mode: generate both overviews for git hooks
+                          - AUTO-SOURCE-OVERVIEW.md (from src/)
+                          - AUTO-PROJECT-OVERVIEW.md (from root)
   -t, --target PATH       Target directory or file(s) (default: src/)
                           - Directory: uses repomix
                           - File(s): uses bat (supports globs)
+                          - Root (".") uses PROJECT-GUIDE.md prompt
   -p, --append-prompt TXT Additional prompt text appended at the end
                           (use for focus/specific instructions)
 
@@ -181,18 +185,29 @@ for section in "${REQUESTED_SECTIONS[@]}"; do
   fi
 done
 
+# Auto mode: generate both overviews and exit
+if [[ "$AUTO_MODE" == "true" ]]; then
+  echo "📦 Auto Mode: Generating both overviews..."
+  echo ""
+
+  # Generate source overview
+  echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md (from src/)..."
+  "$0" -t src/ > AUTO-SOURCE-OVERVIEW.md
+  echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
+
+  # Generate project overview
+  echo "📂 Generating AUTO-PROJECT-OVERVIEW.md (from root)..."
+  "$0" -t . > AUTO-PROJECT-OVERVIEW.md
+  echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
+
+  exit 0
+fi
+
 # Generate timestamp and output filename
 TIMESTAMP=$(date '+%Y-%m-%d-%H-%M')
-
-if [[ "$AUTO_MODE" == "true" ]]; then
-  # Auto mode: output to AUTO-PROJECT-OVERVIEW.md at project root
-  OUTPUT_FILE="AUTO-PROJECT-OVERVIEW.md"
-else
-  # Manual mode: timestamped files in docs/overviews/
-  TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-  mkdir -p "docs/overviews"
-  OUTPUT_FILE="docs/overviews/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
-fi
+TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+mkdir -p "docs/overviews"
+OUTPUT_FILE="docs/overviews/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
 TEMP_PROMPT="/tmp/gemini-prompt-${TIMESTAMP}.txt"
 TEMP_INSTRUCTIONS="/tmp/excerpt-filtered-${TIMESTAMP}.md"
 TEMP_CONTENT="/tmp/content-${TIMESTAMP}.txt"
@@ -212,7 +227,17 @@ TARGET_EXPANDED=($(eval echo "$TARGET"))
 if [[ ${#TARGET_EXPANDED[@]} -eq 1 ]] && [[ -d "${TARGET_EXPANDED[0]}" ]]; then
   # Single directory - use repomix
   echo "   Method: repomix (directory)"
-  repomix --copy --output /dev/null --include "${TARGET}**" > /dev/null 2>&1
+
+  if [[ "$TARGET" == "." ]]; then
+    # Root mode: exclude src/, test/, build artifacts
+    repomix --copy --output /dev/null \
+      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**" \
+      > /dev/null 2>&1
+  else
+    # Source mode: include target directory
+    repomix --copy --output /dev/null --include "${TARGET}**" > /dev/null 2>&1
+  fi
+
   pbpaste > "$TEMP_CONTENT"
 elif [[ ${#TARGET_EXPANDED[@]} -ge 1 ]]; then
   # File(s) - use bat
@@ -238,32 +263,44 @@ else
   exit 1
 fi
 
-# Step 2: Build filtered EXCERPT.md instructions
-echo "2️⃣  Building filtered instructions..."
+# Step 2: Build instructions based on target type
+echo "2️⃣  Building instructions..."
 
-# Extract base content (everything before "## Sections to Include")
-sed -n '1,102p' EXCERPT.md > "$TEMP_INSTRUCTIONS"
+# Determine which prompt to use
+if [[ "$TARGET" == "." ]]; then
+  # Root mode: use PROJECT-GUIDE.md
+  if [[ ! -f "PROJECT-GUIDE.md" ]]; then
+    echo "Error: PROJECT-GUIDE.md not found" >&2
+    exit 1
+  fi
+  cp PROJECT-GUIDE.md "$TEMP_INSTRUCTIONS"
+else
+  # Source mode: use EXCERPT.md with section filtering
 
-# Add "Sections to Include" header
-echo "" >> "$TEMP_INSTRUCTIONS"
-echo "## Sections to Include (in order)" >> "$TEMP_INSTRUCTIONS"
-echo "" >> "$TEMP_INSTRUCTIONS"
+  # Extract base content (everything before "## Sections to Include")
+  sed -n '1,102p' EXCERPT.md > "$TEMP_INSTRUCTIONS"
 
-# Always include the Header section (lines 105-114)
-sed -n '105,114p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
-echo "" >> "$TEMP_INSTRUCTIONS"
-
-# Add each requested section
-for section in "${REQUESTED_SECTIONS[@]}"; do
-  line_range="${SECTION_LINES[$section]}"
-  start_line="${line_range%:*}"
-  end_line="${line_range#*:}"
-  sed -n "${start_line},${end_line}p" EXCERPT.md >> "$TEMP_INSTRUCTIONS"
+  # Add "Sections to Include" header
   echo "" >> "$TEMP_INSTRUCTIONS"
-done
+  echo "## Sections to Include (in order)" >> "$TEMP_INSTRUCTIONS"
+  echo "" >> "$TEMP_INSTRUCTIONS"
 
-# Add style guidelines and remaining content (line 207 onwards)
-sed -n '207,$p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
+  # Always include the Header section (lines 105-114)
+  sed -n '105,114p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
+  echo "" >> "$TEMP_INSTRUCTIONS"
+
+  # Add each requested section
+  for section in "${REQUESTED_SECTIONS[@]}"; do
+    line_range="${SECTION_LINES[$section]}"
+    start_line="${line_range%:*}"
+    end_line="${line_range#*:}"
+    sed -n "${start_line},${end_line}p" EXCERPT.md >> "$TEMP_INSTRUCTIONS"
+    echo "" >> "$TEMP_INSTRUCTIONS"
+  done
+
+  # Add style guidelines and remaining content (line 207 onwards)
+  sed -n '207,$p' EXCERPT.md >> "$TEMP_INSTRUCTIONS"
+fi
 
 # Step 3: Combine with extracted content
 echo "3️⃣  Combining instructions with content..."
