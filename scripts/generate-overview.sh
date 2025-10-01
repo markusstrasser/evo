@@ -100,7 +100,7 @@ EXAMPLES:
   $0 -t src/core/ -p "Explain indexes" 1    Data model with focus on indexes
 
 OUTPUT:
-  Saves to docs/YYYY-MM-DD-HH-MM-overview.md and prints to stdout
+  Saves to docs/overviews/YYYY-MM-DD-HH-MM-overview.md and prints to stdout
 EOF
 }
 
@@ -108,12 +108,17 @@ EOF
 TARGET="src/"
 APPEND_PROMPT=""
 REQUESTED_SECTIONS=()
+AUTO_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       show_help
       exit 0
+      ;;
+    --auto)
+      AUTO_MODE=true
+      shift
       ;;
     -t|--target)
       if [[ -z "${2:-}" ]]; then
@@ -178,9 +183,16 @@ done
 
 # Generate timestamp and output filename
 TIMESTAMP=$(date '+%Y-%m-%d-%H-%M')
-# Sanitize target for filename (remove special chars, replace / with -)
-TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-OUTPUT_FILE="docs/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+
+if [[ "$AUTO_MODE" == "true" ]]; then
+  # Auto mode: output to AUTO-PROJECT-OVERVIEW.md at project root
+  OUTPUT_FILE="AUTO-PROJECT-OVERVIEW.md"
+else
+  # Manual mode: timestamped files in docs/overviews/
+  TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+  mkdir -p "docs/overviews"
+  OUTPUT_FILE="docs/overviews/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+fi
 TEMP_PROMPT="/tmp/gemini-prompt-${TIMESTAMP}.txt"
 TEMP_INSTRUCTIONS="/tmp/excerpt-filtered-${TIMESTAMP}.md"
 TEMP_CONTENT="/tmp/content-${TIMESTAMP}.txt"

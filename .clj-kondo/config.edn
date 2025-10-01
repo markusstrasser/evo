@@ -1,39 +1,40 @@
 {:lint-as {clojure.test.check.generators/let [clojure.core/let]}
 
- :linters {:unresolved-namespace {:level :error}
-           :unresolved-symbol {:level :error}
-           :unused-namespace {:level :warning}
-           :unused-binding {:level :warning}
-           :unused-referred-var {:level :warning}
-           :unused-private-var {:level :warning}
-           :invalid-arity {:level :error}
-           :type-mismatch {:level :error}
-           :misplaced-docstring {:level :warning}
-           :missing-docstring {:level :off}  ; Too noisy for helpers
-           :deprecated-var {:level :warning}
-           :redefined-var {:level :error}
-           :refer-all {:level :warning}
+ :linters {:syntax                       {:level :off}
+           :unresolved-namespace         {:level :error}
+           :unresolved-symbol            {:level :error}
+           :unused-namespace             {:level :warning}
+           :unused-binding               {:level :warning}
+           :unused-referred-var          {:level :warning}
+           :unused-private-var           {:level :warning}
+           :invalid-arity                {:level :error}
+           :type-mismatch                {:level :error}
+           :misplaced-docstring          {:level :warning}
+           :missing-docstring            {:level :off}      ; Too noisy for helpers
+           :deprecated-var               {:level :warning}
+           :redefined-var                {:level :error}
+           :refer-all                    {:level :warning}
            :unsorted-required-namespaces {:level :off}
-           :unused-import {:level :warning}
-           :shadowed-var {:level :warning}
-           :duplicate-require {:level :error}
-           :single-operand-comparison {:level :warning}
-           :single-logical-operand {:level :warning}
-           :redundant-do {:level :warning}
-           :redundant-let {:level :warning}
-           :cond-else {:level :warning}
-           :not-empty? {:level :warning}
-           :consistent-alias {:level :warning
-                              :aliases {medley.core m
-                                        clojure.set set
-                                        clojure.string str}}
+           :unused-import                {:level :warning}
+           :shadowed-var                 {:level :warning}
+           :duplicate-require            {:level :error}
+           :single-operand-comparison    {:level :warning}
+           :single-logical-operand       {:level :warning}
+           :redundant-do                 {:level :warning}
+           :redundant-let                {:level :warning}
+           :cond-else                    {:level :warning}
+           :not-empty?                   {:level :warning}
+           :consistent-alias             {:level   :warning
+                                          :aliases {medley.core    m
+                                                    clojure.set    set
+                                                    clojure.string str}}
            ;; Style preferences from STYLE.md
-           :datalog-syntax {:level :off}
-           :format {:level :off}}  ; Use external formatter
+           :datalog-syntax               {:level :off}
+           :format                       {:level :off}}  ; Use external formatter
 
- :dependencies {core.db #{core.db}
-                core.ops #{core.ops}
+ :dependencies {core.db        #{core.db}
+                core.ops       #{core.ops}
                 core.interpret #{core.db core.ops core.schema medley.core}
-                core.schema #{}}
+                core.schema    #{}}
 
  :skip-lint ["test/fixtures"]}
