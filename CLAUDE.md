@@ -35,7 +35,7 @@ USE gemini for high token-count queries (lots of text at once)
 USE codex at max settings for questions around style, refactorings, and architecture (it's elegant and powerful)
 
 
-For dev tooling and infrastructure: leep it simple: I'm a solo developer using AI agents as helpers. Let's focus on the 80/20 and NOT performance or production use.
+For dev tooling and infrastructure: keep it simple - I'm a solo developer using AI agents as helpers. Focus on the 80/20, not performance or production use.
 
 ### Environment Validation
 
@@ -230,21 +230,15 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 
 ### Dev Tooling
-- **REPL**: `dev/repl/init.clj` - shadow-cljs bridge (`connect!`, `init!`, `cljs!`, `clj!`)
-- **Session**: `dev/repl/session.clj` - REPL state persistence (`save-session!`, `restore-session!`, `quick-health-check!`)
-- **Health**: `dev/health.clj` - diagnostics (`preflight-check!`, `cache-stats`, `check-repl-state`)
-- **Fixtures**: `dev/fixtures.cljc` - test data builders (`make-db`, `gen-linear-tree`)
-- **Config**: `dev/config.edn` - central config (paths, ports, timeouts)
-- **Errors**: `dev/error-catalog.edn` - error taxonomy with remedies and auto-fixes
-- **Commands**: `dev/bin/` - dev commands (health-check.sh, preflight.sh)
-- **AI Overview**: `scripts/generate-overview.sh` - AI repo info script (uses repomix/bat + gemini)
-  - Generate architectural docs from codebase
-  - Target: `-t src/` (dir/files), sections by name/number (1-9)
-  - Focus: `-p "text"` appends custom prompt for specific analysis
-  - Examples: `performance`, `1-3`, `-t src/core/db.cljc ops`, `-p "Focus on cycles" 1`
-  - Auto-runs on git merge if `src/` changes (`.git/hooks/post-merge`)
-- **Quick start**: `(require '[dev.repl.init :as repl]) (repl/init!)`
-- **Docs**: `dev/README.md`
+
+**Quick start**: `(require '[repl :as repl]) (repl/init!)`
+
+**Key utilities:**
+- `dev/repl/` - REPL helpers (init.clj, session.clj)
+- `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
+- `dev/health.clj` - Environment diagnostics
+- `dev/error-catalog.edn` - Error taxonomy with auto-fixes
+- `scripts/generate-overview.sh` - Generate AI architectural docs
 
 ### NPM Commands
 
@@ -261,17 +255,14 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 ### Investigation Tactics
 
 - `bat`, `rg`, targeted file reads for token efficiency
-- Check error-catalog.edn for self-diagnosis patterns
-- Use semantic search: `@docs/SemanticSearch.md`
+- Check `dev/error-catalog.edn` for self-diagnosis patterns
+- Use `docs/research/sources/repos.edn` for best-of repos metadata
 
 ### Dev Quality Gates
 
-- **Pre-commit**: `.pre-commit-check.sh` - enhanced with CLJS import validation
-- **Linting**: `.clj-kondo/config.edn` - comprehensive rules based on STYLE.md
-    - Catches: invalid arity, shadowed vars, redundant code, unused bindings
-    - Enforces: consistent aliases (m, set, str), no refer-all
-    - Style: prefers pure functions, explicit data flow
-- **Module Deps**: Core kernel modules isolated from shell concerns
+- **Pre-commit**: `.pre-commit-check.sh` - linting, tests, CLJS imports, namespace/path validation
+- **Linting**: `.clj-kondo/config.edn` - catches errors, enforces style (pure functions, explicit data flow)
+- **Module isolation**: Core kernel modules separate from shell concerns
 
 ### Standing Instructions
 
@@ -296,10 +287,11 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 **Development:**
 
-- `dev/repl/` - REPL utilities (init.clj, session.clj)
-- `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
-- `dev/error-catalog.edn` - common issues with auto-remediation
-- `.pre-commit-check.sh` - quality gates with CLJS validation
+- `dev/repl/` - REPL helpers: init.clj (`connect!`, `init!`), session.clj (`quick-health-check!`)
+- `dev/bin/` - Scripts: health-check.sh, preflight.sh
+- `dev/health.clj` - Environment diagnostics (`preflight-check!`, `cache-stats`)
+- `dev/error-catalog.edn` - Error taxonomy with auto-fixes
+- `.pre-commit-check.sh` - Quality gates: linting, tests, namespace checks
 
 **MCP Integration:**
 
@@ -341,4 +333,7 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `package.json` - npm scripts for dev workflow
 - `.clj-kondo/config.edn` - linting rules and module boundaries
 ### Git Hooks
-Run `scripts/install-hooks.sh` after cloning to install pre-commit hook that syncs CLAUDE.md → AGENTS.md.
+
+Run `scripts/install-hooks.sh` after cloning to install pre-commit hook.
+
+**Note**: AGENTS.md is a symlink to CLAUDE.md - edit CLAUDE.md only.
