@@ -1,8 +1,7 @@
 (ns kernel.permutation-test
   "Property-based tests for permutation algebra.
    Validates group laws, arrange correctness, and operation properties."
-  (:require [clojure.test :refer [deftest testing is]]
-            [clojure.test.check :as tc]
+(:require [clojure.test :refer [deftest testing is]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]

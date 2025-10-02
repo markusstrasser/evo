@@ -1,7 +1,6 @@
 (ns plugins.refs.core-test
   (:require [clojure.test :refer [deftest is testing]]
-            [plugins.refs.core :as refs]
-            [core.db :as db]))
+            [plugins.refs.core :as refs]))
 
 (defn make-test-db-with-refs
   "Create test DB with refs for testing."
