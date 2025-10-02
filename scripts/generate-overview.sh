@@ -24,12 +24,12 @@ MODES:
   --source            Generate source code overview
                       - Uses AUTO-SOURCE-OVERVIEW-PROMPT.md template
                       - Target: src/
-                      - Output: timestamped file in project root
+                      - Output: AUTO-SOURCE-OVERVIEW.md (default)
 
   --project           Generate project structure overview
                       - Uses AUTO-PROJECT-OVERVIEW-PROMPT.md template
                       - Target: . (root, excludes src/, test/, artifacts, research)
-                      - Output: timestamped file in project root
+                      - Output: AUTO-PROJECT-OVERVIEW.md (default)
 
   -t, --target PATH   Generate custom overview for specified path
                       - No prompt template used (direct repomix → gemini)
@@ -37,6 +37,7 @@ MODES:
 
 OPTIONS:
   -h, --help          Show this help message
+  -o, --output PATH   Custom output path (overrides default naming)
   -p, --prompt TEXT   Additional focus/instructions appended to prompt
   -m, --model MODEL   Gemini model to use (default: gemini-2.5-pro, fast: gemini-2.5-flash)
 
@@ -61,6 +62,7 @@ EOF
 # Parse arguments
 MODE=""
 TARGET=""
+OUTPUT_PATH=""
 APPEND_PROMPT=""
 GEMINI_MODEL="gemini-2.5-pro"
 
@@ -89,6 +91,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       TARGET="$2"
+      shift 2
+      ;;
+    -o|--output)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --output requires an argument" >&2
+        exit 1
+      fi
+      OUTPUT_PATH="$2"
       shift 2
       ;;
     -p|--prompt)
@@ -128,9 +138,7 @@ if [[ "$MODE" == "auto" ]]; then
   echo ""
 
   echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md..."
-  SOURCE_OUT=$("$0" --source 2>&1 | tee /dev/stderr | grep "✅ Overview generated:" | awk '{print $NF}')
-  if [[ -f "$SOURCE_OUT" ]]; then
-    cp "$SOURCE_OUT" AUTO-SOURCE-OVERVIEW.md
+  if "$0" --source; then
     echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate source overview" >&2
@@ -139,9 +147,7 @@ if [[ "$MODE" == "auto" ]]; then
   echo ""
 
   echo "📂 Generating AUTO-PROJECT-OVERVIEW.md..."
-  PROJECT_OUT=$("$0" --project 2>&1 | tee /dev/stderr | grep "✅ Overview generated:" | awk '{print $NF}')
-  if [[ -f "$PROJECT_OUT" ]]; then
-    cp "$PROJECT_OUT" AUTO-PROJECT-OVERVIEW.md
+  if "$0" --project; then
     echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate project overview" >&2
@@ -171,17 +177,28 @@ case "$MODE" in
     ;;
 esac
 
-# Generate timestamp and output filename
+# Generate timestamp for temp files
 TIMESTAMP=$(date '+%Y-%m-%d-%H-%M')
-TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
 
-# Determine output location based on mode
-if [[ "$MODE" == "custom" ]]; then
-  # Custom mode: write to current directory
-  OUTPUT_FILE="${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+# Determine output file
+if [[ -n "$OUTPUT_PATH" ]]; then
+  # Custom output specified
+  OUTPUT_FILE="$OUTPUT_PATH"
 else
-  # Source/project modes: write to project root
-  OUTPUT_FILE="$PROJECT_ROOT/${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+  # Default output based on mode
+  case "$MODE" in
+    source)
+      OUTPUT_FILE="$PROJECT_ROOT/AUTO-SOURCE-OVERVIEW.md"
+      ;;
+    project)
+      OUTPUT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW.md"
+      ;;
+    custom)
+      # Custom mode: timestamped file
+      TARGET_SANITIZED=$(echo "$TARGET" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+      OUTPUT_FILE="${TIMESTAMP}-${TARGET_SANITIZED}-overview.md"
+      ;;
+  esac
 fi
 
 TEMP_CONTENT="/tmp/repomix-content-${TIMESTAMP}.txt"
