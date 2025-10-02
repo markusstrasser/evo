@@ -1,4 +1,4 @@
-(ns eval.smart-truncate
+(ns dev.eval.smart-truncate
   "Smart truncation using LLM summarization instead of simple character limits.
 
    Instead of just cutting at 500 chars, we use a fast LLM to create an

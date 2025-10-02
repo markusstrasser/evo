@@ -1,4 +1,4 @@
-(ns eval.prompt
+(ns dev.eval.prompt
   "XML-structured prompts for LLM evaluation following 2025 best practices.
 
    Key principles:

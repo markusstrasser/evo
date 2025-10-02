@@ -1,10 +1,10 @@
-(ns eval.async
+(ns dev.eval.async
   "Async orchestration for parallel evaluation rounds.
 
    Uses core.async to run multiple LLM evaluation rounds concurrently,
    reducing total latency from 3x sequential to ~1x (the slowest call)."
   (:require [clojure.core.async :as async]
-            [eval.core :as eval]))
+            [dev.eval.core :as eval]))
 
 
 
