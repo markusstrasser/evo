@@ -48,5 +48,6 @@ logs/
 
 .hgignore
 .hg/
+AUTO-DEV-OVERVIEW.md
 AUTO-PROJECT-OVERVIEW.md
 AUTO-SOURCE-OVERVIEW.md
