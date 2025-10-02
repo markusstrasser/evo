@@ -1,4 +1,4 @@
-(ns eval.v2
+(ns dev.eval.v2
   "Enhanced evaluation system with XML prompts, smart truncation, and context injection.
 
    Improvements over eval.core:
@@ -7,10 +7,10 @@
    - Project context injection (AUTO-SOURCE-OVERVIEW.md)
    - Enhanced criteria with descriptions
    - Model-specific prompt hints"
-  (:require [eval.core :as core]
-            #?(:clj [eval.prompt :as prompt])
-            #?(:clj [eval.smart-truncate :as smart])
-            #?(:clj [eval.llm :as llm])))
+  (:require [dev.eval.core :as core]
+            #?(:clj [dev.eval.prompt :as prompt])
+            #?(:clj [dev.eval.smart-truncate :as smart])
+            #?(:clj [dev.eval.llm :as llm])))
 
 ;; =============================================================================
 ;; Enhanced Configuration

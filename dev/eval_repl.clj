@@ -1,8 +1,8 @@
 (ns eval-repl
   "REPL utilities for testing the evaluation system."
-  (:require [eval.core :as eval]
-            [eval.llm :as llm]
-            [eval.async :as eval-async]
+  (:require [dev.eval.core :as eval]
+            [dev.eval.llm :as llm]
+            [dev.eval.async :as eval-async]
             [clojure.pprint :as pp]))
 
 ;; =============================================================================

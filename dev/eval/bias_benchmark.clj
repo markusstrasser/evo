@@ -1,4 +1,4 @@
-(ns eval.bias-benchmark
+(ns dev.eval.bias-benchmark
   "Bias detection and benchmarking for LLM evaluators.
 
    Tests for:
@@ -6,8 +6,8 @@
    - Verbosity bias (length preference)
    - Self-preference bias (favoring own style)
    - Sycophancy (agreeing with perceived consensus)"
-  (:require [eval.core :as eval]
-            [eval.llm :as llm]))
+  (:require [dev.eval.core :as eval]
+            [dev.eval.llm :as llm]))
 
 ;; =============================================================================
 ;; Test Proposals (Controlled Quality)

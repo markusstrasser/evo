@@ -1,4 +1,4 @@
-(ns eval.llm
+(ns dev.eval.llm
   "LLM API integrations for evaluation system.
 
    Supports:

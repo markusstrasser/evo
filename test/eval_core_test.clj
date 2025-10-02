@@ -1,7 +1,7 @@
 (ns eval-core-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.string :as str]
-            [eval.core :as eval]))
+            [dev.eval.core :as eval]))
 
 ;; =============================================================================
 ;; Test Data
@@ -223,10 +223,9 @@
       (is (= 2 (count (:ranking result))))))
 
   (testing "Very long proposal gets truncated"
-    (let [long-text (apply str (repeat 1000 "x"))
-          proposals {:a long-text}
-          config {:max-length 100}
-          normalized (eval/normalize-proposals proposals 100)]
+(let [long-text (apply str (repeat 1000 "x"))
+           proposals {:a long-text}
+           normalized (eval/normalize-proposals proposals 100)]
       (is (< (count (:a normalized)) 150)))))
 
 (deftest test-shuffling-produces-different-orders
