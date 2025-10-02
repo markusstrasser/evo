@@ -1,5 +1,10 @@
-{:tasks
- {run-tournament
+{:paths ["bb" "dev"]
+ :deps {org.babashka/http-client {:mvn/version "0.4.19"}
+        cheshire/cheshire {:mvn/version "5.13.0"}}
+
+ :tasks
+ {;; Evaluation tasks
+  run-tournament
   {:doc "Run v3 tournament evaluation on items"
    :task (clojure "-M -m dev.eval.core-v3/evaluate! resources/items.edn")}
 
@@ -9,4 +14,10 @@
 
   run-attacks
   {:doc "Run attack robustness tests on edges"
-   :task (clojure "-M -m dev.eval.attacks/run! target/edges.edn")}}}
+   :task (clojure "-M -m dev.eval.attacks/run! target/edges.edn")}
+
+  ;; Research workflow scripts
+  analyze-battle-test
+  {:doc "Analyze battle-test results with Codex"
+   :requires ([analyze-battle-test])
+   :task (apply analyze-battle-test/-main *command-line-args*)}}}
