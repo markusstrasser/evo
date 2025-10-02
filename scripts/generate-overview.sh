@@ -18,7 +18,7 @@ USAGE:
   $0 [OPTIONS]
 
 MODES:
-  --auto              Generate both AUTO-SOURCE-OVERVIEW.md and AUTO-PROJECT-OVERVIEW.md
+  --auto              Generate all three overviews (source, project, dev)
                       (Used by git post-merge hook)
 
   --source            Generate source code overview
@@ -28,8 +28,13 @@ MODES:
 
   --project           Generate project structure overview
                       - Uses AUTO-PROJECT-OVERVIEW-PROMPT.md template
-                      - Target: . (root, excludes src/, test/, artifacts, research)
+                      - Target: . (root, excludes src/, test/, artifacts, docs/research)
                       - Output: AUTO-PROJECT-OVERVIEW.md (default)
+
+  --dev               Generate dev tooling overview
+                      - Uses AUTO-DEV-OVERVIEW-PROMPT.md template
+                      - Target: dev/, bb/
+                      - Output: AUTO-DEV-OVERVIEW.md (default)
 
   -t, --target PATH   Generate custom overview for specified path
                       - No prompt template used (direct repomix → gemini)
@@ -42,14 +47,15 @@ OPTIONS:
   -m, --model MODEL   Gemini model to use (default: gemini-2.5-pro, fast: gemini-2.5-flash)
 
 EXAMPLES:
-  $0 --auto                              # Post-merge: generate both overviews
+  $0 --auto                              # Post-merge: generate all overviews
   $0 --source                            # Manual source overview
   $0 --project                           # Manual project overview
+  $0 --dev                               # Manual dev tooling overview
   $0 -t src/core/ -p "Focus on indexes"  # Custom: core modules with focus
   $0 -t docs/                            # Custom: documentation overview
 
 OUTPUT:
-  - Auto mode: AUTO-SOURCE-OVERVIEW.md, AUTO-PROJECT-OVERVIEW.md (gitignored)
+  - Auto mode: AUTO-SOURCE-OVERVIEW.md, AUTO-PROJECT-OVERVIEW.md, AUTO-DEV-OVERVIEW.md (gitignored)
   - Manual mode: docs/overviews/YYYY-MM-DD-HH-MM-<target>-overview.md
 
 REQUIREMENTS:
@@ -82,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --project)
       MODE="project"
+      shift
+      ;;
+    --dev)
+      MODE="dev"
       shift
       ;;
     -t|--target)
@@ -127,14 +137,14 @@ done
 
 # Validate mode
 if [[ -z "$MODE" ]]; then
-  echo "Error: No mode specified. Use --auto, --source, --project, or -t <path>" >&2
+  echo "Error: No mode specified. Use --auto, --source, --project, --dev, or -t <path>" >&2
   echo "Run with --help for usage" >&2
   exit 1
 fi
 
-# Auto mode: generate both and exit
+# Auto mode: generate all three and exit
 if [[ "$MODE" == "auto" ]]; then
-  echo "📦 Auto Mode: Generating dual overviews..."
+  echo "📦 Auto Mode: Generating three overviews..."
   echo ""
 
   echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md..."
@@ -151,6 +161,15 @@ if [[ "$MODE" == "auto" ]]; then
     echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate project overview" >&2
+    exit 1
+  fi
+  echo ""
+
+  echo "🛠️  Generating AUTO-DEV-OVERVIEW.md..."
+  if "$0" --dev; then
+    echo "✓ AUTO-DEV-OVERVIEW.md generated"
+  else
+    echo "✗ Failed to generate dev overview" >&2
     exit 1
   fi
 
@@ -170,6 +189,10 @@ case "$MODE" in
   project)
     TARGET="."
     PROMPT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW-PROMPT.md"
+    ;;
+  dev)
+    TARGET="dev/,bb/"
+    PROMPT_FILE="$PROJECT_ROOT/AUTO-DEV-OVERVIEW-PROMPT.md"
     ;;
   custom)
     # Target already set via -t
@@ -192,6 +215,9 @@ else
       ;;
     project)
       OUTPUT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW.md"
+      ;;
+    dev)
+      OUTPUT_FILE="$PROJECT_ROOT/AUTO-DEV-OVERVIEW.md"
       ;;
     custom)
       # Custom mode: timestamped file
@@ -216,24 +242,41 @@ echo ""
 # Step 1: Extract content
 echo "1️⃣  Extracting content..."
 
-# Expand glob if needed
-TARGET_EXPANDED=($(eval echo "$TARGET"))
-
-if [[ ${#TARGET_EXPANDED[@]} -eq 1 ]] && [[ -d "${TARGET_EXPANDED[0]}" ]]; then
-  # Directory: use repomix
-  echo "   Method: repomix (directory)"
-
-  if [[ "$TARGET" == "." ]]; then
-    # Root mode: exclude code, artifacts, and research results (to avoid confusing the model)
-    repomix --copy --output /dev/null \
-      --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**,docs/research/**,research/**,2025-*-overview.md,AUTO-*.md" \
-      > /dev/null 2>&1
-  else
-    # Normal directory
-    repomix --copy --output /dev/null --include "${TARGET}**" > /dev/null 2>&1
-  fi
-
+# Check if target contains comma-separated directories (for dev mode)
+if [[ "$TARGET" == *","* ]]; then
+  # Multiple directories: convert to repomix include patterns
+  echo "   Method: repomix (multiple directories)"
+  IFS=',' read -ra DIRS <<< "$TARGET"
+  INCLUDE_PATTERN=""
+  for dir in "${DIRS[@]}"; do
+    if [[ -n "$INCLUDE_PATTERN" ]]; then
+      INCLUDE_PATTERN="${INCLUDE_PATTERN},${dir}**"
+    else
+      INCLUDE_PATTERN="${dir}**"
+    fi
+  done
+  repomix --copy --output /dev/null --include "$INCLUDE_PATTERN" > /dev/null 2>&1
   pbpaste > "$TEMP_CONTENT"
+
+else
+  # Expand glob if needed
+  TARGET_EXPANDED=($(eval echo "$TARGET"))
+
+  if [[ ${#TARGET_EXPANDED[@]} -eq 1 ]] && [[ -d "${TARGET_EXPANDED[0]}" ]]; then
+    # Directory: use repomix
+    echo "   Method: repomix (directory)"
+
+    if [[ "$TARGET" == "." ]]; then
+      # Root mode: exclude code, artifacts, and research results (to avoid confusing the model)
+      repomix --copy --output /dev/null \
+        --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**,docs/research/**,research/**,2025-*-overview.md,AUTO-*.md" \
+        > /dev/null 2>&1
+    else
+      # Normal directory
+      repomix --copy --output /dev/null --include "${TARGET}**" > /dev/null 2>&1
+    fi
+
+    pbpaste > "$TEMP_CONTENT"
 
 elif [[ ${#TARGET_EXPANDED[@]} -ge 1 ]]; then
   # Files: use bat
@@ -253,9 +296,10 @@ elif [[ ${#TARGET_EXPANDED[@]} -ge 1 ]]; then
 
   bat --style=plain --paging=never "${TARGET_EXPANDED[@]}" > "$TEMP_CONTENT"
 
-else
-  echo "Error: Target not found: $TARGET" >&2
-  exit 1
+  else
+    echo "Error: Target not found: $TARGET" >&2
+    exit 1
+  fi
 fi
 
 # Step 2: Build prompt
