@@ -1,4 +1,4 @@
-(ns eval.core
+(ns dev.eval.core
   "Debiased LLM evaluation system for AI-generated proposals.
 
    Implements the evaluation pipeline from docs/research/50-specs/evaluator-oct1.md:
