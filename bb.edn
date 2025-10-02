@@ -1,0 +1,12 @@
+{:tasks
+ {run-tournament
+  {:doc "Run v3 tournament evaluation on items"
+   :task (clojure "-M -m dev.eval.core-v3/evaluate! resources/items.edn")}
+
+  run-report
+  {:doc "Print evaluation report from results file"
+   :task (clojure "-M -m dev.eval.report/print! target/run.edn")}
+
+  run-attacks
+  {:doc "Run attack robustness tests on edges"
+   :task (clojure "-M -m dev.eval.attacks/run! target/edges.edn")}}}
