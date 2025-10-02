@@ -1,6 +1,7 @@
-{:paths ["bb" "dev"]
+{:paths ["dev"]
  :deps {org.babashka/http-client {:mvn/version "0.4.19"}
-        cheshire/cheshire {:mvn/version "5.13.0"}}
+        cheshire/cheshire {:mvn/version "5.13.0"}
+        medley/medley {:mvn/version "1.4.0"}}
 
  :tasks
  {;; Evaluation tasks
@@ -19,5 +20,25 @@
   ;; Research workflow scripts
   analyze-battle-test
   {:doc "Analyze battle-test results with Codex"
-   :requires ([analyze-battle-test])
-   :task (apply analyze-battle-test/-main *command-line-args*)}}}
+   :requires ([scripts.research.analyze-battle-test])
+   :task (apply scripts.research.analyze-battle-test/-main *command-line-args*)}
+
+  best-repos-research
+  {:doc "Research best-of repos for architectural patterns (15 parallel queries)"
+   :requires ([scripts.research.best-repos-research])
+   :task (apply scripts.research.best-repos-research/-main *command-line-args*)}
+
+  architectural-proposals
+  {:doc "Generate architectural proposals from multiple LLMs"
+   :requires ([scripts.research.architectural-proposals])
+   :task (apply scripts.research.architectural-proposals/-main *command-line-args*)}
+
+  gemini-media
+  {:doc "Gemini Media API - Video and Image Generation Tool"
+   :requires ([scripts.research.gemini-media])
+   :task (apply scripts.research.gemini-media/-main *command-line-args*)}
+
+  export-proposals-index
+  {:doc "Export proposals to TSV/CSV index for easy review"
+   :requires ([scripts.research.export-proposals-index])
+   :task (apply scripts.research.export-proposals-index/-main *command-line-args*)}}}
