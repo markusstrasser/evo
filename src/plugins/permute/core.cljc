@@ -3,8 +3,7 @@
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
    Uses kernel.anchor for position resolution and kernel.permutation for deterministic ordering."
-  (:require [kernel.anchor :as anchor]
-            [kernel.permutation :as perm]))
+  (:require [kernel.anchor :as anchor]))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
@@ -34,7 +33,7 @@
         ;; This matches the :place semantics (remove → resolve → insert)
         target-idx (try
                      (anchor/resolve-anchor-in-vec kids-without-selection anchor)
-                     (catch #?(:clj Exception :cljs js/Error) e
+                     (catch #?(:clj Exception :cljs js/Error) _
                        ;; If anchor references a selected node, it will fail after removal
                        ;; Fallback to end
                        (count kids-without-selection)))
@@ -119,7 +118,7 @@
    - Parent exists
    - No cycles (none of selection are ancestors of parent)
    - Anchor is valid (if it can be pre-validated)"
-  [db {:keys [selection parent anchor] :as intent}]
+  [db {:keys [selection parent] :as intent}]
   (let [nodes (:nodes db)
         roots (:roots db)]
     (cond
