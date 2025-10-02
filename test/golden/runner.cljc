@@ -1,11 +1,11 @@
 (ns golden.runner
   "Golden test runner - loads golden test cases and verifies behavior."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest testing is]]
             [core.db :as db]
             [core.interpret :as interp]
             [plugins.permute.core :as permute]
-            [clojure.edn :as edn]
-            #?(:clj [clojure.java.io :as io])))
+            #?(:clj [clojure.java.io :as io])
+            #?(:clj [clojure.edn :as edn])))
 
 #?(:clj
    (defn load-golden-cases
@@ -20,12 +20,12 @@
 
 (defn run-golden-case
   "Run a single golden test case and return result."
-  [{:keys [name db intent expected-order] :as golden-case}]
+  [{:keys [db intent expected-order] :as golden-case}]
   (let [;; Derive initial DB
         db-with-derived (db/derive-indexes db)
 
         ;; Lower intent to ops
-        {:keys [ops issues] :as lower-result} (permute/lower db-with-derived intent)
+        {:keys [ops issues]} (permute/lower db-with-derived intent)
 
         ;; If lowering failed, return issues
         _  (when (seq issues)
