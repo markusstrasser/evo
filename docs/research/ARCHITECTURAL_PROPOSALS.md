@@ -31,12 +31,12 @@ This workflow:
 
 ```bash
 # Run the full workflow (15 proposals + 2 rankings)
-scripts/architectural-proposals
+bb architectural-proposals
 
 # Or specify output directory
-scripts/architectural-proposals research/proposals/my-experiment
+bb architectural-proposals docs/research/proposals/my-experiment
 
-# Results saved to: research/proposals/YYYY-MM-DD-HH-MM/
+# Results saved to: docs/research/proposals/YYYY-MM-DD-HH-MM/
 ```
 
 ## Architectural Questions
@@ -162,10 +162,10 @@ Red Flags
 ### Generate Proposals
 ```bash
 # Full workflow
-scripts/architectural-proposals
+bb architectural-proposals
 
 # Watch progress
-scripts/architectural-proposals 2>&1 | tee proposal-run.log
+bb architectural-proposals 2>&1 | tee proposal-run.log
 ```
 
 ### Review Results
@@ -217,11 +217,11 @@ Edit `research/architectural-questions.edn`:
  ]}
 ```
 
-Then update `scripts/architectural-proposals` to include the new question.
+Then update `bb architectural-proposals` to include the new question.
 
 ### Change Providers
 
-Edit `scripts/architectural-proposals`:
+Edit `bb architectural-proposals`:
 
 ```bash
 # Use different providers
