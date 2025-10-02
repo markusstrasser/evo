@@ -1,4 +1,4 @@
-(ns dev.eval.v3-integration-test
+(ns evaluater.v3-integration-test
   "Integration tests for v3 evaluator pipeline.
    Tests each step as specified in evaluator-oct2.md spec."
   (:require [clojure.test :refer [deftest is testing]]
