@@ -8,6 +8,11 @@
         "-c",
         "clojure -X:mcp-shadow-dual"
       ]
+    },
+    "exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp",
+      "headers": {}
     }
   }
 }
