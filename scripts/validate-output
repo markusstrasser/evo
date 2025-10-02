@@ -14,7 +14,7 @@ OUTPUT_DIR="${1:-}"
 
 # Auto-detect latest if not provided
 if [[ -z "$OUTPUT_DIR" ]]; then
-  OUTPUT_DIR=$(ls -td research/proposals/* research/results/* 2>/dev/null | head -1)
+  OUTPUT_DIR=$(ls -td docs/research/proposals/* docs/research/results/* 2>/dev/null | head -1)
 fi
 
 if [[ -z "$OUTPUT_DIR" || ! -d "$OUTPUT_DIR" ]]; then

@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Analyze battle-test results using Codex with high reasoning effort.
-# Wrapper for Babashka implementation
-
-set -euo pipefail
-
-bb analyze-battle-test "$@"
