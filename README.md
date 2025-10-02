@@ -112,9 +112,57 @@ you fear key lock-in, add tiny accessors or a normalize/denormalize pair so :
 children-by-parent is a private contract of the kernel, not the world. Net:
 better like this—kernel owns the shape; adapters translate.
 
+
+## UNSURE, loose ideas
+I want to have the system port architectures and improve upon them (like threejs port or threlte8 or d3js or create interface tooling by themselves -- taking other
+repos fragments as inspiration).
+
+For this I need the system to have a reinforcement loop of discussing architectural proposals among itself ... building the dev tooling (evals, repl, code-complexity-metrics, summarization (for LLM
+piping) etc) AND then the actual packages (like kernel ... which took me weeks to iterate on manually). I, the Human, would write requirements,design, taste, ideas and use cases (or domain applications)
+somewhere in this repo ... I just have trouble systematically setting up the full loop.
+
 ## DEV
 
-### Hypergraph
+### META SYSTEM
+I see it now. You're building a self-improving meta-development system where AI agents:
+1. Learn patterns from best-of repos
+2. Propose architectures
+3. Evaluate via tournament
+4. Implement winners
+5. Measure outcomes
+6. Feed learnings back
+
+🔄 The Loop (Simplified for Solo Dev)
+
+┌─ 1. Mine Patterns ──────────────────────┐
+│   scripts/mine-patterns threejs         │
+│   → threejs-patterns.edn                │
+└──────────────┬──────────────────────────┘
+↓
+┌─ 2. Draft Spec (Manual+LLM) ────────────┐
+│   Use patterns → draft spec.edn         │
+│   Update loop-state.edn :stage          │
+└──────────────┬──────────────────────────┘
+↓
+┌─ 3. Evaluate ────────────────────────────┐
+│   scripts/v3-run {spec-id}               │
+│   → evaluations/{ts}.edn                 │
+└──────────────┬──────────────────────────┘
+↓
+┌─ 4. Scaffold & Implement ───────────────┐
+│   scripts/scaffold {spec}                │
+│   Fill TODOs in src/plugins/             │
+└──────────────┬──────────────────────────┘
+↓
+┌─ 5. Capture Outcome ─────────────────────┐
+│   scripts/postmortem {branch}            │
+│   → implementations/{spec}.edn           │
+│   → loop-state updates with lessons      │
+└──────────────┬──────────────────────────┘
+↓
+(Repeat with refined goals/patterns)
+
+### DOMAIN application: Hypergraph Plugin for Knowledge Management
 
 **Decision**: Write comprehensive tests for functionality that doesn't exist yet
 to drive future architecture.
