@@ -12,7 +12,10 @@
       "Bash(pbpaste)",
       "Bash(gemini:*)",
       "mcp__context7__get-library-docs",
-      "WebSearch"
+      "WebSearch",
+      "Bash(tree:*)",
+      "Read(//private/tmp/codex-responses/**)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
