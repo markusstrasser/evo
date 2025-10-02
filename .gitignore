@@ -8,6 +8,8 @@ out
 .env
 *.env
 
+gemini-output
+
 legacy_deprecated
 /out
 ./out
