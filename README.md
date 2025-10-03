@@ -123,6 +123,12 @@ somewhere in this repo ... I just have trouble systematically setting up the ful
 
 ## DEV
 
+when you're using coding agents you're in two modes
+
+1. building context
+2. reviewing changes
+
+a chat interface achieves both in a very clumsy way
 ### META SYSTEM
 I see it now. You're building a self-improving meta-development system where AI agents:
 1. Learn patterns from best-of repos
@@ -197,3 +203,4 @@ Your system should expose:
   as proof of concept)
 - **Reference algebra** (links, embeds, transclusions) (links already
   implemented ... rest can wa)
+
