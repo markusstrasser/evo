@@ -64,15 +64,14 @@
         (throw (ex-info "Upload failed" {:response start-result})))
 
       ;; Step 2: Upload file content
-      (let [file-content (files/read-file file-path)
+      (let [file-content (files/read-bytes file-path)
             upload-result (http/request
                            {:url upload-url-header
                             :method :post
-                            :headers {"Content-Length" (str file-size)
-                                      "X-Goog-Upload-Offset" "0"
+                            :headers {"X-Goog-Upload-Offset" "0"
                                       "X-Goog-Upload-Command" "upload, finalize"}
                             :body file-content})
-            response-body (json/parse-json (:body upload-result))
+            response-body (when (:body upload-result) (json/parse-json (:body upload-result)))
             file-uri (get-in response-body [:file :uri])]
 
         (when-not file-uri
@@ -247,6 +246,66 @@
 
     ;; Upload video
     (let [file-uri (upload-file video-file mime-type)]
+
+      (log :info (str "Analyzing with question: " question))
+
+      ;; Build request
+      (let [request-body {:contents [{:parts [{:fileData {:fileUri file-uri
+                                                          :mimeType mime-type}}
+                                              {:text question}]}]}
+            api-key (System/getenv "GEMINI_API_KEY")
+
+            ;; Send analysis request
+            response (http/request
+                      {:url (str base-url "/models/" (:model-analyze defaults) ":generateContent")
+                       :method :post
+                       :headers {"x-goog-api-key" api-key
+                                 "Content-Type" "application/json"}
+                       :body (json/generate-json request-body)})
+            body (json/parse-json (:body response))
+            answer (get-in body [:candidates 0 :content :parts 0 :text])]
+
+        (when-not answer
+          (log :error "No answer received")
+          (throw (ex-info "No answer" {:response body})))
+
+        (log :success "Analysis complete")
+
+        ;; Output result
+        (if output-file
+          (do
+            (files/write-file output-file answer)
+            (log :success (str "Saved to: " output-file)))
+          (do
+            (println)
+            (println answer)))
+
+        answer))))
+
+;; Analyze image
+(defn analyze-image [{:keys [image-file question output-file]}]
+  (check-api-key)
+
+  (when-not (files/exists? image-file)
+    (log :error (str "Image file not found: " image-file))
+    (System/exit 1))
+
+  (log :info (str "Analyzing image: " (fs/file-name image-file)))
+
+  ;; Detect MIME type
+  (let [ext (fs/extension image-file)
+        mime-type (case ext
+                    ".jpg" "image/jpeg"
+                    ".jpeg" "image/jpeg"
+                    ".png" "image/png"
+                    ".gif" "image/gif"
+                    ".webp" "image/webp"
+                    (do
+                      (log :warning "Unknown image format, assuming jpeg")
+                      "image/jpeg"))]
+
+    ;; Upload image
+    (let [file-uri (upload-file image-file mime-type)]
 
       (log :info (str "Analyzing with question: " question))
 
@@ -474,6 +533,22 @@
            {:prompt (:prompt parsed)
             :num-images (:num-images parsed)
             :output-dir (:output parsed)}))
+
+        "analyze"
+        (let [parsed (parse-args rest-args)]
+          (when (:help parsed)
+            (show-help)
+            (System/exit 0))
+          (when-not (:file parsed)
+            (log :error "Image file required")
+            (System/exit 1))
+          (when-not (:prompt parsed)
+            (log :error "Question required (-p)")
+            (System/exit 1))
+          (analyze-image
+           {:image-file (:file parsed)
+            :question (:prompt parsed)
+            :output-file (:output parsed)}))
 
         (do
           (log :error (str "Unknown image subcommand: " subcommand))
