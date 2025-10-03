@@ -1,0 +1,284 @@
+#!/usr/bin/env bb
+"""
+Visual Validation Orchestrator - Multi-stage validation pipeline
+
+Runs validation stages in order, stops on failure:
+  Stage 1: Geometry (circularity, verticality, aspect ratio)
+  Stage 2: Structure (SSIM, RMSE, histogram correlation)
+  Stage 3: AI Feedback (optional, only if stages 1+2 pass)
+
+Usage:
+  visual-validate <reference> <implementation> [options]
+
+Options:
+  --geometry-only         Stop after geometry validation
+  --skip-ai               Skip AI feedback (stages 1+2 only)
+  --ai-prompt <text>      Custom prompt for AI analysis
+  --output <dir>          Output directory (default: /tmp/visual-validation/)
+  --normalize             Resize images to same dimensions before comparing
+  -v, --verbose           Show detailed output
+  -h, --help              Show this help
+
+Examples:
+  # Full pipeline (geometry → structure → AI feedback)
+  visual-validate ref.png impl.png
+
+  # Geometry check only (for iterative development)
+  visual-validate ref.png impl.png --geometry-only
+
+  # Quantitative validation without AI
+  visual-validate ref.png impl.png --skip-ai
+
+  # Custom AI focus
+  visual-validate ref.png impl.png --ai-prompt \"Focus on material properties and lighting\"
+
+Exit Codes:
+  0 = All stages passed
+  1 = Validation failed (see output for details)
+  2 = Invalid arguments or missing dependencies
+"""
+
+(require '[clojure.string :as str]
+         '[clojure.java.shell :as shell]
+         '[babashka.fs :as fs])
+
+(def help-text
+  "Visual Validation Orchestrator - Multi-stage validation pipeline
+
+Runs validation stages in order, stops on failure:
+  Stage 1: Geometry (circularity, verticality, aspect ratio)
+  Stage 2: Structure (SSIM, RMSE, histogram correlation)
+  Stage 3: AI Feedback (optional, only if stages 1+2 pass)
+
+Usage:
+  visual-validate <reference> <implementation> [options]
+
+Options:
+  --geometry-only         Stop after geometry validation
+  --skip-ai               Skip AI feedback (stages 1+2 only)
+  --ai-prompt <text>      Custom prompt for AI analysis
+  --output <dir>          Output directory (default: /tmp/visual-validation/)
+  --normalize             Resize images to same dimensions before comparing
+  -v, --verbose           Show detailed output
+  -h, --help              Show this help
+
+Examples:
+  # Full pipeline (geometry → structure → AI feedback)
+  visual-validate ref.png impl.png
+
+  # Geometry check only (for iterative development)
+  visual-validate ref.png impl.png --geometry-only
+
+  # Quantitative validation without AI
+  visual-validate ref.png impl.png --skip-ai
+
+  # Custom AI focus
+  visual-validate ref.png impl.png --ai-prompt \"Focus on material properties and lighting\"
+
+Exit Codes:
+  0 = All stages passed
+  1 = Validation failed (see output for details)
+  2 = Invalid arguments or missing dependencies")
+
+(defn parse-args [args]
+  (loop [args args
+         opts {:output-dir "/tmp/visual-validation/"
+               :geometry-only false
+               :skip-ai false
+               :ai-prompt nil
+               :normalize false
+               :verbose false}]
+    (cond
+      (empty? args)
+      (if (and (:reference opts) (:implementation opts))
+        opts
+        (throw (ex-info "Missing required arguments" {:opts opts})))
+
+      (#{"-h" "--help"} (first args))
+      (do (println help-text) (System/exit 0))
+
+      (= (first args) "--geometry-only")
+      (recur (rest args) (assoc opts :geometry-only true))
+
+      (= (first args) "--skip-ai")
+      (recur (rest args) (assoc opts :skip-ai true))
+
+      (= (first args) "--normalize")
+      (recur (rest args) (assoc opts :normalize true))
+
+      (#{"-v" "--verbose"} (first args))
+      (recur (rest args) (assoc opts :verbose true))
+
+      (= (first args) "--output")
+      (recur (drop 2 args) (assoc opts :output-dir (second args)))
+
+      (= (first args) "--ai-prompt")
+      (recur (drop 2 args) (assoc opts :ai-prompt (second args)))
+
+      (nil? (:reference opts))
+      (recur (rest args) (assoc opts :reference (first args)))
+
+      (nil? (:implementation opts))
+      (recur (rest args) (assoc opts :implementation (first args)))
+
+      :else
+      (throw (ex-info "Unknown argument" {:arg (first args)})))))
+
+(defn check-dependencies []
+  "Verify required tools are available"
+  (let [python-check (shell/sh "which" "python3")
+        opencv-check (shell/sh "python3" "-c" "import cv2; import skimage")
+        magick-check (shell/sh "which" "magick")]
+    (when-not (zero? (:exit python-check))
+      (println "✗ Error: python3 not found")
+      (System/exit 2))
+    (when-not (zero? (:exit opencv-check))
+      (println "✗ Error: Required Python packages not found")
+      (println "  Install with: pip3 install opencv-python scikit-image numpy")
+      (System/exit 2))
+    (when-not (zero? (:exit magick-check))
+      (println "✗ Error: ImageMagick not found")
+      (println "  Install with: brew install imagemagick")
+      (System/exit 2))))
+
+(defn run-stage [name command verbose?]
+  "Run a validation stage, return exit code"
+  (println)
+  (println (format "═══════════════════════════════════════════════════════"))
+  (println (format "Stage: %s" name))
+  (println (format "═══════════════════════════════════════════════════════"))
+  (println)
+
+  (let [result (apply shell/sh (concat command (when verbose? ["-v"])))]
+    (print (:out result))
+    (when-not (str/blank? (:err result))
+      (print (:err result)))
+    (:exit result)))
+
+(defn run-ai-feedback [ref impl output-dir custom-prompt verbose?]
+  "Run AI analysis using Gemini (optional stage 3)"
+  (println)
+  (println "═══════════════════════════════════════════════════════")
+  (println "Stage 3: AI Aesthetic Feedback (Optional)")
+  (println "═══════════════════════════════════════════════════════")
+  (println)
+
+  ;; Create side-by-side comparison
+  (let [comparison-path (str output-dir "comparison.png")
+        _ (shell/sh "magick" ref impl "+append" comparison-path)
+        prompt (or custom-prompt
+                   "LEFT=reference (target), RIGHT=implementation (current).
+Geometry and structure are validated. Focus on:
+- Material properties (shininess, roughness, reflectivity)
+- Lighting quality (direction, intensity, shadows)
+- Color/tone adjustments
+- Perceptual polish
+
+What specific numeric parameter changes would improve the match?")]
+
+    (println "Creating side-by-side comparison...")
+    (println (format "Saved: %s" comparison-path))
+    (println)
+    (println "Running Gemini analysis...")
+    (println)
+
+    ;; Run gemini CLI (assumes it's available)
+    (let [result (shell/sh "gemini" "image" "analyze" comparison-path "-p" prompt)]
+      (if (zero? (:exit result))
+        (do
+          (println (:out result))
+          (spit (str output-dir "ai-feedback.txt") (:out result))
+          (println)
+          (println (format "AI feedback saved: %s" (str output-dir "ai-feedback.txt")))
+          0)
+        (do
+          (println "⚠ AI analysis failed (gemini not available or error)")
+          (println "  Skipping AI feedback - quantitative validation passed")
+          0)))))
+
+(defn -main [& args]
+  (let [{:keys [reference implementation output-dir geometry-only skip-ai
+                ai-prompt normalize verbose]} (parse-args args)]
+
+    (println "╔═══════════════════════════════════════════════════════╗")
+    (println "║       Visual Validation - Multi-Stage Pipeline       ║")
+    (println "╚═══════════════════════════════════════════════════════╝")
+    (println)
+    (println (format "Reference:      %s" reference))
+    (println (format "Implementation: %s" implementation))
+    (println (format "Output:         %s" output-dir))
+    (println (format "Pipeline:       %s"
+                     (cond
+                       geometry-only "Geometry only"
+                       skip-ai "Geometry + Structure"
+                       :else "Full (Geometry + Structure + AI)")))
+    (println)
+
+    ;; Check dependencies
+    (when verbose
+      (println "Checking dependencies..."))
+    (check-dependencies)
+
+    (fs/create-dirs output-dir)
+
+    (let [geo-output (str output-dir "geometry/")
+          struct-output (str output-dir "structure/")
+
+          ;; Stage 1: Geometry
+          stage1-exit (run-stage
+                       "1/3 - Geometry Validation"
+                       ["scripts/visual-validate-geometry"
+                        reference implementation
+                        "--output" geo-output]
+                       verbose)]
+
+      (when-not (zero? stage1-exit)
+        (println)
+        (println "❌ VALIDATION FAILED at Stage 1 (Geometry)")
+        (println)
+        (println "Fix geometric issues before proceeding.")
+        (System/exit 1))
+
+      ;; Stop if geometry-only
+      (when geometry-only
+        (println)
+        (println "✓ Geometry validation passed (geometry-only mode)")
+        (System/exit 0))
+
+      ;; Stage 2: Structure
+      (let [normalize-flag (if normalize ["--normalize"] [])
+            stage2-exit (run-stage
+                         "2/3 - Structural Validation"
+                         (concat ["scripts/visual-validate-structure"
+                                  reference implementation
+                                  "--output" struct-output]
+                                 normalize-flag)
+                         verbose)]
+
+        (when-not (zero? stage2-exit)
+          (println)
+          (println "❌ VALIDATION FAILED at Stage 2 (Structure)")
+          (println)
+          (println "Fix structural issues before aesthetic refinement.")
+          (System/exit 1))
+
+        ;; Stages 1+2 passed
+        (println)
+        (println "✅ QUANTITATIVE VALIDATION PASSED")
+        (println)
+        (println "Both geometry and structure validation passed.")
+
+        ;; Stage 3: AI (optional)
+        (when-not skip-ai
+          (run-ai-feedback reference implementation output-dir ai-prompt verbose))
+
+        (println)
+        (println "════════════════════════════════════════════════════════")
+        (println)
+        (println "✓ ALL VALIDATION STAGES COMPLETED")
+        (println)
+        (println (format "Results saved to: %s" output-dir))
+        (System/exit 0)))))
+
+(when (= *file* (System/getProperty "babashka.file"))
+  (apply -main *command-line-args*))
