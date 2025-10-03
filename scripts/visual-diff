@@ -1,0 +1,196 @@
+#!/usr/bin/env bb
+
+(require '[clojure.string :as str]
+         '[clojure.java.shell :as shell]
+         '[babashka.fs :as fs])
+
+(def help-text
+  "Visual Diff Iterator - Automated screenshot comparison for visual refinement
+
+Usage:
+  visual-diff <reference-image> <url> [options]
+
+Arguments:
+  reference-image  Path to reference image (e.g., /tmp/reference.png)
+  url              URL to monitor (e.g., http://localhost:8080/lab.html)
+
+Options:
+  -w, --watch <paths>  Comma-separated paths to watch (default: src/lab/)
+  -o, --output <dir>   Output directory (default: /tmp/visual-diff/)
+  -d, --delay <ms>     Delay after file change before screenshot (default: 1000ms)
+  -c, --crop <WxH+X+Y> Crop region for focused comparison (e.g., 200x200+300+200)
+  -h, --help           Show this help
+
+Examples:
+  # Watch src/lab/ and compare against reference
+  visual-diff /tmp/reference.png http://localhost:8080/lab.html
+
+  # Custom watch paths and output directory
+  visual-diff ref.png http://localhost:8080/lab.html -w src/lab/,public/ -o ./diffs/
+
+  # Crop to center 200x200 region for focused material comparison
+  visual-diff ref.png http://localhost:8080/lab.html -c 200x200+300+200
+
+Process:
+  1. Watches specified paths for file changes
+  2. Waits for hot reload (configurable delay)
+  3. Captures screenshot via Chrome DevTools
+  4. Creates side-by-side comparison
+  5. Opens comparison in default image viewer (optional)
+")
+
+(defn parse-args [args]
+  (loop [args args
+         opts {:watch-paths ["src/lab/"]
+               :output-dir "/tmp/visual-diff/"
+               :delay 1000
+               :crop nil}]
+    (cond
+      (empty? args)
+      (if (and (:reference opts) (:url opts))
+        opts
+        (throw (ex-info "Missing required arguments" {:opts opts})))
+
+      (= (first args) "-h") (do (println help-text) (System/exit 0))
+      (= (first args) "--help") (do (println help-text) (System/exit 0))
+      (= (first args) "-w") (recur (drop 2 args) (assoc opts :watch-paths (str/split (second args) #",")))
+      (= (first args) "--watch") (recur (drop 2 args) (assoc opts :watch-paths (str/split (second args) #",")))
+      (= (first args) "-o") (recur (drop 2 args) (assoc opts :output-dir (second args)))
+      (= (first args) "--output") (recur (drop 2 args) (assoc opts :output-dir (second args)))
+      (= (first args) "-d") (recur (drop 2 args) (assoc opts :delay (parse-long (second args))))
+      (= (first args) "--delay") (recur (drop 2 args) (assoc opts :delay (parse-long (second args))))
+      (= (first args) "-c") (recur (drop 2 args) (assoc opts :crop (second args)))
+      (= (first args) "--crop") (recur (drop 2 args) (assoc opts :crop (second args)))
+      (nil? (:reference opts)) (recur (rest args) (assoc opts :reference (first args)))
+      (nil? (:url opts)) (recur (rest args) (assoc opts :url (first args)))
+      :else (throw (ex-info "Unknown argument" {:arg (first args)})))))
+
+(defn ensure-dir [dir]
+  (fs/create-dirs dir)
+  dir)
+
+(defn timestamp []
+  (.format (java.time.LocalDateTime/now)
+           (java.time.format.DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss")))
+
+(defn capture-screenshot-manual [output-path]
+  ;; Manual screenshot - user saves from browser or uses Chrome DevTools MCP
+  (println (format "[%s] 📸 Screenshot needed: %s" (timestamp) output-path))
+  (println "      Save screenshot manually to the path above, then press Enter...")
+  (read-line)
+  (if (fs/exists? output-path)
+    (do
+      (println (format "[%s] ✓ Screenshot found: %s" (timestamp) output-path))
+      {:exit 0})
+    (do
+      (println (format "[%s] ✗ Screenshot not found at: %s" (timestamp) output-path))
+      {:exit 1})))
+
+(defn crop-image [input-path output-path crop-spec]
+  ;; Crop using ImageMagick: convert input.png -crop WxH+X+Y output.png
+  (shell/sh "magick" input-path "-crop" crop-spec output-path))
+
+(defn create-comparison [ref-path impl-path output-path crop-spec]
+  (println (format "[%s] Creating side-by-side comparison..." (timestamp)))
+  (let [;; If crop specified, crop both images first
+        [ref-to-compare impl-to-compare] (if crop-spec
+                                           (let [ref-cropped (str (fs/parent output-path) "/ref-crop.png")
+                                                 impl-cropped (str (fs/parent output-path) "/impl-crop.png")]
+                                             (crop-image ref-path ref-cropped crop-spec)
+                                             (crop-image impl-path impl-cropped crop-spec)
+                                             (println (format "[%s] ✓ Cropped to: %s" (timestamp) crop-spec))
+                                             [ref-cropped impl-cropped])
+                                           [ref-path impl-path])
+        result (shell/sh "magick" ref-to-compare impl-to-compare "+append" output-path)]
+    (if (zero? (:exit result))
+      (println (format "[%s] ✓ Comparison saved: %s" (timestamp) output-path))
+      (println (format "[%s] ✗ Comparison failed: %s" (timestamp) (:err result))))
+    result))
+
+(defn watch-files [paths callback]
+  ;; Use babashka's built-in file watching
+  (let [watched-files (atom #{})
+        check-interval 500]
+
+    ;; Recursively find all .cljs files in watch paths
+    (doseq [path paths]
+      (doseq [file (fs/glob path "**/*.cljs")]
+        (swap! watched-files conj {:path file
+                                    :modified (fs/last-modified-time file)})))
+
+    ;; Poll for changes
+    (future
+      (loop []
+        (Thread/sleep check-interval)
+        (doseq [{:keys [path modified] :as entry} @watched-files]
+          (when (fs/exists? path)
+            (let [new-modified (fs/last-modified-time path)]
+              (when (> (.toMillis new-modified) (.toMillis modified))
+                (swap! watched-files disj entry)
+                (swap! watched-files conj (assoc entry :modified new-modified))
+                (callback {:type :modify :path path})))))
+        (recur)))
+
+    ;; Return a dummy watcher object
+    (atom :watching)))
+
+(defn -main [& args]
+  (let [{:keys [reference url watch-paths output-dir delay crop]} (parse-args args)
+        output-dir (ensure-dir output-dir)
+        iteration (atom 0)]
+
+    ;; Verify reference exists
+    (when-not (fs/exists? reference)
+      (println (format "✗ Reference image not found: %s" reference))
+      (System/exit 1))
+
+    ;; Verify tools available
+    (when-not (zero? (:exit (shell/sh "which" "magick")))
+      (println "✗ ImageMagick not found. Install with: brew install imagemagick")
+      (System/exit 1))
+
+    (println "╔═══════════════════════════════════════════════════════════════╗")
+    (println "║          Visual Diff Iterator - Watching for changes         ║")
+    (println "╚═══════════════════════════════════════════════════════════════╝")
+    (println)
+    (println (format "Reference:    %s" reference))
+    (println (format "URL:          %s" url))
+    (println (format "Watch paths:  %s" (str/join ", " watch-paths)))
+    (println (format "Output:       %s" output-dir))
+    (println (format "Reload delay: %dms" delay))
+    (when crop
+      (println (format "Crop region:  %s (focused comparison)" crop)))
+    (println)
+    (println "Press Ctrl+C to stop")
+    (println "════════════════════════════════════════════════════════════════")
+    (println)
+
+    ;; Initial comparison
+    (let [iter (swap! iteration inc)
+          screenshot-path (str output-dir "screenshot-" iter ".png")
+          comparison-path (str output-dir "comparison-" iter ".png")]
+      (capture-screenshot-manual screenshot-path)
+      (when (zero? (:exit (create-comparison reference screenshot-path comparison-path crop)))
+        (println (format "💡 View comparison: open %s" comparison-path)))
+      (println))
+
+    ;; Watch loop
+    (let [watcher (watch-files watch-paths
+                               (fn [event]
+                                 (println (format "[%s] File changed: %s" (timestamp) (:path event)))
+                                 (println (format "[%s] Waiting %dms for hot reload..." (timestamp) delay))
+                                 (Thread/sleep delay)
+                                 (let [iter (swap! iteration inc)
+                                       screenshot-path (str output-dir "screenshot-" iter ".png")
+                                       comparison-path (str output-dir "comparison-" iter ".png")]
+                                   (capture-screenshot-manual screenshot-path)
+                                   (when (zero? (:exit (create-comparison reference screenshot-path comparison-path crop)))
+                                     (println (format "💡 View comparison: open %s" comparison-path)))
+                                   (println (format "[%s] Iteration #%d complete" (timestamp) iter))
+                                   (println))))]
+
+      ;; Keep alive
+      @(promise))))
+
+(when (= *file* (System/getProperty "babashka.file"))
+  (apply -main *command-line-args*))
