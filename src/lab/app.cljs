@@ -32,15 +32,16 @@
             dist (js/Math.sqrt dist-sq)
 
             ;; Initial height based on radial distance (concentric circles)
+            ;; Increased amplitude for more pronounced waves
             height (if (< dist-sq 1.0)
-                    (+ 2.0 (* 1.0 (js/Math.sin (* dist js/Math.PI 6))))
+                    (+ 2.0 (* 1.8 (js/Math.sin (* dist js/Math.PI 6))))
                     0.1)]
 
         (when (< dist 1.0)
           (let [geometry (THREE/CylinderGeometry. pin-radius pin-radius height pin-segments)
-                material (THREE/MeshPhongMaterial. #js {:color 0xe8e8e8
-                                                        :shininess 30
-                                                        :specular 0x444444
+                material (THREE/MeshPhongMaterial. #js {:color 0xf0f0f0
+                                                        :shininess 50  ;; Increased for brighter highlights
+                                                        :specular 0x666666  ;; Brighter specular
                                                         :flatShading false})
                 pin (THREE/Mesh. geometry material)]
 
@@ -67,10 +68,10 @@
         camera (THREE/PerspectiveCamera. 42 (/ width height) 0.1 1000)
         renderer (THREE/WebGLRenderer. #js {:antialias true :alpha false})
 
-        ;; Lighting - very dark shadows, high contrast
+        ;; Lighting - dark valleys, bright peaks (strong shadows not bright light)
         ambient-light (THREE/AmbientLight. 0x000000)
-        dir-light1 (THREE/DirectionalLight. 0xffffff 2.5)
-        dir-light2 (THREE/DirectionalLight. 0xffffff 0.2)
+        dir-light1 (THREE/DirectionalLight. 0xffffff 1.8)  ;; Lower for deeper shadows
+        dir-light2 (THREE/DirectionalLight. 0xffffff 0.1)  ;; Minimal fill
 
         ;; Pin array
         {:keys [group pins]} (create-pin-array)
