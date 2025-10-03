@@ -1,7 +1,7 @@
 (ns scripts.utils.http
   "HTTP client utilities for Clojure/Babashka scripts with mocking support."
   (:require [babashka.http-client :as http]
-            [json]))
+            [scripts.utils.json :as json]))
 
 (def ^:dynamic *mock-responses*
   "Map of URL patterns to mock responses {:status int :body string}."
@@ -36,11 +36,11 @@
       (println "[MOCK]" method url)
       mock)
     (try
-      (let [opts (cond-> {:method method :headers headers :timeout timeout}
+      (let [opts (cond-> {:method method :headers headers :timeout timeout :uri url :throw false}
                    body (assoc :body (if (map? body) (json/generate-json body) body)))]
-        (http/request url opts))
+        (http/request opts))
       (catch Exception e
-        {:status 500 :error (.getMessage e)}))))
+        {:status 500 :error (.getMessage e) :exception e}))))
 
 (defn post-json
   "POST JSON data to URL. Returns parsed response."

@@ -20,6 +20,12 @@
     nil
     (slurp (str path))))
 
+(defn read-bytes
+  "Read file as byte array."
+  [path]
+  (with-open [in (java.io.FileInputStream. (str path))]
+    (.readAllBytes in)))
+
 (defn write-file
   "Write string to file, creating parent dirs. Returns path."
   [path content]
