@@ -1,0 +1,25 @@
+#!/bin/bash
+# Adaptive DPI-aware canvas screenshot helper
+
+set -e
+
+SCREENSHOT_PATH="${1:-/tmp/screenshot.png}"
+OUTPUT_PATH="${2:-/tmp/canvas.png}"
+RESIZE_TO="${3:-600x600}"
+
+if [ ! -f "$SCREENSHOT_PATH" ]; then
+    echo "Error: Screenshot not found at $SCREENSHOT_PATH"
+    exit 1
+fi
+
+# Method 1: Auto-trim (simple, works if canvas has contrasting background)
+echo "Method 1: Auto-trim approach..."
+magick "$SCREENSHOT_PATH" -fuzz 10% -trim +repage "$OUTPUT_PATH" 2>/dev/null && \
+    magick "$OUTPUT_PATH" -resize "$RESIZE_TO!" "$OUTPUT_PATH" && \
+    echo "✓ Success with auto-trim" && \
+    exit 0
+
+# Method 2: DPI-aware crop (requires canvas info)
+# This would need to be integrated with Chrome DevTools MCP
+echo "Auto-trim failed, would need DPI-aware crop with canvas coordinates"
+exit 1

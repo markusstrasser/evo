@@ -1,0 +1,274 @@
+#!/usr/bin/env bb
+"""
+Visual Iteration Workflow - AI-assisted iterative refinement with validation checkpoints
+
+Watches source files, validates on change using multi-stage pipeline:
+  1. Screenshot implementation
+  2. Run geometry validation → if fail, show fixes, STOP
+  3. Run structure metrics → if fail, show diff, STOP
+  4. Run AI analysis → suggestions for refinement
+  5. Repeat on next file change
+
+Usage:
+  visual-iterate <reference> <url> [options]
+
+Arguments:
+  reference  Reference image path
+  url        URL to monitor (e.g., http://localhost:8080/lab.html)
+
+Options:
+  -w, --watch <paths>      Comma-separated paths to watch (default: src/lab/)
+  -o, --output <dir>       Output directory (default: /tmp/visual-iterate/)
+  -d, --delay <ms>         Delay after file change before screenshot (default: 1000ms)
+  --geometry-only          Stop at geometry failures (fast iteration)
+  --skip-ai                Skip AI feedback (quantitative only)
+  --ai-prompt <text>       Custom prompt for AI analysis
+  -h, --help               Show this help
+
+Examples:
+  # Full pipeline (geometry → structure → AI)
+  visual-iterate ref.png http://localhost:8080/lab.html
+
+  # Geometry-first iteration (fastest, stops on geometry issues)
+  visual-iterate ref.png http://localhost:8080/lab.html --geometry-only
+
+  # Quantitative validation without AI
+  visual-iterate ref.png http://localhost:8080/lab.html --skip-ai
+
+  # Custom watch paths
+  visual-iterate ref.png http://localhost:8080/lab.html -w src/lab/,public/
+
+Process:
+  1. Initial validation run
+  2. Watch for file changes
+  3. Wait for hot reload (configurable delay)
+  4. Capture screenshot via manual save or MCP
+  5. Run validation pipeline (stops on first failure)
+  6. Show results and suggestions
+  7. Repeat
+"""
+
+(require '[clojure.string :as str]
+         '[clojure.java.shell :as shell]
+         '[babashka.fs :as fs])
+
+(def help-text
+  "Visual Iteration Workflow - AI-assisted iterative refinement with validation checkpoints
+
+Watches source files, validates on change using multi-stage pipeline:
+  1. Screenshot implementation
+  2. Run geometry validation → if fail, show fixes, STOP
+  3. Run structure metrics → if fail, show diff, STOP
+  4. Run AI analysis → suggestions for refinement
+  5. Repeat on next file change
+
+Usage:
+  visual-iterate <reference> <url> [options]
+
+Arguments:
+  reference  Reference image path
+  url        URL to monitor (e.g., http://localhost:8080/lab.html)
+
+Options:
+  -w, --watch <paths>      Comma-separated paths to watch (default: src/lab/)
+  -o, --output <dir>       Output directory (default: /tmp/visual-iterate/)
+  -d, --delay <ms>         Delay after file change before screenshot (default: 1000ms)
+  --geometry-only          Stop at geometry failures (fast iteration)
+  --skip-ai                Skip AI feedback (quantitative only)
+  --ai-prompt <text>       Custom prompt for AI analysis
+  -h, --help               Show this help
+
+Examples:
+  # Full pipeline (geometry → structure → AI)
+  visual-iterate ref.png http://localhost:8080/lab.html
+
+  # Geometry-first iteration (fastest, stops on geometry issues)
+  visual-iterate ref.png http://localhost:8080/lab.html --geometry-only
+
+  # Quantitative validation without AI
+  visual-iterate ref.png http://localhost:8080/lab.html --skip-ai
+
+  # Custom watch paths
+  visual-iterate ref.png http://localhost:8080/lab.html -w src/lab/,public/")
+
+(defn parse-args [args]
+  (loop [args args
+         opts {:watch-paths ["src/lab/"]
+               :output-dir "/tmp/visual-iterate/"
+               :delay 1000
+               :geometry-only false
+               :skip-ai false
+               :ai-prompt nil}]
+    (cond
+      (empty? args)
+      (if (and (:reference opts) (:url opts))
+        opts
+        (throw (ex-info "Missing required arguments" {:opts opts})))
+
+      (#{"-h" "--help"} (first args))
+      (do (println help-text) (System/exit 0))
+
+      (#{"-w" "--watch"} (first args))
+      (recur (drop 2 args) (assoc opts :watch-paths (str/split (second args) #",")))
+
+      (#{"-o" "--output"} (first args))
+      (recur (drop 2 args) (assoc opts :output-dir (second args)))
+
+      (#{"-d" "--delay"} (first args))
+      (recur (drop 2 args) (assoc opts :delay (parse-long (second args))))
+
+      (= (first args) "--geometry-only")
+      (recur (rest args) (assoc opts :geometry-only true))
+
+      (= (first args) "--skip-ai")
+      (recur (rest args) (assoc opts :skip-ai true))
+
+      (= (first args) "--ai-prompt")
+      (recur (drop 2 args) (assoc opts :ai-prompt (second args)))
+
+      (nil? (:reference opts))
+      (recur (rest args) (assoc opts :reference (first args)))
+
+      (nil? (:url opts))
+      (recur (rest args) (assoc opts :url (first args)))
+
+      :else
+      (throw (ex-info "Unknown argument" {:arg (first args)})))))
+
+(defn timestamp []
+  (.format (java.time.LocalDateTime/now)
+           (java.time.format.DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss")))
+
+(defn capture-screenshot-manual [output-path]
+  "Manual screenshot capture with user prompt"
+  (println (format "[%s] 📸 Screenshot needed: %s" (timestamp) output-path))
+  (println "      Save screenshot to the path above, then press Enter...")
+  (read-line)
+  (if (fs/exists? output-path)
+    (do
+      (println (format "[%s] ✓ Screenshot captured" (timestamp)))
+      true)
+    (do
+      (println (format "[%s] ✗ Screenshot not found" (timestamp)))
+      false)))
+
+(defn run-validation [reference impl-path output-dir geometry-only? skip-ai? ai-prompt]
+  "Run visual-validate pipeline, return exit code"
+  (let [validate-output (str output-dir "validation/")
+        flags (cond-> ["--output" validate-output]
+                geometry-only? (conj "--geometry-only")
+                skip-ai? (conj "--skip-ai")
+                ai-prompt (concat ["--ai-prompt" ai-prompt]))
+        result (apply shell/sh "scripts/visual-validate" reference impl-path flags)]
+    (print (:out result))
+    (when-not (str/blank? (:err result))
+      (print (:err result)))
+    (:exit result)))
+
+(defn watch-files [paths callback]
+  "Watch files for changes, call callback on change"
+  (let [watched-files (atom #{})
+        check-interval 500]
+
+    ;; Recursively find all .cljs files in watch paths
+    (doseq [path paths]
+      (doseq [file (fs/glob path "**/*.cljs")]
+        (swap! watched-files conj {:path file
+                                    :modified (fs/last-modified-time file)})))
+
+    (println (format "Watching %d files in: %s"
+                     (count @watched-files)
+                     (str/join ", " paths)))
+
+    ;; Poll for changes
+    (future
+      (loop []
+        (Thread/sleep check-interval)
+        (doseq [{:keys [path modified] :as entry} @watched-files]
+          (when (fs/exists? path)
+            (let [new-modified (fs/last-modified-time path)]
+              (when (> (.toMillis new-modified) (.toMillis modified))
+                (swap! watched-files disj entry)
+                (swap! watched-files conj (assoc entry :modified new-modified))
+                (callback {:type :modify :path path})))))
+        (recur)))
+
+    ;; Return watcher object
+    (atom :watching)))
+
+(defn -main [& args]
+  (let [{:keys [reference url watch-paths output-dir delay geometry-only
+                skip-ai ai-prompt]} (parse-args args)
+        iteration (atom 0)]
+
+    ;; Verify reference exists
+    (when-not (fs/exists? reference)
+      (println (format "✗ Reference image not found: %s" reference))
+      (System/exit 1))
+
+    ;; Verify visual-validate exists
+    (when-not (fs/exists? "scripts/visual-validate")
+      (println "✗ Error: scripts/visual-validate not found")
+      (System/exit 2))
+
+    (fs/create-dirs output-dir)
+
+    (println "╔═══════════════════════════════════════════════════════════════╗")
+    (println "║      Visual Iteration - AI-Assisted Validation Workflow      ║")
+    (println "╚═══════════════════════════════════════════════════════════════╝")
+    (println)
+    (println (format "Reference:    %s" reference))
+    (println (format "URL:          %s" url))
+    (println (format "Watch paths:  %s" (str/join ", " watch-paths)))
+    (println (format "Output:       %s" output-dir))
+    (println (format "Reload delay: %dms" delay))
+    (println (format "Mode:         %s"
+                     (cond
+                       geometry-only "Geometry-only (fast iteration)"
+                       skip-ai "Quantitative validation (no AI)"
+                       :else "Full pipeline (Geometry → Structure → AI)")))
+    (println)
+    (println "Press Ctrl+C to stop")
+    (println "════════════════════════════════════════════════════════════════")
+    (println)
+
+    ;; Initial validation run
+    (println "Running initial validation...")
+    (println)
+    (let [iter (swap! iteration inc)
+          screenshot-path (str output-dir "screenshot-" iter ".png")]
+      (when (capture-screenshot-manual screenshot-path)
+        (run-validation reference screenshot-path output-dir
+                        geometry-only skip-ai ai-prompt))
+      (println))
+
+    ;; Watch loop
+    (let [watcher (watch-files watch-paths
+                               (fn [event]
+                                 (println (format "[%s] 📝 File changed: %s"
+                                                  (timestamp)
+                                                  (str (:path event))))
+                                 (println (format "[%s] ⏳ Waiting %dms for hot reload..."
+                                                  (timestamp) delay))
+                                 (Thread/sleep delay)
+
+                                 (let [iter (swap! iteration inc)
+                                       screenshot-path (str output-dir "screenshot-" iter ".png")]
+                                   (println)
+                                   (println (format "════════════════ Iteration #%d ════════════════" iter))
+                                   (println)
+
+                                   (when (capture-screenshot-manual screenshot-path)
+                                     (run-validation reference screenshot-path output-dir
+                                                     geometry-only skip-ai ai-prompt))
+
+                                   (println)
+                                   (println (format "[%s] ✓ Iteration #%d complete"
+                                                    (timestamp) iter))
+                                   (println))))]
+
+      ;; Keep alive
+      @(promise))))
+
+(when (= *file* (System/getProperty "babashka.file"))
+  (apply -main *command-line-args*))
