@@ -21,6 +21,11 @@
 - [Available Projects](#available-projects) - ~/Projects/best/* repos
 - [Common Failure Modes](#common-failure-modes) - CLI troubleshooting
 
+**Gotcha Docs:**
+- `docs/REPLICANT.md` - Event handler syntax, :event/target.value, interpolation
+- `docs/CHROME_DEVTOOLS.md` - Stale snapshots, screenshot saving
+- `.agentlog/gemini-media-fixes-2025-10-02.md` - Binary uploads, HTTP client bugs
+
 ---
 
 ## The Start
