@@ -9,12 +9,23 @@
 ### 1. Install Dependencies
 
 ```bash
-# Python packages for geometric/structural validation
-pip3 install opencv-python scikit-image numpy
+# Using uv (recommended)
+uv pip install -r requirements.txt
 
-# Verify installation
-python3 -c "import cv2; import skimage; print('✓ Ready')"
+# Or using pip (if not using uv)
+pip3 install -r requirements.txt
+
+# Verify installation (basic tools)
+python3 -c "import cv2; import skimage; print('✓ Basic tools ready')"
+
+# Verify ML models (if using --validate-* flags)
+python3 -c "import torch; import transformers; import sam2; print('✓ ML models ready')"
 ```
+
+**Dependencies**:
+- **Basic validation**: opencv-python, scikit-image, numpy, scipy, matplotlib
+- **ML validation**: torch, torchvision, transformers, sam2, timm, scikit-learn
+- **Total size**: ~2-3GB (PyTorch + models)
 
 ### 2. Basic Usage
 
@@ -95,24 +106,106 @@ scripts/visual-validate-structure ref.png impl.png --normalize
 Structural similarity is good. Optionally refine aesthetics with AI.
 ```
 
+### `visual-validate-depth` - ML-Based Depth Validation
+
+**Purpose**: Compare height/depth maps using Depth Anything V2 for accurate 3D structure validation.
+
+**Model**: [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) (monocular depth estimation)
+
+**Metrics**:
+- **MAE**: Mean Absolute Error (< 0.15 = good)
+- **RMSE**: Root Mean Square Error (< 0.20 = good)
+- **Correlation**: Depth pattern correlation (> 0.70 = good)
+
+**Usage**:
+```bash
+scripts/visual-validate-depth impl.png ref.png
+
+# Output: Depth maps + difference heatmap
+# Validates that pin heights match reference
+```
+
+**When to use**: Pin arrays, 3D structures, height-based patterns
+
+### `visual-validate-grid` - ML-Based Grid Detection
+
+**Purpose**: Detect and validate grid structure using SAM 2 segmentation.
+
+**Model**: [SAM 2](https://github.com/facebookresearch/sam2) (Segment Anything Model 2)
+
+**Metrics**:
+- **Pin Count**: Detected vs expected (< 10% diff = good)
+- **Spacing**: Grid spacing uniformity (< 15% diff = good)
+- **Angle**: Grid alignment (< 10° diff = good)
+- **Regularity**: Grid pattern consistency (< 0.15 diff = good)
+
+**Usage**:
+```bash
+scripts/visual-validate-grid impl.png ref.png
+
+# Output: Segmentation masks + grid visualization
+# Validates pin array structure and spacing
+```
+
+**When to use**: Regular grids, pin arrays, tile patterns
+
+### `visual-validate-materials` - ML-Based Material/Texture Validation
+
+**Purpose**: Compare visual features and materials using DINOv2.
+
+**Model**: [DINOv2](https://github.com/facebookresearch/dinov2) (self-supervised vision transformer)
+
+**Metrics**:
+- **Cosine Similarity**: Feature vector similarity (> 0.75 = good)
+- **Euclidean Similarity**: Feature distance (> 0.75 = good)
+- **Manhattan Similarity**: Alternative distance metric (> 0.75 = good)
+- **Mean Similarity**: Average of all metrics (> 0.75 = good)
+
+**Usage**:
+```bash
+scripts/visual-validate-materials impl.png ref.png
+
+# For more detailed patch-based comparison
+scripts/visual-validate-materials impl.png ref.png --use-patches
+
+# Output: Feature similarity scores + visual comparison
+# Validates materials, textures, and visual appearance
+```
+
+**When to use**: Material matching, texture similarity, visual feature comparison
+
 ### `visual-validate` - Orchestrator (Multi-Stage Pipeline)
 
 **Purpose**: Run stages in order, stop on first failure.
 
-**Pipeline**:
+**Pipeline** (basic):
 1. Geometry validation → if fail, STOP
 2. Structure validation → if fail, STOP
 3. AI feedback (optional) → suggestions for polish
 
+**Pipeline** (with ML):
+1. Geometry validation → if fail, STOP
+2. Depth validation (optional, ML) → if fail, STOP
+3. Grid validation (optional, ML) → if fail, STOP
+4. Materials validation (optional, ML) → if fail, STOP
+5. Structure validation → if fail, STOP
+6. AI feedback (optional) → suggestions for polish
+
 **Usage**:
 ```bash
-# Full pipeline
+# Basic pipeline (geometry + structure)
 scripts/visual-validate ref.png impl.png
+
+# Full ML pipeline (all validations)
+scripts/visual-validate ref.png impl.png --validate-all-ml
+
+# Selective ML validations
+scripts/visual-validate ref.png impl.png --validate-depth --validate-materials
 
 # Geometry only (fastest iteration)
 scripts/visual-validate ref.png impl.png --geometry-only
 
-# Skip AI (quantitative only)
+# Skip AI feedback (quantitative only)
 scripts/visual-validate ref.png impl.png --skip-ai
 
 # Custom AI prompt
@@ -145,6 +238,8 @@ scripts/visual-iterate ref.png http://localhost:8080 -w src/lab/,public/
 
 ## Validation Pipeline Architecture
 
+### Basic Pipeline
+
 ```
 ┌─────────────────────────────────────────────────┐
 │  Stage 1: Geometry (REQUIRED)                   │
@@ -175,6 +270,52 @@ scripts/visual-iterate ref.png http://localhost:8080 -w src/lab/,public/
 │                                                  │
 │  EXIT: Always 0 (suggestions only)              │
 └─────────────────────────────────────────────────┘
+```
+
+### Extended Pipeline (with ML)
+
+```
+┌─────────────────────────────────────────────────┐
+│  Stage 1: Geometry (REQUIRED)                   │
+│  ─────────────────────────────────────────────  │
+│  • OpenCV-based geometric validation            │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Stage 2: Depth (OPTIONAL, ML)                  │
+│  ─────────────────────────────────────────────  │
+│  • Depth Anything V2 - height map comparison    │
+│  • MAE, RMSE, correlation metrics               │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Stage 3: Grid (OPTIONAL, ML)                   │
+│  ─────────────────────────────────────────────  │
+│  • SAM 2 - grid segmentation & structure        │
+│  • Pin count, spacing, angle, regularity        │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Stage 4: Materials (OPTIONAL, ML)              │
+│  ─────────────────────────────────────────────  │
+│  • DINOv2 - visual feature comparison           │
+│  • Cosine, Euclidean, Manhattan similarity      │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Stage 5: Structure (REQUIRED)                  │
+│  ─────────────────────────────────────────────  │
+│  • SSIM, RMSE, histogram correlation            │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Stage 6: AI Feedback (OPTIONAL)                │
+│  ─────────────────────────────────────────────  │
+│  • Gemini-based aesthetic suggestions           │
+└─────────────────────────────────────────────────┘
+```
+
+**Enable ML stages**: Use `--validate-depth`, `--validate-grid`, `--validate-materials`, or `--validate-all-ml`
 ```
 
 ## Workflow: Matching a Visual Reference
