@@ -16,6 +16,7 @@
 - [Quick Reference Index](#quick-reference-index) - Core files, testing, dev tools, MCP
 - [Dev Quality Gates](#dev-quality-gates) - pre-commit hooks, linting, module deps
 - [Investigation Tactics](#investigation-tactics) - bat, rg, error-catalog
+- [Visual Validation](#visual-validation) - Reference analysis, actionable comparison
 
 **Resources:**
 - [Available Projects](#available-projects) - ~/Projects/best/* repos
@@ -326,6 +327,24 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 - `research/architectural-questions.edn` - Question templates
 - `research/proposal-ranker-prompt.md` - Ranking criteria
 - `.agentlog/session-*.md` - Past session learnings and failure modes
+
+**Visual Validation:**
+
+- `scripts/visual-analyze-reference` - Extract wave patterns, lighting, geometry from reference
+- `scripts/visual-compare-actionable` - Get specific fixes (e.g., "Scene 140% too bright → reduce lighting")
+- `scripts/README-VISUAL-VALIDATION.md` - Complete toolkit docs (basic + ML stages)
+- `docs/VISUAL_VALIDATION.md` - Architecture and design
+
+**Workflow:**
+```bash
+# 1. Analyze reference (what to implement)
+scripts/visual-analyze-reference reference.png
+# → Shows: 15 rings, spacing 17.1px, frequency ~6, brightness 71.2
+
+# 2. Compare and get fixes
+scripts/visual-compare-actionable reference.png impl.png
+# → Shows: "Scene 140% too bright → dir-light1: intensity *= -0.40"
+```
 
 **Common Failure Modes:**
 
