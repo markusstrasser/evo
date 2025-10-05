@@ -1,160 +1,335 @@
 (ns lab.app
+  "Polyphonic pitch detector demo app"
   (:require [replicant.dom :as r]
-            ["three" :as THREE]))
+            [clojure.walk]
+            [audio.core :as audio]
+            [audio.pitch :as pitch]
+            [audio.visualize :as viz]
+            [audio.utils :as utils]
+            [audio.test-data]))
 
-(def side-effects #{:alert :ui/prevent-default})
+(def side-effects #{:ui/prevent-default})
 
-(def store (atom {:wave-speed 0.015
-                  :wave-frequency 6.0}))
+(defonce store
+  (atom {:permission-granted? false
+         :audio-ready? false
+         :display-absolute? true
+         :start-midi 48  ;; C3
+         :end-midi 78    ;; F#5
+         :detected-notes []
+         :detected-midis []
+         :chord-info nil
+         :error nil
+         :paused? false
+         :frame-buffer []  ;; for smoothing chord detection
+         :last-chord nil}))
 
-;; Three.js scene setup
-(defonce scene-state (atom nil))
+(defonce canvas-state (atom nil))
+(defonce animation-frame (atom nil))
 
-(defn create-pin-array []
-  (let [group (THREE/Group.)
-        rows 60
-        cols 75
-        pin-radius 0.18
-        spacing 0.40
-        pin-segments 16
-        pins (atom [])]
-
-    ;; Create grid of pins
-    (doseq [row (range rows)
-            col (range cols)]
-      (let [x (- (* col spacing) (* cols spacing 0.5))
-            z (- (* row spacing) (* rows spacing 0.5))
-
-            ;; Check if within circular boundary
-            nx (/ x (* cols spacing 0.5))
-            nz (/ z (* rows spacing 0.5))
-            dist-sq (+ (* nx nx) (* nz nz))
-            dist (js/Math.sqrt dist-sq)
-
-            ;; Initial height based on radial distance (concentric circles)
-            ;; Increased amplitude for more pronounced waves
-            height (if (< dist-sq 1.0)
-                    (+ 2.0 (* 1.8 (js/Math.sin (* dist js/Math.PI 6))))
-                    0.1)]
-
-        (when (< dist 1.0)
-          (let [geometry (THREE/CylinderGeometry. pin-radius pin-radius height pin-segments)
-                material (THREE/MeshPhongMaterial. #js {:color 0xf0f0f0
-                                                        :shininess 50  ;; Increased for brighter highlights
-                                                        :specular 0x666666  ;; Brighter specular
-                                                        :flatShading false})
-                pin (THREE/Mesh. geometry material)]
-
-            (set! (.-x (.-position pin)) x)
-            (set! (.-y (.-position pin)) (/ height 2))
-            (set! (.-z (.-position pin)) z)
-
-            ;; Softer shadows
-            (set! (.-castShadow pin) true)
-            (set! (.-receiveShadow pin) false)
-
-            (.add group pin)
-            (swap! pins conj {:mesh pin :x x :z z :dist dist})))))
-
-    {:group group :pins @pins}))
-
-(defn init-three! []
-  (let [container (.getElementById js/document "canvas-container")
-        width (.-clientWidth container)
-        height (.-clientHeight container)
-
-        ;; Scene, camera, renderer
-        scene (THREE/Scene.)
-        camera (THREE/PerspectiveCamera. 42 (/ width height) 0.1 1000)
-        renderer (THREE/WebGLRenderer. #js {:antialias true :alpha false})
-
-        ;; Lighting - dark valleys, bright peaks (strong shadows not bright light)
-        ambient-light (THREE/AmbientLight. 0x000000)
-        dir-light1 (THREE/DirectionalLight. 0xffffff 1.8)  ;; Lower for deeper shadows
-        dir-light2 (THREE/DirectionalLight. 0xffffff 0.1)  ;; Minimal fill
-
-        ;; Pin array
-        {:keys [group pins]} (create-pin-array)
-
-        ;; Ground plane for subtle reflections
-        ground-geometry (THREE/PlaneGeometry. 30 30)
-        ground-material (THREE/MeshStandardMaterial. #js {:color 0x000000
-                                                          :metalness 0.15
-                                                          :roughness 0.7})
-        ground-plane (THREE/Mesh. ground-geometry ground-material)]
-
-    ;; Setup scene
-    (set! (.-background scene) (THREE/Color. 0x000000))
-
-    ;; Position ground
-    (.rotateX ground-plane (- (/ js/Math.PI 2)))
-    (set! (.-y (.-position ground-plane)) 0)
-    (set! (.-receiveShadow ground-plane) true)
-    (.add scene ground-plane)
-
-    ;; Position lights - strong from top-left
-    (.set (.-position dir-light1) -10 15 8)
-    (set! (.-castShadow dir-light1) true)
-    (.set (.-position dir-light2) 5 8 -5)
-
-    ;; Configure shadow properties
-    (set! (.-mapSize.width (.-shadow dir-light1)) 2048)
-    (set! (.-mapSize.height (.-shadow dir-light1)) 2048)
-
-    ;; Add to scene
-    (.add scene ambient-light)
-    (.add scene dir-light1)
-    (.add scene dir-light2)
-    (.add scene group)
-
-    ;; Camera position (3/4 view matching reference)
-    (set! (.-x (.-position camera)) -8)
-    (set! (.-y (.-position camera)) 18)
-    (set! (.-z (.-position camera)) 10)
-    (.lookAt camera (.-position group))
-
-    ;; Setup renderer
-    (.setSize renderer width height)
-    (set! (.-shadowMap.enabled renderer) true)
-    (set! (.-shadowMap.type renderer) (.-PCFSoftShadowMap THREE))
-    (.appendChild container (.-domElement renderer))
-
-    ;; Store references
-    (reset! scene-state {:scene scene
-                         :camera camera
-                         :renderer renderer
-                         :group group
-                         :pins pins
-                         :time 0})
-
-    ;; Static render (no animation - freeze at t=0 for visual matching)
-    (.render renderer scene camera)))
+;; Forward declarations
+(declare start-animation-loop! re-render!)
 
 (defn interpolate-actions [event actions]
   (clojure.walk/postwalk
    (fn [x]
      (case x
        :event/target.value (.. event -target -value)
+       :event/target.valueAsNumber (.. event -target -valueAsNumber)
        x))
    actions))
 
 (defn handle-ui-event [event-data raw-actions]
-  (doseq [[type payload] raw-actions]
-    (case type
+  (doseq [[action-type & payload] raw-actions]
+    (case action-type
       :ui/prevent-default (.preventDefault (:replicant/dom-event event-data))
-      :alert (js/alert (first payload))
-      :update-wave-speed (swap! store assoc :wave-speed (js/parseFloat payload))
-      :update-wave-frequency (swap! store assoc :wave-frequency (js/parseFloat payload))
+
+      :init-audio
+      (do
+        (audio/init-audio!)
+        (swap! store assoc :audio-ready? true))
+
+      :request-permission
+      (-> (audio/request-permission!)
+          (.then (fn [result]
+                   (if (= result :granted)
+                     (do
+                       (swap! store assoc
+                              :permission-granted? true
+                              :error nil)
+                       (start-animation-loop!))
+                     (swap! store assoc
+                            :permission-granted? false
+                            :error "Microphone permission denied"))))
+          (.catch (fn [error]
+                    (swap! store assoc
+                           :error (str "Audio error: " (.-message error))))))
+
+      :toggle-pause
+      (swap! store update :paused? not)
+
+      :toggle-display-mode
+      (do
+        (audio/toggle-display-mode!)
+        (swap! store update :display-absolute? not))
+
+      :update-start-midi
+      (swap! store assoc :start-midi (first payload))
+
+      :update-end-midi
+      (swap! store assoc :end-midi (first payload))
+
+      :load-test-data
+      (let [test-key (keyword (first payload))]
+        (js/console.log "Loading test data:" (first payload))
+        (when-let [test-data (audio.test-data/make-test-data test-key)]
+          (js/console.log "Test data generated, bin count:" (count test-data))
+          (swap! store assoc
+                 :test-mode? true
+                 :test-data test-data)
+          ;; Start animation loop for test mode
+          (start-animation-loop!)))
+
+      :exit-test-mode
+      (do
+        (swap! store dissoc :test-mode? :test-data)
+        ;; Stop animation loop
+        (when @animation-frame
+          (js/cancelAnimationFrame @animation-frame)
+          (reset! animation-frame nil)))
+
       nil)))
 
-(defn render-ui [state]
-  [:div
-   [:div#canvas-container {:style {:width "600px" :height "600px"}}]])
+(defn detect-and-update!
+  "Run pitch detection and update store"
+  []
+  (let [bin-data (if (:test-mode? @store)
+                   (:test-data @store)
+                   (audio/get-current-bin-data))]
+    (when bin-data
+      (when-let [result (pitch/find-polyphonic bin-data :legit-energy 0.25)]
+        (let [{:keys [legit-notes legit-midis]} result
+              chord-info (when (seq legit-notes)
+                          (pitch/detect-chord legit-notes))]
 
-(add-watch store :render
-           (fn [_ _ _ new-state]
-             (let [root (.getElementById js/document "root")]
-               (r/render root (render-ui new-state)))))
+          ;; Simple buffering for chord display stability
+          (swap! store
+                 (fn [s]
+                   (let [buffer (conj (:frame-buffer s []) legit-notes)
+                         buffer (vec (take-last 4 buffer))
+                         ;; Show chord if stable across frames
+                         stable? (or (<= (count legit-notes) 3)
+                                     (apply = buffer))
+                         display-chord (when (and stable? chord-info)
+                                        chord-info)]
+                     (assoc s
+                            :detected-notes legit-notes
+                            :detected-midis legit-midis
+                            :chord-info (or display-chord (:last-chord s))
+                            :last-chord (or display-chord (:last-chord s))
+                            :frame-buffer buffer)))))))))
+
+(defn render-canvas!
+  "Render one frame to canvas"
+  []
+  (let [{:keys [start-midi end-midi detected-midis chord-info test-mode? test-data]} @store]
+    (when-let [{:keys [canvas ctx]} @canvas-state]
+      (when-let [bin-data (if test-mode? test-data (audio/get-current-bin-data))]
+        (viz/render-frame! ctx canvas bin-data detected-midis chord-info
+                          start-midi end-midi)))))
+
+(defn animation-loop []
+  (when-not (:paused? @store)
+    (detect-and-update!)
+    (render-canvas!)
+    (re-render!))
+  (reset! animation-frame (js/requestAnimationFrame animation-loop)))
+
+(defn start-animation-loop! []
+  (when @animation-frame
+    (js/cancelAnimationFrame @animation-frame))
+  (animation-loop))
+
+(defn init-canvas! []
+  (when-let [canvas (.getElementById js/document "pitch-canvas")]
+    (when-let [container (.getElementById js/document "canvas-container")]
+      (let [width (.-clientWidth container)
+            height (.-clientHeight container)
+            ctx (.getContext canvas "2d")]
+        (js/console.log "Canvas initialized:" width "x" height)
+        (set! (.-width canvas) width)
+        (set! (.-height canvas) height)
+        (reset! canvas-state {:canvas canvas :ctx ctx})))))
+
+(defn render-ui [state]
+  (let [{:keys [permission-granted? audio-ready? error paused?
+                display-absolute? start-midi end-midi chord-info]} state
+        [chord-root chord-type] chord-info
+        chord-text (when chord-root
+                    (str (utils/midi->note-name chord-root) " "
+                         (get pitch/chord-abbreviations chord-type "")))]
+    [:div {:style {:font-family "sans-serif"
+                   :padding "20px"
+                   :background "#060606"
+                   :color "white"
+                   :min-height "100vh"}}
+
+     [:h1 {:style {:margin-bottom "10px"}} "Polyphonic Pitch Detector"]
+
+     [:p {:style {:color "#888" :font-size "14px"}}
+      "OKLCH colors · Web Audio API · ClojureScript"]
+
+     ;; Test Mode Controls
+     [:div {:style {:margin "15px 0"
+                    :padding "10px"
+                    :background "#1a1a1a"
+                    :border-radius "5px"}}
+      [:h3 {:style {:margin-top "0" :font-size "16px"}} "Test Mode (No Mic Required)"]
+      [:div {:style {:display "flex" :gap "5px" :flex-wrap "wrap"}}
+       (for [test-key [:c-major :d-minor :g-dominant-7 :single-note :octave :fifth]]
+         ^{:key test-key}
+         [:button {:on {:click [[:load-test-data (name test-key)]]}
+                   :style {:padding "5px 10px"
+                           :background "#555"
+                           :color "white"
+                           :border "none"
+                           :border-radius "3px"
+                           :cursor "pointer"
+                           :font-size "12px"}}
+          (name test-key)])
+       (when (:test-mode? state)
+         [:button {:on {:click [[:exit-test-mode]]}
+                   :style {:padding "5px 10px"
+                           :background "#f44"
+                           :color "white"
+                           :border "none"
+                           :border-radius "3px"
+                           :cursor "pointer"
+                           :font-size "12px"}}
+          "Exit Test Mode"])]]
+
+     (when error
+       [:div {:style {:background "#ff4444"
+                      :padding "10px"
+                      :border-radius "5px"
+                      :margin "10px 0"}}
+        error])
+
+     ;; Controls
+     [:div {:style {:margin "20px 0"
+                    :display "flex"
+                    :gap "10px"
+                    :align-items "center"
+                    :flex-wrap "wrap"}}
+
+      (when-not audio-ready?
+        [:button {:on {:click [[:init-audio]]}
+                  :style {:padding "10px 20px"
+                          :font-size "16px"
+                          :background "#4CAF50"
+                          :color "white"
+                          :border "none"
+                          :border-radius "5px"
+                          :cursor "pointer"}}
+         "Initialize Audio"])
+
+      (when (and audio-ready? (not permission-granted?))
+        [:button {:on {:click [[:request-permission]]}
+                  :style {:padding "10px 20px"
+                          :font-size "16px"
+                          :background "#feff00"
+                          :color "black"
+                          :border "none"
+                          :border-radius "5px"
+                          :cursor "pointer"
+                          :font-weight "bold"}}
+         "Start (Grant Mic Access)"])
+
+      (when permission-granted?
+        [:<>
+         [:button {:on {:click [[:toggle-pause]]}
+                   :style {:padding "10px 20px"
+                           :font-size "16px"
+                           :background (if paused? "#4CAF50" "#ff9800")
+                           :color "white"
+                           :border "none"
+                           :border-radius "5px"
+                           :cursor "pointer"}}
+          (if paused? "Resume" "Pause [Space]")]
+
+         [:button {:on {:click [[:toggle-display-mode]]}
+                   :style {:padding "10px 20px"
+                           :font-size "14px"
+                           :background "#666"
+                           :color "white"
+                           :border "none"
+                           :border-radius "5px"
+                           :cursor "pointer"}}
+          (if display-absolute? "Absolute" "Relative")]])]
+
+     ;; MIDI Range Controls
+     (when permission-granted?
+       [:div {:style {:margin "20px 0"}}
+        [:div {:style {:margin-bottom "10px"}}
+         [:label {:style {:margin-right "10px"}}
+          (str "Start: " (utils/midi->note-name-full start-midi))]
+         [:input {:type "range"
+                  :min 36
+                  :max 88
+                  :value start-midi
+                  :on {:input [[:update-start-midi :event/target.valueAsNumber]]}
+                  :style {:width "200px"}}]]
+
+        [:div
+         [:label {:style {:margin-right "10px"}}
+          (str "End: " (utils/midi->note-name-full end-midi))]
+         [:input {:type "range"
+                  :min 36
+                  :max 88
+                  :value end-midi
+                  :on {:input [[:update-end-midi :event/target.valueAsNumber]]}
+                  :style {:width "200px"}}]]])
+
+     ;; Chord Display
+     (when (and permission-granted? chord-text)
+       [:div {:style {:margin "20px 0"
+                      :padding "20px"
+                      :background (when chord-root
+                                   (utils/midi->oklch chord-root :alpha 0.3))
+                      :border-radius "10px"
+                      :font-size "32px"
+                      :font-weight "bold"
+                      :text-align "center"}}
+        chord-text])
+
+     ;; Canvas Container
+     [:div#canvas-container
+      {:style {:width "900px"
+               :height "400px"
+               :margin "20px 0"
+               :background "#000"
+               :border "2px solid #333"
+               :border-radius "5px"}}
+      [:canvas#pitch-canvas]]
+
+     ;; Instructions
+     [:div {:style {:margin-top "20px"
+                    :padding "15px"
+                    :background "#222"
+                    :border-radius "5px"
+                    :font-size "13px"}}
+      [:h3 {:style {:margin-top "0"}} "Instructions:"]
+      [:ul
+       [:li "Click 'Initialize Audio' to set up Web Audio API"]
+       [:li "Click 'Start' to grant microphone access (HTTPS required)"]
+       [:li "Sing or play an instrument - multiple notes detected simultaneously"]
+       [:li "Adjust MIDI range to focus on specific pitch ranges"]
+       [:li "Colors are OKLCH - perceptually uniform across the spectrum"]]]]))
+
+(defn re-render! []
+  (let [root (.getElementById js/document "root")]
+    (when root
+      (r/render root (render-ui @store)))))
 
 (defn ^:export main []
   (r/set-dispatch!
@@ -162,11 +337,20 @@
      (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
        (let [dom-event (:replicant/dom-event event-data)
              enriched-actions (interpolate-actions dom-event handler-data)]
-         (handle-ui-event event-data enriched-actions)))))
+         (handle-ui-event event-data enriched-actions)
+         ;; Re-render after handling event
+         (re-render!)))))
+
+  ;; Keyboard shortcuts
+  (.addEventListener js/document "keydown"
+                     (fn [e]
+                       (when (= (.-keyCode e) 32) ;; spacebar
+                         (.preventDefault e)
+                         (swap! store update :paused? not)
+                         (re-render!))))
 
   ;; Initial render
-  (let [root (.getElementById js/document "root")]
-    (r/render root (render-ui @store)))
+  (re-render!)
 
-  ;; Initialize Three.js after DOM is ready
-  (js/setTimeout init-three! 100))
+  ;; Initialize canvas after DOM is ready
+  (js/setTimeout init-canvas! 100))
