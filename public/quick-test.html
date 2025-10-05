@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quick Audio Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 18px;
+            background: #0f0;
+            color: #000;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #0c0;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 20px;
+            background: #111;
+            border: 1px solid #0f0;
+        }
+        .log { margin: 5px 0; }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+    </style>
+</head>
+<body>
+    <h1>🎵 Audio Package Quick Test</h1>
+    <p>This page tests if the audio package loads and works.</p>
+
+    <button onclick="testLoad()">1. Test Module Load</button>
+    <button onclick="testData()">2. Test Data Generation</button>
+    <button onclick="testDetection()">3. Test Pitch Detection</button>
+    <button onclick="testChord()">4. Test Chord Recognition</button>
+    <button onclick="testColor()">5. Test OKLCH Colors</button>
+
+    <div id="status"></div>
+
+    <script src="/js/app/main.js"></script>
+    <script>
+        const log = (msg, success = true) => {
+            const div = document.createElement('div');
+            div.className = 'log ' + (success ? 'success' : 'error');
+            div.textContent = (success ? '✓ ' : '✗ ') + msg;
+            document.getElementById('status').appendChild(div);
+        };
+
+        function testLoad() {
+            document.getElementById('status').innerHTML = '';
+            try {
+                const exists = !!audio;
+                log('audio namespace: ' + (exists ? 'EXISTS' : 'MISSING'), exists);
+                log('audio.core: ' + (!!audio.core ? 'EXISTS' : 'MISSING'), !!audio.core);
+                log('audio.pitch: ' + (!!audio.pitch ? 'EXISTS' : 'MISSING'), !!audio.pitch);
+                log('audio.test_data: ' + (!!audio.test_data ? 'EXISTS' : 'MISSING'), !!audio.test_data);
+                log('audio.utils: ' + (!!audio.utils ? 'EXISTS' : 'MISSING'), !!audio.utils);
+            } catch(e) {
+                log('ERROR: ' + e.message, false);
+            }
+        }
+
+        function testData() {
+            document.getElementById('status').innerHTML = '';
+            try {
+                const cMajor = audio.test_data.make_test_data(
+                    new cljs.core.Keyword(null, 'c-major', 'c-major')
+                );
+                const count = cljs.core.count(cMajor);
+                log('Generated C major data: ' + count + ' bins', count === 500);
+
+                const firstBin = cljs.core.first(cMajor);
+                const midiVal = cljs.core.get.call(null, firstBin,
+                    new cljs.core.Keyword(null, 'midi', 'midi'));
+                log('First bin MIDI: ' + midiVal, midiVal !== undefined);
+            } catch(e) {
+                log('ERROR: ' + e.message, false);
+            }
+        }
+
+        function testDetection() {
+            document.getElementById('status').innerHTML = '';
+            try {
+                const cMajor = audio.test_data.make_test_data(
+                    new cljs.core.Keyword(null, 'c-major', 'c-major')
+                );
+
+                const result = audio.pitch.find_polyphonic(cMajor,
+                    new cljs.core.Keyword(null, 'legit-energy', 'legit-energy'), 0.25
+                );
+
+                const notes = cljs.core.get.call(null, result,
+                    new cljs.core.Keyword(null, 'legit-notes', 'legit-notes'));
+                const midis = cljs.core.get.call(null, result,
+                    new cljs.core.Keyword(null, 'legit-midis', 'legit-midis'));
+
+                log('Detected notes: ' + cljs.core.pr_str(notes));
+                log('Detected MIDIs: ' + cljs.core.pr_str(midis));
+                log('Note count: ' + cljs.core.count(notes), cljs.core.count(notes) === 3);
+            } catch(e) {
+                log('ERROR: ' + e.message, false);
+            }
+        }
+
+        function testChord() {
+            document.getElementById('status').innerHTML = '';
+            try {
+                const chord = audio.pitch.detect_chord(cljs.core.vector(0, 4, 7));
+                const root = cljs.core.first(chord);
+                const type = cljs.core.second(chord);
+
+                log('Chord root: ' + root, root === 0);
+                log('Chord type: ' + type, type === 'Major');
+                log('Full result: [' + root + ' "' + type + '"]', root === 0 && type === 'Major');
+            } catch(e) {
+                log('ERROR: ' + e.message, false);
+            }
+        }
+
+        function testColor() {
+            document.getElementById('status').innerHTML = '';
+            try {
+                const c4 = audio.utils.midi__GT_oklch(60);
+                const e4 = audio.utils.midi__GT_oklch(64);
+                const g4 = audio.utils.midi__GT_oklch(67);
+
+                log('C4 (MIDI 60): ' + c4, c4.includes('oklch'));
+                log('E4 (MIDI 64): ' + e4, e4.includes('oklch'));
+                log('G4 (MIDI 67): ' + g4, g4.includes('oklch'));
+
+                // Show color samples
+                const sampleDiv = document.createElement('div');
+                sampleDiv.innerHTML = `
+                    <div style="margin-top:10px">
+                        <span style="display:inline-block;width:100px;height:30px;background:${c4};border:1px solid #0f0"></span> C
+                        <span style="display:inline-block;width:100px;height:30px;background:${e4};border:1px solid #0f0"></span> E
+                        <span style="display:inline-block;width:100px;height:30px;background:${g4};border:1px solid #0f0"></span> G
+                    </div>
+                `;
+                document.getElementById('status').appendChild(sampleDiv);
+            } catch(e) {
+                log('ERROR: ' + e.message, false);
+            }
+        }
+
+        // Auto-run on load
+        window.onload = () => {
+            log('Page loaded - Click buttons to test', true);
+        };
+    </script>
+</body>
+</html>
