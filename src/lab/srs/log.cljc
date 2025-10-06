@@ -118,7 +118,7 @@
 ;; Disk Persistence
 ;; ============================================================================
 
-(def ^:dynamic *log-file* "ops-log.edn")
+(def ^:dynamic *log-file* "src/lab/srs/ops-log.edn")
 
 (defn persist-entry!
   "Append a single log entry to disk as EDN (CLJ only).
