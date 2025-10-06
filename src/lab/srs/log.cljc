@@ -1,6 +1,8 @@
 (ns lab.srs.log
   "Append-only log for SRS transactions.
-   Based on Codex proposal: {:timestamp :intent :compiled-ops :kernel/after-hash}")
+   Based on Codex proposal: {:timestamp :intent :compiled-ops :kernel/after-hash}"
+  #?(:clj (:require [clojure.java.io :as io]
+                    [clojure.edn :as edn])))
 
 ;; ============================================================================
 ;; Log Entry Format
@@ -8,20 +10,20 @@
 
 (defn log-entry
   "Create a log entry for an SRS transaction.
-   
+
    Format:
-   {:log/id uuid
-    :timestamp inst
+   {:log/id uuid-string
+    :timestamp iso-string
     :intent {:op :srs/... ...}
     :compiled-ops [{:op :create-node ...} ...]
     :kernel/after-hash \"sha256...\"  ; Optional integrity check
     :source :ui | :markdown           ; Where intent originated
     :actor \"user-id\"}"
   [{:keys [intent compiled-ops db-after source actor]}]
-  {:log/id #?(:clj (java.util.UUID/randomUUID)
-              :cljs (random-uuid))
-   :timestamp #?(:clj (java.time.Instant/now)
-                 :cljs (js/Date.))
+  {:log/id #?(:clj (str (java.util.UUID/randomUUID))
+              :cljs (str (random-uuid)))
+   :timestamp #?(:clj (str (java.time.Instant/now))
+                 :cljs (.toISOString (js/Date.)))
    :intent intent
    :compiled-ops compiled-ops
    :kernel/after-hash (when db-after
@@ -113,11 +115,48 @@
       entry)))
 
 ;; ============================================================================
+;; Disk Persistence
+;; ============================================================================
+
+(def ^:dynamic *log-file* "ops-log.edn")
+
+(defn persist-entry!
+  "Append a single log entry to disk as EDN (CLJ only).
+   Each entry is written on its own line for easy incremental reads."
+  [entry]
+  #?(:clj (do (io/make-parents *log-file*)
+              (spit *log-file* (str (pr-str entry) "\n") :append true))
+     :cljs nil))
+
+(defn load-from-file
+  "Load all log entries from EDN file (CLJ only).
+   Returns vector of entries in order, or empty vector if file doesn't exist."
+  []
+  #?(:clj (if (.exists (io/file *log-file*))
+            (with-open [r (io/reader *log-file*)]
+              (vec (map edn/read-string (line-seq r))))
+            [])
+     :cljs []))
+
+(defn restore-log!
+  "Restore log state from disk file (CLJ only).
+   Replaces current in-memory log with entries from file.
+   Returns number of entries loaded."
+  []
+  #?(:clj (let [entries (load-from-file)]
+            (reset! log-state entries)
+            (when (seq entries)
+              (set-cursor! (dec (count entries))))
+            (count entries))
+     :cljs 0))
+
+;; ============================================================================
 ;; Transaction Recording
 ;; ============================================================================
 
 (defn record-transaction!
   "Record a complete SRS transaction to the log.
+   Auto-persists to disk (CLJ only).
    Returns the log entry."
   [{:keys [intent compiled-ops _db-before db-after source actor]}]
   (let [entry (log-entry {:intent intent
@@ -128,6 +167,8 @@
     (append! entry)
     ;; Update cursor to point to latest
     (set-cursor! (dec (log-size)))
+    ;; Persist to disk (CLJ only, CLJS no-op)
+    (persist-entry! entry)
     entry))
 
 ;; ============================================================================
