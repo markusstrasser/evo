@@ -1,0 +1,49 @@
+# REPO CONTEXT: THREE-OP KERNEL ARCHITECTURE
+
+You are designing an extension to this existing kernel system:
+
+```
+THREE-OP KERNEL ARCHITECTURE
+- Canonical State: {:nodes, :children-by-parent, :roots}
+- 7 Derived Indexes: parent-of, index-of, prev/next-id-of, pre/post/id-by-pre
+- 3 Core Operations: create-node, place, update-node
+- Transaction Pipeline: normalize → validate → apply → derive
+- Extension Pattern: Compile high-level "intents" to core operations
+- Plugin System: Add derived indexes via derive-indexes hooks
+```
+
+# SRS ARCHITECTURE TASK
+
+Design a minimal Anki-like SRS (Spaced Repetition System) that extends this kernel with:
+
+CORE REQUIREMENTS:
+- Source of truth: Editable markdown files with frontmatter (cards defined as .md files)
+- Append-only log persistence for all state changes (separate from kernel DB)
+- Use existing kernel ops (create-node, place, update-node) for card structure
+- 4 SRS-specific actions: create-card, update-card, review-card, schedule-card (plus undo/redo)
+- Plugin system for card types (e.g., image-occlusion, cloze deletion)
+- Mock scheduler (just fake SRS intervals for now - e.g., 1d, 3d, 7d, 14d, 30d)
+
+ARCHITECTURE QUESTIONS:
+1. How should markdown frontmatter map to kernel nodes? (YAML → :props shape)
+2. What's the append-only log format for SRS events? (EDN transactions?)
+3. How do card-type plugins extend without modifying core?
+4. What are the exact 4 SRS operations and their schemas? (Malli format)
+5. How does undo/redo work with append-only log?
+6. What derived indexes are needed? (due-date, review-history, scheduling-metadata)
+7. How does markdown editing reconcile with log-based state?
+8. How do image-occlusion cards work? (SVG overlays? Separate nodes?)
+
+Show:
+- Kernel DB extension (new node types: :card, :deck, :review?)
+- SRS operation schemas (Malli, matching existing pattern)
+- Append-only log entry format (EDN examples)
+- Plugin extension points (multimethods like compile-intent pattern)
+- Code patterns (concrete Clojure examples)
+- How intents compile to kernel ops (like :indent/:outdent pattern)
+
+Focus on:
+- Reusing existing kernel (don't reinvent create/place/update)
+- Separation of concerns (kernel vs SRS vs persistence)
+- Concrete schemas and data shapes
+- Plugin extensibility without core changes
