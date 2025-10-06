@@ -45,19 +45,20 @@
 ;; ============================================================================
 
 (defn now-instant
-  "Returns current timestamp in platform-appropriate format.
-   Clj: java.time.Instant, Cljs: js/Date"
+  "Returns current timestamp as ISO string (EDN-safe).
+   Format: '2025-10-06T15:20:56.207786Z'"
   []
-  #?(:clj (java.time.Instant/now)
-     :cljs (js/Date.)))
+  #?(:clj (str (java.time.Instant/now))
+     :cljs (.toISOString (js/Date.))))
 
 (defn add-days
-  "Adds `days` to an instant/date, returning a new instant.
+  "Adds `days` to an ISO timestamp string, returning new ISO string.
    Handles platform differences between JVM and JS."
-  [instant days]
-  {:pre [(some? instant) (number? days)]}
-  #?(:clj (.plusSeconds instant (* days 86400))
-     :cljs (js/Date. (+ (.getTime instant) (* days 86400 1000)))))
+  [iso-string days]
+  {:pre [(string? iso-string) (number? days)]}
+  #?(:clj (str (.plusSeconds (java.time.Instant/parse iso-string) (* days 86400)))
+     :cljs (let [d (js/Date. iso-string)]
+             (.toISOString (js/Date. (+ (.getTime d) (* days 86400 1000)))))))
 
 ;; ============================================================================
 ;; Mock Scheduler (simple SM-2 intervals)
