@@ -120,36 +120,36 @@
    - create-node (review)
    - place (review under card)
    - update-node (card scheduling metadata)
-  
+
   Example:
     {:op :srs/review-card
      :card-id \"card-123\"
      :grade :good
-     :timestamp #inst \"2025-01-15T10:30:00Z\"
+     :timestamp \"2025-10-06T15:25:45.209560Z\"
      :latency-ms 3500}"
   [:map {:closed true
          :doc "Record a review event"}
    [:op [:= :srs/review-card]]
    [:card-id CardId]
    [:grade ReviewGrade]
-   [:timestamp inst?]
+   [:timestamp [:string {:min 1 :doc "ISO 8601 timestamp string"}]]
    [:latency-ms {:optional true} pos-int?]])
 
 (def ScheduleCard
   "Update card scheduling metadata. Compiles to:
    - update-node (card scheduling props)
-  
+
   Example:
     {:op :srs/schedule-card
      :card-id \"card-123\"
-     :due-date #inst \"2025-01-20T10:00:00Z\"
+     :due-date \"2025-10-13T15:25:45.209592Z\"
      :interval-days 7
      :ease-factor 2.5}"
   [:map {:closed true
          :doc "Update card scheduling parameters"}
    [:op [:= :srs/schedule-card]]
    [:card-id CardId]
-   [:due-date inst?]
+   [:due-date [:string {:min 1 :doc "ISO 8601 timestamp string"}]]
    [:interval-days pos-int?]
    [:ease-factor {:optional true} float?]])
 
