@@ -313,3 +313,5 @@
   ;; Or run individually:
   (demo-basic-workflow)
   (demo-image-occlusion))
+
+(run-all-demos!)
