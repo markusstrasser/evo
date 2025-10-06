@@ -142,8 +142,8 @@
         review-intent {:op :srs/review-card
                        :card-id "card-dna"
                        :grade :good
-                       :timestamp #?(:clj (java.time.Instant/now)
-                                     :cljs (js/Date.))
+                       :timestamp #?(:clj (str (java.time.Instant/now))
+                                     :cljs (.toISOString (js/Date.)))
                        :latency-ms 3500}
 
         {db4 :db} (run-srs-transaction db3 review-intent)
@@ -181,8 +181,8 @@
         review2-intent {:op :srs/review-card
                         :card-id "card-rna"
                         :grade :again
-                        :timestamp #?(:clj (java.time.Instant/now)
-                                      :cljs (js/Date.))
+                        :timestamp #?(:clj (str (java.time.Instant/now))
+                                      :cljs (.toISOString (js/Date.)))
                         :latency-ms 15000}
 
         {db6 :db} (run-srs-transaction db5 review2-intent)
