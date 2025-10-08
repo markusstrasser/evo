@@ -1,5 +1,6 @@
 {:lint-as {clojure.test.check.generators/let        [clojure.core/let]
-            clojure.test.check.clojure-test/defspec [clojure.test/deftest]}
+            clojure.test.check.clojure-test/defspec [clojure.test/deftest]
+            promesa.core/let                         [clojure.core/let]}
 
  :linters {:syntax                       {:level :off}
            :unresolved-namespace         {:level :error}
