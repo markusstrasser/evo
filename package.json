@@ -16,6 +16,7 @@
     "kb:thin": "uv run ~/Projects/best/thin_repos.py"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "shadow-cljs": "^3.2.0"
   },
   "dependencies": {
