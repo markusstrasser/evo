@@ -75,6 +75,11 @@
              (when show-answer?
                (str "<div class='answer'><h2>Answer</h2><p>" (:answer card) "</p></div>")))
     :cloze (str "<div class='cloze-text'><p>" (:template card) "</p></div>")
+    :image-occlusion (str "<div class='image-occlusion'>"
+                          "<img src='" (:image-url card) "' alt='" (:alt-text card) "' />"
+                          (when show-answer?
+                            (str "<div class='regions'><p>Regions: " (str/join ", " (:regions card)) "</p></div>"))
+                          "</div>")
     ""))
 
 (defn handle-undo! []

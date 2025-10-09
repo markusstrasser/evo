@@ -25,6 +25,19 @@
             :deletions ["mitochondria" "powerhouse"]}
            (core/parse-card "The [mitochondria] is the [powerhouse] of the cell"))))
 
+  (testing "Image occlusion card parsing"
+    (is (= {:type :image-occlusion
+            :alt-text "Brain diagram"
+            :image-url "brain.png"
+            :regions ["hippocampus" "amygdala" "cortex"]}
+           (core/parse-card "![Brain diagram](brain.png) {hippocampus, amygdala, cortex}")))
+
+    (is (= {:type :image-occlusion
+            :alt-text "Noise test"
+            :image-url "noise.png"
+            :regions ["region1"]}
+           (core/parse-card "![Noise test](noise.png) {region1}"))))
+
   (testing "Invalid cards"
     (is (nil? (core/parse-card "No delimiter or cloze")))))
 
