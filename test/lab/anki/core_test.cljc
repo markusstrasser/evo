@@ -7,23 +7,23 @@
     (is (= {:type :qa
             :question "What is 2+2?"
             :answer "4"}
-           (core/parse-card "What is 2+2? ; 4")))
+           (core/parse-card "q What is 2+2?\na 4")))
 
     (is (= {:type :qa
             :question "What is the capital of France?"
             :answer "Paris"}
-           (core/parse-card "What is the capital of France? ; Paris"))))
+           (core/parse-card "q What is the capital of France?\na Paris"))))
 
   (testing "Cloze card parsing"
     (is (= {:type :cloze
             :template "Human DNA has [3 Billion] base pairs"
             :deletions ["3 Billion"]}
-           (core/parse-card "Human DNA has [3 Billion] base pairs")))
+           (core/parse-card "c Human DNA has [3 Billion] base pairs")))
 
     (is (= {:type :cloze
             :template "The [mitochondria] is the [powerhouse] of the cell"
             :deletions ["mitochondria" "powerhouse"]}
-           (core/parse-card "The [mitochondria] is the [powerhouse] of the cell"))))
+           (core/parse-card "c The [mitochondria] is the [powerhouse] of the cell"))))
 
   (testing "Image occlusion card parsing"
     (is (= {:type :image-occlusion
