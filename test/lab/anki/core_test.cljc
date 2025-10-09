@@ -2,39 +2,31 @@
   (:require [clojure.test :refer [deftest is testing]]
             [lab.anki.core :as core]))
 
-(deftest parse-qa-card-test
+(deftest parse-card-test
   (testing "QA card parsing"
     (is (= {:type :qa
             :question "What is 2+2?"
             :answer "4"}
-           (core/parse-qa-card "What is 2+2? ; 4")))
+           (core/parse-card "What is 2+2? ; 4")))
 
     (is (= {:type :qa
             :question "What is the capital of France?"
             :answer "Paris"}
-           (core/parse-qa-card "What is the capital of France? ; Paris")))
+           (core/parse-card "What is the capital of France? ; Paris"))))
 
-    (is (nil? (core/parse-qa-card "No delimiter here")))))
-
-(deftest parse-cloze-card-test
   (testing "Cloze card parsing"
     (is (= {:type :cloze
             :template "Human DNA has [3 Billion] base pairs"
             :deletions ["3 Billion"]}
-           (core/parse-cloze-card "Human DNA has [3 Billion] base pairs")))
+           (core/parse-card "Human DNA has [3 Billion] base pairs")))
 
     (is (= {:type :cloze
             :template "The [mitochondria] is the [powerhouse] of the cell"
             :deletions ["mitochondria" "powerhouse"]}
-           (core/parse-cloze-card "The [mitochondria] is the [powerhouse] of the cell")))
+           (core/parse-card "The [mitochondria] is the [powerhouse] of the cell"))))
 
-    (is (nil? (core/parse-cloze-card "No cloze deletions here")))))
-
-(deftest parse-card-test
-  (testing "General card parsing"
-    (is (= :qa (:type (core/parse-card "Question ; Answer"))))
-    (is (= :cloze (:type (core/parse-card "Text [deletion] here"))))
-    (is (nil? (core/parse-card "Invalid card")))))
+  (testing "Invalid cards"
+    (is (nil? (core/parse-card "No delimiter or cloze")))))
 
 (deftest card-hash-test
   (testing "Card hashing"

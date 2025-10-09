@@ -4,29 +4,30 @@
 
 ;; Card parsing
 
-(defn parse-qa-card
-  "Parse a QA card in the format 'Question ; Answer'"
-  [text]
-  (when-let [[_ question answer] (re-matches #"^(.+?)\s*;\s*(.+)$" text)]
-    {:type :qa
-     :question (str/trim question)
-     :answer (str/trim answer)}))
+(def qa-pattern #"^(.+?)\s*;\s*(.+)$")
+(def cloze-pattern #"\[([^\]]+)\]")
 
-(defn parse-cloze-card
-  "Parse a cloze deletion card in the format 'Text [deletion] more text'"
-  [text]
-  (when-let [matches (re-seq #"\[([^\]]+)\]" text)]
-    (let [deletions (mapv second matches)]
-      {:type :cloze
-       :template text
-       :deletions deletions})))
+(def card-parsers
+  "Registry of card parsers - add new card types here"
+  [{:type :qa
+    :parse (fn [text]
+             (when-let [[_ q a] (re-matches qa-pattern text)]
+               {:question (str/trim q)
+                :answer (str/trim a)}))}
+   {:type :cloze
+    :parse (fn [text]
+             (when-let [matches (re-seq cloze-pattern text)]
+               {:template text
+                :deletions (mapv second matches)}))}])
 
 (defn parse-card
   "Parse a card from markdown text. Returns nil if invalid."
   [text]
   (let [trimmed (str/trim text)]
-    (or (parse-qa-card trimmed)
-        (parse-cloze-card trimmed))))
+    (some (fn [{:keys [type parse]}]
+            (when-let [data (parse trimmed)]
+              (assoc data :type type)))
+          card-parsers)))
 
 ;; Card hashing
 
