@@ -41,36 +41,47 @@
              ;; Simple hash for CLJS (good enough for this use case)
              (str (cljs.core/hash s)))))
 
+;; Time helpers
+
+(defn now-ms
+  "Get current time in milliseconds"
+  []
+  #?(:clj (System/currentTimeMillis)
+     :cljs (.getTime (js/Date.))))
+
+(defn date-from-ms
+  "Create date from milliseconds"
+  [ms]
+  #?(:clj (java.util.Date. ms)
+     :cljs (js/Date. ms)))
+
 ;; Card metadata
 
 (defn new-card-meta
   "Create metadata for a new card"
   [hash]
   {:card-hash hash
-   :created-at #?(:clj (java.util.Date.) :cljs (js/Date.))
-   :due-at #?(:clj (java.util.Date.) :cljs (js/Date.))
-   :interval 0
-   :ease-factor 2.5
+   :created-at (date-from-ms (now-ms))
+   :due-at (date-from-ms (now-ms))
    :reviews 0})
 
 ;; Scheduling (mock algorithm for testing)
 
+(def rating->interval-ms
+  "Mock SRS intervals in milliseconds for each rating"
+  {:forgot 0
+   :hard 60000
+   :good 300000
+   :easy 600000})
+
 (defn schedule-card
   "Schedule next review based on rating. Rating: :forgot :hard :good :easy
-   Mock algorithm: just increments review count and sets a fixed interval."
+   Mock algorithm: increments review count and sets a fixed interval."
   [card-meta rating]
-  (let [new-meta (update card-meta :reviews inc)
-        now #?(:clj (System/currentTimeMillis) :cljs (.getTime (js/Date.)))
-        ;; Mock intervals: forgot=now, hard=1min, good=5min, easy=10min
-        interval-ms (case rating
-                      :forgot 0
-                      :hard 60000
-                      :good 300000
-                      :easy 600000)
-        due-ms (+ now interval-ms)]
-    (assoc new-meta
-           :due-at #?(:clj (java.util.Date. due-ms) :cljs (js/Date. due-ms))
-           :last-rating rating)))
+  (-> card-meta
+      (update :reviews inc)
+      (assoc :due-at (date-from-ms (+ (now-ms) (get rating->interval-ms rating 0)))
+             :last-rating rating)))
 
 ;; Event log
 
@@ -78,7 +89,7 @@
   "Create a new event"
   [event-type data]
   {:event/type event-type
-   :event/timestamp #?(:clj (java.util.Date.) :cljs (js/Date.))
+   :event/timestamp (date-from-ms (now-ms))
    :event/data data})
 
 (defn review-event
@@ -129,12 +140,10 @@
 (defn due-cards
   "Get all cards that are due for review"
   [state]
-  (let [now #?(:clj (System/currentTimeMillis) :cljs (.getTime (js/Date.)))]
+  (let [now (now-ms)]
     (->> (:meta state)
          (filter (fn [[_hash meta]]
-                   (<= #?(:clj (.getTime (:due-at meta))
-                          :cljs (.getTime (:due-at meta)))
-                       now)))
+                   (<= (.getTime (:due-at meta)) now)))
          (map first)
          vec)))
 

@@ -48,8 +48,6 @@
   (testing "New card metadata"
     (let [meta (core/new-card-meta "test-hash")]
       (is (= "test-hash" (:card-hash meta)))
-      (is (= 0 (:interval meta)))
-      (is (= 2.5 (:ease-factor meta)))
       (is (= 0 (:reviews meta)))
       (is (some? (:created-at meta)))
       (is (some? (:due-at meta))))))
@@ -57,8 +55,6 @@
 (deftest schedule-card-test
   (testing "Card scheduling (mock algorithm)"
     (let [initial-meta {:card-hash "test"
-                        :interval 1
-                        :ease-factor 2.5
                         :reviews 0
                         :created-at #?(:clj (java.util.Date.) :cljs (js/Date.))
                         :due-at #?(:clj (java.util.Date.) :cljs (js/Date.))}]
@@ -107,7 +103,7 @@
               new-state (core/apply-event initial-state event)]
           (is (= card (get-in new-state [:cards card-hash])))
           (is (some? (get-in new-state [:meta card-hash])))
-          (is (= 0 (get-in new-state [:meta card-hash :interval])))))
+          (is (= 0 (get-in new-state [:meta card-hash :reviews])))))
 
       (testing "Review event"
         (let [create-event (core/card-created-event card-hash card)
@@ -141,8 +137,6 @@
           state {:cards {hash card}
                  :meta {hash {:card-hash hash
                               :due-at past-date
-                              :interval 0
-                              :ease-factor 2.5
                               :reviews 0}}}]
       (is (= [hash] (core/due-cards state)))
 
@@ -153,7 +147,7 @@
   (testing "Getting card with metadata"
     (let [card {:type :qa :question "Q" :answer "A"}
           hash (core/card-hash card)
-          meta {:card-hash hash :interval 1}
+          meta {:card-hash hash :reviews 1}
           state {:cards {hash card}
                  :meta {hash meta}}]
       (let [result (core/card-with-meta state hash)]
