@@ -1,18 +1,97 @@
 (ns lab.anki.ui
-  "Anki clone UI - vanilla DOM rendering"
+  "Anki clone UI using Replicant"
   (:require [clojure.string :as str]
             [lab.anki.core :as core]
             [lab.anki.fs :as fs]
-            [promesa.core :as p]))
+            [promesa.core :as p]
+            [replicant.dom :as r]))
 
-;; NOTE: All requires are used in the DOM rendering/event handling functions below
+;; State
+(defonce !state (atom {:screen :setup
+                       :state {:cards {} :meta {}}
+                       :dir-handle nil
+                       :show-answer? false}))
 
-;; State management
+;; Components
 
-(defonce app-state (atom {:state {:cards {} :meta {}}
-                          :dir-handle nil
-                          :screen :setup
-                          :undo-stack []}))
+(defn setup-screen []
+  [:div.setup-screen
+   [:h1 "Welcome to Local-First Anki"]
+   [:p "To get started, select a folder to store your cards and review data."]
+   [:button
+    {:on {:click [::select-folder]}}
+    "Select Folder"]])
+
+(defn rating-buttons []
+  [:div.rating-buttons
+   (for [rating [:forgot :hard :good :easy]]
+     ^{:key rating}
+     [:button
+      {:on {:click [::rate-card rating]}}
+      (str/capitalize (name rating))])])
+
+(defn review-card-qa [{:keys [card show-answer?]}]
+  [:div.review-card.qa-card
+   [:div.question
+    [:h2 "Question"]
+    [:p (:question card)]]
+   (if show-answer?
+     [:div
+      [:div.answer
+       [:h2 "Answer"]
+       [:p (:answer card)]]
+      (rating-buttons)]
+     [:button {:on {:click [::show-answer]}} "Show Answer"])])
+
+(defn review-card-cloze [{:keys [card show-answer?]}]
+  (let [template (:template card)
+        deletions (:deletions card)
+        deletion (first deletions) ;; Show first deletion for now
+        display-text (if show-answer?
+                       template
+                       (str/replace template
+                                    (re-pattern (str "\\[" deletion "\\]"))
+                                    "[...]"))]
+    [:div.review-card.cloze-card
+     [:div.cloze-text
+      [:p display-text]]
+     (if show-answer?
+       (rating-buttons)
+       [:button {:on {:click [::show-answer]}} "Show Answer"])]))
+
+(defn review-screen [{:keys [state show-answer?]}]
+  (let [due-hashes (core/due-cards state)
+        current-hash (first due-hashes)
+        remaining (count due-hashes)]
+    (if current-hash
+      (let [card (core/card-with-meta state current-hash)]
+        [:div.review-screen
+         [:div.review-header
+          [:p (str "Cards remaining: " remaining)]]
+         [:div.review-content
+          (case (:type card)
+            :qa [review-card-qa {:card card :show-answer? show-answer?}]
+            :cloze [review-card-cloze {:card card :show-answer? show-answer?}]
+            [:div "Unknown card type"])]])
+      [:div.review-screen
+       [:h2 "No cards due!"]
+       [:p "Come back later for more reviews."]])))
+
+(defn main-app [{:keys [screen state show-answer?]}]
+  [:div.anki-app
+   [:nav
+    [:h1 "Local-First Anki"]
+    [:p "Edit cards.md in your folder to add/modify cards"]]
+   [:main
+    (case screen
+      :setup [setup-screen]
+      :review [review-screen {:state state :show-answer? show-answer?}]
+      [:div "Unknown screen"])]])
+
+;; Forward declarations
+(declare render!)
+
+;; Event Handlers
 
 (defn load-and-sync-cards!
   "Load cards.md, parse it, and create events for any new cards"
@@ -22,171 +101,69 @@
           parsed-cards (keep core/parse-card lines)
           _ (js/console.log "Parsed" (count parsed-cards) "cards from markdown")
 
-          ;; Load existing events and get current state
           events (fs/load-log dir-handle)
           current-state (core/reduce-events events)
           existing-hashes (set (keys (:cards current-state)))
 
-          ;; Find new cards
-          new-cards (remove (fn [card]
-                              (contains? existing-hashes (core/card-hash card)))
-                            parsed-cards)
+          new-cards (remove #(contains? existing-hashes (core/card-hash %)) parsed-cards)
           _ (js/console.log "Found" (count new-cards) "new cards")
 
-          ;; Create events for new cards
-          new-events (mapv (fn [card]
-                             (let [hash (core/card-hash card)]
-                               (core/card-created-event hash card)))
-                           new-cards)]
+          new-events (mapv #(core/card-created-event (core/card-hash %) %) new-cards)]
 
-    (if (seq new-events)
-      (p/do!
-        (js/console.log "Saving" (count new-events) "new card events")
-        (fs/append-to-log dir-handle new-events))
-      (js/console.log "No new cards to save"))
+    (when (seq new-events)
+      (js/console.log "Saving" (count new-events) "new card events")
+      (p/do! (fs/append-to-log dir-handle new-events)))
 
-    ;; Return updated state
     (core/reduce-events (concat events new-events))))
 
-(defn handle-select-folder! []
-  (js/console.log "Selecting folder...")
-  (p/let [handle (fs/pick-directory)]
-    (js/console.log "Folder selected:" handle)
-    (fs/save-dir-handle handle)
-    (p/let [state (load-and-sync-cards! handle)]
-      (swap! app-state assoc
-             :dir-handle handle
-             :state state
-             :screen :review
-             :undo-stack [])
-      (js/console.log "Loaded state with" (count (:cards state)) "total cards"))))
+(defn handle-event [_replicant-data [action & args]]
+  (case action
+    ::select-folder
+    (p/let [handle (fs/pick-directory)]
+      (js/console.log "Folder selected:" handle)
+      (fs/save-dir-handle handle)
+      (p/let [state (load-and-sync-cards! handle)]
+        (swap! !state assoc
+               :dir-handle handle
+               :state state
+               :screen :review)
+        (js/console.log "Loaded state with" (count (:cards state)) "total cards")
+        (render!)))
 
-(defn rating-buttons-html []
-  (str "<div class='rating-buttons'>"
-       "<button id='btn-forgot'>Forgot</button>"
-       "<button id='btn-hard'>Hard</button>"
-       "<button id='btn-good'>Good</button>"
-       "<button id='btn-easy'>Easy</button>"
-       "</div>"))
+    ::show-answer
+    (do
+      (swap! !state assoc :show-answer? true)
+      (render!))
 
-(defn card-content-html [card show-answer?]
-  (case (:type card)
-    :qa (str "<div class='question'><h2>Question</h2><p>" (:question card) "</p></div>"
-             (when show-answer?
-               (str "<div class='answer'><h2>Answer</h2><p>" (:answer card) "</p></div>")))
-    :cloze (str "<div class='cloze-text'><p>" (:template card) "</p></div>")
-    :image-occlusion (str "<div class='image-occlusion'>"
-                          "<img src='" (:image-url card) "' alt='" (:alt-text card) "' />"
-                          (when show-answer?
-                            (str "<div class='regions'><p>Regions: " (str/join ", " (:regions card)) "</p></div>"))
-                          "</div>")
-    ""))
+    ::rate-card
+    (let [rating (first args)
+          state (:state @!state)
+          dir-handle (:dir-handle @!state)
+          due (core/due-cards state)
+          current-hash (first due)]
+      (when (and current-hash dir-handle)
+        (js/console.log "Rating card" rating)
+        (p/let [event (core/review-event current-hash rating)
+                _ (fs/append-to-log dir-handle [event])
+                new-state (core/apply-event state event)]
+          (swap! !state assoc
+                 :state new-state
+                 :show-answer? false)
+          (js/console.log "Review complete, remaining:" (count (core/due-cards new-state)))
+          (render!))))
 
-(defn handle-undo! []
-  (when-let [last-review (peek (:undo-stack @app-state))]
-    (js/console.log "Undoing last review:" last-review)
-    (let [dir-handle (:dir-handle @app-state)]
-      (p/let [;; Remove last event from log and reload state without it
-              events (fs/load-log dir-handle)
-              ;; Remove the last review event (the one we just added)
-              events-without-last (vec (butlast events))
-              new-state (core/reduce-events events-without-last)
-              ;; Rewrite the log without the last event
-              _ (fs/write-edn-file dir-handle "log.edn" events-without-last)]
-        (swap! app-state assoc
-               :state new-state
-               :show-answer? false)
-        (swap! app-state update :undo-stack pop)))))
+    (js/console.warn "Unknown action:" action)))
+
+;; Rendering
 
 (defn render! []
-  (let [root (.getElementById js/document "root")]
-    (set! (.-innerHTML root)
-          (str "<div class='anki-app'>"
-               "<nav>"
-               "<h1>Local-First Anki</h1>"
-               "<p>Edit cards.md in your folder to add/modify cards</p>"
-               "</nav>"
-               "<main>"
-               (if (= :setup (:screen @app-state))
-                 (str "<div class='setup-screen'>"
-                      "<h1>Welcome to Local-First Anki</h1>"
-                      "<p>To get started, select a folder to store your cards and review data.</p>"
-                      "<button id='select-folder-btn'>Select Folder</button>"
-                      "</div>")
-                 (let [due (core/due-cards (:state @app-state))
-                       card-count (count (:cards (:state @app-state)))
-                       show-answer? (get @app-state :show-answer? false)
-                       can-undo? (seq (:undo-stack @app-state))]
-                   (str "<div class='review-screen'>"
-                        "<div class='review-header'>"
-                        "<p>Total cards: " card-count " | Due: " (count due) "</p>"
-                        "<div class='undo-redo-buttons'>"
-                        "<button id='btn-undo' " (when-not can-undo? "disabled") ">Undo</button>"
-                        "</div>"
-                        "</div>"
-                        (if (empty? due)
-                          "<h2>No cards due!</h2><p>Create cards.md in your selected folder to add cards.</p>"
-                          (let [hash (first due)
-                                card (core/card-with-meta (:state @app-state) hash)]
-                            (str "<div class='review-card'>"
-                                 (card-content-html card show-answer?)
-                                 (if show-answer?
-                                   (rating-buttons-html)
-                                   "<button id='btn-show-answer'>Show Answer</button>")
-                                 "</div>")))
-                        "</div>")))
-               "</main>"
-               "</div>"))
-    ;; Wire up event handlers after rendering (using setTimeout to ensure DOM is ready)
-    (js/setTimeout
-     (fn []
-       ;; Setup screen button
-       (when-let [btn (.getElementById js/document "select-folder-btn")]
-         (js/console.log "Attaching select-folder handler")
-         (.addEventListener btn "click" handle-select-folder!))
+  (r/render (js/document.getElementById "root")
+            [main-app @!state]))
 
-       ;; Show answer button
-       (when-let [btn (.getElementById js/document "btn-show-answer")]
-         (js/console.log "Attaching show-answer handler")
-         (.addEventListener btn "click"
-                           (fn [_e]
-                             (swap! app-state assoc :show-answer? true))))
-
-       ;; Undo button
-       (when-let [btn (.getElementById js/document "btn-undo")]
-         (js/console.log "Attaching undo handler")
-         (.addEventListener btn "click"
-                           (fn [_e]
-                             (handle-undo!))))
-
-       ;; Rating buttons
-       (doseq [[id rating] [["btn-forgot" :forgot]
-                            ["btn-hard" :hard]
-                            ["btn-good" :good]
-                            ["btn-easy" :easy]]]
-         (when-let [btn (.getElementById js/document id)]
-           (js/console.log "Attaching rating handler:" rating)
-           (.addEventListener btn "click"
-                             (fn [_e]
-                               (let [due (core/due-cards (:state @app-state))
-                                     current-hash (first due)
-                                     dir-handle (:dir-handle @app-state)]
-                                 (when (and current-hash dir-handle)
-                                   (js/console.log "Rating card" rating)
-                                   ;; Save to undo stack before applying rating
-                                   (swap! app-state update :undo-stack conj {:hash current-hash :rating rating})
-                                   (p/let [event (core/review-event current-hash rating)
-                                           _ (fs/append-to-log dir-handle [event])
-                                           events (fs/load-log dir-handle)
-                                           new-state (core/reduce-events events)]
-                                     (swap! app-state assoc
-                                            :state new-state
-                                            :show-answer? false)
-                                     (js/console.log "Review complete, remaining:" (count (core/due-cards new-state)))))))))))
-     10)))
+;; Initialization
 
 (defn ^:export main []
-  (js/console.log "Anki app starting...")
+  (js/console.log "Anki app starting with Replicant...")
+  (r/set-dispatch! handle-event)
   (render!)
-  ;; Re-render on state changes
-  (add-watch app-state :render (fn [_ _ _ _] (render!))))
+  (add-watch !state :render (fn [_ _ _ _] (render!))))
