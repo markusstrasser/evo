@@ -52,9 +52,9 @@
   "Parse a card from markdown text. Returns nil if invalid."
   [text]
   (let [trimmed (str/trim text)]
-    (some (fn [{:keys [type parse]}]
-            (when-let [data (parse trimmed)]
-              (assoc data :type type)))
+    (some (fn [{card-type :type parse-fn :parse}]
+            (when-let [data (parse-fn trimmed)]
+              (assoc data :type card-type)))
           card-parsers)))
 
 ;; Card hashing
@@ -88,8 +88,8 @@
 
 (defn new-card-meta
   "Create metadata for a new card"
-  [hash]
-  {:card-hash hash
+  [card-hash]
+  {:card-hash card-hash
    :created-at (date-from-ms (now-ms))
    :due-at (date-from-ms (now-ms))
    :reviews 0})
@@ -123,14 +123,14 @@
 
 (defn review-event
   "Create a review event"
-  [hash rating]
-  (new-event :review {:card-hash hash
+  [card-hash rating]
+  (new-event :review {:card-hash card-hash
                       :rating rating}))
 
 (defn card-created-event
   "Create a card-created event"
-  [hash card-data]
-  (new-event :card-created {:card-hash hash
+  [card-hash card-data]
+  (new-event :card-created {:card-hash card-hash
                             :card card-data}))
 
 ;; State reduction
@@ -171,13 +171,13 @@
   [state]
   (let [now (now-ms)]
     (->> (:meta state)
-         (filter (fn [[_hash meta]]
-                   (<= (.getTime (:due-at meta)) now)))
+         (filter (fn [[_hash card-meta]]
+                   (<= (.getTime (:due-at card-meta)) now)))
          (map first)
          vec)))
 
 (defn card-with-meta
   "Get card data with its metadata"
-  [state hash]
-  (when-let [card (get-in state [:cards hash])]
-    (assoc card :meta (get-in state [:meta hash]))))
+  [state card-hash]
+  (when-let [card (get-in state [:cards card-hash])]
+    (assoc card :meta (get-in state [:meta card-hash]))))
