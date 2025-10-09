@@ -6,14 +6,22 @@
 
 (def qa-pattern #"^(.+?)\s*;\s*(.+)$")
 (def cloze-pattern #"\[([^\]]+)\]")
+(def image-occlusion-pattern #"^!\[(.+?)\]\((.+?)\)\s*\{(.+?)\}$")
 
 (def card-parsers
-  "Registry of card parsers - add new card types here"
+  "Registry of card parsers - add new card types here.
+   Order matters: more specific patterns should come first."
   [{:type :qa
     :parse (fn [text]
              (when-let [[_ q a] (re-matches qa-pattern text)]
                {:question (str/trim q)
                 :answer (str/trim a)}))}
+   {:type :image-occlusion
+    :parse (fn [text]
+             (when-let [[_ alt-text image-url regions] (re-matches image-occlusion-pattern text)]
+               {:alt-text (str/trim alt-text)
+                :image-url (str/trim image-url)
+                :regions (str/split regions #",\s*")}))}
    {:type :cloze
     :parse (fn [text]
              (when-let [matches (re-seq cloze-pattern text)]
