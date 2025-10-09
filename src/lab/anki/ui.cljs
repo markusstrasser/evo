@@ -9,11 +9,10 @@
 
 ;; State management
 
-;; Main entry point
-
 (defonce app-state (atom {:state {:cards {} :meta {}}
                           :dir-handle nil
-                          :screen :setup}))
+                          :screen :setup
+                          :undo-stack []}))
 
 (defn load-and-sync-cards!
   "Load cards.md, parse it, and create events for any new cards"
@@ -58,8 +57,41 @@
       (swap! app-state assoc
              :dir-handle handle
              :state state
-             :screen :review)
+             :screen :review
+             :undo-stack [])
       (js/console.log "Loaded state with" (count (:cards state)) "total cards"))))
+
+(defn rating-buttons-html []
+  (str "<div class='rating-buttons'>"
+       "<button id='btn-forgot'>Forgot</button>"
+       "<button id='btn-hard'>Hard</button>"
+       "<button id='btn-good'>Good</button>"
+       "<button id='btn-easy'>Easy</button>"
+       "</div>"))
+
+(defn card-content-html [card show-answer?]
+  (case (:type card)
+    :qa (str "<div class='question'><h2>Question</h2><p>" (:question card) "</p></div>"
+             (when show-answer?
+               (str "<div class='answer'><h2>Answer</h2><p>" (:answer card) "</p></div>")))
+    :cloze (str "<div class='cloze-text'><p>" (:template card) "</p></div>")
+    ""))
+
+(defn handle-undo! []
+  (when-let [last-review (peek (:undo-stack @app-state))]
+    (js/console.log "Undoing last review:" last-review)
+    (let [dir-handle (:dir-handle @app-state)]
+      (p/let [;; Remove last event from log and reload state without it
+              events (fs/load-log dir-handle)
+              ;; Remove the last review event (the one we just added)
+              events-without-last (vec (butlast events))
+              new-state (core/reduce-events events-without-last)
+              ;; Rewrite the log without the last event
+              _ (fs/write-edn-file dir-handle "log.edn" events-without-last)]
+        (swap! app-state assoc
+               :state new-state
+               :show-answer? false)
+        (swap! app-state update :undo-stack pop)))))
 
 (defn render! []
   (let [root (.getElementById js/document "root")]
@@ -78,36 +110,24 @@
                       "</div>")
                  (let [due (core/due-cards (:state @app-state))
                        card-count (count (:cards (:state @app-state)))
-                       show-answer? (get @app-state :show-answer? false)]
+                       show-answer? (get @app-state :show-answer? false)
+                       can-undo? (seq (:undo-stack @app-state))]
                    (str "<div class='review-screen'>"
                         "<div class='review-header'>"
                         "<p>Total cards: " card-count " | Due: " (count due) "</p>"
+                        "<div class='undo-redo-buttons'>"
+                        "<button id='btn-undo' " (when-not can-undo? "disabled") ">Undo</button>"
+                        "</div>"
                         "</div>"
                         (if (empty? due)
                           "<h2>No cards due!</h2><p>Create cards.md in your selected folder to add cards.</p>"
                           (let [hash (first due)
                                 card (core/card-with-meta (:state @app-state) hash)]
                             (str "<div class='review-card'>"
-                                 (if (= :qa (:type card))
-                                   (str "<div class='question'><h2>Question</h2><p>" (:question card) "</p></div>"
-                                        (if show-answer?
-                                          (str "<div class='answer'><h2>Answer</h2><p>" (:answer card) "</p></div>"
-                                               "<div class='rating-buttons'>"
-                                               "<button id='btn-forgot'>Forgot</button>"
-                                               "<button id='btn-hard'>Hard</button>"
-                                               "<button id='btn-good'>Good</button>"
-                                               "<button id='btn-easy'>Easy</button>"
-                                               "</div>")
-                                          "<button id='btn-show-answer'>Show Answer</button>"))
-                                   (str "<div class='cloze-text'><p>" (:template card) "</p></div>"
-                                        (if show-answer?
-                                          (str "<div class='rating-buttons'>"
-                                               "<button id='btn-forgot'>Forgot</button>"
-                                               "<button id='btn-hard'>Hard</button>"
-                                               "<button id='btn-good'>Good</button>"
-                                               "<button id='btn-easy'>Easy</button>"
-                                               "</div>")
-                                          "<button id='btn-show-answer'>Show Answer</button>")))
+                                 (card-content-html card show-answer?)
+                                 (if show-answer?
+                                   (rating-buttons-html)
+                                   "<button id='btn-show-answer'>Show Answer</button>")
                                  "</div>")))
                         "</div>")))
                "</main>"
@@ -127,6 +147,13 @@
                            (fn [_e]
                              (swap! app-state assoc :show-answer? true))))
 
+       ;; Undo button
+       (when-let [btn (.getElementById js/document "btn-undo")]
+         (js/console.log "Attaching undo handler")
+         (.addEventListener btn "click"
+                           (fn [_e]
+                             (handle-undo!))))
+
        ;; Rating buttons
        (doseq [[id rating] [["btn-forgot" :forgot]
                             ["btn-hard" :hard]
@@ -141,6 +168,8 @@
                                      dir-handle (:dir-handle @app-state)]
                                  (when (and current-hash dir-handle)
                                    (js/console.log "Rating card" rating)
+                                   ;; Save to undo stack before applying rating
+                                   (swap! app-state update :undo-stack conj {:hash current-hash :rating rating})
                                    (p/let [event (core/review-event current-hash rating)
                                            _ (fs/append-to-log dir-handle [event])
                                            events (fs/load-log dir-handle)
