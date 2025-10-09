@@ -4,19 +4,34 @@
 
 ;; Card parsing
 
-(def qa-pattern #"^(.+?)\s*;\s*(.+)$")
 (def cloze-pattern #"\[([^\]]+)\]")
 (def image-occlusion-pattern #"^!\[(.+?)\]\((.+?)\)\s*\{(.+?)\}$")
+
+(defn parse-qa-multiline
+  "Parse QA card from consecutive q/a lines"
+  [lines]
+  (loop [remaining lines
+         question nil
+         answer nil]
+    (if-let [line (first remaining)]
+      (let [trimmed (str/trim line)]
+        (cond
+          (str/starts-with? trimmed "q ")
+          (recur (rest remaining) (subs trimmed 2) answer)
+
+          (str/starts-with? trimmed "a ")
+          (recur (rest remaining) question (subs trimmed 2))
+
+          :else
+          (recur (rest remaining) question answer)))
+      (when (and question answer)
+        {:question (str/trim question)
+         :answer (str/trim answer)}))))
 
 (def card-parsers
   "Registry of card parsers - add new card types here.
    Order matters: more specific patterns should come first."
-  [{:type :qa
-    :parse (fn [text]
-             (when-let [[_ q a] (re-matches qa-pattern text)]
-               {:question (str/trim q)
-                :answer (str/trim a)}))}
-   {:type :image-occlusion
+  [{:type :image-occlusion
     :parse (fn [text]
              (when-let [[_ alt-text image-url regions] (re-matches image-occlusion-pattern text)]
                {:alt-text (str/trim alt-text)
@@ -24,9 +39,14 @@
                 :regions (str/split regions #",\s*")}))}
    {:type :cloze
     :parse (fn [text]
-             (when-let [matches (re-seq cloze-pattern text)]
-               {:template text
-                :deletions (mapv second matches)}))}])
+             (when (str/starts-with? (str/trim text) "c ")
+               (let [content (subs (str/trim text) 2)]
+                 (when-let [matches (re-seq cloze-pattern content)]
+                   {:template content
+                    :deletions (mapv second matches)}))))}
+   {:type :qa
+    :parse (fn [text]
+             (parse-qa-multiline (str/split-lines text)))}])
 
 (defn parse-card
   "Parse a card from markdown text. Returns nil if invalid."
