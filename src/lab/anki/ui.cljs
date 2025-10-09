@@ -30,31 +30,39 @@
       {:on {:click [::rate-card rating]}}
       (str/capitalize (name rating))])])
 
-(defn review-card-qa [{:keys [card show-answer?]}]
-  [:div.review-card.qa-card
-   [:div.question
-    [:h2 "Question"]
-    [:p (:question card)]]
-   (if show-answer?
-     [:div
-      [:div.answer
-       [:h2 "Answer"]
-       [:p (:answer card)]]
-      (rating-buttons)]
-     [:button {:on {:click [::show-answer]}} "Show Answer"])])
+(defn review-card [{:keys [card show-answer?]}]
+  (let [{:keys [front back class-name]}
+        (case (:type card)
+          :qa {:front [:div.question
+                       [:h2 "Question"]
+                       [:p (:question card)]]
+               :back [:div.answer
+                      [:h2 "Answer"]
+                      [:p (:answer card)]]
+               :class-name "qa-card"}
 
-(defn review-card-cloze [{:keys [card show-answer?]}]
-  (let [template (:template card)
-        deletions (:deletions card)
-        deletion (first deletions) ;; Show first deletion for now
-        display-text (if show-answer?
-                       template
-                       (str/replace template
-                                    (re-pattern (str "\\[" deletion "\\]"))
-                                    "[...]"))]
-    [:div.review-card.cloze-card
-     [:div.cloze-text
-      [:p display-text]]
+          :cloze (let [template (:template card)
+                       deletions (:deletions card)
+                       deletion (first deletions)
+                       display-text (if show-answer?
+                                      template
+                                      (str/replace template
+                                                   (re-pattern (str "\\[" deletion "\\]"))
+                                                   "[...]"))]
+                   {:front [:div.cloze-text [:p display-text]]
+                    :back nil
+                    :class-name "cloze-card"})
+
+          :image-occlusion {:front [:div.image-occlusion
+                                    [:img {:src (:image-url card)
+                                           :alt (:alt-text card)}]
+                                    [:p "Regions: " (str/join ", " (:regions card))]]
+                            :back [:div.answer [:p "Check the image!"]]
+                            :class-name "image-occlusion-card"})]
+
+    [:div.review-card {:class class-name}
+     front
+     (when show-answer? back)
      (if show-answer?
        (rating-buttons)
        [:button {:on {:click [::show-answer]}} "Show Answer"])]))
@@ -69,10 +77,7 @@
          [:div.review-header
           [:p (str "Cards remaining: " remaining)]]
          [:div.review-content
-          (case (:type card)
-            :qa [review-card-qa {:card card :show-answer? show-answer?}]
-            :cloze [review-card-cloze {:card card :show-answer? show-answer?}]
-            [:div "Unknown card type"])]])
+          [review-card {:card card :show-answer? show-answer?}]]])
       [:div.review-screen
        [:h2 "No cards due!"]
        [:p "Come back later for more reviews."]])))
