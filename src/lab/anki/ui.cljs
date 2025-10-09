@@ -1,137 +1,13 @@
 (ns lab.anki.ui
-  "Replicant UI components for Anki clone"
+  "Anki clone UI - vanilla DOM rendering"
   (:require [clojure.string :as str]
             [lab.anki.core :as core]
             [lab.anki.fs :as fs]
             [promesa.core :as p]))
 
-;; UI Components
+;; NOTE: All requires are used in the DOM rendering/event handling functions below
 
-(defn setup-screen
-  "Initial setup screen - pick directory"
-  [{:keys [on-directory-selected]}]
-  [:div {:class "setup-screen"}
-   [:h1 "Welcome to Local-First Anki"]
-   [:p "To get started, select a folder to store your cards and review data."]
-   [:button
-    {:on {:click (fn [_e]
-                   (p/let [dir-handle (fs/pick-directory)]
-                     (fs/save-dir-handle dir-handle)
-                     (on-directory-selected dir-handle)))}}
-    "Select Folder"]])
-
-(defn review-card-qa
-  "Review UI for a QA card"
-  [{:keys [card show-answer? on-show-answer on-rating]}]
-  [:div {:class "review-card qa-card"}
-   [:div {:class "question"}
-    [:h2 "Question"]
-    [:p (:question card)]]
-   (if show-answer?
-     [:div
-      [:div {:class "answer"}
-       [:h2 "Answer"]
-       [:p (:answer card)]]
-      [:div {:class "rating-buttons"}
-       [:button {:on {:click #(on-rating :forgot)}} "Forgot"]
-       [:button {:on {:click #(on-rating :hard)}} "Hard"]
-       [:button {:on {:click #(on-rating :good)}} "Good"]
-       [:button {:on {:click #(on-rating :easy)}} "Easy"]]]
-     [:button {:on {:click #(on-show-answer)}} "Show Answer"])])
-
-(defn review-card-cloze
-  "Review UI for a cloze deletion card"
-  [{:keys [card show-answer? on-show-answer on-rating current-deletion-idx]}]
-  (let [template (:template card)
-        deletions (:deletions card)
-        deletion (nth deletions current-deletion-idx)
-        ;; Replace [deletion] with either blank or answer
-        display-text (if show-answer?
-                       template
-                       (str/replace template
-                                    (re-pattern (str "\\[" deletion "\\]"))
-                                    "[...]"))]
-    [:div {:class "review-card cloze-card"}
-     [:div {:class "cloze-text"}
-      [:p display-text]]
-     (if show-answer?
-       [:div {:class "rating-buttons"}
-        [:button {:on {:click #(on-rating :forgot)}} "Forgot"]
-        [:button {:on {:click #(on-rating :hard)}} "Hard"]
-        [:button {:on {:click #(on-rating :good)}} "Good"]
-        [:button {:on {:click #(on-rating :easy)}} "Easy"]]
-       [:button {:on {:click #(on-show-answer)}} "Show Answer"])]))
-
-(defn review-screen
-  "Main review screen"
-  [{:keys [state dir-handle on-state-change]}]
-  (let [due-card-hashes (core/due-cards state)
-        current-hash (first due-card-hashes)
-        remaining (count due-card-hashes)
-        [show-answer? set-show-answer!] [(volatile! false) #(vreset! %1 %2)]]
-    (if current-hash
-      (let [card (core/card-with-meta state current-hash)
-            card-type (:type card)]
-        [:div {:class "review-screen"}
-         [:div {:class "review-header"}
-          [:p (str "Cards remaining: " remaining)]]
-         [:div {:class "review-content"}
-          (case card-type
-            :qa [review-card-qa
-                 {:card card
-                  :show-answer? @show-answer?
-                  :on-show-answer #(set-show-answer! show-answer? true)
-                  :on-rating (fn [rating]
-                               (p/let [ev (core/review-event current-hash rating)
-                                       _res (fs/append-to-log dir-handle [ev])
-                                       new-state (core/apply-event state ev)]
-                                 (set-show-answer! show-answer? false)
-                                 (on-state-change new-state)))}]
-            :cloze [review-card-cloze
-                    {:card card
-                     :show-answer? @show-answer?
-                     :on-show-answer #(set-show-answer! show-answer? true)
-                     :current-deletion-idx 0
-                     :on-rating (fn [rating]
-                                  (p/let [ev (core/review-event current-hash rating)
-                                          _res (fs/append-to-log dir-handle [ev])
-                                          new-state (core/apply-event state ev)]
-                                    (set-show-answer! show-answer? false)
-                                    (on-state-change new-state)))}]
-            [:div "Unknown card type"])]])
-      [:div {:class "review-screen"}
-       [:h2 "No cards due!"]
-       [:p "Come back later for more reviews."]])))
-
-(defn main-app
-  "Main application component - just shows review screen
-   Cards are created/edited directly in cards.md file"
-  [{:keys [state dir-handle on-state-change]}]
-  [:div {:class "anki-app"}
-   [:nav
-    [:h1 "Local-First Anki"]
-    [:p "Edit cards.md in your folder to add/modify cards"]]
-   [:main
-    [review-screen {:state state
-                    :dir-handle dir-handle
-                    :on-state-change on-state-change}]]])
-
-;; App initialization
-
-(defn init-app!
-  "Initialize the Anki application"
-  []
-  (p/let [saved? (fs/has-saved-dir?)
-          handle (if saved?
-                   (fs/pick-directory)
-                   nil)
-          evs (if handle
-                (fs/load-log handle)
-                [])
-          init-state (core/reduce-events evs)]
-    {:state init-state
-     :dir-handle handle
-     :screen (if handle :review :setup)}))
+;; State management
 
 ;; Main entry point
 
@@ -139,8 +15,9 @@
                           :dir-handle nil
                           :screen :setup}))
 
-(defn load-and-sync-cards! [dir-handle]
+(defn load-and-sync-cards!
   "Load cards.md, parse it, and create events for any new cards"
+  [dir-handle]
   (p/let [markdown (fs/load-cards dir-handle)
           lines (str/split-lines markdown)
           parsed-cards (keep core/parse-card lines)
