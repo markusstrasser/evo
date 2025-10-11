@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Image Occlusion Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .test-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 10px 0;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #42a5f5;
+            color: white;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1e88e5;
+        }
+        .answer {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e8f5e9;
+            border-radius: 4px;
+            display: none;
+        }
+        .answer.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Occlusion Test</h1>
+    <p>This page tests the canvas-based image occlusion rendering.</p>
+
+    <div class="test-card">
+        <h2>Region A (Top Left)</h2>
+        <canvas id="canvas1"></canvas>
+        <div>
+            <button onclick="toggleAnswer('canvas1', 'answer1', {x: 0.125, y: 0.167, w: 0.25, h: 0.267})">Show Answer</button>
+        </div>
+        <div id="answer1" class="answer">Region A (Red, Top-Left)</div>
+    </div>
+
+    <div class="test-card">
+        <h2>Region B (Top Right)</h2>
+        <canvas id="canvas2"></canvas>
+        <div>
+            <button onclick="toggleAnswer('canvas2', 'answer2', {x: 0.5, y: 0.167, w: 0.25, h: 0.267})">Show Answer</button>
+        </div>
+        <div id="answer2" class="answer">Region B (Cyan, Top-Right)</div>
+    </div>
+
+    <div class="test-card">
+        <h2>Region C (Bottom Left)</h2>
+        <canvas id="canvas3"></canvas>
+        <div>
+            <button onclick="toggleAnswer('canvas3', 'answer3', {x: 0.125, y: 0.6, w: 0.25, h: 0.267})">Show Answer</button>
+        </div>
+        <div id="answer3" class="answer">Region C (Yellow, Bottom-Left)</div>
+    </div>
+
+    <div class="test-card">
+        <h2>Region D (Bottom Right)</h2>
+        <canvas id="canvas4"></canvas>
+        <div>
+            <button onclick="toggleAnswer('canvas4', 'answer4', {x: 0.5, y: 0.6, w: 0.25, h: 0.267})">Show Answer</button>
+        </div>
+        <div id="answer4" class="answer">Region D (Teal, Bottom-Right)</div>
+    </div>
+
+    <script>
+        const imageUrl = '/test-images/test-regions.png';
+        const canvases = ['canvas1', 'canvas2', 'canvas3', 'canvas4'];
+        const shapes = [
+            {x: 0.125, y: 0.167, w: 0.25, h: 0.267},
+            {x: 0.5, y: 0.167, w: 0.25, h: 0.267},
+            {x: 0.125, y: 0.6, w: 0.25, h: 0.267},
+            {x: 0.5, y: 0.6, w: 0.25, h: 0.267}
+        ];
+
+        function drawOcclusion(canvasId, shape, showAnswer) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            img.onload = function() {
+                const w = img.width;
+                const h = img.height;
+
+                canvas.width = w;
+                canvas.height = h;
+
+                // Draw image
+                ctx.drawImage(img, 0, 0);
+
+                // Draw mask if not revealed
+                if (!showAnswer) {
+                    const x = shape.x * w;
+                    const y = shape.y * h;
+                    const rectW = shape.w * w;
+                    const rectH = shape.h * h;
+
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.45)';
+                    ctx.fillRect(x, y, rectW, rectH);
+                }
+
+                console.log('Drew canvas:', canvasId, 'show-answer:', showAnswer);
+            };
+
+            img.onerror = function(e) {
+                console.error('Failed to load image:', imageUrl, e);
+                canvas.style.background = '#ffebee';
+                ctx.fillStyle = '#c62828';
+                ctx.fillText('Failed to load image', 10, 20);
+            };
+
+            img.src = imageUrl;
+        }
+
+        function toggleAnswer(canvasId, answerId, shape) {
+            const answerDiv = document.getElementById(answerId);
+            const isVisible = answerDiv.classList.contains('visible');
+
+            answerDiv.classList.toggle('visible');
+            drawOcclusion(canvasId, shape, !isVisible);
+        }
+
+        // Initial draw with masks
+        canvases.forEach((canvasId, i) => {
+            drawOcclusion(canvasId, shapes[i], false);
+        });
+    </script>
+</body>
+</html>
