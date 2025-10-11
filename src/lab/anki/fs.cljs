@@ -103,9 +103,9 @@
                         (cond
                           (and (= kind "file") (.endsWith name ".md"))
                           (p/let [content (get-file-content entry)]
-                            {:deck (if (empty? path-prefix) "default" path-prefix)
-                             :filename name
-                             :content content})
+                            [{:deck (if (empty? path-prefix) "default" path-prefix)
+                              :filename name
+                              :content content}])
 
                           (= kind "directory")
                           (p/let [subdir-handle entry
@@ -115,11 +115,10 @@
                             (load-all-md-files subdir-handle subpath))
 
                           :else
-                          (p/resolved nil)))))]
+                          (p/resolved [])))))]
      (p/resolved (->> results
-                      flatten
-                      (remove nil?)
-                      vec)))))
+                      (keep identity)
+                      (into [] cat))))))
 
 (defn load-cards
   "Load cards from all .md files recursively"
@@ -142,30 +141,31 @@
 (defonce store-name "handles")
 (defonce db-version 1)
 
+(defn- idb-request->promise
+  "Convert an IndexedDB request into a promise"
+  [request]
+  (p/create
+   (fn [resolve reject]
+     (set! (.-onsuccess request)
+           (fn [e] (resolve (-> e .-target .-result))))
+     (set! (.-onerror request)
+           (fn [e] (reject (-> e .-target .-error)))))))
+
 (defn- open-db
   "Open IndexedDB with proper upgrade handling"
   []
-  (p/create
-   (fn [resolve reject]
-     (let [request (.open js/indexedDB db-name db-version)]
-
-       (set! (.-onupgradeneeded request)
-             (fn [e]
-               (js/console.log "Upgrading IndexedDB...")
-               (let [db (-> e .-target .-result)]
-                 (when-not (.contains (.-objectStoreNames db) store-name)
-                   (js/console.log "Creating object store:" store-name)
-                   (.createObjectStore db store-name)))))
-
-       (set! (.-onsuccess request)
-             (fn [e]
-               (js/console.log "IndexedDB opened successfully")
-               (resolve (-> e .-target .-result))))
-
-       (set! (.-onerror request)
-             (fn [e]
-               (js/console.error "IndexedDB error:" (-> e .-target .-error))
-               (reject (-> e .-target .-error))))))))
+  (let [request (.open js/indexedDB db-name db-version)]
+    (set! (.-onupgradeneeded request)
+          (fn [e]
+            (js/console.log "Upgrading IndexedDB...")
+            (let [db (-> e .-target .-result)]
+              (when-not (.contains (.-objectStoreNames db) store-name)
+                (js/console.log "Creating object store:" store-name)
+                (.createObjectStore db store-name)))))
+    (p/then (idb-request->promise request)
+            (fn [db]
+              (js/console.log "IndexedDB opened successfully")
+              db))))
 
 (defn save-dir-handle
   "Save directory handle to IndexedDB"
@@ -174,7 +174,7 @@
   (p/let [db (open-db)
           tx (.transaction db #js [store-name] "readwrite")
           store (.objectStore tx store-name)
-          _ (.put store handle "dir-handle")]
+          _ (idb-request->promise (.put store handle "dir-handle"))]
     (js/console.log "Directory handle saved")
     true))
 
@@ -185,22 +185,13 @@
   (p/catch
     (p/let [db (open-db)
             tx (.transaction db #js [store-name] "readonly")
-            store (.objectStore tx store-name)]
-      (p/create
-       (fn [resolve reject]
-         (let [request (.get store "dir-handle")]
-           (set! (.-onsuccess request)
-                 (fn [e]
-                   (let [result (-> e .-target .-result)]
-                     (if result
-                       (do (js/console.log "Directory handle found")
-                           (resolve result))
-                       (do (js/console.log "No saved directory handle")
-                           (resolve nil))))))
-           (set! (.-onerror request)
-                 (fn [e]
-                   (js/console.error "Error loading handle:" (-> e .-target .-error))
-                   (resolve nil)))))))
+            store (.objectStore tx store-name)
+            result (idb-request->promise (.get store "dir-handle"))]
+      (if result
+        (do (js/console.log "Directory handle found")
+            result)
+        (do (js/console.log "No saved directory handle")
+            nil)))
     (fn [e]
       (js/console.error "Failed to load handle:" e)
       nil)))
