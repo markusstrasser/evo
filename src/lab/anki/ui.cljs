@@ -9,8 +9,41 @@
 ;; State
 (defonce !state (atom {:screen :setup
                        :state {:cards {} :meta {}}
+                       :events []
                        :dir-handle nil
                        :show-answer? false}))
+
+;; Helpers
+(defn time-ago [date]
+  "Convert a date to a human-readable 'X ago' string"
+  (let [now (js/Date.)
+        diff-ms (- (.getTime now) (.getTime date))
+        diff-sec (/ diff-ms 1000)
+        diff-min (/ diff-sec 60)
+        diff-hour (/ diff-min 60)
+        diff-day (/ diff-hour 24)]
+    (cond
+      (< diff-min 1) "just now"
+      (< diff-min 2) "1 min ago"
+      (< diff-hour 1) (str (js/Math.floor diff-min) " mins ago")
+      (< diff-hour 2) "1 hour ago"
+      (< diff-day 1) (str (js/Math.floor diff-hour) " hours ago")
+      (< diff-day 2) "1 day ago"
+      :else (str (js/Math.floor diff-day) " days ago"))))
+
+(defn truncate-text [text max-len]
+  "Truncate text to max-len with ellipsis"
+  (if (> (count text) max-len)
+    (str (subs text 0 max-len) "...")
+    text))
+
+(defn get-card-preview [card]
+  "Get preview text for a card"
+  (case (:type card)
+    :qa (truncate-text (:question card) 50)
+    :cloze (truncate-text (:template card) 50)
+    :image-occlusion (str "Image: " (:alt-text card))
+    "Unknown card type"))
 
 ;; Components
 (defn setup-screen []
@@ -66,7 +99,30 @@
        (rating-buttons)
        [:button {:on {:click [::show-answer]}} "Show Answer"])]))
 
-(defn review-screen [{:keys [state show-answer?]}]
+(defn review-history [{:keys [events state]}]
+  "Display recent review events"
+  (let [review-events (->> events
+                           (filter #(= :review (:event/type %)))
+                           (take-last 10)
+                           reverse)]
+    (when (seq review-events)
+      [:div.review-history
+       [:h3 "Recent Reviews"]
+       [:div.history-list
+        (for [event review-events]
+          (let [card-hash (get-in event [:event/data :card-hash])
+                rating (get-in event [:event/data :rating])
+                timestamp (:event/timestamp event)
+                card (get-in state [:cards card-hash])]
+            ^{:key (str card-hash "-" (.getTime timestamp))}
+            [:div.history-item
+             [:div.history-card
+              [:span.card-preview (if card (get-card-preview card) "Unknown card")]
+              [:span.rating {:class (str "rating-" (name rating))}
+               (str/capitalize (name rating))]]
+             [:span.history-time (time-ago timestamp)]]))]])))
+
+(defn review-screen [{:keys [state events show-answer?]}]
   (let [due-hashes (core/due-cards state)
         current-hash (first due-hashes)
         remaining (count due-hashes)]
@@ -79,9 +135,10 @@
           (review-card {:card card :show-answer? show-answer?})]])
       [:div.review-screen
        [:h2 "No cards due!"]
-       [:p "Come back later for more reviews."]])))
+       [:p "Come back later for more reviews."]
+       (review-history {:events events :state state})])))
 
-(defn main-app [{:keys [screen state show-answer?]}]
+(defn main-app [{:keys [screen state events show-answer?]}]
   [:div.anki-app
    [:nav
     [:h1 "Local-First Anki"]
@@ -89,7 +146,7 @@
    [:main
     (case screen
       :setup (setup-screen)
-      :review (review-screen {:state state :show-answer? show-answer?})
+      :review (review-screen {:state state :events events :show-answer? show-answer?})
       [:div "Unknown screen"])]])
 
 ;; Forward declarations
@@ -123,10 +180,12 @@
     (p/let [handle (fs/pick-directory)]
       (js/console.log "Folder selected:" handle)
       (fs/save-dir-handle handle)
-      (p/let [state (load-and-sync-cards! handle)]
+      (p/let [events (fs/load-log handle)
+              state (core/reduce-events events)]
         (swap! !state assoc
                :dir-handle handle
                :state state
+               :events events
                :screen :review)
         (js/console.log "Loaded state with" (count (:cards state)) "total cards")))
 
@@ -134,7 +193,7 @@
     (swap! !state assoc :show-answer? true)
 
     ::rate-card
-    (let [{:keys [state dir-handle]} @!state
+    (let [{:keys [state events dir-handle]} @!state
           rating (first args)
           due (core/due-cards state)
           current-hash (first due)]
@@ -142,9 +201,11 @@
         (js/console.log "Rating card" rating)
         (p/let [event (core/review-event current-hash rating)
                 _ (fs/append-to-log dir-handle [event])
-                new-state (core/apply-event state event)]
+                new-state (core/apply-event state event)
+                new-events (conj events event)]
           (swap! !state assoc
                  :state new-state
+                 :events new-events
                  :show-answer? false)
           (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
 
@@ -172,10 +233,12 @@
         (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
           (when (= permission "granted")
             (js/console.log "Permission granted, loading cards...")
-            (p/let [state (load-and-sync-cards! saved-handle)]
+            (p/let [events (fs/load-log saved-handle)
+                    state (core/reduce-events events)]
               (swap! !state assoc
                      :dir-handle saved-handle
                      :state state
+                     :events events
                      :screen :review)
               (js/console.log "Restored session with" (count (:cards state)) "cards"))))
         (fn [e]
