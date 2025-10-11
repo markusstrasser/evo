@@ -88,8 +88,8 @@
     [:p "Edit cards.md in your folder to add/modify cards"]]
    [:main
     (case screen
-      :setup [setup-screen]
-      :review [review-screen {:state state :show-answer? show-answer?}]
+      :setup (setup-screen)
+      :review (review-screen {:state state :show-answer? show-answer?})
       [:div "Unknown screen"])]])
 
 ;; Forward declarations
