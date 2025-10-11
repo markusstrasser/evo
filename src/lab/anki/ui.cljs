@@ -46,6 +46,7 @@
     :qa (truncate-text (:question card) 50)
     :cloze (truncate-text (:template card) 50)
     :image-occlusion (str "Image: " (:alt-text card))
+    :image-occlusion/item (str "Occlusion: " (truncate-text (:answer card) 40))
     "Unknown card type"))
 
 ;; Components
@@ -64,6 +65,35 @@
      [:button
       {:on {:click [::rate-card rating]}}
       (str/capitalize (name rating))])])
+
+(defn draw-occlusion-mask!
+  "Draw occlusion mask on canvas"
+  [canvas card show-answer?]
+  (when canvas
+    (let [ctx (.getContext canvas "2d")
+          img (js/Image.)
+          asset (:asset card)
+          shape (:shape card)]
+      (set! (.-onload img)
+            (fn []
+              (let [w (.-width img)
+                    h (.-height img)]
+                ;; Set canvas size to match image
+                (set! (.-width canvas) w)
+                (set! (.-height canvas) h)
+
+                ;; Draw image
+                (.drawImage ctx img 0 0)
+
+                ;; Draw mask if not revealed
+                (when-not show-answer?
+                  (let [x (* (:x shape) w)
+                        y (* (:y shape) h)
+                        rect-w (* (:w shape) w)
+                        rect-h (* (:h shape) h)]
+                    (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+                    (.fillRect ctx x y rect-w rect-h))))))
+      (set! (.-src img) (:url asset)))))
 
 (defn review-card [{:keys [card show-answer?]}]
   (let [{:keys [front back class-name]}
@@ -93,7 +123,14 @@
                                            :alt (:alt-text card)}]
                                     [:p "Regions: " (str/join ", " (:regions card))]]
                             :back [:div.answer [:p "Check the image!"]]
-                            :class-name "image-occlusion-card"})]
+                            :class-name "image-occlusion-card"}
+
+          :image-occlusion/item
+          {:front [:div.image-occlusion-item
+                   [:h2 (:prompt card)]
+                   [:canvas {:ref (fn [el] (draw-occlusion-mask! el card show-answer?))}]]
+           :back [:div.answer [:p (:answer card)]]
+           :class-name "image-occlusion-item-card"})]
 
     [:div.review-card {:class class-name}
      front
@@ -140,6 +177,7 @@
       [:div.review-screen
        [:h2 "No cards due!"]
        [:p "Come back later for more reviews."]
+       [:button {:on {:click [::create-test-occlusion]}} "Create Test Image Occlusion"]
        (review-history {:events events :state state})])))
 
 (defn main-app [{:keys [screen state events show-answer?]}]
@@ -178,6 +216,49 @@
 
       (core/reduce-events (concat events new-events)))))
 
+(defn create-test-occlusion-card
+  "Create a test image occlusion card"
+  []
+  (let [card {:type :image-occlusion
+              :asset {:url "/test-images/test-regions.png"
+                      :width 400
+                      :height 300}
+              :prompt "What is this region?"
+              :occlusions [{:oid (random-uuid)
+                            :shape {:kind :rect
+                                    :normalized? true
+                                    :x 0.125
+                                    :y 0.167
+                                    :w 0.25
+                                    :h 0.267}
+                            :answer "Region A"}
+                           {:oid (random-uuid)
+                            :shape {:kind :rect
+                                    :normalized? true
+                                    :x 0.5
+                                    :y 0.167
+                                    :w 0.25
+                                    :h 0.267}
+                            :answer "Region B"}
+                           {:oid (random-uuid)
+                            :shape {:kind :rect
+                                    :normalized? true
+                                    :x 0.125
+                                    :y 0.6
+                                    :w 0.25
+                                    :h 0.267}
+                            :answer "Region C"}
+                           {:oid (random-uuid)
+                            :shape {:kind :rect
+                                    :normalized? true
+                                    :x 0.5
+                                    :y 0.6
+                                    :w 0.25
+                                    :h 0.267}
+                            :answer "Region D"}]}
+        h (core/card-hash card)]
+    (core/card-created-event h card)))
+
 (defn handle-event [_replicant-data [action & args]]
   (case action
     ::select-folder
@@ -212,6 +293,26 @@
                  :events new-events
                  :show-answer? false)
           (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
+
+    ::create-test-occlusion
+    (let [{:keys [state events dir-handle]} @!state
+          event (create-test-occlusion-card)]
+      (js/console.log "Creating test occlusion card:" event)
+      (if dir-handle
+        (p/let [_ (fs/append-to-log dir-handle [event])
+                new-state (core/apply-event state event)
+                new-events (conj events event)]
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events)
+          (js/console.log "Test card created, total cards:" (count (:cards new-state))))
+        ;; No dir handle, just add to memory
+        (let [new-state (core/apply-event state event)
+              new-events (conj events event)]
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events)
+          (js/console.log "Test card created (memory only), total cards:" (count (:cards new-state))))))
 
     (js/console.warn "Unknown action:" action)))
 
