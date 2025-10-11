@@ -1,4 +1,4 @@
-(ns lab.anki.core-test
+(ns lab.anki.test.core-test
   (:require [clojure.test :refer [deftest is testing]]
             [lab.anki.core :as core]))
 
