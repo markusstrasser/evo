@@ -101,24 +101,21 @@
   "Load cards.md, parse it, and create events for any new cards"
   [dir-handle]
   (p/let [markdown (fs/load-cards dir-handle)
-          lines (str/split-lines markdown)
+          events (fs/load-log dir-handle)]
+    (let [lines (str/split-lines markdown)
           parsed-cards (keep core/parse-card lines)
           _ (js/console.log "Parsed" (count parsed-cards) "cards from markdown")
-
-          events (fs/load-log dir-handle)
           current-state (core/reduce-events events)
           existing-hashes (set (keys (:cards current-state)))
-
           new-cards (remove #(contains? existing-hashes (core/card-hash %)) parsed-cards)
           _ (js/console.log "Found" (count new-cards) "new cards")
-
           new-events (mapv #(core/card-created-event (core/card-hash %) %) new-cards)]
 
-    (when (seq new-events)
-      (js/console.log "Saving" (count new-events) "new card events")
-      (p/do! (fs/append-to-log dir-handle new-events)))
+      (when (seq new-events)
+        (js/console.log "Saving" (count new-events) "new card events")
+        (p/do! (fs/append-to-log dir-handle new-events)))
 
-    (core/reduce-events (concat events new-events))))
+      (core/reduce-events (concat events new-events)))))
 
 (defn handle-event [_replicant-data [action & args]]
   (case action
@@ -131,18 +128,14 @@
                :dir-handle handle
                :state state
                :screen :review)
-        (js/console.log "Loaded state with" (count (:cards state)) "total cards")
-        (render!)))
+        (js/console.log "Loaded state with" (count (:cards state)) "total cards")))
 
     ::show-answer
-    (do
-      (swap! !state assoc :show-answer? true)
-      (render!))
+    (swap! !state assoc :show-answer? true)
 
     ::rate-card
-    (let [rating (first args)
-          state (:state @!state)
-          dir-handle (:dir-handle @!state)
+    (let [{:keys [state dir-handle]} @!state
+          rating (first args)
           due (core/due-cards state)
           current-hash (first due)]
       (when (and current-hash dir-handle)
@@ -153,8 +146,7 @@
           (swap! !state assoc
                  :state new-state
                  :show-answer? false)
-          (js/console.log "Review complete, remaining:" (count (core/due-cards new-state)))
-          (render!))))
+          (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
 
     (js/console.warn "Unknown action:" action)))
 
