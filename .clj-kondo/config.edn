@@ -5,7 +5,12 @@
  :linters {:syntax                       {:level :off}
            :unresolved-namespace         {:level :error}
            :unresolved-symbol            {:level :error}
-           :unused-namespace             {:level :warning}
+           :unused-namespace             {:level         :warning
+                                          :exclude       [promesa.core
+                                                          clojure.edn
+                                                          clojure.string
+                                                          lab.anki.fs
+                                                          replicant.dom]}
            :unused-binding               {:level :warning}
            :unused-referred-var          {:level :warning}
            :unused-private-var           {:level :warning}
