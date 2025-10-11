@@ -1,6 +1,7 @@
 (ns lab.anki.core
   "Core Anki clone data structures and operations"
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [medley.core :as m]))
 
 ;; Card parsing
 
@@ -160,8 +161,7 @@
   [events]
   (reduce apply-event
           {:cards {}
-           :meta {}
-           :log []}
+           :meta {}}
           events))
 
 ;; Query helpers
@@ -171,9 +171,9 @@
   [state]
   (let [now (now-ms)]
     (->> (:meta state)
-         (filter (fn [[_hash card-meta]]
-                   (<= (.getTime (:due-at card-meta)) now)))
-         (map first)
+         (m/filter-vals (fn [card-meta]
+                          (<= (.getTime (:due-at card-meta)) now)))
+         keys
          vec)))
 
 (defn card-with-meta
