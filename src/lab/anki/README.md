@@ -182,3 +182,45 @@ Not supported in Firefox (as of 2025).
 4. **Human-readable**: All data formats are git-friendly
 5. **Zero dependencies**: Works offline, no server needed
 6. **Progressive enhancement**: Start simple, add features incrementally
+
+## Design Philosophy
+
+This codebase follows **ruthless simplicity**:
+
+- **No abstractions until pain is real**: We rejected 12 refactoring suggestions because the current 3 card types don't justify abstraction layers
+- **Correctness over cleverness**: Fixed 3 subtle bugs (double-rendering, IndexedDB race, flatten misuse) that worked but were wrong
+- **DRY when obvious**: Extracted `idb-request->promise` helper only after seeing the exact same pattern 3 times
+- **Idiomatic over manual**: Use `medley/filter-vals` instead of `(map first (filter ...))` - but only when it's clearer
+- **Separate async from pure**: Keep promise chains short by moving pure transformations into plain `let` blocks
+
+### Code Quality Gates
+
+- **4 parallel agent analysis** (GPT-5 Codex, high reasoning): Different perspectives catch different issues
+- **Critical evaluation**: Rejected 63% of suggestions (12/19) as over-engineering
+- **Test after every change**: 103 tests, 374 assertions must pass
+- **Lint clean**: No new warnings introduced
+
+### When to Refactor
+
+✅ **Refactor when:**
+- Correctness bugs (double-rendering, race conditions, data structure bugs)
+- Same code duplicated 3+ times with no variation
+- Idiomatic library function exists and is clearer
+- Promise chains mix async I/O with pure transformations
+
+❌ **Don't refactor when:**
+- "Might need it later" (YAGNI)
+- Abstraction for 3 items (wait for 5+)
+- Micro-optimizations that hurt readability
+- Trying to be "clever" instead of clear
+
+### Refactoring Process
+
+1. **Run parallel agents** with different scopes (per-file + cross-cutting)
+2. **Critical analysis**: Evaluate each suggestion against status quo
+3. **Estimate impact**: LOC change, correctness improvement, clarity gain
+4. **Apply in priority order**: Correctness bugs first, then code quality
+5. **Test after each change**: Compile, test, lint
+6. **Commit granularly**: One logical change per commit
+
+See `research/results/anki-refactor-round3-*/CRITICAL_ANALYSIS.md` for the latest analysis.
