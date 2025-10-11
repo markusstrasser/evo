@@ -135,17 +135,57 @@
   [dir-handle content]
   (write-markdown-file dir-handle "cards.md" content))
 
-;; Directory handle persistence (localStorage)
+;; Directory handle persistence (IndexedDB)
 
 (defn save-dir-handle
-  "Save directory handle to localStorage for next session"
-  [_handle]
-  ;; Note: Can't actually serialize FileSystemHandle
-  ;; Instead, we'll need to request permission again on reload
-  ;; This is a limitation of the File System Access API
-  (js/localStorage.setItem "anki-dir-requested" "true"))
+  "Save directory handle to IndexedDB for next session"
+  [handle]
+  (p/let [db-name "anki-storage"
+          store-name "file-handles"
+          request (.open js/indexedDB db-name 1)]
+    (set! (.-onupgradeneeded request)
+          (fn [e]
+            (let [db (-> e .-target .-result)]
+              (when-not (.contains (.-objectStoreNames db) store-name)
+                (.createObjectStore db store-name)))))
+
+    (p/create
+     (fn [resolve reject]
+       (set! (.-onsuccess request)
+             (fn [e]
+               (let [db (-> e .-target .-result)
+                     tx (.transaction db #js [store-name] "readwrite")
+                     store (.objectStore tx store-name)
+                     put-req (.put store handle "dir-handle")]
+                 (set! (.-onsuccess put-req) #(resolve true))
+                 (set! (.-onerror put-req) #(reject (.-error put-req))))))
+       (set! (.-onerror request) #(reject (.-error request)))))))
+
+(defn load-dir-handle
+  "Load directory handle from IndexedDB"
+  []
+  (p/let [db-name "anki-storage"
+          store-name "file-handles"
+          request (.open js/indexedDB db-name 1)]
+    (p/create
+     (fn [resolve reject]
+       (set! (.-onsuccess request)
+             (fn [e]
+               (let [db (-> e .-target .-result)]
+                 (if (.contains (.-objectStoreNames db) store-name)
+                   (let [tx (.transaction db #js [store-name] "readonly")
+                         store (.objectStore tx store-name)
+                         get-req (.get store "dir-handle")]
+                     (set! (.-onsuccess get-req)
+                           (fn [e]
+                             (let [result (-> e .-target .-result)]
+                               (resolve result))))
+                     (set! (.-onerror get-req) #(resolve nil)))
+                   (resolve nil)))))
+       (set! (.-onerror request) #(resolve nil))))))
 
 (defn has-saved-dir?
-  "Check if we've requested a directory before"
+  "Check if we have a saved directory handle"
   []
-  (some? (js/localStorage.getItem "anki-dir-requested")))
+  (p/let [handle (load-dir-handle)]
+    (some? handle)))
