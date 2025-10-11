@@ -76,7 +76,7 @@
          [:div.review-header
           [:p (str "Cards remaining: " remaining)]]
          [:div.review-content
-          [review-card {:card card :show-answer? show-answer?}]]])
+          (review-card {:card card :show-answer? show-answer?})]])
       [:div.review-screen
        [:h2 "No cards due!"]
        [:p "Come back later for more reviews."]])))
@@ -170,4 +170,21 @@
   (js/console.log "Anki app starting with Replicant...")
   (r/set-dispatch! handle-event)
   (render!)
-  (add-watch !state :render (fn [_ _ _ _] (render!))))
+  (add-watch !state :render (fn [_ _ _ _] (render!)))
+
+  ;; Try to restore saved directory handle
+  (p/let [saved-handle (fs/load-dir-handle)]
+    (when saved-handle
+      (js/console.log "Found saved directory handle, requesting permission...")
+      (p/catch
+        (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
+          (when (= permission "granted")
+            (js/console.log "Permission granted, loading cards...")
+            (p/let [state (load-and-sync-cards! saved-handle)]
+              (swap! !state assoc
+                     :dir-handle saved-handle
+                     :state state
+                     :screen :review)
+              (js/console.log "Restored session with" (count (:cards state)) "cards"))))
+        (fn [e]
+          (js/console.warn "Could not restore saved directory:" (.-message e)))))))
