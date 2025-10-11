@@ -13,7 +13,6 @@
                        :show-answer? false}))
 
 ;; Components
-
 (defn setup-screen []
   [:div.setup-screen
    [:h1 "Welcome to Local-First Anki"]
@@ -163,7 +162,7 @@
 
 (defn render! []
   (r/render (js/document.getElementById "root")
-            [main-app @!state]))
+            (main-app @!state)))
 
 ;; Initialization
 

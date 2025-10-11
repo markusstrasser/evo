@@ -1,7 +1,8 @@
 (ns lab.anki.fs
   "File System Access API operations"
   (:require [promesa.core :as p]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn]
+            [clojure.string :as str]))
 
 ;; File System Access API wrappers
 
@@ -77,14 +78,57 @@
           combined-log (into curr-log events)]
     (write-edn-file dir-handle "log.edn" combined-log)))
 
-(defn load-cards
-  "Load cards from cards.md"
-  [dir-handle]
+(defn get-subdir
+  "Get subdirectory handle"
+  [dir-handle dirname]
   (p/catch
-    (read-markdown-file dir-handle "cards.md")
-    (fn [_e]
-      ;; If file doesn't exist, return empty string
-      "")))
+    (.getDirectoryHandle dir-handle dirname)
+    (fn [_e] nil)))
+
+(defn list-entries
+  "List all entries (files/dirs) in directory"
+  [dir-handle]
+  (p/let [entries (js/Array.from (.values dir-handle))]
+    (js->clj entries :keywordize-keys false)))
+
+(defn load-all-md-files
+  "Recursively load all .md files from directory and subdirectories"
+  ([dir-handle] (load-all-md-files dir-handle ""))
+  ([dir-handle path-prefix]
+   (p/let [entries (list-entries dir-handle)
+           results (p/all
+                    (for [entry entries]
+                      (let [name (.-name entry)
+                            kind (.-kind entry)]
+                        (cond
+                          (and (= kind "file") (.endsWith name ".md"))
+                          (p/let [content (get-file-content entry)]
+                            {:deck (if (empty? path-prefix) "default" path-prefix)
+                             :filename name
+                             :content content})
+
+                          (= kind "directory")
+                          (p/let [subdir-handle entry
+                                  subpath (if (empty? path-prefix)
+                                            name
+                                            (str path-prefix "/" name))]
+                            (load-all-md-files subdir-handle subpath))
+
+                          :else
+                          (p/resolved nil)))))]
+     (p/resolved (->> results
+                      flatten
+                      (remove nil?)
+                      vec)))))
+
+(defn load-cards
+  "Load cards from all .md files recursively"
+  [dir-handle]
+  (p/let [md-files (load-all-md-files dir-handle)]
+    (->> md-files
+         (map (fn [{:keys [content deck filename]}]
+                (str ";; Deck: " deck " | File: " filename "\n" content)))
+         (str/join "\n\n"))))
 
 (defn save-cards
   "Save cards to cards.md"
