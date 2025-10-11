@@ -135,57 +135,72 @@
   [dir-handle content]
   (write-markdown-file dir-handle "cards.md" content))
 
-;; Directory handle persistence (IndexedDB)
+;; Directory handle persistence using IndexedDB
+;; FileSystemHandle can be stored directly in IndexedDB (not localStorage)
 
-(defn save-dir-handle
-  "Save directory handle to IndexedDB for next session"
-  [handle]
-  (p/let [db-name "anki-storage"
-          store-name "file-handles"
-          request (.open js/indexedDB db-name 1)]
-    (set! (.-onupgradeneeded request)
-          (fn [e]
-            (let [db (-> e .-target .-result)]
-              (when-not (.contains (.-objectStoreNames db) store-name)
-                (.createObjectStore db store-name)))))
+(defonce db-name "anki-db")
+(defonce store-name "handles")
+(defonce db-version 1)
 
-    (p/create
-     (fn [resolve reject]
+(defn- open-db
+  "Open IndexedDB with proper upgrade handling"
+  []
+  (p/create
+   (fn [resolve reject]
+     (let [request (.open js/indexedDB db-name db-version)]
+
+       (set! (.-onupgradeneeded request)
+             (fn [e]
+               (js/console.log "Upgrading IndexedDB...")
+               (let [db (-> e .-target .-result)]
+                 (when-not (.contains (.-objectStoreNames db) store-name)
+                   (js/console.log "Creating object store:" store-name)
+                   (.createObjectStore db store-name)))))
+
        (set! (.-onsuccess request)
              (fn [e]
-               (let [db (-> e .-target .-result)
-                     tx (.transaction db #js [store-name] "readwrite")
-                     store (.objectStore tx store-name)
-                     put-req (.put store handle "dir-handle")]
-                 (set! (.-onsuccess put-req) #(resolve true))
-                 (set! (.-onerror put-req) #(reject (.-error put-req))))))
-       (set! (.-onerror request) #(reject (.-error request)))))))
+               (js/console.log "IndexedDB opened successfully")
+               (resolve (-> e .-target .-result))))
+
+       (set! (.-onerror request)
+             (fn [e]
+               (js/console.error "IndexedDB error:" (-> e .-target .-error))
+               (reject (-> e .-target .-error))))))))
+
+(defn save-dir-handle
+  "Save directory handle to IndexedDB"
+  [handle]
+  (js/console.log "Saving directory handle...")
+  (p/let [db (open-db)
+          tx (.transaction db #js [store-name] "readwrite")
+          store (.objectStore tx store-name)
+          _ (.put store handle "dir-handle")]
+    (js/console.log "Directory handle saved")
+    true))
 
 (defn load-dir-handle
   "Load directory handle from IndexedDB"
   []
-  (p/let [db-name "anki-storage"
-          store-name "file-handles"
-          request (.open js/indexedDB db-name 1)]
-    (p/create
-     (fn [resolve reject]
-       (set! (.-onsuccess request)
-             (fn [e]
-               (let [db (-> e .-target .-result)]
-                 (if (.contains (.-objectStoreNames db) store-name)
-                   (let [tx (.transaction db #js [store-name] "readonly")
-                         store (.objectStore tx store-name)
-                         get-req (.get store "dir-handle")]
-                     (set! (.-onsuccess get-req)
-                           (fn [e]
-                             (let [result (-> e .-target .-result)]
-                               (resolve result))))
-                     (set! (.-onerror get-req) #(resolve nil)))
-                   (resolve nil)))))
-       (set! (.-onerror request) #(resolve nil))))))
-
-(defn has-saved-dir?
-  "Check if we have a saved directory handle"
-  []
-  (p/let [handle (load-dir-handle)]
-    (some? handle)))
+  (js/console.log "Loading directory handle...")
+  (p/catch
+    (p/let [db (open-db)
+            tx (.transaction db #js [store-name] "readonly")
+            store (.objectStore tx store-name)]
+      (p/create
+       (fn [resolve reject]
+         (let [request (.get store "dir-handle")]
+           (set! (.-onsuccess request)
+                 (fn [e]
+                   (let [result (-> e .-target .-result)]
+                     (if result
+                       (do (js/console.log "Directory handle found")
+                           (resolve result))
+                       (do (js/console.log "No saved directory handle")
+                           (resolve nil))))))
+           (set! (.-onerror request)
+                 (fn [e]
+                   (js/console.error "Error loading handle:" (-> e .-target .-error))
+                   (resolve nil)))))))
+    (fn [e]
+      (js/console.error "Failed to load handle:" e)
+      nil)))
