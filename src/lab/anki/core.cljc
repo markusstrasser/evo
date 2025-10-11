@@ -89,8 +89,8 @@
 
 (defn new-card-meta
   "Create metadata for a new card"
-  [card-hash]
-  {:card-hash card-hash
+  [h]
+  {:card-hash h
    :created-at (date-from-ms (now-ms))
    :due-at (date-from-ms (now-ms))
    :reviews 0})
@@ -124,14 +124,14 @@
 
 (defn review-event
   "Create a review event"
-  [card-hash rating]
-  (new-event :review {:card-hash card-hash
+  [h rating]
+  (new-event :review {:card-hash h
                       :rating rating}))
 
 (defn card-created-event
   "Create a card-created event"
-  [card-hash card-data]
-  (new-event :card-created {:card-hash card-hash
+  [h card-data]
+  (new-event :card-created {:card-hash h
                             :card card-data}))
 
 ;; State reduction
@@ -141,16 +141,16 @@
   [state event]
   (case (:event/type event)
     :card-created
-    (let [{:keys [card-hash card]} (:event/data event)]
+    (let [{h :card-hash card :card} (:event/data event)]
       (-> state
-          (assoc-in [:cards card-hash] card)
-          (assoc-in [:meta card-hash] (new-card-meta card-hash))))
+          (assoc-in [:cards h] card)
+          (assoc-in [:meta h] (new-card-meta h))))
 
     :review
-    (let [{:keys [card-hash rating]} (:event/data event)
-          current-meta (get-in state [:meta card-hash])]
-      (if current-meta
-        (assoc-in state [:meta card-hash] (schedule-card current-meta rating))
+    (let [{h :card-hash rating :rating} (:event/data event)
+          card-meta (get-in state [:meta h])]
+      (if card-meta
+        (assoc-in state [:meta h] (schedule-card card-meta rating))
         state))
 
     ;; Unknown event type - ignore
@@ -178,6 +178,6 @@
 
 (defn card-with-meta
   "Get card data with its metadata"
-  [state card-hash]
-  (when-let [card (get-in state [:cards card-hash])]
-    (assoc card :meta (get-in state [:meta card-hash]))))
+  [state h]
+  (when-let [card (get-in state [:cards h])]
+    (assoc card :meta (get-in state [:meta h]))))
