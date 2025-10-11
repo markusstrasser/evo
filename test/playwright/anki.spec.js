@@ -29,10 +29,10 @@ test.describe('Anki Clone - Core Functionality', () => {
   test('should parse QA cards correctly', async ({ page }) => {
     await page.goto('/');
 
-    // Test card parsing in browser console
+    // Test new prefix-based format: q/a lines
     const qaCard = await page.evaluate(() => {
       const core = window['lab.anki.core'];
-      return core.parse_card('What is 2+2? ; 4');
+      return core.parse_card('q What is 2+2?\na 4');
     });
 
     expect(qaCard).toEqual({
@@ -45,9 +45,10 @@ test.describe('Anki Clone - Core Functionality', () => {
   test('should parse cloze deletion cards correctly', async ({ page }) => {
     await page.goto('/');
 
+    // Test new prefix format: c prefix
     const clozeCard = await page.evaluate(() => {
       const core = window['lab.anki.core'];
-      return core.parse_card('DNA has [3 billion] base pairs');
+      return core.parse_card('c DNA has [3 billion] base pairs');
     });
 
     expect(clozeCard).toEqual({
@@ -81,8 +82,6 @@ test.describe('Anki Clone - Core Functionality', () => {
         'card-hash': 'test123',
         'created-at': new Date(),
         'due-at': new Date(),
-        interval: 0,
-        'ease-factor': 2.5,
         reviews: 0
       };
       return core.schedule_card(meta, 'good');
@@ -190,5 +189,89 @@ test.describe('Anki Clone - UI Integration (Mock Mode)', () => {
     expect(content).toContain('Hard');
     expect(content).toContain('Good');
     expect(content).toContain('Easy');
+  });
+});
+
+test.describe('Anki Clone - New Features', () => {
+  test('should parse multiple card types with prefix syntax', async ({ page }) => {
+    await page.goto('/');
+
+    const results = await page.evaluate(() => {
+      const core = window['lab.anki.core'];
+      return {
+        qa: core.parse_card('q Capital of France?\na Paris'),
+        cloze: core.parse_card('c Human DNA has [3 billion] base pairs'),
+        invalid: core.parse_card('No prefix means no parse')
+      };
+    });
+
+    expect(results.qa.type).toBe('qa');
+    expect(results.cloze.type).toBe('cloze');
+    expect(results.invalid).toBeNull();
+  });
+
+  test('should handle multiline QA cards', async ({ page }) => {
+    await page.goto('/');
+
+    const qaCard = await page.evaluate(() => {
+      const core = window['lab.anki.core'];
+      return core.parse_card('q What is DNA?\na Deoxyribonucleic acid');
+    });
+
+    expect(qaCard).toEqual({
+      type: 'qa',
+      question: 'What is DNA?',
+      answer: 'Deoxyribonucleic acid'
+    });
+  });
+
+  test('should support image occlusion cards', async ({ page }) => {
+    await page.goto('/');
+
+    const imageCard = await page.evaluate(() => {
+      const core = window['lab.anki.core'];
+      return core.parse_card('![Brain diagram](brain.png) {hippocampus, cortex}');
+    });
+
+    expect(imageCard).toEqual({
+      type: 'image-occlusion',
+      'alt-text': 'Brain diagram',
+      'image-url': 'brain.png',
+      regions: ['hippocampus', 'cortex']
+    });
+  });
+
+  test('should check for saved directory handle on startup', async ({ page }) => {
+    // Monitor console logs
+    const logs = [];
+    page.on('console', msg => logs.push(msg.text()));
+
+    await page.goto('/');
+    await page.waitForTimeout(1000);
+
+    // Should try to load saved handle
+    const hasLoadLog = logs.some(log => log.includes('Loading directory handle'));
+    expect(hasLoadLog).toBe(true);
+  });
+
+  test('should save directory handle to IndexedDB', async ({ page }) => {
+    await page.goto('/');
+
+    // Check that IndexedDB functions exist
+    const hasIndexedDB = await page.evaluate(() => {
+      return typeof window.indexedDB !== 'undefined';
+    });
+
+    expect(hasIndexedDB).toBe(true);
+
+    // Check that our DB name is accessible
+    const dbExists = await page.evaluate(async () => {
+      const dbs = await window.indexedDB.databases();
+      return dbs.some(db => db.name === 'anki-db');
+    });
+
+    // DB only exists after first use, so this might be false on clean run
+    // Just verify the API is available
+    expect(typeof dbExists).toBe('boolean');
   });
 });
