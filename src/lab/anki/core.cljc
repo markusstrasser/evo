@@ -134,6 +134,28 @@
   (new-event :card-created {:card-hash h
                             :card card-data}))
 
+;; Image occlusion helpers
+
+(defn expand-image-occlusion
+  "Expand an image-occlusion card into virtual child cards for each occlusion.
+   Returns a map of {child-hash virtual-card-data}."
+  [parent-hash card]
+  (when (= :image-occlusion (:type card))
+    (let [occlusions (:occlusions card)]
+      (reduce (fn [acc occlusion]
+                (let [child-id [parent-hash (:oid occlusion)]
+                      child-hash (card-hash child-id)]
+                  (assoc acc child-hash
+                         {:type :image-occlusion/item
+                          :parent-id parent-hash
+                          :occlusion-oid (:oid occlusion)
+                          :asset (:asset card)
+                          :prompt (:prompt card)
+                          :shape (:shape occlusion)
+                          :answer (:answer occlusion)})))
+              {}
+              occlusions))))
+
 ;; State reduction
 
 (defn apply-event
@@ -142,9 +164,19 @@
   (case (:event/type event)
     :card-created
     (let [{h :card-hash card :card} (:event/data event)]
-      (-> state
-          (assoc-in [:cards h] card)
-          (assoc-in [:meta h] (new-card-meta h))))
+      (if (= :image-occlusion (:type card))
+        ;; Store parent and expand into virtual children
+        (let [children (expand-image-occlusion h card)]
+          (reduce (fn [s [child-hash child-card]]
+                    (-> s
+                        (assoc-in [:cards child-hash] child-card)
+                        (assoc-in [:meta child-hash] (new-card-meta child-hash))))
+                  (assoc-in state [:cards h] card)
+                  children))
+        ;; Regular card
+        (-> state
+            (assoc-in [:cards h] card)
+            (assoc-in [:meta h] (new-card-meta h)))))
 
     :review
     (let [{h :card-hash rating :rating} (:event/data event)
