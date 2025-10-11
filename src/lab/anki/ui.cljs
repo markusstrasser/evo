@@ -70,12 +70,21 @@
   "Draw occlusion mask on canvas"
   [canvas card show-answer?]
   (when canvas
+    (js/console.log "Drawing occlusion:"
+                    "card type" (:type card)
+                    "asset" (:asset card)
+                    "shape" (:shape card)
+                    "show-answer?" show-answer?)
     (let [ctx (.getContext canvas "2d")
           img (js/Image.)
           asset (:asset card)
           shape (:shape card)]
+      (set! (.-onerror img)
+            (fn [e]
+              (js/console.error "Failed to load image:" (:url asset) e)))
       (set! (.-onload img)
             (fn []
+              (js/console.log "Image loaded, drawing...")
               (let [w (.-width img)
                     h (.-height img)]
                 ;; Set canvas size to match image
@@ -84,6 +93,7 @@
 
                 ;; Draw image
                 (.drawImage ctx img 0 0)
+                (js/console.log "Image drawn" w "x" h)
 
                 ;; Draw mask if not revealed
                 (when-not show-answer?
@@ -91,9 +101,11 @@
                         y (* (:y shape) h)
                         rect-w (* (:w shape) w)
                         rect-h (* (:h shape) h)]
+                    (js/console.log "Drawing mask at" x y rect-w rect-h)
                     (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
                     (.fillRect ctx x y rect-w rect-h))))))
-      (set! (.-src img) (:url asset)))))
+      (set! (.-src img) (:url asset))
+      (js/console.log "Image src set to:" (:url asset)))))
 
 (defn review-card [{:keys [card show-answer?]}]
   (let [{:keys [front back class-name]}
@@ -305,14 +317,18 @@
           (swap! !state assoc
                  :state new-state
                  :events new-events)
-          (js/console.log "Test card created, total cards:" (count (:cards new-state))))
+          (js/console.log "Test card created, total cards:" (count (:cards new-state)))
+          (js/console.log "Card types:" (map #(:type (second %)) (:cards new-state)))
+          (js/console.log "Due cards:" (core/due-cards new-state)))
         ;; No dir handle, just add to memory
         (let [new-state (core/apply-event state event)
               new-events (conj events event)]
           (swap! !state assoc
                  :state new-state
                  :events new-events)
-          (js/console.log "Test card created (memory only), total cards:" (count (:cards new-state))))))
+          (js/console.log "Test card created (memory only), total cards:" (count (:cards new-state)))
+          (js/console.log "Card types:" (map #(:type (second %)) (:cards new-state)))
+          (js/console.log "Due cards:" (core/due-cards new-state)))))
 
     (js/console.warn "Unknown action:" action)))
 
