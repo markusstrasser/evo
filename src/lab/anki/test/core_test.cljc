@@ -51,11 +51,11 @@
 
 (deftest new-card-meta-test
   (testing "New card metadata"
-    (let [meta (core/new-card-meta "test-hash")]
-      (is (= "test-hash" (:card-hash meta)))
-      (is (= 0 (:reviews meta)))
-      (is (some? (:created-at meta)))
-      (is (some? (:due-at meta))))))
+    (let [card-meta (core/new-card-meta "test-hash")]
+      (is (= "test-hash" (:card-hash card-meta)))
+      (is (= 0 (:reviews card-meta)))
+      (is (some? (:created-at card-meta)))
+      (is (some? (:due-at card-meta))))))
 
 (deftest schedule-card-test
   (testing "Card scheduling (mock algorithm)"
@@ -126,36 +126,36 @@
           hash2 (core/card-hash card2)
           events [(core/card-created-event hash1 card1)
                   (core/card-created-event hash2 card2)
-                  (core/review-event hash1 :good)]]
-      (let [state (core/reduce-events events)]
-        (is (= 2 (count (:cards state))))
-        (is (= 1 (get-in state [:meta hash1 :reviews])))
-        (is (= 0 (get-in state [:meta hash2 :reviews])))))))
+                  (core/review-event hash1 :good)]
+          state (core/reduce-events events)]
+      (is (= 2 (count (:cards state))))
+      (is (= 1 (get-in state [:meta hash1 :reviews])))
+      (is (= 0 (get-in state [:meta hash2 :reviews]))))))
 
 (deftest due-cards-test
   (testing "Finding due cards"
     (let [card {:type :qa :question "Q" :answer "A"}
-          hash (core/card-hash card)
+          h (core/card-hash card)
           past-date #?(:clj (java.util.Date. 0) :cljs (js/Date. 0))
           future-date #?(:clj (java.util.Date. (+ (System/currentTimeMillis) 86400000))
                          :cljs (js/Date. (+ (.getTime (js/Date.)) 86400000)))
-          state {:cards {hash card}
-                 :meta {hash {:card-hash hash
-                              :due-at past-date
-                              :reviews 0}}}]
-      (is (= [hash] (core/due-cards state)))
+          state {:cards {h card}
+                 :meta {h {:card-hash h
+                           :due-at past-date
+                           :reviews 0}}}]
+      (is (= [h] (core/due-cards state)))
 
-      (let [state-future (assoc-in state [:meta hash :due-at] future-date)]
+      (let [state-future (assoc-in state [:meta h :due-at] future-date)]
         (is (empty? (core/due-cards state-future)))))))
 
 (deftest card-with-meta-test
   (testing "Getting card with metadata"
     (let [card {:type :qa :question "Q" :answer "A"}
-          hash (core/card-hash card)
-          meta {:card-hash hash :reviews 1}
-          state {:cards {hash card}
-                 :meta {hash meta}}]
-      (let [result (core/card-with-meta state hash)]
-        (is (= :qa (:type result)))
-        (is (= "Q" (:question result)))
-        (is (= meta (:meta result)))))))
+          h (core/card-hash card)
+          card-meta {:card-hash h :reviews 1}
+          state {:cards {h card}
+                 :meta {h card-meta}}
+          result (core/card-with-meta state h)]
+      (is (= :qa (:type result)))
+      (is (= "Q" (:question result)))
+      (is (= card-meta (:meta result))))))

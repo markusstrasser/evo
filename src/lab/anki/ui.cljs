@@ -14,8 +14,9 @@
                        :show-answer? false}))
 
 ;; Helpers
-(defn time-ago [date]
+(defn time-ago
   "Convert a date to a human-readable 'X ago' string"
+  [date]
   (let [now (js/Date.)
         diff-ms (- (.getTime now) (.getTime date))
         diff-sec (/ diff-ms 1000)
@@ -31,14 +32,16 @@
       (< diff-day 2) "1 day ago"
       :else (str (js/Math.floor diff-day) " days ago"))))
 
-(defn truncate-text [text max-len]
+(defn truncate-text
   "Truncate text to max-len with ellipsis"
+  [text max-len]
   (if (> (count text) max-len)
     (str (subs text 0 max-len) "...")
     text))
 
-(defn get-card-preview [card]
+(defn get-card-preview
   "Get preview text for a card"
+  [card]
   (case (:type card)
     :qa (truncate-text (:question card) 50)
     :cloze (truncate-text (:template card) 50)
@@ -99,8 +102,9 @@
        (rating-buttons)
        [:button {:on {:click [::show-answer]}} "Show Answer"])]))
 
-(defn review-history [{:keys [events state]}]
+(defn review-history
   "Display recent review events"
+  [{:keys [events state]}]
   (let [review-events (->> events
                            (filter #(= :review (:event/type %)))
                            (take-last 10)
