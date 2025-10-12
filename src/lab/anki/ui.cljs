@@ -50,13 +50,21 @@
     "Unknown card type"))
 
 ;; Components
-(defn setup-screen []
+(defn setup-screen [{:keys [saved-handle]}]
   [:div.setup-screen
    [:h1 "Welcome to Local-First Anki"]
    [:p "To get started, select a folder to store your cards and review data."]
-   [:button
-    {:on {:click [::select-folder]}}
-    "Select Folder"]])
+   (if saved-handle
+     [:div
+      [:button
+       {:on {:click [::resume-saved]}}
+       "Resume Last Session"]
+      [:button
+       {:on {:click [::select-folder]}}
+       "Select Different Folder"]]
+     [:button
+      {:on {:click [::select-folder]}}
+      "Select Folder"])])
 
 (defn rating-buttons []
   [:div.rating-buttons
@@ -194,14 +202,14 @@
        [:button {:on {:click [::create-test-occlusion]}} "Create Test Image Occlusion"]
        (review-history {:events events :state state})])))
 
-(defn main-app [{:keys [screen state events show-answer?]}]
+(defn main-app [{:keys [screen state events show-answer? saved-handle]}]
   [:div.anki-app
    [:nav
     [:h1 "Local-First Anki"]
     [:p "Edit cards.md in your folder to add/modify cards"]]
    [:main
     (case screen
-      :setup (setup-screen)
+      :setup (setup-screen {:saved-handle saved-handle})
       :review (review-screen {:state state :events events :show-answer? show-answer?})
       [:div "Unknown screen"])]])
 
@@ -285,8 +293,28 @@
                :dir-handle handle
                :state state
                :events events
+               :saved-handle handle
                :screen :review)
         (js/console.log "Loaded state with" (count (:cards state)) "total cards")))
+
+    ::resume-saved
+    (let [{:keys [saved-handle]} @!state]
+      (when saved-handle
+        (js/console.log "Resuming saved session...")
+        (p/catch
+          (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
+            (if (= permission "granted")
+              (p/let [events (fs/load-log saved-handle)
+                      state (core/reduce-events events)]
+                (swap! !state assoc
+                       :dir-handle saved-handle
+                       :state state
+                       :events events
+                       :screen :review)
+                (js/console.log "Restored session with" (count (:cards state)) "cards"))
+              (js/console.warn "Permission denied, please select folder again")))
+          (fn [e]
+            (js/console.error "Failed to resume session:" (.-message e))))))
 
     ::show-answer
     (swap! !state assoc :show-answer? true)
@@ -344,21 +372,8 @@
   (render!)
   (add-watch !state :render (fn [_ _ _ _] (render!)))
 
-  ;; Try to restore saved directory handle
+  ;; Try to restore saved directory handle (without requesting permission)
   (p/let [saved-handle (fs/load-dir-handle)]
     (when saved-handle
-      (js/console.log "Found saved directory handle, requesting permission...")
-      (p/catch
-        (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
-          (when (= permission "granted")
-            (js/console.log "Permission granted, loading cards...")
-            (p/let [events (fs/load-log saved-handle)
-                    state (core/reduce-events events)]
-              (swap! !state assoc
-                     :dir-handle saved-handle
-                     :state state
-                     :events events
-                     :screen :review)
-              (js/console.log "Restored session with" (count (:cards state)) "cards"))))
-        (fn [e]
-          (js/console.warn "Could not restore saved directory:" (.-message e)))))))
+      (js/console.log "Found saved directory handle, will restore on user interaction")
+      (swap! !state assoc :saved-handle saved-handle))))
