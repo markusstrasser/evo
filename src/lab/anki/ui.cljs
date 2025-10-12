@@ -67,36 +67,39 @@
       (str/capitalize (name rating))])])
 
 (defn draw-occlusion-mask!
-  "Draw occlusion mask on canvas"
+  "Draw occlusion mask on canvas with noise background"
   [canvas card show-answer?]
   (when canvas
     (let [ctx (.getContext canvas "2d")
-          img (js/Image.)
           asset (:asset card)
-          shape (:shape card)]
-      (set! (.-onerror img)
-            (fn [e]
-              (js/console.error "Failed to load image:" (:url asset) e)))
-      (set! (.-onload img)
-            (fn []
-              (let [w (.-width img)
-                    h (.-height img)]
-                ;; Set canvas size to match image
-                (set! (.-width canvas) w)
-                (set! (.-height canvas) h)
+          shape (:shape card)
+          w (or (:width asset) 400)
+          h (or (:height asset) 300)]
 
-                ;; Draw image
-                (.drawImage ctx img 0 0)
+      ;; Set canvas size
+      (set! (.-width canvas) w)
+      (set! (.-height canvas) h)
 
-                ;; Draw mask if not revealed
-                (when-not show-answer?
-                  (let [x (* (:x shape) w)
-                        y (* (:y shape) h)
-                        rect-w (* (:w shape) w)
-                        rect-h (* (:h shape) h)]
-                    (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
-                    (.fillRect ctx x y rect-w rect-h))))))
-      (set! (.-src img) (:url asset)))))
+      ;; Draw noise background
+      (let [image-data (.createImageData ctx w h)
+            data (.-data image-data)]
+        (dotimes [i (/ (.-length data) 4)]
+          (let [val (+ 100 (rand-int 100))
+                idx (* i 4)]
+            (aset data idx val)           ; R
+            (aset data (+ idx 1) val)     ; G
+            (aset data (+ idx 2) val)     ; B
+            (aset data (+ idx 3) 255)))   ; A
+        (.putImageData ctx image-data 0 0))
+
+      ;; Draw mask if not revealed
+      (when-not show-answer?
+        (let [x (* (:x shape) w)
+              y (* (:y shape) h)
+              rect-w (* (:w shape) w)
+              rect-h (* (:h shape) h)]
+          (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+          (.fillRect ctx x y rect-w rect-h))))))
 
 (defn review-card [{:keys [card show-answer?]}]
   (let [{:keys [front back class-name]}
@@ -133,7 +136,15 @@
                    [:h2 (:prompt card)]
                    [:canvas {:ref (fn [el] (draw-occlusion-mask! el card show-answer?))}]]
            :back [:div.answer [:p (:answer card)]]
-           :class-name "image-occlusion-item-card"})]
+           :class-name "image-occlusion-item-card"}
+
+          ;; Default case for unknown card types
+          {:front [:div.unknown-card
+                   [:h2 "Unknown Card Type"]
+                   [:p (str "Type: " (:type card))]
+                   [:pre (pr-str card)]]
+           :back nil
+           :class-name "unknown-card"})]
 
     [:div.review-card {:class class-name}
      front
