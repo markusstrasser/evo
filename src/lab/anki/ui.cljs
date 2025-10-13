@@ -366,6 +366,14 @@
   (render!)
   (add-watch !state :render (fn [_ _ _ _] (render!)))
 
+  ;; Load debug helpers in development
+  (when ^boolean js/goog.DEBUG
+    (js/console.log "🔧 Loading debug helpers...")
+    (try
+      ((js/eval "() => import('/js/anki/cljs-runtime/dev.debug.js').then(m => m.dev.debug.init_BANG_())"))
+      (catch :default e
+        (js/console.warn "Debug helpers not available:" e))))
+
   ;; Try to restore saved directory handle (without requesting permission)
   (p/let [saved-handle (fs/load-dir-handle)]
     (when saved-handle
