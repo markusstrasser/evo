@@ -292,8 +292,8 @@
         (js/console.log "Rating card" rating)
         (p/let [event (core/review-event review-hash rating)
                 _ (fs/append-to-log dir-handle [event])
-                new-state (core/apply-event state event)
                 new-events (conj events event)
+                new-state (core/reduce-events new-events) ; FIX: rebuild stacks
                 next-due (core/due-cards new-state)
                 next-hash (first next-due)]
           (swap! !state assoc
