@@ -11,7 +11,8 @@
       (is (empty? (:occlusions state)) "Occlusions should be empty initially")
       (is (= "What is this region?" (:prompt state)) "Default prompt should be set")
       (is (false? (:drawing? state)) "Should not be drawing initially")
-      (is (nil? (:current-rect state)) "Current rect should be nil"))))
+      (is (nil? (:current-rect state)) "Current rect should be nil")
+      (is (= :hide-all-guess-one (:mode state)) "Default mode should be hide-all-guess-one"))))
 
 (deftest test-normalize-rect
   (testing "Rectangle normalization"
@@ -82,6 +83,7 @@
       (is (= :image-occlusion (:type card)) "Type should be :image-occlusion")
       (is (= 2 (count (:occlusions card))) "Should have 2 occlusions")
       (is (= "Custom prompt" (:prompt card)) "Prompt should be custom")
+      (is (= :hide-all-guess-one (:mode card)) "Mode should be hide-all-guess-one")
       (is (= 400 (get-in card [:asset :width])) "Width should be 400")
       (is (= 300 (get-in card [:asset :height])) "Height should be 300")
       (is (= "data:image/png;base64,..." (get-in card [:asset :url])) "URL should be set")
