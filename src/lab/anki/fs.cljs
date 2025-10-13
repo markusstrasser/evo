@@ -30,45 +30,59 @@
      (.write w content)
      (.close w))))
 
+;; Generic file operations with optional transformation
+
+(defn- read-file
+  "Read a file and optionally transform its content"
+  ([dir-handle filename]
+   (read-file dir-handle filename identity))
+  ([dir-handle filename parse-fn]
+   (p/let [fh (get-file-handle dir-handle filename false)
+           content (get-file-content fh)]
+     (parse-fn content))))
+
+(defn- write-file
+  "Write content to a file, optionally transforming before writing"
+  ([dir-handle filename content]
+   (write-file dir-handle filename content identity))
+  ([dir-handle filename data serialize-fn]
+   (p/let [fh (get-file-handle dir-handle filename true)
+           content (serialize-fn data)]
+     (write-file-content fh content))))
+
 ;; EDN file operations
 
 (defn read-edn-file
   "Read and parse an EDN file"
   [dir-handle filename]
-  (p/let [fh (get-file-handle dir-handle filename false)
-          cnt (get-file-content fh)]
-    (edn/read-string cnt)))
+  (read-file dir-handle filename edn/read-string))
 
 (defn write-edn-file
   "Write data to an EDN file"
   [dir-handle filename data]
-  (p/let [file-handle (get-file-handle dir-handle filename true)
-          content (pr-str data)]
-    (write-file-content file-handle content)))
+  (write-file dir-handle filename data pr-str))
 
 ;; Markdown file operations
 
 (defn read-markdown-file
   "Read a markdown file"
   [dir-handle filename]
-  (p/let [file-handle (get-file-handle dir-handle filename false)]
-    (get-file-content file-handle)))
+  (read-file dir-handle filename))
 
 (defn write-markdown-file
   "Write content to a markdown file"
   [dir-handle filename content]
-  (p/let [file-handle (get-file-handle dir-handle filename true)]
-    (write-file-content file-handle content)))
+  (write-file dir-handle filename content))
 
 ;; SRS-specific file operations
 
 (defn load-log
-  "Load the event log from log.edn"
+  "Load the event log from log.edn, returning empty vector if file doesn't exist"
   [dir-handle]
   (p/catch
    (read-edn-file dir-handle "log.edn")
-   (fn [_e]
-      ;; If file doesn't exist, return empty log
+   (fn [e]
+     (js/console.log "No existing log file, starting fresh")
      [])))
 
 (defn append-to-log
@@ -91,47 +105,48 @@
   (p/let [entries (js/Array.from (.values dir-handle))]
     (js->clj entries :keywordize-keys false)))
 
+;; Async iteration helpers
+
+(defn- collect-async-iterator
+  "Collect all values from an async iterator into a vector"
+  [iterator]
+  (p/loop [acc []]
+    (p/let [item (.next iterator)]
+      (if (.-done item)
+        acc
+        (p/recur (conj acc (.-value item)))))))
+
+(defn- process-md-entry
+  "Process a single directory entry (file or subdirectory)"
+  [entry path-prefix]
+  (let [name (.-name entry)
+        kind (.-kind entry)]
+    (js/console.log "Processing entry:" name "kind:" kind)
+    (cond
+      (and (= kind "file") (.endsWith name ".md"))
+      (p/let [content (get-file-content entry)]
+        (js/console.log "Loaded .md file:" name)
+        [{:deck (if (seq path-prefix) path-prefix "default")
+          :filename name
+          :content content}])
+
+      (= kind "directory")
+      (let [subpath (if (seq path-prefix)
+                      (str path-prefix "/" name)
+                      name)]
+        (load-all-md-files entry subpath))
+
+      :else
+      [])))
+
 (defn load-all-md-files
   "Recursively load all .md files from directory and subdirectories"
   ([dir-handle] (load-all-md-files dir-handle ""))
   ([dir-handle path-prefix]
-   (p/let [;; Collect entries using async iteration
-           entries (p/create
-                    (fn [resolve reject]
-                      (p/let [result (js/Array.)
-                              iterator (.values dir-handle)]
-                        (p/loop []
-                          (p/let [item (.next iterator)]
-                            (if (.-done item)
-                              (resolve result)
-                              (do
-                                (.push result (.-value item))
-                                (p/recur))))))))
-           _ (js/console.log "Found" (.-length entries) "entries")
-           results (p/all
-                    (for [i (range (.-length entries))]
-                      (let [entry (aget entries i)
-                            name (.-name entry)
-                            kind (.-kind entry)]
-                        (js/console.log "Processing entry:" name "kind:" kind)
-                        (cond
-                          (and (= kind "file") (.endsWith name ".md"))
-                          (p/let [content (get-file-content entry)]
-                            (js/console.log "Loaded .md file:" name)
-                            [{:deck (if (empty? path-prefix) "default" path-prefix)
-                              :filename name
-                              :content content}])
-
-                          (= kind "directory")
-                          (p/let [subdir-handle entry
-                                  subpath (if (empty? path-prefix)
-                                            name
-                                            (str path-prefix "/" name))]
-                            (load-all-md-files subdir-handle subpath))
-
-                          :else
-                          (p/resolved [])))))]
-     (p/resolved (reduce into [] results)))))
+   (p/let [entries (collect-async-iterator (.values dir-handle))
+           _ (js/console.log "Found" (count entries) "entries")
+           results (p/all (map #(process-md-entry % path-prefix) entries))]
+     (into [] cat results))))
 
 (defn load-cards
   "Load cards from all .md files recursively"
@@ -180,14 +195,20 @@
               (js/console.log "IndexedDB opened successfully")
               db))))
 
+(defn- idb-transaction
+  "Execute an IndexedDB operation within a transaction"
+  [mode operation-fn]
+  (p/let [db (open-db)
+          tx (.transaction db #js [store-name] mode)
+          store (.objectStore tx store-name)]
+    (operation-fn store)))
+
 (defn save-dir-handle
   "Save directory handle to IndexedDB"
   [handle]
   (js/console.log "Saving directory handle...")
-  (p/let [db (open-db)
-          tx (.transaction db #js [store-name] "readwrite")
-          store (.objectStore tx store-name)
-          _ (idb-request->promise (.put store handle "dir-handle"))]
+  (p/let [_ (idb-transaction "readwrite"
+                             #(idb-request->promise (.put % handle "dir-handle")))]
     (js/console.log "Directory handle saved")
     true))
 
@@ -196,15 +217,13 @@
   []
   (js/console.log "Loading directory handle...")
   (p/catch
-   (p/let [db (open-db)
-           tx (.transaction db #js [store-name] "readonly")
-           store (.objectStore tx store-name)
-           result (idb-request->promise (.get store "dir-handle"))]
-     (if result
-       (do (js/console.log "Directory handle found")
-           result)
-       (do (js/console.log "No saved directory handle")
-           nil)))
+   (p/let [result (idb-transaction "readonly"
+                                   #(idb-request->promise (.get % "dir-handle")))]
+     (when result
+       (js/console.log "Directory handle found"))
+     (or result
+         (do (js/console.log "No saved directory handle")
+             nil)))
    (fn [e]
      (js/console.error "Failed to load handle:" e)
      nil)))
