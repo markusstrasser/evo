@@ -3,6 +3,8 @@
   (:require [clojure.string :as str]
             [lab.anki.core :as core]
             [lab.anki.fs :as fs]
+            [lab.anki.occlusion-creator :as creator]
+            [lab.anki.occlusion-creator-ui :as creator-ui]
             [promesa.core :as p]
             [replicant.dom :as r]))
 
@@ -222,8 +224,11 @@
       [:p "Edit cards.md in your folder to add/modify cards"]
       [:div.nav-buttons
        (when (= screen :review)
-         [:button {:on {:click [::select-folder]}}
-          "Change Folder"])
+         [:div {:style {:display "flex" :gap "10px"}}
+          [:button {:on {:click [::create-occlusion]}}
+           "Create Occlusion Card"]
+          [:button {:on {:click [::select-folder]}}
+           "Change Folder"]])
        [:div.undo-redo-buttons
         [:button {:disabled (not can-undo?)
                   :on {:click [::undo]}}
@@ -235,6 +240,9 @@
       (case screen
         :setup (setup-screen {:saved-handle saved-handle})
         :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash})
+        :create-occlusion (creator-ui/creator-screen {:state @creator/!creator-state
+                                                      :on-save [::save-occlusion-card]
+                                                      :on-cancel [::cancel-occlusion]})
         [:div "Unknown screen"])]]))
 
 ;; Forward declarations
@@ -351,6 +359,33 @@
                    :show-answer? false
                    :current-card-hash next-hash)
             (js/console.log "Redo complete, redo stack:" (count (:redo-stack new-state)))))))
+
+    ::create-occlusion
+    (do
+      (creator/reset-creator!)
+      (swap! !state assoc :screen :create-occlusion))
+
+    ::save-occlusion-card
+    (let [{:keys [dir-handle events state]} @!state
+          card (creator/create-occlusion-card)]
+      (when (and card dir-handle)
+        (js/console.log "Saving occlusion card with" (count (:occlusions card)) "regions")
+        (p/let [h (core/card-hash card)
+                event (core/card-created-event h card)
+                _ (fs/append-to-log dir-handle [event])
+                new-events (conj events event)
+                new-state (core/reduce-events new-events)]
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :screen :review)
+          (creator/reset-creator!)
+          (js/console.log "Occlusion card saved"))))
+
+    ::cancel-occlusion
+    (do
+      (creator/reset-creator!)
+      (swap! !state assoc :screen :review))
 
     (js/console.warn "Unknown action:" action)))
 
