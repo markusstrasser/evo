@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Cloze Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .cloze-text {
+            font-size: 18px;
+            padding: 20px;
+            background: #fff;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cloze Deletion Test</h1>
+
+    <div class="test-section">
+        <h3>Test 1: Simple Cloze</h3>
+        <p><strong>Input:</strong> <code>c The capital of France is [Paris]</code></p>
+        <div id="test1-hidden"></div>
+        <div id="test1-shown"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 2: Multiple Deletions</h3>
+        <p><strong>Input:</strong> <code>c [Python] is a programming language created by [Guido van Rossum]</code></p>
+        <div id="test2-hidden"></div>
+        <div id="test2-shown"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 3: Edge Case - Special Characters</h3>
+        <p><strong>Input:</strong> <code>c The formula is [E=mc²]</code></p>
+        <div id="test3-hidden"></div>
+        <div id="test3-shown"></div>
+    </div>
+
+    <script>
+        // Simulate the cloze pattern from core.cljc
+        const clozePattern = /\[([^\]]+)\]/g;
+
+        function parseCloze(text) {
+            const trimmed = text.trim();
+            if (!trimmed.startsWith('c ')) return null;
+
+            const content = trimmed.substring(2);
+            const matches = [...content.matchAll(clozePattern)];
+
+            if (matches.length === 0) return null;
+
+            return {
+                type: 'cloze',
+                template: content,
+                deletions: matches.map(m => m[1])
+            };
+        }
+
+        function renderClozeText(card, showAnswer) {
+            const template = card.template;
+            const deletion = card.deletions[0]; // Use first deletion
+
+            const displayText = showAnswer
+                ? template
+                : template.replace(new RegExp(`\\[${deletion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`), '[...]');
+
+            return displayText;
+        }
+
+        // Test 1
+        const test1Card = parseCloze('c The capital of France is [Paris]');
+        document.getElementById('test1-hidden').innerHTML = `
+            <p><strong>Hidden:</strong></p>
+            <div class="cloze-text">${renderClozeText(test1Card, false)}</div>
+            <pre>${JSON.stringify(test1Card, null, 2)}</pre>
+        `;
+        document.getElementById('test1-shown').innerHTML = `
+            <p><strong>Shown:</strong></p>
+            <div class="cloze-text">${renderClozeText(test1Card, true)}</div>
+        `;
+
+        // Test 2
+        const test2Card = parseCloze('c [Python] is a programming language created by [Guido van Rossum]');
+        document.getElementById('test2-hidden').innerHTML = `
+            <p><strong>Hidden:</strong></p>
+            <div class="cloze-text">${renderClozeText(test2Card, false)}</div>
+            <pre>${JSON.stringify(test2Card, null, 2)}</pre>
+        `;
+        document.getElementById('test2-shown').innerHTML = `
+            <p><strong>Shown:</strong></p>
+            <div class="cloze-text">${renderClozeText(test2Card, true)}</div>
+        `;
+
+        // Test 3
+        const test3Card = parseCloze('c The formula is [E=mc²]');
+        document.getElementById('test3-hidden').innerHTML = `
+            <p><strong>Hidden:</strong></p>
+            <div class="cloze-text">${renderClozeText(test3Card, false)}</div>
+            <pre>${JSON.stringify(test3Card, null, 2)}</pre>
+        `;
+        document.getElementById('test3-shown').innerHTML = `
+            <p><strong>Shown:</strong></p>
+            <div class="cloze-text">${renderClozeText(test3Card, true)}</div>
+        `;
+    </script>
+</body>
+</html>

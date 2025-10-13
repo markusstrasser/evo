@@ -212,7 +212,7 @@
       [:div.review-screen
        [:h2 "No cards due!"]
        [:p "Come back later for more reviews."]
-       [:button {:on {:click [::create-test-occlusion]}} "Create Test Image Occlusion"]
+
        (review-history {:events events :state state})])))
 
 (defn main-app [{:keys [screen state events show-answer? saved-handle]}]
@@ -251,48 +251,7 @@
 
       (core/reduce-events (concat events new-events)))))
 
-(defn create-test-occlusion-card
-  "Create a test image occlusion card"
-  []
-  (let [card {:type :image-occlusion
-              :asset {:url "/test-images/test-regions.png"
-                      :width 400
-                      :height 300}
-              :prompt "What is this region?"
-              :occlusions [{:oid (random-uuid)
-                            :shape {:kind :rect
-                                    :normalized? true
-                                    :x 0.125
-                                    :y 0.167
-                                    :w 0.25
-                                    :h 0.267}
-                            :answer "Region A"}
-                           {:oid (random-uuid)
-                            :shape {:kind :rect
-                                    :normalized? true
-                                    :x 0.5
-                                    :y 0.167
-                                    :w 0.25
-                                    :h 0.267}
-                            :answer "Region B"}
-                           {:oid (random-uuid)
-                            :shape {:kind :rect
-                                    :normalized? true
-                                    :x 0.125
-                                    :y 0.6
-                                    :w 0.25
-                                    :h 0.267}
-                            :answer "Region C"}
-                           {:oid (random-uuid)
-                            :shape {:kind :rect
-                                    :normalized? true
-                                    :x 0.5
-                                    :y 0.6
-                                    :w 0.25
-                                    :h 0.267}
-                            :answer "Region D"}]}
-        h (core/card-hash card)]
-    (core/card-created-event h card)))
+;; Removed: create-test-occlusion-card - test code no longer needed
 
 (defn handle-event [_replicant-data [action & args]]
   (case action
@@ -348,26 +307,6 @@
                  :events new-events
                  :show-answer? false)
           (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
-
-    ::create-test-occlusion
-    (let [{:keys [state events dir-handle]} @!state
-          event (create-test-occlusion-card)]
-      (js/console.log "Creating test occlusion card")
-      (if dir-handle
-        (p/let [_ (fs/append-to-log dir-handle [event])
-                new-state (core/apply-event state event)
-                new-events (conj events event)]
-          (swap! !state assoc
-                 :state new-state
-                 :events new-events)
-          (js/console.log "Test card created, total cards:" (count (:cards new-state))))
-        ;; No dir handle, just add to memory
-        (let [new-state (core/apply-event state event)
-              new-events (conj events event)]
-          (swap! !state assoc
-                 :state new-state
-                 :events new-events)
-          (js/console.log "Test card created (memory only), total cards:" (count (:cards new-state))))))
 
     (js/console.warn "Unknown action:" action)))
 
