@@ -27,8 +27,8 @@
   [file-handle content]
   (p/let [w (.createWritable file-handle)]
     (p/do!
-      (.write w content)
-      (.close w))))
+     (.write w content)
+     (.close w))))
 
 ;; EDN file operations
 
@@ -66,10 +66,10 @@
   "Load the event log from log.edn"
   [dir-handle]
   (p/catch
-    (read-edn-file dir-handle "log.edn")
-    (fn [_e]
+   (read-edn-file dir-handle "log.edn")
+   (fn [_e]
       ;; If file doesn't exist, return empty log
-      [])))
+     [])))
 
 (defn append-to-log
   "Append events to the log file"
@@ -82,8 +82,8 @@
   "Get subdirectory handle"
   [dir-handle dirname]
   (p/catch
-    (.getDirectoryHandle dir-handle dirname)
-    (fn [_e] nil)))
+   (.getDirectoryHandle dir-handle dirname)
+   (fn [_e] nil)))
 
 (defn list-entries
   "List all entries (files/dirs) in directory"
@@ -95,14 +95,29 @@
   "Recursively load all .md files from directory and subdirectories"
   ([dir-handle] (load-all-md-files dir-handle ""))
   ([dir-handle path-prefix]
-   (p/let [entries (list-entries dir-handle)
+   (p/let [;; Collect entries using async iteration
+           entries (p/create
+                    (fn [resolve reject]
+                      (p/let [result (js/Array.)
+                              iterator (.values dir-handle)]
+                        (p/loop []
+                          (p/let [item (.next iterator)]
+                            (if (.-done item)
+                              (resolve result)
+                              (do
+                                (.push result (.-value item))
+                                (p/recur))))))))
+           _ (js/console.log "Found" (.-length entries) "entries")
            results (p/all
-                    (for [entry entries]
-                      (let [name (.-name entry)
+                    (for [i (range (.-length entries))]
+                      (let [entry (aget entries i)
+                            name (.-name entry)
                             kind (.-kind entry)]
+                        (js/console.log "Processing entry:" name "kind:" kind)
                         (cond
                           (and (= kind "file") (.endsWith name ".md"))
                           (p/let [content (get-file-content entry)]
+                            (js/console.log "Loaded .md file:" name)
                             [{:deck (if (empty? path-prefix) "default" path-prefix)
                               :filename name
                               :content content}])
@@ -116,9 +131,7 @@
 
                           :else
                           (p/resolved [])))))]
-     (p/resolved (->> results
-                      (keep identity)
-                      (into [] cat))))))
+     (p/resolved (reduce into [] results)))))
 
 (defn load-cards
   "Load cards from all .md files recursively"
@@ -183,15 +196,15 @@
   []
   (js/console.log "Loading directory handle...")
   (p/catch
-    (p/let [db (open-db)
-            tx (.transaction db #js [store-name] "readonly")
-            store (.objectStore tx store-name)
-            result (idb-request->promise (.get store "dir-handle"))]
-      (if result
-        (do (js/console.log "Directory handle found")
-            result)
-        (do (js/console.log "No saved directory handle")
-            nil)))
-    (fn [e]
-      (js/console.error "Failed to load handle:" e)
-      nil)))
+   (p/let [db (open-db)
+           tx (.transaction db #js [store-name] "readonly")
+           store (.objectStore tx store-name)
+           result (idb-request->promise (.get store "dir-handle"))]
+     (if result
+       (do (js/console.log "Directory handle found")
+           result)
+       (do (js/console.log "No saved directory handle")
+           nil)))
+   (fn [e]
+     (js/console.error "Failed to load handle:" e)
+     nil)))
