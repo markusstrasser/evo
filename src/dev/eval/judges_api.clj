@@ -14,8 +14,8 @@
   [url headers body]
   (-> (http/post url {:headers (merge {"content-type" "application/json"} headers)
                       :body (json/write-str body)
-                      :socket-timeout 60000
-                      :conn-timeout 30000})
+                      :socket-timeout 120000
+                      :conn-timeout 60000})
       :body
       (json/read-str :key-fn keyword)))
 
