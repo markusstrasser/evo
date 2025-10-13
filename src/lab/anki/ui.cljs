@@ -216,15 +216,26 @@
        (review-history {:events events :state state})])))
 
 (defn main-app [{:keys [screen state events show-answer? saved-handle]}]
-  [:div.anki-app
-   [:nav
-    [:h1 "Local-First Anki"]
-    [:p "Edit cards.md in your folder to add/modify cards"]]
-   [:main
-    (case screen
-      :setup (setup-screen {:saved-handle saved-handle})
-      :review (review-screen {:state state :events events :show-answer? show-answer?})
-      [:div "Unknown screen"])]])
+  (let [undo-stack (:undo-stack state)
+        redo-stack (:redo-stack state)
+        can-undo? (seq undo-stack)
+        can-redo? (seq redo-stack)]
+    [:div.anki-app
+     [:nav
+      [:h1 "Local-First Anki"]
+      [:p "Edit cards.md in your folder to add/modify cards"]
+      [:div.undo-redo-buttons
+       [:button {:disabled (not can-undo?)
+                 :on {:click [::undo]}}
+        "Undo"]
+       [:button {:disabled (not can-redo?)
+                 :on {:click [::redo]}}
+        "Redo"]]]
+     [:main
+      (case screen
+        :setup (setup-screen {:saved-handle saved-handle})
+        :review (review-screen {:state state :events events :show-answer? show-answer?})
+        [:div "Unknown screen"])]]))
 
 ;; Forward declarations
 (declare render!)
@@ -307,6 +318,38 @@
                  :events new-events
                  :show-answer? false)
           (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
+
+    ::undo
+    (let [{:keys [state dir-handle events]} @!state
+          undo-stack (:undo-stack state)]
+      (when (and (seq undo-stack) dir-handle)
+        (let [target-event-id (last undo-stack)]
+          (js/console.log "Undoing event" target-event-id)
+          (p/let [event (core/undo-event target-event-id)
+                  _ (fs/append-to-log dir-handle [event])
+                  new-events (conj events event)
+                  new-state (core/reduce-events new-events)]
+            (swap! !state assoc
+                   :state new-state
+                   :events new-events
+                   :show-answer? false)
+            (js/console.log "Undo complete, undo stack:" (count (:undo-stack new-state)))))))
+
+    ::redo
+    (let [{:keys [state dir-handle events]} @!state
+          redo-stack (:redo-stack state)]
+      (when (and (seq redo-stack) dir-handle)
+        (let [target-event-id (last redo-stack)]
+          (js/console.log "Redoing event" target-event-id)
+          (p/let [event (core/redo-event target-event-id)
+                  _ (fs/append-to-log dir-handle [event])
+                  new-events (conj events event)
+                  new-state (core/reduce-events new-events)]
+            (swap! !state assoc
+                   :state new-state
+                   :events new-events
+                   :show-answer? false)
+            (js/console.log "Redo complete, redo stack:" (count (:redo-stack new-state)))))))
 
     (js/console.warn "Unknown action:" action)))
 

@@ -63,10 +63,10 @@
 (defn card-hash
   "Generate a hash for a card based on its content"
   [card-data]
-  #?(:clj  (let [digest (java.security.MessageDigest/getInstance "SHA-256")
-                 bs (.getBytes (pr-str card-data) "UTF-8")]
-             (.update digest bs)
-             (format "%064x" (BigInteger. 1 (.digest digest))))
+  #?(:clj (let [digest (java.security.MessageDigest/getInstance "SHA-256")
+                bs (.getBytes (pr-str card-data) "UTF-8")]
+            (.update digest bs)
+            (format "%064x" (BigInteger. 1 (.digest digest))))
      :cljs (let [s (pr-str card-data)]
              ;; Simple hash for CLJS (good enough for this use case)
              (str (cljs.core/hash s)))))
@@ -116,9 +116,10 @@
 ;; Event log
 
 (defn new-event
-  "Create a new event"
+  "Create a new event with unique ID"
   [event-type data]
-  {:event/type event-type
+  {:event/id (random-uuid)
+   :event/type event-type
    :event/timestamp (date-from-ms (now-ms))
    :event/data data})
 
@@ -133,6 +134,16 @@
   [h card-data]
   (new-event :card-created {:card-hash h
                             :card card-data}))
+
+(defn undo-event
+  "Create an undo event that marks a target event as undone"
+  [target-event-id]
+  (new-event :undo {:target-event-id target-event-id}))
+
+(defn redo-event
+  "Create a redo event that marks an undone event as active again"
+  [target-event-id]
+  (new-event :redo {:target-event-id target-event-id}))
 
 ;; Image occlusion helpers
 
@@ -188,13 +199,63 @@
     ;; Unknown event type - ignore
     state))
 
-(defn reduce-events
-  "Reduce a sequence of events to produce the current state"
+(defn build-event-status-map
+  "Build a map of event-id -> status (:active or :undone)"
   [events]
-  (reduce apply-event
-          {:cards {}
-           :meta {}}
-          events))
+  (reduce
+   (fn [status-map event]
+     (case (:event/type event)
+       :undo (assoc status-map
+                    (get-in event [:event/data :target-event-id])
+                    :undone)
+       :redo (assoc status-map
+                    (get-in event [:event/data :target-event-id])
+                    :active)
+       status-map))
+   {}
+   events))
+
+(defn build-undo-redo-stacks
+  "Build undo and redo stacks from events"
+  [events event-status]
+  (reduce
+   (fn [{:keys [undo-stack redo-stack] :as stacks} event]
+     (let [event-id (:event/id event)
+           status (get event-status event-id :active)]
+       (case (:event/type event)
+         (:card-created :review)
+         (if (= status :active)
+           {:undo-stack (conj undo-stack event-id)
+            :redo-stack []} ; Clear redo stack on new action
+           stacks)
+
+         :undo
+         {:undo-stack (vec (butlast undo-stack))
+          :redo-stack (conj redo-stack (get-in event [:event/data :target-event-id]))}
+
+         :redo
+         {:undo-stack (conj undo-stack (get-in event [:event/data :target-event-id]))
+          :redo-stack (vec (butlast redo-stack))}
+
+         stacks)))
+   {:undo-stack [] :redo-stack []}
+   events))
+
+(defn reduce-events
+  "Reduce a sequence of events to produce the current state with undo/redo support"
+  [events]
+  (let [event-status (build-event-status-map events)
+        active-events (filter #(let [event-id (:event/id %)
+                                     status (get event-status event-id :active)]
+                                 (and (= status :active)
+                                      (#{:card-created :review} (:event/type %))))
+                              events)
+        stacks (build-undo-redo-stacks events event-status)
+        base-state (reduce apply-event
+                           {:cards {}
+                            :meta {}}
+                           active-events)]
+    (merge base-state stacks)))
 
 ;; Query helpers
 
