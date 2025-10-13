@@ -35,8 +35,8 @@
   (let [api-key (System/getenv "GOOGLE_API_KEY")]
     (when-not api-key
       (throw (ex-info "Missing GOOGLE_API_KEY environment variable" {:provider :gemini25-pro})))
-    (json-post "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
-               {"x-goog-api-key" api-key}
+    (json-post (str "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" api-key)
+               {}
                {:contents [{:parts [{:text prompt}]}]
                 :generationConfig {:temperature 0.0
                                    :responseMimeType "application/json"}})))
@@ -66,12 +66,12 @@
                 :messages [{:role "user" :content prompt}]})))
 
 (defmethod call-judge :grok-4 [_ {:keys [prompt]}]
-  (let [api-key (System/getenv "XAI_API_KEY")]
+  (let [api-key (or (System/getenv "GROK_API_KEY") (System/getenv "XAI_API_KEY"))]
     (when-not api-key
-      (throw (ex-info "Missing XAI_API_KEY environment variable" {:provider :grok-4})))
+      (throw (ex-info "Missing GROK_API_KEY or XAI_API_KEY environment variable" {:provider :grok-4})))
     (json-post "https://api.x.ai/v1/chat/completions"
                {"authorization" (str "Bearer " api-key)}
-               {:model "grok-4"
+               {:model "grok-4-latest"
                 :response_format {:type "json_object"}
                 :temperature 0.0
                 :messages [{:role "user" :content prompt}]})))

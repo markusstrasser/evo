@@ -69,6 +69,56 @@
       {:on {:click [::rate-card rating]}}
       (str/capitalize (name rating))])])
 
+(defn- determine-occlusion-style
+  "Determines the visual style for an occlusion based on review mode and state."
+  [occ current-oid mode show-answer?]
+  (let [is-current? (= (:oid occ) current-oid)]
+    (case [mode is-current? show-answer?]
+      ;; In "Hide All" mode, when asking, the current item is invisible and others are hidden. When answering, reveal it.
+      [:hide-all-guess-one true false] :invisible
+      [:hide-all-guess-one false false] :hidden
+      [:hide-all-guess-one true true] :revealed
+      [:hide-all-guess-one false true] :invisible
+
+      ;; In "Hide One" mode, when asking, hide the current and show others as context. When answering, reveal current.
+      [:hide-one-guess-one true false] :hidden
+      [:hide-one-guess-one false false] :context
+      [:hide-one-guess-one true true] :revealed
+      [:hide-one-guess-one false true] :invisible
+
+      :invisible))) ; Default to invisible
+
+(defn- draw-styled-occlusion!
+  "Draws a single occlusion on the canvas according to a specified style."
+  [ctx w h occ style]
+  (let [shape (:shape occ)
+        x (* (:x shape) w)
+        y (* (:y shape) h)
+        rect-w (* (:w shape) w)
+        rect-h (* (:h shape) h)]
+    (case style
+      :hidden
+      (do (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+          (.fillRect ctx x y rect-w rect-h))
+
+      :revealed
+      (do (set! (.-strokeStyle ctx) "#00ff00")
+          (set! (.-lineWidth ctx) 3)
+          (.strokeRect ctx x y rect-w rect-h)
+          (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.8)")
+          (.fillRect ctx x y (min rect-w 200) 25)
+          (set! (.-fillStyle ctx) "#000000")
+          (set! (.-font ctx) "14px sans-serif")
+          (.fillText ctx (:answer occ) (+ x 5) (+ y 17)))
+
+      :context
+      (do (set! (.-strokeStyle ctx) "#0088ff")
+          (set! (.-lineWidth ctx) 2)
+          (.strokeRect ctx x y rect-w rect-h))
+
+      :invisible
+      nil)))
+
 (defn draw-occlusion-mask!
   "Draw occlusion mask on canvas - supports hide-all-guess-one and hide-one-guess-one modes"
   [canvas card show-answer?]
@@ -79,14 +129,7 @@
           asset (:asset card)
           w (or (:width asset) 400)
           h (or (:height asset) 300)
-          image-url (:url asset)
-          mode (or (:mode card) :hide-one-guess-one)
-          current-oid (:current-oid card)
-          all-occlusions (:occlusions card)]
-
-      (js/console.log "Drawing canvas:" w "x" h "mode:" mode "current-oid:" current-oid)
-      (js/console.log "All occlusions count:" (count all-occlusions))
-      (js/console.log "All occlusions:" (pr-str all-occlusions))
+          image-url (:url asset)]
 
       ;; Set canvas size
       (set! (.-width canvas) w)
@@ -98,92 +141,12 @@
           (set! (.-onload img)
                 (fn []
                   (.drawImage ctx img 0 0 w h)
-
-                  (case mode
-                    :hide-all-guess-one
-                    (if show-answer?
-                      ;; REVEAL: Show only current region with label
-                      (let [current-occ (first (filter #(= (:oid %) current-oid) all-occlusions))]
-                        (when current-occ
-                          (let [shape (:shape current-occ)
-                                x (* (:x shape) w)
-                                y (* (:y shape) h)
-                                rect-w (* (:w shape) w)
-                                rect-h (* (:h shape) h)]
-                            ;; Draw outline
-                            (set! (.-strokeStyle ctx) "#00ff00")
-                            (set! (.-lineWidth ctx) 3)
-                            (.strokeRect ctx x y rect-w rect-h)
-
-                            ;; Draw label background
-                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.8)")
-                            (.fillRect ctx x y (min rect-w 200) 25)
-
-                            ;; Draw label text
-                            (set! (.-fillStyle ctx) "#000000")
-                            (set! (.-font ctx) "14px sans-serif")
-                            (.fillText ctx (:answer current-occ) (+ x 5) (+ y 17)))))
-
-                      ;; QUESTION: Hide all EXCEPT current (current visible)
-                      (doseq [occ all-occlusions]
-                        (when (not= (:oid occ) current-oid)
-                          (let [shape (:shape occ)
-                                x (* (:x shape) w)
-                                y (* (:y shape) h)
-                                rect-w (* (:w shape) w)
-                                rect-h (* (:h shape) h)]
-                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                            (.fillRect ctx x y rect-w rect-h)))))
-
-                    :hide-one-guess-one
-                    (if show-answer?
-                      ;; REVEAL: Show current region with label
-                      (let [current-occ (first (filter #(= (:oid %) current-oid) all-occlusions))]
-                        (when current-occ
-                          (let [shape (:shape current-occ)
-                                x (* (:x shape) w)
-                                y (* (:y shape) h)
-                                rect-w (* (:w shape) w)
-                                rect-h (* (:h shape) h)]
-                            ;; Draw outline
-                            (set! (.-strokeStyle ctx) "#00ff00")
-                            (set! (.-lineWidth ctx) 3)
-                            (.strokeRect ctx x y rect-w rect-h)
-
-                            ;; Draw label background
-                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.8)")
-                            (.fillRect ctx x y (min rect-w 200) 25)
-
-                            ;; Draw label text
-                            (set! (.-fillStyle ctx) "#000000")
-                            (set! (.-font ctx) "14px sans-serif")
-                            (.fillText ctx (:answer current-occ) (+ x 5) (+ y 17)))))
-
-                      ;; QUESTION: Hide only current, show others with borders
-                      (do
-                        ;; Draw borders for all other regions (for reference)
-                        (doseq [occ all-occlusions]
-                          (when (not= (:oid occ) current-oid)
-                            (let [shape (:shape occ)
-                                  x (* (:x shape) w)
-                                  y (* (:y shape) h)
-                                  rect-w (* (:w shape) w)
-                                  rect-h (* (:h shape) h)]
-                              (set! (.-strokeStyle ctx) "#0088ff")
-                              (set! (.-lineWidth ctx) 2)
-                              (.strokeRect ctx x y rect-w rect-h))))
-
-                        ;; Hide current region
-                        (let [shape (:shape card)
-                              x (* (:x shape) w)
-                              y (* (:y shape) h)
-                              rect-w (* (:w shape) w)
-                              rect-h (* (:h shape) h)]
-                          (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                          (.fillRect ctx x y rect-w rect-h))))
-
-                    ;; Default
-                    (js/console.warn "Unknown mode:" mode))))
+                  (let [mode (or (:mode card) :hide-one-guess-one)
+                        current-oid (:current-oid card)
+                        all-occlusions (:occlusions card)]
+                    (doseq [occ all-occlusions]
+                      (let [style (determine-occlusion-style occ current-oid mode show-answer?)]
+                        (draw-styled-occlusion! ctx w h occ style))))))
           (set! (.-src img) image-url))
 
         ;; Draw noise background (for testing/fallback)
