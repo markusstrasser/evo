@@ -146,13 +146,18 @@
                             :class-name "image-occlusion-card"}
 
           :image-occlusion/item
-          {:front [:div.image-occlusion-item
-                   [:h2 (:prompt card)]
-                   ^{:key (str "canvas-" (if show-answer? "revealed" "masked"))
-                     :ref (fn [el] (draw-occlusion-mask! el card show-answer?))}
-                   [:canvas]]
-           :back [:div.answer [:p (:answer card)]]
-           :class-name "image-occlusion-item-card"}
+          (let [canvas-id (str "canvas-" (:hash card) "-" (if show-answer? "revealed" "masked"))]
+            ;; Schedule canvas drawing after DOM update
+            (js/setTimeout
+             (fn []
+               (when-let [canvas (js/document.getElementById canvas-id)]
+                 (draw-occlusion-mask! canvas card show-answer?)))
+             0)
+            {:front [:div.image-occlusion-item
+                     [:h2 (:prompt card)]
+                     [:canvas {:id canvas-id}]]
+             :back [:div.answer [:p (:answer card)]]
+             :class-name "image-occlusion-item-card"})
 
           ;; Default case for unknown card types
           {:front [:div.unknown-card
