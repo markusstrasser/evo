@@ -11,7 +11,8 @@
                        :state {:cards {} :meta {}}
                        :events []
                        :dir-handle nil
-                       :show-answer? false}))
+                       :show-answer? false
+                       :current-card-hash nil}))
 
 ;; Helpers
 (defn time-ago
@@ -54,17 +55,9 @@
   [:div.setup-screen
    [:h1 "Welcome to Local-First Anki"]
    [:p "To get started, select a folder to store your cards and review data."]
-   (if saved-handle
-     [:div
-      [:button
-       {:on {:click [::resume-saved]}}
-       "Resume Last Session"]
-      [:button
-       {:on {:click [::select-folder]}}
-       "Select Different Folder"]]
-     [:button
-      {:on {:click [::select-folder]}}
-      "Select Folder"])])
+   [:button
+    {:on {:click [::select-folder]}}
+    (if saved-handle "Select Folder" "Select Folder")]])
 
 (defn rating-buttons []
   [:div.rating-buttons
@@ -198,9 +191,12 @@
                (str/capitalize (name rating))]]
              [:span.history-time (time-ago timestamp)]]))]])))
 
-(defn review-screen [{:keys [state events show-answer?]}]
+(defn review-screen [{:keys [state events show-answer? current-card-hash]}]
   (let [due-hashes (core/due-cards state)
-        current-hash (first due-hashes)
+        ;; Use current-card-hash if valid and still due, otherwise first due card
+        current-hash (if (and current-card-hash (some #{current-card-hash} due-hashes))
+                       current-card-hash
+                       (first due-hashes))
         remaining (count due-hashes)]
     (if current-hash
       (let [card (core/card-with-meta state current-hash)]
@@ -215,7 +211,7 @@
 
        (review-history {:events events :state state})])))
 
-(defn main-app [{:keys [screen state events show-answer? saved-handle]}]
+(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash]}]
   (let [undo-stack (:undo-stack state)
         redo-stack (:redo-stack state)
         can-undo? (seq undo-stack)
@@ -224,17 +220,21 @@
      [:nav
       [:h1 "Local-First Anki"]
       [:p "Edit cards.md in your folder to add/modify cards"]
-      [:div.undo-redo-buttons
-       [:button {:disabled (not can-undo?)
-                 :on {:click [::undo]}}
-        "Undo"]
-       [:button {:disabled (not can-redo?)
-                 :on {:click [::redo]}}
-        "Redo"]]]
+      [:div.nav-buttons
+       (when (= screen :review)
+         [:button {:on {:click [::select-folder]}}
+          "Change Folder"])
+       [:div.undo-redo-buttons
+        [:button {:disabled (not can-undo?)
+                  :on {:click [::undo]}}
+         "Undo"]
+        [:button {:disabled (not can-redo?)
+                  :on {:click [::redo]}}
+         "Redo"]]]]
      [:main
       (case screen
         :setup (setup-screen {:saved-handle saved-handle})
-        :review (review-screen {:state state :events events :show-answer? show-answer?})
+        :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash})
         [:div "Unknown screen"])]]))
 
 ;; Forward declarations
@@ -276,78 +276,80 @@
                :state state
                :events events
                :saved-handle handle
-               :screen :review)
+               :screen :review
+               :current-card-hash nil)
         (js/console.log "Loaded state with" (count (:cards state)) "total cards")))
-
-    ::resume-saved
-    (let [{:keys [saved-handle]} @!state]
-      (when saved-handle
-        (js/console.log "Resuming saved session...")
-        (p/catch
-         (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
-           (if (= permission "granted")
-             (p/let [state (load-and-sync-cards! saved-handle)
-                     events (fs/load-log saved-handle)]
-               (swap! !state assoc
-                      :dir-handle saved-handle
-                      :state state
-                      :events events
-                      :screen :review)
-               (js/console.log "Restored session with" (count (:cards state)) "cards"))
-             (js/console.warn "Permission denied, please select folder again")))
-         (fn [e]
-           (js/console.error "Failed to resume session:" (.-message e))))))
 
     ::show-answer
     (swap! !state assoc :show-answer? true)
 
     ::rate-card
-    (let [{:keys [state events dir-handle]} @!state
+    (let [{:keys [state events dir-handle current-card-hash]} @!state
           rating (first args)
           due (core/due-cards state)
-          current-hash (first due)]
-      (when (and current-hash dir-handle)
+          review-hash (or current-card-hash (first due))]
+      (when (and review-hash dir-handle)
         (js/console.log "Rating card" rating)
-        (p/let [event (core/review-event current-hash rating)
+        (p/let [event (core/review-event review-hash rating)
                 _ (fs/append-to-log dir-handle [event])
                 new-state (core/apply-event state event)
-                new-events (conj events event)]
+                new-events (conj events event)
+                next-due (core/due-cards new-state)
+                next-hash (first next-due)]
           (swap! !state assoc
                  :state new-state
                  :events new-events
-                 :show-answer? false)
-          (js/console.log "Review complete, remaining:" (count (core/due-cards new-state))))))
+                 :show-answer? false
+                 :current-card-hash next-hash)
+          (js/console.log "Review complete, remaining:" (count next-due)))))
 
     ::undo
     (let [{:keys [state dir-handle events]} @!state
           undo-stack (:undo-stack state)]
       (when (and (seq undo-stack) dir-handle)
-        (let [target-event-id (last undo-stack)]
+        (let [target-event-id (last undo-stack)
+              ;; Find the event being undone to determine which card to show
+              target-event (first (filter #(= target-event-id (:event/id %)) events))]
           (js/console.log "Undoing event" target-event-id)
           (p/let [event (core/undo-event target-event-id)
                   _ (fs/append-to-log dir-handle [event])
                   new-events (conj events event)
-                  new-state (core/reduce-events new-events)]
+                  new-state (core/reduce-events new-events)
+                  ;; Show the card that was affected by the undone event
+                  affected-hash (when (= :review (:event/type target-event))
+                                  (get-in target-event [:event/data :card-hash]))
+                  due-cards (core/due-cards new-state)
+                  ;; If undone card is due, show it; otherwise show first due
+                  next-hash (if (and affected-hash (some #{affected-hash} due-cards))
+                              affected-hash
+                              (first due-cards))]
             (swap! !state assoc
                    :state new-state
                    :events new-events
-                   :show-answer? false)
+                   :show-answer? false
+                   :current-card-hash next-hash)
             (js/console.log "Undo complete, undo stack:" (count (:undo-stack new-state)))))))
 
     ::redo
     (let [{:keys [state dir-handle events]} @!state
           redo-stack (:redo-stack state)]
       (when (and (seq redo-stack) dir-handle)
-        (let [target-event-id (last redo-stack)]
+        (let [target-event-id (last redo-stack)
+              ;; Find the event being redone
+              target-event (first (filter #(= target-event-id (:event/id %)) events))]
           (js/console.log "Redoing event" target-event-id)
           (p/let [event (core/redo-event target-event-id)
                   _ (fs/append-to-log dir-handle [event])
                   new-events (conj events event)
-                  new-state (core/reduce-events new-events)]
+                  new-state (core/reduce-events new-events)
+                  ;; After redo, move to next due card
+                  due-cards (core/due-cards new-state)
+                  next-hash (first due-cards)]
             (swap! !state assoc
                    :state new-state
                    :events new-events
-                   :show-answer? false)
+                   :show-answer? false
+                   :current-card-hash next-hash)
             (js/console.log "Redo complete, redo stack:" (count (:redo-stack new-state)))))))
 
     (js/console.warn "Unknown action:" action)))
@@ -374,8 +376,27 @@
       (catch :default e
         (js/console.warn "Debug helpers not available:" e))))
 
-  ;; Try to restore saved directory handle (without requesting permission)
+  ;; Auto-resume last session if available
   (p/let [saved-handle (fs/load-dir-handle)]
-    (when saved-handle
-      (js/console.log "Found saved directory handle, will restore on user interaction")
-      (swap! !state assoc :saved-handle saved-handle))))
+    (if saved-handle
+      (do
+        (js/console.log "Auto-resuming last session...")
+        (p/catch
+         (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
+           (if (= permission "granted")
+             (p/let [state (load-and-sync-cards! saved-handle)
+                     events (fs/load-log saved-handle)]
+               (swap! !state assoc
+                      :dir-handle saved-handle
+                      :state state
+                      :events events
+                      :saved-handle saved-handle
+                      :screen :review)
+               (js/console.log "Auto-resumed with" (count (:cards state)) "cards"))
+             (do
+               (js/console.warn "Permission denied, showing setup screen")
+               (swap! !state assoc :saved-handle saved-handle))))
+         (fn [e]
+           (js/console.error "Failed to auto-resume:" (.-message e))
+           (swap! !state assoc :saved-handle saved-handle))))
+      (js/console.log "No saved session, showing setup screen"))))
