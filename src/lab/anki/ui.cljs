@@ -100,7 +100,7 @@
                           rect-w (* (:w shape) w)
                           rect-h (* (:h shape) h)]
                       (js/console.log "Drawing green mask at" x y rect-w rect-h)
-                      (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+                      (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.85)")
                       (.fillRect ctx x y rect-w rect-h)))))
           (set! (.-src img) image-url))
 
@@ -124,7 +124,7 @@
                   rect-w (* (:w shape) w)
                   rect-h (* (:h shape) h)]
               (js/console.log "Drawing green mask at" x y rect-w rect-h)
-              (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+              (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.85)")
               (.fillRect ctx x y rect-w rect-h))))))))
 
 (defn review-card [{:keys [card show-answer?]}]
