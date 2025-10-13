@@ -54,7 +54,5 @@
 (defn init!
   "Initialize demo for browser context"
   []
- (println "Initializing three-op kernel demo...")
- (demo-script))
-
-
+  (println "Initializing three-op kernel demo...")
+  (demo-script))

@@ -91,4 +91,5 @@
   ;; Run tests:
   (rt! 'kernel.permutation-test)      ; Run specific test
   (rq! 'kernel.permutation-test)      ; Reload and run
-  (rt!))                                ; Run all tests
+  (rt!)                                ; Run all tests
+  )
