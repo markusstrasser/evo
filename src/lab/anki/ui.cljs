@@ -148,8 +148,9 @@
           :image-occlusion/item
           {:front [:div.image-occlusion-item
                    [:h2 (:prompt card)]
-                   ^{:key (str "canvas-" (if show-answer? "revealed" "masked"))}
-                   [:canvas {:ref (fn [el] (draw-occlusion-mask! el card show-answer?))}]]
+                   ^{:key (str "canvas-" (if show-answer? "revealed" "masked"))
+                     :ref (fn [el] (draw-occlusion-mask! el card show-answer?))}
+                   [:canvas]]
            :back [:div.answer [:p (:answer card)]]
            :class-name "image-occlusion-item-card"}
 
