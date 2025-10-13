@@ -73,6 +73,7 @@
   "Draw occlusion mask on canvas - supports hide-all-guess-one and hide-one-guess-one modes"
   [canvas card show-answer?]
   (js/console.log "draw-occlusion-mask! called with canvas:" canvas "show-answer?" show-answer?)
+  (js/console.log "Card data:" (pr-str card))
   (when canvas
     (let [ctx (.getContext canvas "2d")
           asset (:asset card)
@@ -84,6 +85,8 @@
           all-occlusions (:occlusions card)]
 
       (js/console.log "Drawing canvas:" w "x" h "mode:" mode "current-oid:" current-oid)
+      (js/console.log "All occlusions count:" (count all-occlusions))
+      (js/console.log "All occlusions:" (pr-str all-occlusions))
 
       ;; Set canvas size
       (set! (.-width canvas) w)
@@ -95,32 +98,67 @@
           (set! (.-onload img)
                 (fn []
                   (.drawImage ctx img 0 0 w h)
-                  ;; Draw masks if not revealed
-                  (when-not show-answer?
-                    (case mode
-                      :hide-all-guess-one
-                      ;; Hide ALL occlusions EXCEPT the one being tested
+
+                  (if show-answer?
+                    ;; REVEAL MODE: Show all regions with outlines and labels
+                    (do
+                      (js/console.log "REVEAL MODE: Drawing all region outlines")
                       (doseq [occ all-occlusions]
-                        (when (not= (:oid occ) current-oid)
-                          (let [shape (:shape occ)
+                        (let [shape (:shape occ)
+                              x (* (:x shape) w)
+                              y (* (:y shape) h)
+                              rect-w (* (:w shape) w)
+                              rect-h (* (:h shape) h)
+                              is-current? (= (:oid occ) current-oid)]
+                          ;; Draw outline (green for current, blue for others)
+                          (set! (.-strokeStyle ctx) (if is-current? "#00ff00" "#0088ff"))
+                          (set! (.-lineWidth ctx) 3)
+                          (.strokeRect ctx x y rect-w rect-h)
+
+                          ;; Draw label background
+                          (set! (.-fillStyle ctx) (if is-current? "rgba(0, 255, 0, 0.8)" "rgba(0, 136, 255, 0.8)"))
+                          (.fillRect ctx x y (min rect-w 200) 25)
+
+                          ;; Draw label text
+                          (set! (.-fillStyle ctx) "#000000")
+                          (set! (.-font ctx) "14px sans-serif")
+                          (.fillText ctx (:answer occ) (+ x 5) (+ y 17)))))
+
+                    ;; QUESTION MODE: Draw masks based on mode
+                    (do
+                      (js/console.log "About to draw masks, mode is:" mode)
+                      (case mode
+                        :hide-all-guess-one
+                        (do
+                          (js/console.log "HIDE-ALL-GUESS-ONE mode activated!")
+                          ;; Hide ALL occlusions EXCEPT the one being tested
+                          (doseq [occ all-occlusions]
+                            (js/console.log "Checking occlusion:" (:oid occ) "vs current:" current-oid)
+                            (when (not= (:oid occ) current-oid)
+                              (let [shape (:shape occ)
+                                    x (* (:x shape) w)
+                                    y (* (:y shape) h)
+                                    rect-w (* (:w shape) w)
+                                    rect-h (* (:h shape) h)]
+                                (js/console.log "Hiding occlusion (not current):" (:oid occ) "at" x y rect-w rect-h)
+                                (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+                                (.fillRect ctx x y rect-w rect-h)))))
+
+                        :hide-one-guess-one
+                        (do
+                          (js/console.log "HIDE-ONE-GUESS-ONE mode activated!")
+                          ;; Hide ONLY the one being tested
+                          (let [shape (:shape card)
                                 x (* (:x shape) w)
                                 y (* (:y shape) h)
                                 rect-w (* (:w shape) w)
                                 rect-h (* (:h shape) h)]
-                            (js/console.log "Hiding occlusion (not current):" (:oid occ))
+                            (js/console.log "Hiding current occlusion only at" x y rect-w rect-h)
                             (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                            (.fillRect ctx x y rect-w rect-h))))
+                            (.fillRect ctx x y rect-w rect-h)))
 
-                      :hide-one-guess-one
-                      ;; Hide ONLY the one being tested
-                      (let [shape (:shape card)
-                            x (* (:x shape) w)
-                            y (* (:y shape) h)
-                            rect-w (* (:w shape) w)
-                            rect-h (* (:h shape) h)]
-                        (js/console.log "Hiding current occlusion only")
-                        (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                        (.fillRect ctx x y rect-w rect-h))))))
+                        ;; Default case
+                        (js/console.warn "Unknown mode:" mode))))))
           (set! (.-src img) image-url))
 
         ;; Draw noise background (for testing/fallback)
