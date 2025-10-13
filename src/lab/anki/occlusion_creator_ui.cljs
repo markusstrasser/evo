@@ -133,6 +133,16 @@
 
      ;; Image loaded - show canvas and controls
      [:div
+      ;; Mode selector
+      [:div {:style {:margin-bottom "20px"}}
+       [:label "Mode: "]
+       [:select {:value (name (:mode state))
+                 :on {:change (fn [e]
+                                (let [mode (keyword (-> e .-target .-value))]
+                                  (swap! creator/!creator-state assoc :mode mode)))}}
+        [:option {:value "hide-all-guess-one"} "Hide All, Guess One"]
+        [:option {:value "hide-one-guess-one"} "Hide One, Guess One"]]]
+
       [:div {:style {:margin-bottom "20px"}}
        [:label "Prompt: "]
        [:input {:type "text"
