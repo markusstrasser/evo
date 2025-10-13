@@ -40,14 +40,27 @@
                 :regions (str/split regions #",\s*")}))}
    {:type :cloze
     :parse (fn [text]
-             (when (str/starts-with? (str/trim text) "c ")
-               (let [content (subs (str/trim text) 2)]
+             (let [trimmed (str/trim text)]
+               ;; Support both formats:
+               ;; 1. "c [cloze] text" (new format with prefix)
+               ;; 2. "Direct [cloze] text" (old format, no prefix)
+               (let [content (if (str/starts-with? trimmed "c ")
+                               (subs trimmed 2)
+                               trimmed)]
                  (when-let [matches (re-seq cloze-pattern content)]
                    {:template content
                     :deletions (mapv second matches)}))))}
    {:type :qa
     :parse (fn [text]
-             (parse-qa-multiline (str/split-lines text)))}])
+             (let [trimmed (str/trim text)]
+               ;; Try old format first: "Question ; Answer"
+               (if (str/includes? trimmed " ; ")
+                 (let [[question answer] (str/split trimmed #"\s*;\s*" 2)]
+                   (when (and question answer)
+                     {:question (str/trim question)
+                      :answer (str/trim answer)}))
+                 ;; Fall back to new format: "q Question\na Answer"
+                 (parse-qa-multiline (str/split-lines text)))))}])
 
 (defn parse-card
   "Parse a card from markdown text. Returns nil if invalid."
