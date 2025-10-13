@@ -70,7 +70,7 @@
       (str/capitalize (name rating))])])
 
 (defn draw-occlusion-mask!
-  "Draw occlusion mask on canvas with noise background"
+  "Draw occlusion mask on canvas - with uploaded image or noise background"
   [canvas card show-answer?]
   (js/console.log "draw-occlusion-mask! called with canvas:" canvas "show-answer?" show-answer?)
   (when canvas
@@ -78,37 +78,54 @@
           asset (:asset card)
           shape (:shape card)
           w (or (:width asset) 400)
-          h (or (:height asset) 300)]
+          h (or (:height asset) 300)
+          image-url (:url asset)]
 
-      (js/console.log "Drawing canvas:" w "x" h)
+      (js/console.log "Drawing canvas:" w "x" h "image-url:" image-url)
 
       ;; Set canvas size
       (set! (.-width canvas) w)
       (set! (.-height canvas) h)
 
-      ;; Draw noise background
-      (let [image-data (.createImageData ctx w h)
-            data (.-data image-data)]
-        (dotimes [i (/ (.-length data) 4)]
-          (let [val (+ 100 (rand-int 100))
-                idx (* i 4)]
-            (aset data idx val) ; R
-            (aset data (+ idx 1) val) ; G
-            (aset data (+ idx 2) val) ; B
-            (aset data (+ idx 3) 255))) ; A
-        (.putImageData ctx image-data 0 0))
+      (if image-url
+        ;; Draw uploaded image
+        (let [img (js/Image.)]
+          (set! (.-onload img)
+                (fn []
+                  (.drawImage ctx img 0 0 w h)
+                  ;; Draw mask if not revealed
+                  (when-not show-answer?
+                    (let [x (* (:x shape) w)
+                          y (* (:y shape) h)
+                          rect-w (* (:w shape) w)
+                          rect-h (* (:h shape) h)]
+                      (js/console.log "Drawing green mask at" x y rect-w rect-h)
+                      (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+                      (.fillRect ctx x y rect-w rect-h)))))
+          (set! (.-src img) image-url))
 
-      (js/console.log "Noise background drawn")
-
-      ;; Draw mask if not revealed
-      (when-not show-answer?
-        (let [x (* (:x shape) w)
-              y (* (:y shape) h)
-              rect-w (* (:w shape) w)
-              rect-h (* (:h shape) h)]
-          (js/console.log "Drawing green mask at" x y rect-w rect-h)
-          (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
-          (.fillRect ctx x y rect-w rect-h))))))
+        ;; Draw noise background (for testing/fallback)
+        (do
+          (let [image-data (.createImageData ctx w h)
+                data (.-data image-data)]
+            (dotimes [i (/ (.-length data) 4)]
+              (let [val (+ 100 (rand-int 100))
+                    idx (* i 4)]
+                (aset data idx val) ; R
+                (aset data (+ idx 1) val) ; G
+                (aset data (+ idx 2) val) ; B
+                (aset data (+ idx 3) 255))) ; A
+            (.putImageData ctx image-data 0 0))
+          (js/console.log "Noise background drawn")
+          ;; Draw mask if not revealed
+          (when-not show-answer?
+            (let [x (* (:x shape) w)
+                  y (* (:y shape) h)
+                  rect-w (* (:w shape) w)
+                  rect-h (* (:h shape) h)]
+              (js/console.log "Drawing green mask at" x y rect-w rect-h)
+              (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
+              (.fillRect ctx x y rect-w rect-h))))))))
 
 (defn review-card [{:keys [card show-answer?]}]
   (let [{:keys [front back class-name]}
