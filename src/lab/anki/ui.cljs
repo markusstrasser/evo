@@ -70,18 +70,20 @@
       (str/capitalize (name rating))])])
 
 (defn draw-occlusion-mask!
-  "Draw occlusion mask on canvas - with uploaded image or noise background"
+  "Draw occlusion mask on canvas - supports hide-all-guess-one and hide-one-guess-one modes"
   [canvas card show-answer?]
   (js/console.log "draw-occlusion-mask! called with canvas:" canvas "show-answer?" show-answer?)
   (when canvas
     (let [ctx (.getContext canvas "2d")
           asset (:asset card)
-          shape (:shape card)
           w (or (:width asset) 400)
           h (or (:height asset) 300)
-          image-url (:url asset)]
+          image-url (:url asset)
+          mode (or (:mode card) :hide-one-guess-one)
+          current-oid (:current-oid card)
+          all-occlusions (:occlusions card)]
 
-      (js/console.log "Drawing canvas:" w "x" h "image-url:" image-url)
+      (js/console.log "Drawing canvas:" w "x" h "mode:" mode "current-oid:" current-oid)
 
       ;; Set canvas size
       (set! (.-width canvas) w)
@@ -93,15 +95,32 @@
           (set! (.-onload img)
                 (fn []
                   (.drawImage ctx img 0 0 w h)
-                  ;; Draw mask if not revealed
+                  ;; Draw masks if not revealed
                   (when-not show-answer?
-                    (let [x (* (:x shape) w)
-                          y (* (:y shape) h)
-                          rect-w (* (:w shape) w)
-                          rect-h (* (:h shape) h)]
-                      (js/console.log "Drawing green mask at" x y rect-w rect-h)
-                      (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                      (.fillRect ctx x y rect-w rect-h)))))
+                    (case mode
+                      :hide-all-guess-one
+                      ;; Hide ALL occlusions EXCEPT the one being tested
+                      (doseq [occ all-occlusions]
+                        (when (not= (:oid occ) current-oid)
+                          (let [shape (:shape occ)
+                                x (* (:x shape) w)
+                                y (* (:y shape) h)
+                                rect-w (* (:w shape) w)
+                                rect-h (* (:h shape) h)]
+                            (js/console.log "Hiding occlusion (not current):" (:oid occ))
+                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+                            (.fillRect ctx x y rect-w rect-h))))
+
+                      :hide-one-guess-one
+                      ;; Hide ONLY the one being tested
+                      (let [shape (:shape card)
+                            x (* (:x shape) w)
+                            y (* (:y shape) h)
+                            rect-w (* (:w shape) w)
+                            rect-h (* (:h shape) h)]
+                        (js/console.log "Hiding current occlusion only")
+                        (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+                        (.fillRect ctx x y rect-w rect-h))))))
           (set! (.-src img) image-url))
 
         ;; Draw noise background (for testing/fallback)
@@ -111,15 +130,16 @@
             (dotimes [i (/ (.-length data) 4)]
               (let [val (+ 100 (rand-int 100))
                     idx (* i 4)]
-                (aset data idx val) ; R
-                (aset data (+ idx 1) val) ; G
-                (aset data (+ idx 2) val) ; B
-                (aset data (+ idx 3) 255))) ; A
+                (aset data idx val)
+                (aset data (+ idx 1) val)
+                (aset data (+ idx 2) val)
+                (aset data (+ idx 3) 255)))
             (.putImageData ctx image-data 0 0))
           (js/console.log "Noise background drawn")
           ;; Draw mask if not revealed
           (when-not show-answer?
-            (let [x (* (:x shape) w)
+            (let [shape (:shape card)
+                  x (* (:x shape) w)
                   y (* (:y shape) h)
                   rect-w (* (:w shape) w)
                   rect-h (* (:h shape) h)]
@@ -384,20 +404,36 @@
 
     ::save-occlusion-card
     (let [{:keys [dir-handle events state]} @!state
-          card (creator/create-occlusion-card)]
-      (when (and card dir-handle)
-        (js/console.log "Saving occlusion card with" (count (:occlusions card)) "regions")
-        (p/let [h (core/card-hash card)
-                event (core/card-created-event h card)
-                _ (fs/append-to-log dir-handle [event])
-                new-events (conj events event)
-                new-state (core/reduce-events new-events)]
-          (swap! !state assoc
-                 :state new-state
-                 :events new-events
-                 :screen :review)
-          (creator/reset-creator!)
-          (js/console.log "Occlusion card saved"))))
+          occlusion-card (creator/create-occlusion-card)]
+      (when (and occlusion-card dir-handle)
+        (let [occlusions (:occlusions occlusion-card)
+              mode (:mode occlusion-card)]
+          (js/console.log "Saving" (count occlusions) "occlusion cards in mode:" mode)
+          ;; Create individual cards for each occlusion
+          (p/let [individual-cards (mapv (fn [occ]
+                                           {:type :image-occlusion/item
+                                            :asset (:asset occlusion-card)
+                                            :prompt (:prompt occlusion-card)
+                                            :mode mode
+                                            :occlusions occlusions ; ALL occlusions
+                                            :current-oid (:oid occ) ; Which one to test
+                                            :answer (:answer occ)
+                                            :shape (:shape occ)}) ; For backwards compat
+                                         occlusions)
+                  ;; Create events for each individual card
+                  card-events (mapv (fn [card]
+                                      (let [h (core/card-hash card)]
+                                        (core/card-created-event h card)))
+                                    individual-cards)
+                  _ (fs/append-to-log dir-handle card-events)
+                  new-events (into events card-events)
+                  new-state (core/reduce-events new-events)]
+            (swap! !state assoc
+                   :state new-state
+                   :events new-events
+                   :screen :review)
+            (creator/reset-creator!)
+            (js/console.log (count individual-cards) "occlusion cards saved")))))
 
     ::cancel-occlusion
     (do

@@ -9,7 +9,8 @@
          :occlusions [] ; [{:oid uuid :shape {:x y w h} :answer "label"}]
          :drawing? false
          :current-rect nil ; {:start-x :start-y :current-x :current-y}
-         :prompt "What is this region?"}))
+         :prompt "What is this region?"
+         :mode :hide-all-guess-one})) ; :hide-all-guess-one or :hide-one-guess-one
 
 (defn upload-image!
   "Handle image file upload"
@@ -56,13 +57,14 @@
 (defn create-occlusion-card
   "Create an image occlusion card from current state"
   []
-  (let [{:keys [image-url image-width image-height occlusions prompt]} @!creator-state]
+  (let [{:keys [image-url image-width image-height occlusions prompt mode]} @!creator-state]
     (when (and image-url (seq occlusions))
       {:type :image-occlusion
        :asset {:url image-url
                :width image-width
                :height image-height}
        :prompt prompt
+       :mode mode
        :occlusions occlusions})))
 
 (defn reset-creator!
@@ -74,4 +76,5 @@
                           :occlusions []
                           :drawing? false
                           :current-rect nil
-                          :prompt "What is this region?"}))
+                          :prompt "What is this region?"
+                          :mode :hide-all-guess-one}))
