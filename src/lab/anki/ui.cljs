@@ -77,12 +77,15 @@
 (defn draw-occlusion-mask!
   "Draw occlusion mask on canvas with noise background"
   [canvas card show-answer?]
+  (js/console.log "draw-occlusion-mask! called with canvas:" canvas "show-answer?" show-answer?)
   (when canvas
     (let [ctx (.getContext canvas "2d")
           asset (:asset card)
           shape (:shape card)
           w (or (:width asset) 400)
           h (or (:height asset) 300)]
+
+      (js/console.log "Drawing canvas:" w "x" h)
 
       ;; Set canvas size
       (set! (.-width canvas) w)
@@ -94,11 +97,13 @@
         (dotimes [i (/ (.-length data) 4)]
           (let [val (+ 100 (rand-int 100))
                 idx (* i 4)]
-            (aset data idx val)           ; R
-            (aset data (+ idx 1) val)     ; G
-            (aset data (+ idx 2) val)     ; B
-            (aset data (+ idx 3) 255)))   ; A
+            (aset data idx val) ; R
+            (aset data (+ idx 1) val) ; G
+            (aset data (+ idx 2) val) ; B
+            (aset data (+ idx 3) 255))) ; A
         (.putImageData ctx image-data 0 0))
+
+      (js/console.log "Noise background drawn")
 
       ;; Draw mask if not revealed
       (when-not show-answer?
@@ -106,6 +111,7 @@
               y (* (:y shape) h)
               rect-w (* (:w shape) w)
               rect-h (* (:h shape) h)]
+          (js/console.log "Drawing green mask at" x y rect-w rect-h)
           (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.45)")
           (.fillRect ctx x y rect-w rect-h))))))
 
@@ -303,19 +309,19 @@
       (when saved-handle
         (js/console.log "Resuming saved session...")
         (p/catch
-          (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
-            (if (= permission "granted")
-              (p/let [events (fs/load-log saved-handle)
-                      state (core/reduce-events events)]
-                (swap! !state assoc
-                       :dir-handle saved-handle
-                       :state state
-                       :events events
-                       :screen :review)
-                (js/console.log "Restored session with" (count (:cards state)) "cards"))
-              (js/console.warn "Permission denied, please select folder again")))
-          (fn [e]
-            (js/console.error "Failed to resume session:" (.-message e))))))
+         (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
+           (if (= permission "granted")
+             (p/let [events (fs/load-log saved-handle)
+                     state (core/reduce-events events)]
+               (swap! !state assoc
+                      :dir-handle saved-handle
+                      :state state
+                      :events events
+                      :screen :review)
+               (js/console.log "Restored session with" (count (:cards state)) "cards"))
+             (js/console.warn "Permission denied, please select folder again")))
+         (fn [e]
+           (js/console.error "Failed to resume session:" (.-message e))))))
 
     ::show-answer
     (swap! !state assoc :show-answer? true)
