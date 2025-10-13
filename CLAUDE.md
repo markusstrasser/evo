@@ -4,6 +4,7 @@
 - [The Start](#the-start) - Session initialization, overview.md, LLM CLI usage
 - [Environment Validation](#environment-validation) - API keys, preflight checks
 - [Dev Tooling](#dev-tooling) - REPL, health checks, fixtures, config
+- [Debugging Workflow](#debugging-workflow) - REPL-first debugging, browser console, fast iteration
 - [NPM Commands](#npm-commands) - lint, test, fix:cache, agent:health
 
 **Research & Analysis:**
@@ -244,10 +245,92 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 **Key utilities:**
 - `dev/repl/` - REPL helpers (init.clj, session.clj)
+- `dev/debug.cljs` - Browser/REPL debugging helpers (NEW)
 - `dev/bin/` - Dev commands (health-check.sh, preflight.sh)
 - `dev/health.clj` - Environment diagnostics
 - `dev/error-catalog.edn` - Error taxonomy with auto-fixes
 - `scripts/generate-overview.sh` - Generate overviews (--source, --project, --auto, -t path, -m model)
+- `scripts/quick-test.sh` - Run specific test namespace quickly
+
+### Debugging Workflow
+
+**REPL-First Debugging** - Use REPL for rapid hypothesis testing before code changes:
+
+```clojure
+;; In browser console (debug helpers auto-loaded in dev mode):
+DEBUG.summary()           // State overview: cards, events, stacks
+DEBUG.events()            // All events
+DEBUG.inspectEvents()     // Recent events with ✅/❌ status
+DEBUG.activeEvents()      // Only active events
+DEBUG.undoneEvents()      // Only undone events
+DEBUG.cards()             // All cards
+DEBUG.dueCards()          // Cards due now
+DEBUG.undoStack()         // Current undo stack
+DEBUG.redoStack()         // Current redo stack
+DEBUG.reload()            // Hard reload page
+
+// Test theories quickly:
+DEBUG.events().length                    // How many events?
+DEBUG.activeEvents().length              // How many active?
+core.build_event_status_map(DEBUG.events())  // Check status map
+```
+
+**Testing Workflow:**
+```bash
+# Quick test specific namespace
+scripts/quick-test.sh lab.anki.core-test
+
+# All tests
+scripts/quick-test.sh
+```
+
+**Process: Fast Debugging Loop**
+
+❌ **Slow way (what NOT to do):**
+1. Make educated guess
+2. Edit code
+3. Wait for compile
+4. Reload browser
+5. Check console
+6. Repeat...
+
+✅ **Fast way (REPL-first):**
+1. **Reproduce in REPL/console first** - Verify the problem
+2. **Test hypothesis in REPL** - Try fixes interactively
+3. **Only then update code** - Apply the working fix
+4. **Verify with browser** - Final integration test
+
+**Example: Debugging Array.from Bug**
+
+```clojure
+;; ❌ Slow: Edit code → compile → reload (5+ iterations)
+
+;; ✅ Fast: Test in REPL (30 seconds):
+(def handle (js/showDirectoryPicker))  ; user selects
+(def values (.values handle))
+(js/Array.from values)  ; => [] - AHA! Empty!
+(.next values)          ; => Promise! It's async!
+;; Now fix code once, done
+```
+
+**Browser State Inspection:**
+```javascript
+// Check if new code loaded
+() => lab.anki.fs.load_all_md_files.toString().includes("Processing entry")
+
+// Inspect current state
+() => ({
+  cards: cljs.core.count(cljs.core.get(state, cljs.core.keyword("cards"))),
+  events: DEBUG.events().length,
+  undoStack: DEBUG.undoStack().length
+})
+```
+
+**Common Pitfalls:**
+- Browser cache: Use DEBUG.reload() for hard refresh
+- Async iteration: `Array.from(asyncIterator)` returns empty - use `for await` or promises
+- Event sourcing: Use DEBUG.inspectEvents() to see active/undone status
+- Stale code: Check console for "🔧 Loading debug helpers..." on page load
 
 ### NPM Commands
 
