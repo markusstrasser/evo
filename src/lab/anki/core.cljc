@@ -11,23 +11,14 @@
 (defn parse-qa-multiline
   "Parse QA card from consecutive q/a lines"
   [lines]
-  (loop [remaining lines
-         question nil
-         answer nil]
-    (if-let [line (first remaining)]
-      (let [trimmed (str/trim line)]
-        (cond
-          (str/starts-with? trimmed "q ")
-          (recur (rest remaining) (subs trimmed 2) answer)
-
-          (str/starts-with? trimmed "a ")
-          (recur (rest remaining) question (subs trimmed 2))
-
-          :else
-          (recur (rest remaining) question answer)))
-      (when (and question answer)
-        {:question (str/trim question)
-         :answer (str/trim answer)}))))
+  (let [line-map (->> lines
+                      (map str/trim)
+                      (filter #(re-find #"^(q|a) " %))
+                      (map (fn [line] [(first line) (subs line 2)]))
+                      (into {}))]
+    (when (and (get line-map \q) (get line-map \a))
+      {:question (str/trim (get line-map \q))
+       :answer   (str/trim (get line-map \a))})))
 
 (def card-parsers
   "Registry of card parsers - add new card types here.
