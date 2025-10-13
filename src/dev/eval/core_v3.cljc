@@ -43,8 +43,15 @@
                               pairs))
             edge-pairs (map :edge duels)
             edge-map (into {} (map (fn [d] [(:edge d) (dissoc d :edge)]) duels))
-            updated-state (tournament/update-state state edge-pairs)]
-        [updated-state edge-map]))))
+            updated-state (tournament/update-state state edge-pairs)
+            result [updated-state edge-map]]
+        ;; Validate return structure
+        (assert (vector? result) "run-tournament-round must return vector [state edges]")
+        (assert (= 2 (count result)) "run-tournament-round must return 2-element tuple")
+        (assert (map? edge-map) "edge-map must be a map")
+        (assert (every? vector? (keys edge-map)) "edge-map keys must be [id-l id-r] vectors")
+        (assert (every? #(contains? % :verdict) (vals edge-map)) "edge-map values must have :verdict")
+        result))))
 
 (defn refine-with-pointwise
   "Refine ranking with pointwise scores for items with overlapping CIs.
