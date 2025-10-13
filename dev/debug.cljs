@@ -103,24 +103,88 @@
   (when (js/confirm "Clear all events? This will reset the app.")
     (swap! ui/!state assoc :events [] :state {:cards {} :meta {}})))
 
+;; Undo/redo specific helpers
+
+(defn explain-undo-stack
+  "Explain what's in the undo stack"
+  []
+  (let [stack (undo-stack)
+        evts (events)]
+    (js/console.log "=== Undo Stack (" (count stack) "items) ===")
+    (doseq [[idx event-id] (map-indexed vector stack)]
+      (let [event (first (filter #(= event-id (:event/id %)) evts))]
+        (when event
+          (case (:event/type event)
+            :review
+            (js/console.log
+             (str (inc idx) ". REVIEW "
+                  (get-in event [:event/data :card-hash])
+                  " → "
+                  (get-in event [:event/data :rating])))
+
+            :card-created
+            (js/console.log
+             (str (inc idx) ". CREATE "
+                  (get-in event [:event/data :card-hash])))
+
+            (js/console.log (str (inc idx) ". " (:event/type event)))))))))
+
+(defn explain-redo-stack
+  "Explain what's in the redo stack"
+  []
+  (let [stack (redo-stack)
+        evts (events)]
+    (js/console.log "=== Redo Stack (" (count stack) "items) ===")
+    (doseq [[idx event-id] (map-indexed vector stack)]
+      (let [event (first (filter #(= event-id (:event/id %)) evts))]
+        (when event
+          (case (:event/type event)
+            :review
+            (js/console.log
+             (str (inc idx) ". REVIEW "
+                  (get-in event [:event/data :card-hash])
+                  " → "
+                  (get-in event [:event/data :rating])))
+
+            (js/console.log (str (inc idx) ". " (:event/type event)))))))))
+
+(defn verify-undo-invariants
+  "Verify undo/redo invariants"
+  []
+  (let [stack (undo-stack)
+        evts (events)
+        stack-events (keep (fn [event-id]
+                             (first (filter #(= event-id (:event/id %)) evts)))
+                           stack)
+        has-card-created? (some #(= :card-created (:event/type %)) stack-events)]
+    {:all-reviews? (every? #(= :review (:event/type %)) stack-events)
+     :has-card-created? has-card-created?
+     :invariant-ok? (not has-card-created?)
+     :message (if has-card-created?
+                "❌ ERROR: Undo stack contains card-created events!"
+                "✅ OK: Undo stack only contains review events")}))
+
 ;; Export to window for console access
 (defn ^:export init! []
   (js/console.log "🔧 Debug helpers loaded. Try:")
   (js/console.log "  DEBUG.summary()")
-  (js/console.log "  DEBUG.events()")
-  (js/console.log "  DEBUG.inspectEvents()")
+  (js/console.log "  DEBUG.explainUndoStack()")
+  (js/console.log "  DEBUG.verifyUndoInvariants()")
   (set! js/window.DEBUG
-    #js {:state state
-         :cards cards
-         :events events
-         :undoStack undo-stack
-         :redoStack redo-stack
-         :dueCards due-cards
-         :summary summary
-         :inspectEvents inspect-events
-         :lastEvent last-event
-         :eventTypes event-types
-         :activeEvents active-events
-         :undoneEvents undone-events
-         :reload reload!
-         :clearEvents clear-events!}))
+        #js {:state state
+             :cards cards
+             :events events
+             :undoStack undo-stack
+             :redoStack redo-stack
+             :dueCards due-cards
+             :summary summary
+             :inspectEvents inspect-events
+             :explainUndoStack explain-undo-stack
+             :explainRedoStack explain-redo-stack
+             :verifyUndoInvariants verify-undo-invariants
+             :lastEvent last-event
+             :eventTypes event-types
+             :activeEvents active-events
+             :undoneEvents undone-events
+             :reload reload!
+             :clearEvents clear-events!}))
