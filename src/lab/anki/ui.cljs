@@ -403,6 +403,9 @@
   (render!)
   (add-watch !state :render (fn [_ _ _ _] (render!)))
 
+  ;; Watch creator state for changes (needed for image occlusion creator)
+  (add-watch creator/!creator-state :render (fn [_ _ _ _] (render!)))
+
   ;; Load debug helpers in development
   (when ^boolean js/goog.DEBUG
     (js/console.log "🔧 Loading debug helpers...")
