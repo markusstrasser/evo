@@ -219,26 +219,30 @@
   "Build undo and redo stacks from events"
   [events event-status]
   (reduce
-   (fn [{:keys [undo-stack redo-stack] :as stacks} event]
-     (let [event-id (:event/id event)
-           status (get event-status event-id :active)]
+   (fn [{:keys [undo-stack redo-stack undone-set] :as stacks} event]
+     (let [event-id (:event/id event)]
        (case (:event/type event)
          (:card-created :review)
-         (if (= status :active)
+         (if (contains? undone-set event-id)
+           stacks ; Don't add undone events to undo stack
            {:undo-stack (conj undo-stack event-id)
-            :redo-stack []} ; Clear redo stack on new action
-           stacks)
+            :redo-stack [] ; Clear redo stack on new action
+            :undone-set undone-set})
 
          :undo
-         {:undo-stack (vec (butlast undo-stack))
-          :redo-stack (conj redo-stack (get-in event [:event/data :target-event-id]))}
+         (let [target-id (get-in event [:event/data :target-event-id])]
+           {:undo-stack (vec (remove #{target-id} undo-stack))
+            :redo-stack (conj redo-stack target-id)
+            :undone-set (conj undone-set target-id)})
 
          :redo
-         {:undo-stack (conj undo-stack (get-in event [:event/data :target-event-id]))
-          :redo-stack (vec (butlast redo-stack))}
+         (let [target-id (get-in event [:event/data :target-event-id])]
+           {:undo-stack (conj undo-stack target-id)
+            :redo-stack (vec (remove #{target-id} redo-stack))
+            :undone-set (disj undone-set target-id)})
 
          stacks)))
-   {:undo-stack [] :redo-stack []}
+   {:undo-stack [] :redo-stack [] :undone-set #{}}
    events))
 
 (defn reduce-events
@@ -250,12 +254,12 @@
                                  (and (= status :active)
                                       (#{:card-created :review} (:event/type %))))
                               events)
-        stacks (build-undo-redo-stacks events event-status)
+        {:keys [undo-stack redo-stack]} (build-undo-redo-stacks events event-status)
         base-state (reduce apply-event
                            {:cards {}
                             :meta {}}
                            active-events)]
-    (merge base-state stacks)))
+    (merge base-state {:undo-stack undo-stack :redo-stack redo-stack})))
 
 ;; Query helpers
 

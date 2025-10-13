@@ -247,8 +247,7 @@
   [dir-handle]
   (p/let [markdown (fs/load-cards dir-handle)
           events (fs/load-log dir-handle)]
-    (let [lines (str/split-lines markdown)
-          parsed-cards (keep core/parse-card lines)
+    (let [parsed-cards (keep core/parse-card (str/split markdown #"\n\n+"))
           _ (js/console.log "Parsed" (count parsed-cards) "cards from markdown")
           current-state (core/reduce-events events)
           existing-hashes (set (keys (:cards current-state)))
@@ -270,8 +269,8 @@
     (p/let [handle (fs/pick-directory)]
       (js/console.log "Folder selected:" handle)
       (fs/save-dir-handle handle)
-      (p/let [events (fs/load-log handle)
-              state (core/reduce-events events)]
+      (p/let [state (load-and-sync-cards! handle)
+              events (fs/load-log handle)]
         (swap! !state assoc
                :dir-handle handle
                :state state
@@ -287,8 +286,8 @@
         (p/catch
          (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
            (if (= permission "granted")
-             (p/let [events (fs/load-log saved-handle)
-                     state (core/reduce-events events)]
+             (p/let [state (load-and-sync-cards! saved-handle)
+                     events (fs/load-log saved-handle)]
                (swap! !state assoc
                       :dir-handle saved-handle
                       :state state
