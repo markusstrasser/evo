@@ -99,66 +99,91 @@
                 (fn []
                   (.drawImage ctx img 0 0 w h)
 
-                  (if show-answer?
-                    ;; REVEAL MODE: Show all regions with outlines and labels
-                    (do
-                      (js/console.log "REVEAL MODE: Drawing all region outlines")
-                      (doseq [occ all-occlusions]
-                        (let [shape (:shape occ)
-                              x (* (:x shape) w)
-                              y (* (:y shape) h)
-                              rect-w (* (:w shape) w)
-                              rect-h (* (:h shape) h)
-                              is-current? (= (:oid occ) current-oid)]
-                          ;; Draw outline (green for current, blue for others)
-                          (set! (.-strokeStyle ctx) (if is-current? "#00ff00" "#0088ff"))
-                          (set! (.-lineWidth ctx) 3)
-                          (.strokeRect ctx x y rect-w rect-h)
-
-                          ;; Draw label background
-                          (set! (.-fillStyle ctx) (if is-current? "rgba(0, 255, 0, 0.8)" "rgba(0, 136, 255, 0.8)"))
-                          (.fillRect ctx x y (min rect-w 200) 25)
-
-                          ;; Draw label text
-                          (set! (.-fillStyle ctx) "#000000")
-                          (set! (.-font ctx) "14px sans-serif")
-                          (.fillText ctx (:answer occ) (+ x 5) (+ y 17)))))
-
-                    ;; QUESTION MODE: Draw masks based on mode
-                    (do
-                      (js/console.log "About to draw masks, mode is:" mode)
-                      (case mode
-                        :hide-all-guess-one
-                        (do
-                          (js/console.log "HIDE-ALL-GUESS-ONE mode activated!")
-                          ;; Hide ALL occlusions EXCEPT the one being tested
-                          (doseq [occ all-occlusions]
-                            (js/console.log "Checking occlusion:" (:oid occ) "vs current:" current-oid)
-                            (when (not= (:oid occ) current-oid)
-                              (let [shape (:shape occ)
-                                    x (* (:x shape) w)
-                                    y (* (:y shape) h)
-                                    rect-w (* (:w shape) w)
-                                    rect-h (* (:h shape) h)]
-                                (js/console.log "Hiding occlusion (not current):" (:oid occ) "at" x y rect-w rect-h)
-                                (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                                (.fillRect ctx x y rect-w rect-h)))))
-
-                        :hide-one-guess-one
-                        (do
-                          (js/console.log "HIDE-ONE-GUESS-ONE mode activated!")
-                          ;; Hide ONLY the one being tested
-                          (let [shape (:shape card)
+                  (case mode
+                    :hide-all-guess-one
+                    (if show-answer?
+                      ;; REVEAL: Show only current region with label
+                      (let [current-occ (first (filter #(= (:oid %) current-oid) all-occlusions))]
+                        (when current-occ
+                          (let [shape (:shape current-occ)
                                 x (* (:x shape) w)
                                 y (* (:y shape) h)
                                 rect-w (* (:w shape) w)
                                 rect-h (* (:h shape) h)]
-                            (js/console.log "Hiding current occlusion only at" x y rect-w rect-h)
-                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
-                            (.fillRect ctx x y rect-w rect-h)))
+                            ;; Draw outline
+                            (set! (.-strokeStyle ctx) "#00ff00")
+                            (set! (.-lineWidth ctx) 3)
+                            (.strokeRect ctx x y rect-w rect-h)
 
-                        ;; Default case
-                        (js/console.warn "Unknown mode:" mode))))))
+                            ;; Draw label background
+                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.8)")
+                            (.fillRect ctx x y (min rect-w 200) 25)
+
+                            ;; Draw label text
+                            (set! (.-fillStyle ctx) "#000000")
+                            (set! (.-font ctx) "14px sans-serif")
+                            (.fillText ctx (:answer current-occ) (+ x 5) (+ y 17)))))
+
+                      ;; QUESTION: Hide all EXCEPT current (current visible)
+                      (doseq [occ all-occlusions]
+                        (when (not= (:oid occ) current-oid)
+                          (let [shape (:shape occ)
+                                x (* (:x shape) w)
+                                y (* (:y shape) h)
+                                rect-w (* (:w shape) w)
+                                rect-h (* (:h shape) h)]
+                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+                            (.fillRect ctx x y rect-w rect-h)))))
+
+                    :hide-one-guess-one
+                    (if show-answer?
+                      ;; REVEAL: Show current region with label
+                      (let [current-occ (first (filter #(= (:oid %) current-oid) all-occlusions))]
+                        (when current-occ
+                          (let [shape (:shape current-occ)
+                                x (* (:x shape) w)
+                                y (* (:y shape) h)
+                                rect-w (* (:w shape) w)
+                                rect-h (* (:h shape) h)]
+                            ;; Draw outline
+                            (set! (.-strokeStyle ctx) "#00ff00")
+                            (set! (.-lineWidth ctx) 3)
+                            (.strokeRect ctx x y rect-w rect-h)
+
+                            ;; Draw label background
+                            (set! (.-fillStyle ctx) "rgba(0, 255, 0, 0.8)")
+                            (.fillRect ctx x y (min rect-w 200) 25)
+
+                            ;; Draw label text
+                            (set! (.-fillStyle ctx) "#000000")
+                            (set! (.-font ctx) "14px sans-serif")
+                            (.fillText ctx (:answer current-occ) (+ x 5) (+ y 17)))))
+
+                      ;; QUESTION: Hide only current, show others with borders
+                      (do
+                        ;; Draw borders for all other regions (for reference)
+                        (doseq [occ all-occlusions]
+                          (when (not= (:oid occ) current-oid)
+                            (let [shape (:shape occ)
+                                  x (* (:x shape) w)
+                                  y (* (:y shape) h)
+                                  rect-w (* (:w shape) w)
+                                  rect-h (* (:h shape) h)]
+                              (set! (.-strokeStyle ctx) "#0088ff")
+                              (set! (.-lineWidth ctx) 2)
+                              (.strokeRect ctx x y rect-w rect-h))))
+
+                        ;; Hide current region
+                        (let [shape (:shape card)
+                              x (* (:x shape) w)
+                              y (* (:y shape) h)
+                              rect-w (* (:w shape) w)
+                              rect-h (* (:h shape) h)]
+                          (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
+                          (.fillRect ctx x y rect-w rect-h))))
+
+                    ;; Default
+                    (js/console.warn "Unknown mode:" mode))))
           (set! (.-src img) image-url))
 
         ;; Draw noise background (for testing/fallback)
