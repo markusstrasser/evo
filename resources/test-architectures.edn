@@ -1,0 +1,14 @@
+[{:id :event-sourcing
+  :text "Event Sourcing Architecture: Store all state changes as immutable events in an append-only log. Current state is derived by reducing events. Enables time-travel debugging, perfect audit trails, and easy undo/redo. Events like :card-created, :card-reviewed drive the system. Pro: Complete history, testable reducers. Con: More complex than direct state mutation."}
+
+ {:id :normalized-state
+  :text "Normalized State with Indexes: Store entities in flat maps keyed by ID, build derived indexes on demand. Like {:cards {id1 card1} :meta {id1 meta1}}. Pro: Simple queries, easy to update single items, no duplication. Con: Need to manually maintain indexes, more verbose access patterns than nested data."}
+
+ {:id :nested-documents
+  :text "Nested Document Store: Store complete entities with all related data nested inside, like {:card {...} :meta {...} :reviews [...]}. Pro: Simple to understand, easy to serialize/deserialize, matches MongoDB/Firebase patterns. Con: Duplicated data, harder to update related entities, no shared references."}
+
+ {:id :datalog-db
+  :text "Datalog Database (like Datascript): Use EAV triples with declarative queries. Store as facts, query with logic rules. Pro: Powerful queries, automatic indexing, time-travel built-in, flexible schema. Con: Learning curve, overkill for simple apps, less familiar to most developers."}
+
+ {:id :atom-with-derived
+  :text "Single Atom with Derived Views: Keep minimal state in one atom, compute everything else on read. Use memoization for expensive derivations. Pro: Single source of truth, easy to reason about, testable pure functions. Con: Can be slow without careful memoization, need to think about what's derived vs stored."}]

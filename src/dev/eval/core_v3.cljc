@@ -24,22 +24,27 @@
    :max-rounds 10})
 
 (defn- run-tournament-round
-  "Execute one round of tournament comparisons."
+  "Execute one round of tournament comparisons.
+   Returns [updated-state duel-results-map]."
   [state config]
   (let [{:keys [tournament rubric providers]} config
-        pairs (tournament/schedule-round state tournament)
-        provider (rand-nth providers)
-        ;; Execute duels
-        duels (map (fn [[id-l id-r]]
-                     (let [item-l (first (filter #(= (:id %) id-l) (:items state)))
-                           item-r (first (filter #(= (:id %) id-r) (:items state)))]
-                       (pairwise/duel! {:provider provider
-                                        :rubric rubric
-                                        :context (:context rubric)}
-                                       item-l item-r {})))
-                   pairs)
-        new-edges (map (fn [d] [(:edge d) (dissoc d :edge)]) duels)]
-    (tournament/update-state state new-edges)))
+        pairs (tournament/schedule-round state tournament)]
+    (if (empty? pairs)
+      [state {}]
+      (let [provider (rand-nth providers)
+            ;; Execute duels
+            duels (doall (map (fn [[id-l id-r]]
+                                (let [item-l (first (filter #(= (:id %) id-l) (:items state)))
+                                      item-r (first (filter #(= (:id %) id-r) (:items state)))]
+                                  (pairwise/duel! {:provider provider
+                                                   :rubric rubric
+                                                   :context (:context rubric)}
+                                                  item-l item-r {})))
+                              pairs))
+            edge-pairs (map :edge duels)
+            edge-map (into {} (map (fn [d] [(:edge d) (dissoc d :edge)]) duels))
+            updated-state (tournament/update-state state edge-pairs)]
+        [updated-state edge-map]))))
 
 (defn refine-with-pointwise
   "Refine ranking with pointwise scores for items with overlapping CIs.
@@ -146,9 +151,7 @@
            :status status})
 
         ;; Continue tournament
-        (let [new-state (run-tournament-round state cfg)
-              new-edges (:existing-edges new-state)
-              edge-map (into {} (map (fn [e] [e {:verdict :left}]) new-edges))]
+        (let [[new-state edge-map] (run-tournament-round state cfg)]
           (recur new-state
                  (inc round)
                  (merge all-edges edge-map)))))))

@@ -55,20 +55,24 @@
 (defn schedule-round
   "Schedule next round of comparisons based on current state.
    Returns list of [id-left id-right] pairs."
-  [state {:keys [style brackets-k]}]
+  [state {:keys [style brackets-k min-degree]}]
   (let [{:keys [theta items degree-map existing-edges]} state
         item-ids (map :id items)
-        bracket-sets (brackets theta items (or brackets-k 8))
-        pair-fn (case style
-                  :swiss swiss-pairs
-                  :swim swim-pairs
-                  swiss-pairs)]
-    (->> bracket-sets
-         (mapcat #(pair-fn theta items %))
-         (remove (fn [edge]
-                   (or (contains? existing-edges edge)
-                       (contains? existing-edges (reverse edge)))))
-         (take 20)))) ; Limit round size
+        ;; Use seed round if no comparisons yet
+        needs-seed? (empty? existing-edges)]
+    (if needs-seed?
+      (seed-round items {:min-degree (or min-degree 3)})
+      (let [bracket-sets (brackets theta items (or brackets-k 8))
+            pair-fn (case style
+                      :swiss swiss-pairs
+                      :swim swim-pairs
+                      swiss-pairs)]
+        (->> bracket-sets
+             (mapcat #(pair-fn theta items %))
+             (remove (fn [edge]
+                       (or (contains? existing-edges edge)
+                           (contains? existing-edges (reverse edge)))))
+             (take 20))))))  ; Limit round size
 
 (defn update-state
   "Update tournament state after round completion.
