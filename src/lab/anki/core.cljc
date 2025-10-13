@@ -216,18 +216,22 @@
    events))
 
 (defn build-undo-redo-stacks
-  "Build undo and redo stacks from events"
+  "Build undo and redo stacks from events.
+   Only review events are undoable - card creation is not undoable during review sessions."
   [events event-status]
   (reduce
    (fn [{:keys [undo-stack redo-stack undone-set] :as stacks} event]
      (let [event-id (:event/id event)]
        (case (:event/type event)
-         (:card-created :review)
+         :review
          (if (contains? undone-set event-id)
            stacks ; Don't add undone events to undo stack
            {:undo-stack (conj undo-stack event-id)
             :redo-stack [] ; Clear redo stack on new action
             :undone-set undone-set})
+
+         :card-created
+         stacks ; Card creation is not undoable
 
          :undo
          (let [target-id (get-in event [:event/data :target-event-id])]
