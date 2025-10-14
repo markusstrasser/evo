@@ -8,6 +8,12 @@ out
 .env
 *.env
 
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
 gemini-output
 
 legacy_deprecated
