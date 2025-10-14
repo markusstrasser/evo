@@ -14,22 +14,33 @@
       "url": "https://mcp.exa.ai/mcp",
       "headers": {}
     },
-    "evo-eval": {
+    "tournament": {
       "type": "local",
       "enabled": true,
-      "command": "python",
-      "args": ["-m", "mcp.eval.eval_server"],
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/alien/Projects/tournament-mcp",
+        "run",
+        "eval_server.py"
+      ],
       "env": {
-        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}",
-        "GROK_API_KEY": "${GROK_API_KEY}"
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}",
+        "GROQ_API_KEY": "${GROQ_API_KEY}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
       }
     },
-    "review-flow": {
+    "architect": {
       "type": "local",
       "enabled": true,
-      "command": "mcp/review/.venv/bin/python",
-      "args": ["-m", "mcp.review.server"],
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/alien/Projects/architect-mcp",
+        "run",
+        "server.py"
+      ],
       "env": {
         "GEMINI_API_KEY": "${GEMINI_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}",
