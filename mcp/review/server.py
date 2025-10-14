@@ -571,6 +571,199 @@ Proposal ID: {proposal_id if proposal_id else 'N/A'}
 
 
 # ============================================================================
+# Research Management
+# ============================================================================
+
+
+@mcp.tool
+async def start_research(
+    topic: str,
+    focus_areas: list[str] = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """
+    Start a new research task.
+
+    Creates a research ID and initializes state for tracking progress.
+    The researcher subagent will use this to coordinate research activities.
+
+    Args:
+        topic: Research topic/question
+        focus_areas: Optional list of specific areas to investigate
+        ctx: FastMCP context (auto-injected)
+
+    Returns:
+        {
+            "research_id": str,
+            "topic": str,
+            "focus_areas": list[str],
+            "status": "in_progress",
+            "created_at": str
+        }
+    """
+    research_id = str(uuid4())
+
+    if ctx:
+        await ctx.info(f"🔬 Starting research: {research_id}")
+        await ctx.info(f"Topic: {topic}")
+        if focus_areas:
+            await ctx.info(f"Focus areas: {', '.join(focus_areas)}")
+
+    # Create research directory
+    research_dir = Path("research/reports") / research_id
+    research_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save research metadata
+    research_data = {
+        "id": research_id,
+        "topic": topic,
+        "focus_areas": focus_areas or [],
+        "status": "in_progress",
+        "created_at": datetime.utcnow().isoformat(),
+        "report_path": None,
+    }
+
+    metadata_path = research_dir / "metadata.json"
+    metadata_path.write_text(json.dumps(research_data, indent=2))
+
+    # Log to ledger
+    append_to_ledger(
+        {
+            "type": "research_started",
+            "research_id": research_id,
+            "topic": topic,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+    if ctx:
+        await ctx.info(f"Research directory created: {research_dir}")
+
+    return research_data
+
+
+@mcp.tool
+async def save_research_report(
+    research_id: str,
+    report_content: str,
+    findings_summary: str = "",
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """
+    Save research report and mark research as complete.
+
+    Args:
+        research_id: Research ID from start_research()
+        report_content: Full markdown report content
+        findings_summary: Optional brief summary of key findings
+        ctx: FastMCP context (auto-injected)
+
+    Returns:
+        {
+            "research_id": str,
+            "status": "completed",
+            "report_path": str,
+            "completed_at": str
+        }
+    """
+    if ctx:
+        await ctx.info(f"📄 Saving research report: {research_id}")
+
+    research_dir = Path("research/reports") / research_id
+    if not research_dir.exists():
+        raise ValueError(f"Research not found: {research_id}")
+
+    # Load metadata
+    metadata_path = research_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise ValueError(f"Research metadata not found: {research_id}")
+
+    research_data = json.loads(metadata_path.read_text())
+
+    # Save report
+    report_path = research_dir / "report.md"
+    report_path.write_text(report_content)
+
+    # Update metadata
+    research_data["status"] = "completed"
+    research_data["report_path"] = str(report_path)
+    research_data["findings_summary"] = findings_summary
+    research_data["completed_at"] = datetime.utcnow().isoformat()
+
+    metadata_path.write_text(json.dumps(research_data, indent=2))
+
+    # Log to ledger
+    append_to_ledger(
+        {
+            "type": "research_completed",
+            "research_id": research_id,
+            "report_path": str(report_path),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+    if ctx:
+        await ctx.info(f"✅ Research complete: {report_path}")
+        if findings_summary:
+            await ctx.info(f"Summary: {findings_summary[:200]}...")
+
+    return {
+        "research_id": research_id,
+        "status": "completed",
+        "report_path": str(report_path),
+        "completed_at": research_data["completed_at"],
+    }
+
+
+@mcp.tool
+async def update_research_progress(
+    research_id: str,
+    progress_note: str,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """
+    Update research progress with a status note.
+
+    Useful for long-running research to emit progress events.
+
+    Args:
+        research_id: Research ID
+        progress_note: Progress update message
+        ctx: FastMCP context (auto-injected)
+
+    Returns:
+        {
+            "research_id": str,
+            "status": "in_progress",
+            "updated_at": str
+        }
+    """
+    if ctx:
+        await ctx.info(f"📊 Research progress: {research_id}")
+        await ctx.info(progress_note)
+
+    research_dir = Path("research/reports") / research_id
+    if not research_dir.exists():
+        raise ValueError(f"Research not found: {research_id}")
+
+    # Log progress to ledger
+    append_to_ledger(
+        {
+            "type": "research_progress",
+            "research_id": research_id,
+            "note": progress_note,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+    return {
+        "research_id": research_id,
+        "status": "in_progress",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+# ============================================================================
 # Convenience Tool: Full Cycle
 # ============================================================================
 
@@ -683,6 +876,62 @@ async def get_ledger(ctx: Context = None) -> str:
     if not ledger_path.exists():
         return ""
     return ledger_path.read_text()
+
+
+@mcp.resource("research://reports/{research_id}")
+async def get_research_report(research_id: str, ctx: Context = None) -> dict:
+    """Get research report and metadata."""
+    research_dir = Path("research/reports") / research_id
+    if not research_dir.exists():
+        raise ResourceError(f"Research not found: {research_id}")
+
+    # Load metadata
+    metadata_path = research_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise ResourceError(f"Research metadata not found: {research_id}")
+
+    research_data = json.loads(metadata_path.read_text())
+
+    # Load report if completed
+    report_path = research_dir / "report.md"
+    if report_path.exists():
+        research_data["report_content"] = report_path.read_text()
+
+    return research_data
+
+
+@mcp.resource("research://reports")
+async def list_research_reports(ctx: Context = None) -> list[dict]:
+    """List all research reports."""
+    reports_dir = Path("research/reports")
+    if not reports_dir.exists():
+        return []
+
+    reports = []
+    for research_dir in reports_dir.iterdir():
+        if not research_dir.is_dir():
+            continue
+
+        metadata_path = research_dir / "metadata.json"
+        if not metadata_path.exists():
+            continue
+
+        research_data = json.loads(metadata_path.read_text())
+        # Include summary info only (not full report content)
+        reports.append(
+            {
+                "id": research_data["id"],
+                "topic": research_data["topic"],
+                "status": research_data["status"],
+                "created_at": research_data["created_at"],
+                "completed_at": research_data.get("completed_at"),
+                "findings_summary": research_data.get("findings_summary"),
+            }
+        )
+
+    # Sort by creation date (newest first)
+    reports.sort(key=lambda r: r["created_at"], reverse=True)
+    return reports
 
 
 # ============================================================================
