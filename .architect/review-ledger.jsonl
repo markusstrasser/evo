@@ -1,0 +1,12 @@
+{"type":"research_started","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","topic":"Anki user stories and workflows","timestamp":"2025-10-13T20:45:00.000Z"}
+{"type":"research_progress","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","note":"Completed Focus Area 1: Real Anki workflows - Found block-based patterns, FSRS algorithm, query DSL","timestamp":"2025-10-13T20:46:00.000Z"}
+{"type":"research_progress","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","note":"Completed Focus Area 2: Common pain points - Identified 5 major UX issues from 8-year user","timestamp":"2025-10-13T20:47:00.000Z"}
+{"type":"research_progress","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","note":"Completed Focus Area 3: Advanced features - JavaScript hooks, FSRS adoption, MCP integration","timestamp":"2025-10-13T20:48:00.000Z"}
+{"type":"research_progress","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","note":"Completed Focus Area 4: Integration patterns - AnkiConnect API, Logseq block-based storage","timestamp":"2025-10-13T20:49:00.000Z"}
+{"type":"research_completed","research_id":"ad05f5c2-26b9-425b-a452-6d1cb453aa7b","report_path":"research/reports/ad05f5c2-26b9-425b-a452-6d1cb453aa7b/report.md","timestamp":"2025-10-13T20:50:00.000Z"}
+{"type":"research_started","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","topic":"Claude Code plugins and hooks system","timestamp":"2025-10-13T21:00:00.000Z"}
+{"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 1: Hook system architecture - Found 9 hook types, configuration patterns, environment variables","timestamp":"2025-10-13T21:05:00.000Z"}
+{"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 2: Plugin system - Commands, agents, hooks, MCP servers, distribution","timestamp":"2025-10-13T21:08:00.000Z"}
+{"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 3: Real-world examples - TDD enforcement, auto-commit, observability patterns","timestamp":"2025-10-13T21:11:00.000Z"}
+{"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 4: Anki use cases - Card tracking, session summary, backup hooks identified","timestamp":"2025-10-13T21:14:00.000Z"}
+{"type":"research_completed","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","report_path":"research/reports/1b06ce58-17cd-41d0-a9bb-47a35b7303d0/report.md","timestamp":"2025-10-13T21:15:00.000Z"}

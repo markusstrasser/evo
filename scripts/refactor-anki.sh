@@ -5,7 +5,7 @@ set -euo pipefail
 # Each agent focuses on different simplification aspects
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
-OUTPUT_DIR="research/results/anki-refactor-${TIMESTAMP}"
+OUTPUT_DIR=".architect/results/anki-refactor-${TIMESTAMP}"
 mkdir -p "$OUTPUT_DIR"
 
 echo "=== Anki Refactoring Analysis ==="
