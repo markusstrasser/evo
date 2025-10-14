@@ -270,5 +270,5 @@
     :design-2 "My second API design..."}
    {:rounds 3
     :max-length 1000}
-   (llm/make-evaluator :gemini))
-  )
+   (llm/make-evaluator :gemini)))
+
