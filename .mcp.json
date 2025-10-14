@@ -13,6 +13,28 @@
       "type": "http",
       "url": "https://mcp.exa.ai/mcp",
       "headers": {}
+    },
+    "evo-eval": {
+      "type": "local",
+      "enabled": true,
+      "command": "python",
+      "args": ["-m", "mcp.eval.eval_server"],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "GROK_API_KEY": "${GROK_API_KEY}"
+      }
+    },
+    "review-flow": {
+      "type": "local",
+      "enabled": true,
+      "command": "python",
+      "args": ["-m", "mcp.review.server"],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "GROK_API_KEY": "${GROK_API_KEY}"
+      }
     }
   }
 }

@@ -6,12 +6,34 @@ MCP servers for the evo project, exposing dev tooling and future capabilities to
 
 ```
 mcp/
-├── servers/              # MCP server implementations
+├── servers/              # Clojure MCP servers
 │   └── dev_diagnostics.clj
+├── eval/                 # Python: Tournament evaluation server
+├── review/               # Python: Review workflow server
 ├── shared/               # Shared utilities (future)
 ├── config/               # Example configs (future)
+├── requirements.txt      # Python dependencies
 └── README.md
 ```
+
+## Setup
+
+### Python Servers (eval, review)
+
+```bash
+# Create virtual environment (one-time)
+python3 -m venv .venv
+
+# Activate it
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Clojure Servers (dev-diagnostics)
+
+No setup needed - uses project Clojure deps.
 
 ## Active Servers
 
@@ -111,6 +133,35 @@ dev/health.clj, dev/session.clj
 **Stack**: Java MCP SDK + Clojure + Project Reactor (Mono patterns)
 
 See `docs/MCP.md` for complete reference (config, failure modes, patterns).
+
+### eval (evo-eval)
+
+Tournament-based evaluation server using Swiss-Lite algorithm with AI judges.
+
+**Tools**:
+- `compare_items` - Compare 2 items with AI judges
+- `compare_multiple` - Tournament ranking for 3+ items
+
+**Location**: `mcp/eval/`
+**Docs**: See `mcp/eval/eval_server.py`
+
+### review (review-flow)
+
+Minimal-linear review workflow: idea → proposals → ranking → decision.
+
+**Tools**:
+- `propose` - Generate 3 proposals (gemini/codex/grok)
+- `rank_proposals` - Tournament evaluation (mounts evo-eval)
+- `refine` - Feedback loops with validation
+- `decide` - Record ADR
+- `review_cycle` - One-shot: generate → rank → decide
+
+**Resources**:
+- `review://runs/{id}` - Run state
+- `review://ledger` - Provenance log (JSONL)
+
+**Location**: `mcp/review/`
+**Docs**: See `mcp/review/README.md`
 
 ## Future
 
