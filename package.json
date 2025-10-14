@@ -2,8 +2,8 @@
   "name": "evolver",
   "version": "0.0.1",
   "scripts": {
-    "dev": "npx shadow-cljs watch app test",
-    "build": "npx shadow-cljs release app",
+    "dev": "npm run fix:cache && npx shadow-cljs watch app test",
+    "build": "npx shadow-cljs clean && npx shadow-cljs release app",
     "test": "npx shadow-cljs compile test && node out/tests.js",
     "lint": "clj-kondo --lint src test --fail-level error",
     "lint:fresh": "rm -rf .clj-kondo/.cache && clj-kondo --lint src test --fail-level error",

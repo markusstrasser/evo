@@ -164,10 +164,34 @@
                 "❌ ERROR: Undo stack contains card-created events!"
                 "✅ OK: Undo stack only contains review events")}))
 
+;; Integrity checks
+
+(defn check-integrity!
+  "Check data integrity and print report"
+  []
+  (let [s (state)
+        issues (core/check-integrity (:state s) (:events s))]
+    (if (empty? issues)
+      (do
+        (js/console.log "✅ No integrity issues found")
+        {:ok? true :issues []})
+      (do
+        (js/console.log "⚠️  Found" (count issues) "issue(s):")
+        (doseq [issue issues]
+          (let [icon (case (:severity issue)
+                       :error "❌"
+                       :warning "⚠️ "
+                       :info "ℹ️ ")]
+            (js/console.log icon (:message issue))
+            (when (:data issue)
+              (js/console.log "   Data:" (pr-str (:data issue))))))
+        {:ok? false :issues issues}))))
+
 ;; Export to window for console access
 (defn ^:export init! []
   (js/console.log "🔧 Debug helpers loaded. Try:")
   (js/console.log "  DEBUG.summary()")
+  (js/console.log "  DEBUG.checkIntegrity()")
   (js/console.log "  DEBUG.explainUndoStack()")
   (js/console.log "  DEBUG.verifyUndoInvariants()")
   (set! js/window.DEBUG
@@ -179,6 +203,7 @@
              :dueCards due-cards
              :summary summary
              :inspectEvents inspect-events
+             :checkIntegrity check-integrity!
              :explainUndoStack explain-undo-stack
              :explainRedoStack explain-redo-stack
              :verifyUndoInvariants verify-undo-invariants
