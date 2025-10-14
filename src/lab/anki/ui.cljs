@@ -404,31 +404,36 @@
   "Load cards from .md files (ground truth), sync with event log (metadata only).
    Returns {:state ... :decks [...]}"
   [dir-handle]
-  (p/let [md-files (fs/load-cards dir-handle) ; [{:deck "Geography" :filename "..." :content "..."}]
-          events (fs/load-log dir-handle)]
-    (let [;; Extract unique decks
-          all-decks (->> md-files
-                         (map :deck)
-                         distinct
-                         sort
-                         vec)
+  (let [t-start (.now js/performance)]
+    (p/let [md-files (fs/load-cards dir-handle) ; [{:deck "Geography" :filename "..." :content "..."}]
+            t-files (.now js/performance)
+            _ (js/console.log "⏱️  File loading:" (.toFixed (- t-files t-start) 1) "ms")
+            events (fs/load-log dir-handle)
+            t-events (.now js/performance)
+            _ (js/console.log "⏱️  Event log loading:" (.toFixed (- t-events t-files) 1) "ms")]
+      (let [;; Extract unique decks
+            all-decks (->> md-files
+                           (map :deck)
+                           distinct
+                           sort
+                           vec)
 
-          ;; Parse cards from all files with deck info
-          cards-with-decks (->> md-files
-                                (mapcat (fn [{:keys [deck content]}]
-                                          (->> (str/split content #"\n\n+")
-                                               (keep core/parse-card)
-                                               (map #(assoc % :deck deck)))))
-                                (map (fn [card]
-                                       ;; Hash based on content only (not deck)
-                                       (let [content-only (dissoc card :deck)
-                                             h (core/card-hash content-only)]
-                                         {:hash h
-                                          :card card})))
-                                vec)
+            ;; Parse cards from all files with deck info
+            cards-with-decks (->> md-files
+                                  (mapcat (fn [{:keys [deck content]}]
+                                            (->> (str/split content #"\n\n+")
+                                                 (keep core/parse-card)
+                                                 (map #(assoc % :deck deck)))))
+                                  (map (fn [card]
+                                         ;; Hash based on content only (not deck)
+                                         (let [content-only (dissoc card :deck)
+                                               h (core/card-hash content-only)]
+                                           {:hash h
+                                            :card card})))
+                                  vec)
 
-          _ (js/console.log "Parsed" (count cards-with-decks) "cards from" (count md-files) "files")
-          _ (js/console.log "Found decks:" (pr-str all-decks))
+            _ (js/console.log "Parsed" (count cards-with-decks) "cards from" (count md-files) "files")
+            _ (js/console.log "Found decks:" (pr-str all-decks))
 
           ;; Build cards map from files (hash -> card)
           cards-from-files (into {} (map (fn [{:keys [hash card]}]
@@ -458,9 +463,11 @@
       ;; Rebuild state with file content + event metadata
       (let [all-events (concat events new-events)
             meta-state (core/reduce-events all-events)
-            final-state (assoc meta-state :cards cards-from-files)]
+            final-state (assoc meta-state :cards cards-from-files)
+            t-end (.now js/performance)]
+        (js/console.log "⏱️  Total load time:" (.toFixed (- t-end t-start) 1) "ms")
         {:state final-state
-         :decks all-decks}))))
+         :decks all-decks})))))
 
 ;; Removed: create-test-occlusion-card - test code no longer needed
 
@@ -511,22 +518,34 @@
           due (core/due-cards state)
           review-hash (or current-card-hash (first due))]
       (when (and review-hash dir-handle)
-        (js/console.log "Rating card" rating)
-        (let [event (core/review-event review-hash rating)
-              new-events (conj events event)
-              new-meta-state (core/reduce-events new-events)
-              new-state (assoc new-meta-state :cards (:cards state))
-              next-due (core/due-cards new-state)
-              next-hash (first next-due)]
-          ;; Fire and forget - write to disk async (no waiting)
-          (fs/append-to-log dir-handle [event])
-          ;; Update UI immediately
-          (swap! !state assoc
-                 :state new-state
-                 :events new-events
-                 :show-answer? false
-                 :current-card-hash next-hash)
-          (js/console.log "Review complete, remaining:" (count next-due)))))
+        (let [card (get-in state [:cards review-hash])
+              old-meta (get-in state [:meta review-hash])
+              t-start (.now js/performance)]
+          (js/console.log "📝 Rating card:" (get-card-preview card))
+          (js/console.log "   Hash:" review-hash "Rating:" rating)
+          (js/console.log "   Old due-at:" (:due-at old-meta) "Reviews:" (:reviews old-meta))
+
+          (let [event (core/review-event review-hash rating)
+                new-events (conj events event)
+                new-meta-state (core/reduce-events new-events)
+                new-state (assoc new-meta-state :cards (:cards state))
+                new-meta (get-in new-state [:meta review-hash])
+                next-due (core/due-cards new-state)
+                next-hash (first next-due)
+                t-end (.now js/performance)]
+
+            (js/console.log "   New due-at:" (:due-at new-meta) "Interval:" (:interval-days new-meta) "days")
+            (js/console.log "   Processing time:" (.toFixed (- t-end t-start) 1) "ms")
+            (js/console.log "   Remaining due:" (count next-due))
+
+            ;; Fire and forget - write to disk async (no waiting)
+            (fs/append-to-log dir-handle [event])
+            ;; Update UI immediately
+            (swap! !state assoc
+                   :state new-state
+                   :events new-events
+                   :show-answer? false
+                   :current-card-hash next-hash)))))
 
     ::undo
     (let [{:keys [state dir-handle events]} @!state
