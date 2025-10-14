@@ -284,21 +284,6 @@
 
 ;; Statistics
 
-(defn- today-start-ms
-  "Get timestamp for start of today (midnight)"
-  []
-  #?(:clj (let [cal (doto (java.util.Calendar/getInstance)
-                      (.set java.util.Calendar/HOUR_OF_DAY 0)
-                      (.set java.util.Calendar/MINUTE 0)
-                      (.set java.util.Calendar/SECOND 0)
-                      (.set java.util.Calendar/MILLISECOND 0))]
-            (.getTimeInMillis cal))
-     :cljs (let [now (js/Date.)
-                 year (.getFullYear now)
-                 month (.getMonth now)
-                 date (.getDate now)]
-             (.getTime (js/Date. year month date 0 0 0 0)))))
-
 (defn compute-stats
   "Compute statistics from state and events"
   [state events]
