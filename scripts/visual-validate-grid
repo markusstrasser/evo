@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Activate virtual environment and run grid validation
-cd "$(dirname "$0")/.."
-source .venv/bin/activate
-exec python scripts/visual-validate-grid.py "$@"
