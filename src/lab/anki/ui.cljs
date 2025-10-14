@@ -1,6 +1,7 @@
 (ns lab.anki.ui
   "Anki clone UI using Replicant"
   (:require [clojure.string :as str]
+            [clojure.walk]
             [lab.anki.core :as core]
             [lab.anki.fs :as fs]
             [lab.anki.occlusion-creator :as creator]
@@ -14,7 +15,11 @@
                        :events []
                        :dir-handle nil
                        :show-answer? false
-                       :current-card-hash nil}))
+                       :current-card-hash nil
+                       :decks [] ; Available decks from files
+                       :selected-deck nil ; nil = all decks, string = specific deck
+                       :show-stats? false ; Stats modal visibility
+                       }))
 
 ;; Helpers
 (defn time-ago
@@ -63,30 +68,30 @@
 
 (defn rating-buttons []
   [:div.rating-buttons
-   (for [rating [:forgot :hard :good :easy]]
+   (for [[idx rating] (map-indexed vector [:forgot :hard :good :easy])]
      ^{:key rating}
      [:button
       {:on {:click [::rate-card rating]}}
-      (str/capitalize (name rating))])])
+      (str (str/capitalize (name rating)) " (" (inc idx) ")")])])
 
 (defn- determine-occlusion-style
   "Determines the visual style for an occlusion based on review mode and state."
   [occ current-oid mode show-answer?]
   (let [is-current? (= (:oid occ) current-oid)]
     (case [mode is-current? show-answer?]
-      ;; In "Hide All" mode, when asking, the current item is invisible and others are hidden. When answering, reveal it.
-      [:hide-all-guess-one true false] :invisible
-      [:hide-all-guess-one false false] :hidden
-      [:hide-all-guess-one true true] :revealed
-      [:hide-all-guess-one false true] :invisible
+      ;; In "Hide All" mode: all rects visible, current has focus color, others green
+      [:hide-all-guess-one true false] :focused ; Current rect - orange/yellow to show focus
+      [:hide-all-guess-one false false] :hidden ; Other rects - green occluded
+      [:hide-all-guess-one true true] :revealed ; Current rect - border + answer text
+      [:hide-all-guess-one false true] :hidden ; Other rects - STAY green occluded
 
-      ;; In "Hide One" mode, when asking, hide the current and show others as context. When answering, reveal current.
-      [:hide-one-guess-one true false] :hidden
-      [:hide-one-guess-one false false] :context
-      [:hide-one-guess-one true true] :revealed
-      [:hide-one-guess-one false true] :invisible
+      ;; In "Hide One" mode: hide current, show others as context
+      [:hide-one-guess-one true false] :hidden ; Current rect - green occluded
+      [:hide-one-guess-one false false] :context ; Other rects - blue context borders
+      [:hide-one-guess-one true true] :revealed ; Current rect - border + answer text
+      [:hide-one-guess-one false true] :invisible ; Other rects - disappear
 
-      :invisible))) ; Default to invisible
+      :invisible))) ; Default to invisible ; Default to invisible
 
 (defn- draw-styled-occlusion!
   "Draws a single occlusion on the canvas according to a specified style."
@@ -97,11 +102,18 @@
         rect-w (* (:w shape) w)
         rect-h (* (:h shape) h)]
     (case style
+      :focused
+      ;; Focused rect (before answer) - orange/yellow to show which one is being tested
+      (do (set! (.-fillStyle ctx) "rgba(255, 165, 0, 1.0)") ; Orange
+          (.fillRect ctx x y rect-w rect-h))
+
       :hidden
+      ;; Hidden/occluded rect - solid green
       (do (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
           (.fillRect ctx x y rect-w rect-h))
 
       :revealed
+      ;; Revealed rect (after answer) - border + answer text, transparent background
       (do (set! (.-strokeStyle ctx) "#00ff00")
           (set! (.-lineWidth ctx) 3)
           (.strokeRect ctx x y rect-w rect-h)
@@ -112,6 +124,7 @@
           (.fillText ctx (:answer occ) (+ x 5) (+ y 17)))
 
       :context
+      ;; Context rect (hide-one mode) - blue border to show as reference
       (do (set! (.-strokeStyle ctx) "#0088ff")
           (set! (.-lineWidth ctx) 2)
           (.strokeRect ctx x y rect-w rect-h))
@@ -230,13 +243,17 @@
      (when show-answer? back)
      (if show-answer?
        (rating-buttons)
-       [:button {:on {:click [::show-answer]}} "Show Answer"])]))
+       [:button {:on {:click [::show-answer]}} "Show Answer (Space)"])]))
 
 (defn review-history
   "Display recent review events"
   [{:keys [events state]}]
   (let [review-events (->> events
                            (filter #(= :review (:event/type %)))
+                           ;; Only show reviews for cards that still exist
+                           (filter (fn [event]
+                                     (let [card-hash (get-in event [:event/data :card-hash])]
+                                       (contains? (:cards state) card-hash))))
                            (take-last 10)
                            reverse)]
     (when (seq review-events)
@@ -251,13 +268,24 @@
             ^{:key (str card-hash "-" (.getTime timestamp))}
             [:div.history-item
              [:div.history-card
-              [:span.card-preview (if card (get-card-preview card) "Unknown card")]
+              [:span.card-preview (get-card-preview card)]
               [:span.rating {:class (str "rating-" (name rating))}
                (str/capitalize (name rating))]]
              [:span.history-time (time-ago timestamp)]]))]])))
 
-(defn review-screen [{:keys [state events show-answer? current-card-hash]}]
-  (let [due-hashes (core/due-cards state)
+(defn review-screen [{:keys [state events show-answer? current-card-hash selected-deck]}]
+  (let [;; Filter cards by selected deck if specified
+        filtered-cards (if selected-deck
+                         (into {} (filter (fn [[_h card]]
+                                            (= selected-deck (:deck card)))
+                                          (:cards state)))
+                         (:cards state))
+
+        ;; Get due cards from filtered set
+        due-hashes (->> (core/due-cards state)
+                        (filter #(contains? filtered-cards %))
+                        vec)
+
         ;; Use current-card-hash if valid and still due, otherwise first due card
         current-hash (if (and current-card-hash (some #{current-card-hash} due-hashes))
                        current-card-hash
@@ -267,16 +295,61 @@
       (let [card (core/card-with-meta state current-hash)]
         [:div.review-screen
          [:div.review-header
-          [:p (str "Cards remaining: " remaining)]]
+          [:p (str "Cards remaining: " remaining)
+           (when selected-deck
+             (str " (Deck: " selected-deck ")"))]]
          [:div.review-content
           (review-card {:card card :show-answer? show-answer?})]])
       [:div.review-screen
        [:h2 "No cards due!"]
-       [:p "Come back later for more reviews."]
+       [:p (if selected-deck
+             (str "No cards due in \"" selected-deck "\" deck.")
+             "Come back later for more reviews.")]
 
        (review-history {:events events :state state})])))
 
-(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash]}]
+(defn stats-modal [{:keys [stats on-close]}]
+  [:div.stats-modal-overlay
+   {:on {:click [::toggle-stats]}}
+   [:div.stats-modal
+    {:on {:click (fn [e] (.stopPropagation e))}} ; Prevent close when clicking inside
+    [:h2 "Statistics"]
+    [:div.stats-content
+     [:div.stat-row
+      [:span.stat-label "Total Cards:"]
+      [:span.stat-value (:total-cards stats)]]
+     [:div.stat-row
+      [:span.stat-label "Due Now:"]
+      [:span.stat-value (:due-now stats)]]
+     [:div.stat-row
+      [:span.stat-label "New Cards:"]
+      [:span.stat-value (:new-cards stats)]]
+     [:div.stat-row
+      [:span.stat-label "Reviews Today:"]
+      [:span.stat-value (:reviews-today stats)]]
+     [:div.stat-row
+      [:span.stat-label "Total Reviews:"]
+      [:span.stat-value (:total-reviews stats)]]
+     [:div.stat-row
+      [:span.stat-label "Retention Rate:"]
+      [:span.stat-value (str (js/Math.round (* 100 (:retention-rate stats))) "%")]]
+     [:div.stat-row
+      [:span.stat-label "Avg Reviews/Card:"]
+      [:span.stat-value (.toFixed (:avg-reviews-per-card stats) 1)]]
+
+     [:h3 "Ratings Breakdown"]
+     (let [breakdown (:ratings-breakdown stats)]
+       [:div.ratings-breakdown
+        (for [rating [:forgot :hard :good :easy]]
+          ^{:key rating}
+          [:div.stat-row
+           [:span.stat-label (str/capitalize (name rating)) ":"]
+           [:span.stat-value (get breakdown rating 0)]])])]
+    [:button.close-button
+     {:on {:click [::toggle-stats]}}
+     "Close"]]])
+
+(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash decks selected-deck show-stats?]}]
   (let [undo-stack (:undo-stack state)
         redo-stack (:redo-stack state)
         can-undo? (seq undo-stack)
@@ -284,10 +357,20 @@
     [:div.anki-app
      [:nav
       [:h1 "Local-First Anki"]
-      [:p "Edit cards.md in your folder to add/modify cards"]
+      [:p "Edit .md files in your folder to add/modify cards"]
       [:div.nav-buttons
        (when (= screen :review)
-         [:div {:style {:display "flex" :gap "10px"}}
+         [:div {:style {:display "flex" :gap "10px" :align-items "center"}}
+          ;; Deck selector
+          (when (seq decks)
+            [:select {:value (or selected-deck "")
+                      :on {:change [::select-deck :event/target.value]}}
+             [:option {:value ""} "All Decks"]
+             (for [deck decks]
+               ^{:key deck}
+               [:option {:value deck} deck])])
+          [:button {:on {:click [::toggle-stats]}}
+           "Stats"]
           [:button {:on {:click [::create-occlusion]}}
            "Create Occlusion Card"]
           [:button {:on {:click [::select-folder]}}
@@ -302,11 +385,15 @@
      [:main
       (case screen
         :setup (setup-screen {:saved-handle saved-handle})
-        :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash})
+        :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash :selected-deck selected-deck})
         :create-occlusion (creator-ui/creator-screen {:state @creator/!creator-state
                                                       :on-save [::save-occlusion-card]
                                                       :on-cancel [::cancel-occlusion]})
-        [:div "Unknown screen"])]]))
+        [:div "Unknown screen"])]
+     ;; Stats modal overlay
+     (when show-stats?
+       (stats-modal {:stats (core/compute-stats state events)
+                     :on-close [::toggle-stats]}))]))
 
 ;; Forward declarations
 (declare render!)
@@ -314,25 +401,79 @@
 ;; Event Handlers
 
 (defn load-and-sync-cards!
-  "Load cards.md, parse it, and create events for any new cards"
+  "Load cards from .md files (ground truth), sync with event log (metadata only).
+   Returns {:state ... :decks [...]}"
   [dir-handle]
-  (p/let [markdown (fs/load-cards dir-handle)
+  (p/let [md-files (fs/load-cards dir-handle) ; [{:deck "Geography" :filename "..." :content "..."}]
           events (fs/load-log dir-handle)]
-    (let [parsed-cards (keep core/parse-card (str/split markdown #"\n\n+"))
-          _ (js/console.log "Parsed" (count parsed-cards) "cards from markdown")
-          current-state (core/reduce-events events)
-          existing-hashes (set (keys (:cards current-state)))
-          new-cards (remove #(contains? existing-hashes (core/card-hash %)) parsed-cards)
-          _ (js/console.log "Found" (count new-cards) "new cards")
-          new-events (mapv #(core/card-created-event (core/card-hash %) %) new-cards)]
+    (let [;; Extract unique decks
+          all-decks (->> md-files
+                         (map :deck)
+                         distinct
+                         sort
+                         vec)
 
+          ;; Parse cards from all files with deck info
+          cards-with-decks (->> md-files
+                                (mapcat (fn [{:keys [deck content]}]
+                                          (->> (str/split content #"\n\n+")
+                                               (keep core/parse-card)
+                                               (map #(assoc % :deck deck)))))
+                                (map (fn [card]
+                                       ;; Hash based on content only (not deck)
+                                       (let [content-only (dissoc card :deck)
+                                             h (core/card-hash content-only)]
+                                         {:hash h
+                                          :card card})))
+                                vec)
+
+          _ (js/console.log "Parsed" (count cards-with-decks) "cards from" (count md-files) "files")
+          _ (js/console.log "Found decks:" (pr-str all-decks))
+
+          ;; Build cards map from files (hash -> card)
+          cards-from-files (into {} (map (fn [{:keys [hash card]}]
+                                           [hash card])
+                                         cards-with-decks))
+
+          ;; Get existing metadata from events
+          meta-state (core/reduce-events events)
+          existing-meta (get meta-state :meta {})
+
+          ;; Find new cards (in files but not in events)
+          existing-hashes (set (keys existing-meta))
+          new-cards (remove #(contains? existing-hashes (:hash %)) cards-with-decks)
+
+          _ (js/console.log "Found" (count new-cards) "new cards")
+
+          ;; Create events for new cards (hash + deck only, no content)
+          new-events (mapv (fn [{:keys [hash card]}]
+                             (core/card-created-event hash (:deck card)))
+                           new-cards)]
+
+      ;; Save new events to log
       (when (seq new-events)
         (js/console.log "Saving" (count new-events) "new card events")
         (p/do! (fs/append-to-log dir-handle new-events)))
 
-      (core/reduce-events (concat events new-events)))))
+      ;; Rebuild state with file content + event metadata
+      (let [all-events (concat events new-events)
+            meta-state (core/reduce-events all-events)
+            final-state (assoc meta-state :cards cards-from-files)]
+        {:state final-state
+         :decks all-decks}))))
 
 ;; Removed: create-test-occlusion-card - test code no longer needed
+
+(defn interpolate-actions
+  "Replace event placeholders with actual values from DOM event"
+  [event actions]
+  (clojure.walk/postwalk
+   (fn [x]
+     (case x
+       :event/target.value (.. event -target -value)
+       :event/target.checked (.. event -target -checked)
+       x))
+   actions))
 
 (defn handle-event [_replicant-data [action & args]]
   (case action
@@ -340,19 +481,29 @@
     (p/let [handle (fs/pick-directory)]
       (js/console.log "Folder selected:" handle)
       (fs/save-dir-handle handle)
-      (p/let [state (load-and-sync-cards! handle)
-              events (fs/load-log handle)]
+      (p/let [result (load-and-sync-cards! handle)
+              events (fs/load-log handle)
+              state (:state result)
+              decks (:decks result)]
         (swap! !state assoc
                :dir-handle handle
                :state state
                :events events
                :saved-handle handle
                :screen :review
-               :current-card-hash nil)
-        (js/console.log "Loaded state with" (count (:cards state)) "total cards")))
+               :current-card-hash nil
+               :decks decks
+               :selected-deck nil)
+        (js/console.log "Loaded state with" (count (:cards state)) "total cards")
+        (js/console.log "Available decks:" (pr-str decks))))
 
     ::show-answer
     (swap! !state assoc :show-answer? true)
+
+    ::select-deck
+    (let [deck-name (first args)]
+      (swap! !state assoc :selected-deck (when (seq deck-name) deck-name))
+      (js/console.log "Selected deck:" (or deck-name "All Decks")))
 
     ::rate-card
     (let [{:keys [state events dir-handle current-card-hash]} @!state
@@ -361,12 +512,15 @@
           review-hash (or current-card-hash (first due))]
       (when (and review-hash dir-handle)
         (js/console.log "Rating card" rating)
-        (p/let [event (core/review-event review-hash rating)
-                _ (fs/append-to-log dir-handle [event])
-                new-events (conj events event)
-                new-state (core/reduce-events new-events) ; FIX: rebuild stacks
-                next-due (core/due-cards new-state)
-                next-hash (first next-due)]
+        (let [event (core/review-event review-hash rating)
+              new-events (conj events event)
+              new-meta-state (core/reduce-events new-events)
+              new-state (assoc new-meta-state :cards (:cards state))
+              next-due (core/due-cards new-state)
+              next-hash (first next-due)]
+          ;; Fire and forget - write to disk async (no waiting)
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
           (swap! !state assoc
                  :state new-state
                  :events new-events
@@ -379,49 +533,50 @@
           undo-stack (:undo-stack state)]
       (when (and (seq undo-stack) dir-handle)
         (let [target-event-id (last undo-stack)
-              ;; Find the event being undone to determine which card to show
-              target-event (first (filter #(= target-event-id (:event/id %)) events))]
+              target-event (first (filter #(= target-event-id (:event/id %)) events))
+              event (core/undo-event target-event-id)
+              new-events (conj events event)
+              new-meta-state (core/reduce-events new-events)
+              new-state (assoc new-meta-state :cards (:cards state))
+              affected-hash (when (= :review (:event/type target-event))
+                              (get-in target-event [:event/data :card-hash]))
+              due-cards (core/due-cards new-state)
+              next-hash (if (and affected-hash (some #{affected-hash} due-cards))
+                          affected-hash
+                          (first due-cards))]
           (js/console.log "Undoing event" target-event-id)
-          (p/let [event (core/undo-event target-event-id)
-                  _ (fs/append-to-log dir-handle [event])
-                  new-events (conj events event)
-                  new-state (core/reduce-events new-events)
-                  ;; Show the card that was affected by the undone event
-                  affected-hash (when (= :review (:event/type target-event))
-                                  (get-in target-event [:event/data :card-hash]))
-                  due-cards (core/due-cards new-state)
-                  ;; If undone card is due, show it; otherwise show first due
-                  next-hash (if (and affected-hash (some #{affected-hash} due-cards))
-                              affected-hash
-                              (first due-cards))]
-            (swap! !state assoc
-                   :state new-state
-                   :events new-events
-                   :show-answer? false
-                   :current-card-hash next-hash)
-            (js/console.log "Undo complete, undo stack:" (count (:undo-stack new-state)))))))
+          ;; Fire and forget - write to disk async
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :show-answer? false
+                 :current-card-hash next-hash)
+          (js/console.log "Undo complete, undo stack:" (count (:undo-stack new-state))))))
 
     ::redo
     (let [{:keys [state dir-handle events]} @!state
           redo-stack (:redo-stack state)]
       (when (and (seq redo-stack) dir-handle)
         (let [target-event-id (last redo-stack)
-              ;; Find the event being redone
-              target-event (first (filter #(= target-event-id (:event/id %)) events))]
+              target-event (first (filter #(= target-event-id (:event/id %)) events))
+              event (core/redo-event target-event-id)
+              new-events (conj events event)
+              new-meta-state (core/reduce-events new-events)
+              new-state (assoc new-meta-state :cards (:cards state))
+              due-cards (core/due-cards new-state)
+              next-hash (first due-cards)]
           (js/console.log "Redoing event" target-event-id)
-          (p/let [event (core/redo-event target-event-id)
-                  _ (fs/append-to-log dir-handle [event])
-                  new-events (conj events event)
-                  new-state (core/reduce-events new-events)
-                  ;; After redo, move to next due card
-                  due-cards (core/due-cards new-state)
-                  next-hash (first due-cards)]
-            (swap! !state assoc
-                   :state new-state
-                   :events new-events
-                   :show-answer? false
-                   :current-card-hash next-hash)
-            (js/console.log "Redo complete, redo stack:" (count (:redo-stack new-state)))))))
+          ;; Fire and forget - write to disk async
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :show-answer? false
+                 :current-card-hash next-hash)
+          (js/console.log "Redo complete, redo stack:" (count (:redo-stack new-state))))))
 
     ::create-occlusion
     (do
@@ -429,7 +584,7 @@
       (swap! !state assoc :screen :create-occlusion))
 
     ::save-occlusion-card
-    (let [{:keys [dir-handle events state]} @!state
+    (let [{:keys [dir-handle]} @!state
           occlusion-card (creator/create-occlusion-card)]
       (when (and occlusion-card dir-handle)
         (let [occlusions (:occlusions occlusion-card)
@@ -446,25 +601,29 @@
                                             :answer (:answer occ)
                                             :shape (:shape occ)}) ; For backwards compat
                                          occlusions)
-                  ;; Create events for each individual card
-                  card-events (mapv (fn [card]
-                                      (let [h (core/card-hash card)]
-                                        (core/card-created-event h card)))
-                                    individual-cards)
-                  _ (fs/append-to-log dir-handle card-events)
-                  new-events (into events card-events)
-                  new-state (core/reduce-events new-events)]
+                  ;; Save to Occlusions.md file (ground truth)
+                  _ (fs/append-occlusion-cards dir-handle individual-cards)
+                  ;; Reload all cards from files (picks up new occlusions)
+                  {:keys [state decks]} (load-and-sync-cards! dir-handle)
+                  ;; Reload events from log
+                  events (fs/load-log dir-handle)]
             (swap! !state assoc
-                   :state new-state
-                   :events new-events
-                   :screen :review)
+                   :state state
+                   :events events
+                   :decks decks
+                   :screen :review
+                   :show-answer? false
+                   :current-card-hash (first (core/due-cards state)))
             (creator/reset-creator!)
-            (js/console.log (count individual-cards) "occlusion cards saved")))))
+            (js/console.log (count individual-cards) "occlusion cards saved to Occlusions.md")))))
 
     ::cancel-occlusion
     (do
       (creator/reset-creator!)
       (swap! !state assoc :screen :review))
+
+    ::toggle-stats
+    (swap! !state update :show-stats? not)
 
     (js/console.warn "Unknown action:" action)))
 
@@ -474,11 +633,69 @@
   (r/render (js/document.getElementById "root")
             (main-app @!state)))
 
+;; Keyboard shortcuts
+
+(defn handle-keydown [e]
+  (let [{:keys [screen show-answer?]} @!state
+        key (.-key e)
+        ;; Ignore if typing in input/textarea/select
+        target (.-target e)
+        tag-name (str/lower-case (.-tagName target))
+        is-input? (contains? #{"input" "textarea" "select"} tag-name)]
+
+    (when-not is-input?
+      (case screen
+        :review
+        (cond
+          ;; Space to reveal answer
+          (and (= key " ") (not show-answer?))
+          (do (.preventDefault e)
+              (handle-event nil [::show-answer])
+              (render!))
+
+          ;; Number keys for rating (only when answer is shown)
+          (and show-answer? (contains? #{"1" "2" "3" "4"} key))
+          (do (.preventDefault e)
+              (let [rating (case key
+                            "1" :forgot
+                            "2" :hard
+                            "3" :good
+                            "4" :easy)]
+                (handle-event nil [::rate-card rating])
+                (render!)))
+
+          ;; u for undo
+          (and (= key "u") (seq (:undo-stack (:state @!state))))
+          (do (.preventDefault e)
+              (handle-event nil [::undo])
+              (render!))
+
+          ;; r for redo (shift+u conflicts, so use r)
+          (and (= key "r") (seq (:redo-stack (:state @!state))))
+          (do (.preventDefault e)
+              (handle-event nil [::redo])
+              (render!)))
+
+        nil))))
+
 ;; Initialization
 
 (defn ^:export main []
   (js/console.log "Anki app starting with Replicant...")
-  (r/set-dispatch! handle-event)
+
+  ;; Set up dispatch with interpolation middleware
+  (r/set-dispatch!
+   (fn [event-data handler-data]
+     (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+       (let [dom-event (:replicant/dom-event event-data)
+             enriched-actions (interpolate-actions dom-event handler-data)]
+         (handle-event event-data enriched-actions)
+         ;; Re-render after handling event
+         (render!)))))
+
+  ;; Set up keyboard shortcuts
+  (.addEventListener js/document "keydown" handle-keydown)
+
   (render!)
   (add-watch !state :render (fn [_ _ _ _] (render!)))
 
@@ -487,11 +704,26 @@
 
   ;; Load debug helpers in development
   (when ^boolean js/goog.DEBUG
-    (js/console.log "🔧 Loading debug helpers...")
-    (try
-      ((js/eval "() => import('/js/anki/cljs-runtime/dev.debug.js').then(m => m.dev.debug.init_BANG_())"))
-      (catch :default e
-        (js/console.warn "Debug helpers not available:" e))))
+    (js/console.log "🔧 Debug mode enabled. Try: checkIntegrity()")
+    (set! js/window.checkIntegrity
+          (fn []
+            (let [s @!state
+                  issues (core/check-integrity (:state s) (:events s))]
+              (if (empty? issues)
+                (do
+                  (js/console.log "✅ No integrity issues found")
+                  #js {:ok true :issues #js []})
+                (do
+                  (js/console.log "⚠️  Found" (count issues) "issue(s):")
+                  (doseq [issue issues]
+                    (let [icon (case (:severity issue)
+                                 :error "❌"
+                                 :warning "⚠️ "
+                                 :info "ℹ️ ")]
+                      (js/console.log icon (:message issue))
+                      (when (:data issue)
+                        (js/console.log "   Data:" (pr-str (:data issue))))))
+                  #js {:ok false :issues (clj->js issues)}))))))
 
   ;; Auto-resume last session if available
   (p/let [saved-handle (fs/load-dir-handle)]
@@ -501,15 +733,20 @@
         (p/catch
          (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
            (if (= permission "granted")
-             (p/let [state (load-and-sync-cards! saved-handle)
-                     events (fs/load-log saved-handle)]
+             (p/let [result (load-and-sync-cards! saved-handle)
+                     events (fs/load-log saved-handle)
+                     state (:state result)
+                     decks (:decks result)]
                (swap! !state assoc
                       :dir-handle saved-handle
                       :state state
                       :events events
                       :saved-handle saved-handle
-                      :screen :review)
-               (js/console.log "Auto-resumed with" (count (:cards state)) "cards"))
+                      :screen :review
+                      :decks decks
+                      :selected-deck nil)
+               (js/console.log "Auto-resumed with" (count (:cards state)) "cards")
+               (js/console.log "Available decks:" (pr-str decks)))
              (do
                (js/console.warn "Permission denied, showing setup screen")
                (swap! !state assoc :saved-handle saved-handle))))

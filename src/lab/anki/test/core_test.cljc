@@ -92,10 +92,10 @@
       (is (= :good (get-in review-ev [:event/data :rating])))
       (is (some? (:event/timestamp review-ev))))
 
-    (let [created-ev (core/card-created-event "hash456" {:type :qa})]
+    (let [created-ev (core/card-created-event "hash456" "Geography")]
       (is (= :card-created (:event/type created-ev)))
       (is (= "hash456" (get-in created-ev [:event/data :card-hash])))
-      (is (= {:type :qa} (get-in created-ev [:event/data :card]))))))
+      (is (= "Geography" (get-in created-ev [:event/data :deck]))))))
 
 (deftest apply-event-test
   (testing "Applying events to state"
@@ -103,15 +103,16 @@
           card {:type :qa :question "Q" :answer "A"}
           card-hash (core/card-hash card)]
 
-      (testing "Card creation event"
-        (let [event (core/card-created-event card-hash card)
+      (testing "Card creation event - only creates metadata"
+        (let [event (core/card-created-event card-hash "Geography")
               new-state (core/apply-event initial-state event)]
-          (is (= card (get-in new-state [:cards card-hash])))
+          ;; Cards come from files now, events only create metadata
+          (is (nil? (get-in new-state [:cards card-hash])))
           (is (some? (get-in new-state [:meta card-hash])))
           (is (= 0 (get-in new-state [:meta card-hash :reviews])))))
 
       (testing "Review event"
-        (let [create-event (core/card-created-event card-hash card)
+        (let [create-event (core/card-created-event card-hash "Geography")
               state-with-card (core/apply-event initial-state create-event)
               review-ev (core/review-event card-hash :good)
               state-after-review (core/apply-event state-with-card review-ev)]
@@ -124,11 +125,13 @@
           card2 {:type :qa :question "Q2" :answer "A2"}
           hash1 (core/card-hash card1)
           hash2 (core/card-hash card2)
-          events [(core/card-created-event hash1 card1)
-                  (core/card-created-event hash2 card2)
+          events [(core/card-created-event hash1 "Geography")
+                  (core/card-created-event hash2 "History")
                   (core/review-event hash1 :good)]
           state (core/reduce-events events)]
-      (is (= 2 (count (:cards state))))
+      ;; Cards come from files, events only create metadata
+      (is (= 0 (count (:cards state))))
+      (is (= 2 (count (:meta state))))
       (is (= 1 (get-in state [:meta hash1 :reviews])))
       (is (= 0 (get-in state [:meta hash2 :reviews]))))))
 
