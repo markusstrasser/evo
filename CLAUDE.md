@@ -10,8 +10,7 @@
 **Research & Analysis:**
 - [Research Workflow](#research-workflow) - best-of repos exploration, repomix queries
 - [LLM Provider CLIs](#llm-provider-clis) - gemini, codex, grok syntax
-- [Architectural Proposals](#architectural-proposals-workflow) - proposal generation
-- [Best-of Repos Research](#best-of-repos-research) - parallel research queries
+- [MCPs](#mcps) - tournament, architect, researcher subagent
 
 **Development:**
 - [Quick Reference Index](#quick-reference-index) - Core files, testing, dev tools, MCP
@@ -56,37 +55,12 @@ For dev tooling and infrastructure: keep it simple - I'm a solo developer using 
 # Verify API keys
 test -f .env && echo "✓ .env found" || echo "✗ .env missing"
 env | grep -E "(GROK|GEMINI|OPENAI)_API_KEY" | cut -d= -f1
-
-# Full validation
-scripts/validate-proposal-setup
 ```
 
 **API Keys:**
 - Store in `.env` (gitignored, auto-sourced by scripts)
 - Required: `GROK_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`
 
-### Output Validation Protocol
-
-**ALWAYS verify output after running research scripts:**
-
-```bash
-# After any research/proposal script
-LATEST=$(ls -td research/{proposals,results}/* 2>/dev/null | head -1)
-
-# Check for errors (files < 1KB are usually error messages)
-find "$LATEST" -name "*.md" -size -1k
-
-# Verify content
-head -20 "$LATEST"/**/*.md | grep -c "^#"  # Should have headers
-
-# Check for error messages
-grep -i "error\|failed\|not found" "$LATEST"/**/*.md
-```
-
-**Before claiming "complete":**
-1. Check file sizes (should be > 5KB)
-2. Read first 20 lines - look for actual content, not errors
-3. Verify expected structure (markdown headers, sections)
 
 ### Research Workflow
 
@@ -114,20 +88,6 @@ repomix ~/Projects/best/clojurescript/src/main/clojure/cljs \
   --include "compiler.clj,analyzer.cljc" \
   --copy --output /dev/null > /dev/null 2>&1 && \
   pbpaste | gemini -y -p "YOUR_QUESTION"
-```
-
-**3. Use prompt template** (see `templates/research-prompt.md`):
-```
-How does {PROJECT} implement {FEATURE}?
-Focus on: 1) {MECH_1} 2) {MECH_2} 3) {MECH_3} 4) {MECH_4}
-Show code patterns.
-```
-
-**4. Parallel queries** (for multiple repos):
-```bash
-# Edit research/questions.edn, then:
-scripts/parallel-research.sh research/questions.edn
-# Results in: research/results/
 ```
 
 ### LLM Provider CLIs
@@ -184,46 +144,15 @@ codex --model gpt-5 --reasoning-effort high -p "...prompt"
 **Note**: Research and refactor agents use even split across providers for
 diverse perspectives.
 
-**Parallel Query Protocol**:
-- **No duplicate prompts**: Same prompt goes to each model once only
-- **Vary questions**: Parallel queries should ask different questions or use different perspectives
-- **Add variation**: Use UUIDs, timestamps, or perspective tags to ensure unique responses
-- **Example perspectives**: "structural analysis", "performance patterns", "comparative design"
-- **See**: `research/CLI_REFERENCE.md` for tested syntax and duplicate prevention patterns
+### MCPs
 
-**Architectural Proposals Workflow**:
-```bash
-# Generate 15 architectural proposals + 2 rankings (fully automated)
-scripts/architectural-proposals
+**researcher subagent** - Deep research using Context7, Exa, best-of repos. Writes to `.architect/reports/`.
 
-# Uses: project overview (not source) to avoid implementation bias
-# Covers: kernel, indexes, pipeline, extensibility, DX
-# Output: research/proposals/YYYY-MM-DD-HH-MM/{proposals,rankings}/
-# See: research/ARCHITECTURAL_PROPOSALS.md for details
-```
+**architect-mcp** (`~/Projects/architect-mcp/`) - Proposal → tournament → ADR workflow. Writes to `.architect/review-runs/`.
 
-**Best-of Repos Research** (15 parallel queries):
-```bash
-# Query 5 best/ repos with 3 models each (15 parallel)
-scripts/best-repos-research ["custom question"]
+**tournament-mcp** (`~/Projects/tournament-mcp/`) - Bradley-Terry ranking via Swiss-Lite tournaments. Used by architect-mcp.
 
-# Default: Analyze core data structures and operations
-# Repos: datascript, reitit, re-frame, meander, specter
-# Models: gemini, codex, grok (NO --full-auto for research)
-# Output: research/results/YYYY-MM-DD-HH-MM/{repo}-{model}.md
-# Cache: .repomix-cache/ (repomix results cached for speed)
-```
-
-**Analyze Battle-Test Results** (Codex synthesis):
-```bash
-# Analyze all results with Codex (pipes ALL context, no summarization)
-scripts/analyze-battle-test [results-dir]
-
-# Uses Codex reasoning-effort=high for pattern analysis
-# Finds: consensus patterns, repo-specific insights, outliers
-# Shows live progress (new output as it arrives)
-# Output: {results-dir}/analysis.md
-```
+See `~/.claude/agents/researcher.md` for subagent spec. MCPs advertise their own tools via `/mcp`.
 
 ### Available Projects
 
@@ -388,8 +317,9 @@ scripts/quick-test.sh
 **MCP Integration:**
 
 - `docs/MCP.md` - Complete MCP reference (config, failure modes, patterns)
-- `mcp/servers/dev_diagnostics.clj` - Minimal MCP server (Java SDK)
-- `mcp/shared/` - Shared MCP utilities (future)
+- `mcp/servers/dev_diagnostics.clj` - Clojure dev diagnostics MCP (Java SDK)
+- `~/Projects/tournament-mcp/` - Tournament-based LLM judge comparison (FastMCP)
+- `~/Projects/architect-mcp/` - Architectural decision workflow (FastMCP)
 - `.mcp.json` - Project MCP server config
 - `~/.claude.json` - Global/project-scoped MCP config
 - `~/Projects/best/modelcontextprotocol/docs/` - Full MCP spec (121 MDX files)
@@ -402,14 +332,6 @@ scripts/quick-test.sh
 - `docs/research/sources/repos.edn` - Best-of repos with LOC, trees, README snippets
 - `docs/research/sources/update-repos.sh` - Regenerate repo stats (tokei + tree)
 - `~/Projects/best/` - Cloned reference repos for inspiration
-
-**Research & Analysis:**
-
-- `research/CLI_REFERENCE.md` - Battle-tested CLI syntax (gemini, codex, grok)
-- `research/ARCHITECTURAL_PROPOSALS.md` - Proposal generation workflow docs
-- `research/architectural-questions.edn` - Question templates
-- `research/proposal-ranker-prompt.md` - Ranking criteria
-- `.agentlog/session-*.md` - Past session learnings and failure modes
 
 **Visual Validation:**
 
