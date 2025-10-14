@@ -28,7 +28,7 @@
     "review-flow": {
       "type": "local",
       "enabled": true,
-      "command": "python",
+      "command": "mcp/review/.venv/bin/python",
       "args": ["-m", "mcp.review.server"],
       "env": {
         "GEMINI_API_KEY": "${GEMINI_API_KEY}",
