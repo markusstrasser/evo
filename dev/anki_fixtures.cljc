@@ -1,5 +1,17 @@
 (ns anki-fixtures
-  "REPL test fixtures for common Anki review scenarios"
+  "REPL test fixtures for common Anki review scenarios.
+
+   Scope: Anki-specific testing (cards, reviews, scheduling, undo/redo).
+   Use: Testing lab.anki.core, review workflows, state management.
+
+   For generic kernel fixtures (nodes, trees, db shapes), see:
+   - fixtures.cljc (Generic test utilities)
+
+   This file provides:
+   - Card generation (generate-cards)
+   - Review session fixtures (review-session-fixture)
+   - Undo/redo scenarios (undo-redo-fixture)
+   - State inspection (print-state-summary, print-event-log)"
   (:require [lab.anki.core :as core]))
 
 (defn generate-cards

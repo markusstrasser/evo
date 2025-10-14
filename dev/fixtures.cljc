@@ -1,6 +1,17 @@
 (ns fixtures
   "Generic test fixtures and utilities for kernel testing.
-   NO application-specific assumptions - only builds core/db shapes.")
+
+   Scope: Generic tree/node structures - NO application-specific logic.
+   Use: Core kernel testing, transaction validation, index testing.
+
+   For application-specific fixtures (cards, reviews, etc.), see:
+   - anki_fixtures.cljc (Anki review scenarios)
+
+   This file provides:
+   - DB builders (make-db)
+   - Tree generators (linear, flat, balanced)
+   - Node generators (gen-node)
+   - Predefined fixtures (empty-db, simple-tree)")
 
 ;; =============================================================================
 ;; Generic DB builders
