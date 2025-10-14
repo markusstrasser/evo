@@ -1,43 +1,13 @@
 # MCP Servers
 
-MCP servers for the evo project, exposing dev tooling and future capabilities to Claude Code.
+MCP servers are now in standalone repos under `~/Projects/`:
 
-## Directory Structure
+- **tournament-mcp** (`~/Projects/tournament-mcp/`) - Tournament-based LLM judge comparison
+- **architect-mcp** (`~/Projects/architect-mcp/`) - Architectural decision-making workflow
 
-```
-mcp/
-├── servers/              # Clojure MCP servers
-│   └── dev_diagnostics.clj
-├── eval/                 # Python: Tournament evaluation server
-├── review/               # Python: Review workflow server
-├── shared/               # Shared utilities (future)
-├── config/               # Example configs (future)
-├── requirements.txt      # Python dependencies
-└── README.md
-```
+This directory (`mcp/`) now only contains Clojure-specific MCP servers for the evo project.
 
-## Setup
-
-### Python Servers (eval, review)
-
-```bash
-# Create virtual environment (one-time)
-python3 -m venv .venv
-
-# Activate it
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Clojure Servers (dev-diagnostics)
-
-No setup needed - uses project Clojure deps.
-
-## Active Servers
-
-### dev-diagnostics
+## Active Server: dev-diagnostics
 
 Minimal MCP server exposing dev tooling via Java MCP SDK.
 
@@ -69,16 +39,14 @@ Server is configured in `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "evo-dev": {
-      "type": "stdio",
-      "command": "clj",
-      "args": ["-M:mcp"]
+    "mcp-shadow-dual": {
+      "type": "local",
+      "command": "/opt/homebrew/bin/bash",
+      "args": ["-c", "clojure -X:mcp-shadow-dual"]
     }
   }
 }
 ```
-
-Or add via global `~/.claude.json` (see `docs/MCP.md` for details).
 
 ### Use in Claude Code
 
@@ -134,39 +102,88 @@ dev/health.clj, dev/session.clj
 
 See `docs/MCP.md` for complete reference (config, failure modes, patterns).
 
-### eval (evo-eval)
+## Standalone Python MCPs
 
-Tournament-based evaluation server using Swiss-Lite algorithm with AI judges.
+These have been moved to separate repos for easier maintenance and reuse:
+
+### tournament-mcp
+
+**Location**: `~/Projects/tournament-mcp/`
+
+Tournament-based LLM judge comparison with Bradley-Terry ranking.
 
 **Tools**:
 - `compare_items` - Compare 2 items with AI judges
 - `compare_multiple` - Tournament ranking for 3+ items
 
-**Location**: `mcp/eval/`
-**Docs**: See `mcp/eval/eval_server.py`
+**Prompts**:
+- `/code_comparison` - Code evaluation template
+- `/writing_comparison` - Writing evaluation template
 
-### review (review-flow)
+**Features**:
+- Progress reporting
+- Markdown export
+- Quality metrics (R², τ-split, brittleness, dispersion)
+- Bias detection
 
-Minimal-linear review workflow: idea → proposals → ranking → decision.
+**Docs**: See `~/Projects/tournament-mcp/README.md`
+
+### architect-mcp
+
+**Location**: `~/Projects/architect-mcp/`
+
+Architectural decision-making workflow: proposals → tournament → ADR.
 
 **Tools**:
-- `propose` - Generate 3 proposals (gemini/codex/grok)
-- `rank_proposals` - Tournament evaluation (mounts evo-eval)
+- `propose` - Generate proposals (gemini/codex/grok)
+- `rank_proposals` - Tournament evaluation (mounts tournament-mcp)
 - `refine` - Feedback loops with validation
 - `decide` - Record ADR
 - `review_cycle` - One-shot: generate → rank → decide
+- Research management tools
 
 **Resources**:
 - `review://runs/{id}` - Run state
 - `review://ledger` - Provenance log (JSONL)
 
-**Location**: `mcp/review/`
-**Docs**: See `mcp/review/README.md`
+**Docs**: See `~/Projects/architect-mcp/README.md`
 
-## Future
+## Configuration
 
-- `shared/` - Reusable MCP utilities (Mono patterns, tool helpers)
-- `config/` - Example server configs
-- Research automation as MCP tools
-- Resources for dev state
-- Prompts as workflows
+All MCPs are configured in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcp-shadow-dual": {
+      "type": "local",
+      "command": "/opt/homebrew/bin/bash",
+      "args": ["-c", "clojure -X:mcp-shadow-dual"]
+    },
+    "tournament": {
+      "type": "local",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/alien/Projects/tournament-mcp",
+        "run",
+        "fastmcp",
+        "run",
+        "eval_server.py"
+      ]
+    },
+    "architect": {
+      "type": "local",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/alien/Projects/architect-mcp",
+        "run",
+        "python",
+        "-m",
+        "__main__"
+      ]
+    }
+  }
+}
+```
