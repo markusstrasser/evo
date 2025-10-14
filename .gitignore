@@ -55,6 +55,17 @@ logs/
 # Repomix cache (for best/ repos research)
 .repomix-cache/
 
+# Architect MCP outputs (ephemeral, reproducible)
+.architect/review-runs/
+.architect/reports/
+.architect/results/
+.architect/archive/
+
+# Keep valuable records
+!.architect/adr/
+!.architect/specs/
+!.architect/background/
+
 .hgignore
 .hg/
 AUTO-DEV-OVERVIEW.md
