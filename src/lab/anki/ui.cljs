@@ -19,6 +19,13 @@
                        :decks [] ; Available decks from files
                        :selected-deck nil ; nil = all decks, string = specific deck
                        :show-stats? false ; Stats modal visibility
+                       :show-add-card? false ; Card creation panel visibility
+                       :new-card-text "" ; Text input for new card
+                       :new-card-file "Default.md" ; Selected .md file
+                       :available-files [] ; List of .md files in directory
+                       :show-command-palette? false ; Command palette visibility
+                       :command-search "" ; Command palette search text
+                       :show-history? false ; Event history panel visibility
                        }))
 
 ;; Helpers
@@ -56,6 +63,20 @@
     :image-occlusion (str "Image: " (:alt-text card))
     :image-occlusion/item (str "Occlusion: " (truncate-text (:answer card) 40))
     "Unknown card type"))
+
+(defn math-text
+  "Render text with MathJax support. Wraps content in a div with unique ID
+   and triggers MathJax typesetting after render."
+  [content]
+  (let [id (str "math-" (random-uuid))]
+    ;; Schedule MathJax typesetting after DOM update
+    (js/setTimeout
+     (fn []
+       (when (and js/window.MathJax js/window.MathJax.typesetPromise)
+         (js/window.MathJax.typesetPromise
+          (clj->js [(js/document.getElementById id)]))))
+     80)
+    [:div.math {:id id} content]))
 
 ;; Components
 (defn setup-screen [{:keys [saved-handle]}]
@@ -349,7 +370,102 @@
      {:on {:click [::toggle-stats]}}
      "Close"]]])
 
-(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash decks selected-deck show-stats?]}]
+(defn add-card-panel [{:keys [card-text selected-file available-files]}]
+  (let [parsed-card (core/parse-card card-text)
+        is-valid? (and (seq card-text) (some? parsed-card))
+        validation-msg (cond
+                         (empty? card-text) ""
+                         is-valid? (str "✓ Valid " (name (:type parsed-card)) " card")
+                         :else "✗ Invalid format - use 'q ... / a ...' or 'c ...'")]
+    [:div.add-card-panel
+     [:h3 "Add New Card"]
+     [:div.add-card-form
+      [:textarea
+       {:placeholder "Type card here:\nq What is 2+2?\na 4\n\nOR\n\nc The [capital] of France is [Paris]"
+        :value card-text
+        :rows 5
+        :on {:input [::update-card-text :event/target.value]}}]
+      [:div.validation-status
+       {:class (if is-valid? "valid" "invalid")}
+       validation-msg]
+      [:div.file-selector
+       [:label "Save to: "]
+       [:select
+        {:value selected-file
+         :on {:change [::select-card-file :event/target.value]}}
+        (for [file available-files]
+          ^{:key file}
+          [:option {:value file} file])]]
+      [:div.add-card-buttons
+       [:button.btn-primary
+        {:disabled (not is-valid?)
+         :on {:click [::save-new-card]}}
+        "Add Card"]
+       [:button.btn-ghost
+        {:on {:click [::toggle-add-card]}}
+        "Cancel"]]]]))
+
+(def commands
+  [{:id :add-card :title "Add Card" :shortcut ", a" :action ::toggle-add-card}
+   {:id :stats :title "View Statistics" :shortcut ", s" :action ::toggle-stats}
+   {:id :create-occlusion :title "Create Occlusion Card" :shortcut ", o" :action ::create-occlusion}
+   {:id :change-folder :title "Change Folder" :shortcut ", f" :action ::select-folder}
+   {:id :toggle-history :title "Toggle Event History" :shortcut ", h" :action ::toggle-history}
+   {:id :undo :title "Undo Last Review" :shortcut "u" :action ::undo}
+   {:id :redo :title "Redo Review" :shortcut "r" :action ::redo}])
+
+(defn command-palette [{:keys [search-text]}]
+  (let [filtered-commands (if (seq search-text)
+                            (filter #(str/includes? (str/lower-case (:title %))
+                                                   (str/lower-case search-text))
+                                   commands)
+                            commands)]
+    [:div.command-palette
+     [:div.command-search
+      [:input {:type "text"
+               :placeholder "Type a command..."
+               :value search-text
+               :autoFocus true
+               :on {:input [::update-command-search :event/target.value]}}]]
+     [:div.command-list
+      (for [cmd filtered-commands]
+        ^{:key (:id cmd)}
+        [:div.command-item
+         {:on {:click [(:action cmd)]}}
+         [:span.command-title (:title cmd)]
+         [:span.command-shortcut (:shortcut cmd)]])]]))
+
+(defn history-panel [{:keys [events state]}]
+  (let [event-status (core/build-event-status-map events)
+        all-events (reverse events)] ; Show newest first
+    [:div.history-panel
+     [:div.history-header
+      [:h3 "Event History"]
+      [:button {:on {:click [::toggle-history]}} "Close"]]
+     [:div.history-events
+      (for [event all-events]
+        (let [event-id (:event/id event)
+              status (get event-status event-id :active)
+              is-active? (= status :active)]
+          ^{:key (str event-id)}
+          [:div.event-item
+           {:class (if is-active? "active" "undone")}
+           [:span.event-status
+            {:class (if is-active? "active" "undone")}
+            (if is-active? "active" "undone")]
+           [:div.event-type (name (:event/type event))]
+           [:div.event-data
+            (case (:event/type event)
+              :review (str "Card: " (subs (str (get-in event [:event/data :card-hash])) 0 8)
+                          " | Rating: " (name (get-in event [:event/data :rating])))
+              :card-created (str "Hash: " (subs (str (get-in event [:event/data :card-hash])) 0 8)
+                                " | Deck: " (get-in event [:event/data :deck]))
+              :undo (str "Undo event: " (subs (str (get-in event [:event/data :target-event-id])) 0 8))
+              :redo (str "Redo event: " (subs (str (get-in event [:event/data :target-event-id])) 0 8))
+              (pr-str (:event/data event)))]
+           [:div.event-timestamp (time-ago (:event/timestamp event))]]))]]))
+
+(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash decks selected-deck show-stats? show-add-card? new-card-text new-card-file available-files show-command-palette? command-search show-history?]}]
   (let [undo-stack (:undo-stack state)
         redo-stack (:redo-stack state)
         can-undo? (seq undo-stack)
@@ -369,19 +485,23 @@
              (for [deck decks]
                ^{:key deck}
                [:option {:value deck} deck])])
-          [:button {:on {:click [::toggle-stats]}}
-           "Stats"]
-          [:button {:on {:click [::create-occlusion]}}
-           "Create Occlusion Card"]
-          [:button {:on {:click [::select-folder]}}
-           "Change Folder"]])
+          [:button.btn-secondary {:on {:click [::toggle-add-card]}}
+           "Add Card" [:kbd ", a"]]
+          [:button.btn-secondary {:on {:click [::toggle-stats]}}
+           "Stats" [:kbd ", s"]]
+          [:button.btn-secondary {:on {:click [::toggle-history]}}
+           "History" [:kbd ", h"]]
+          [:button.btn-secondary {:on {:click [::create-occlusion]}}
+           "Occlusion" [:kbd ", o"]]
+          [:button.btn-secondary {:on {:click [::select-folder]}}
+           "Folder" [:kbd ", f"]]])
        [:div.undo-redo-buttons
-        [:button {:disabled (not can-undo?)
+        [:button.btn-secondary {:disabled (not can-undo?)
                   :on {:click [::undo]}}
-         "Undo"]
-        [:button {:disabled (not can-redo?)
+         "Undo" [:kbd "u"]]
+        [:button.btn-secondary {:disabled (not can-redo?)
                   :on {:click [::redo]}}
-         "Redo"]]]]
+         "Redo" [:kbd "r"]]]]]
      [:main
       (case screen
         :setup (setup-screen {:saved-handle saved-handle})
@@ -393,7 +513,25 @@
      ;; Stats modal overlay
      (when show-stats?
        (stats-modal {:stats (core/compute-stats state events)
-                     :on-close [::toggle-stats]}))]))
+                     :on-close [::toggle-stats]}))
+     ;; Add card panel overlay
+     (when show-add-card?
+       [:div.add-card-overlay
+        {:on {:click [::toggle-add-card]}}
+        [:div {:on {:click (fn [e] (.stopPropagation e))}}
+         (add-card-panel {:card-text new-card-text
+                          :selected-file new-card-file
+                          :available-files available-files})]])
+     ;; Command palette overlay
+     (when show-command-palette?
+       [:div.command-palette-overlay
+        {:on {:click [::toggle-command-palette]}}
+        [:div {:on {:click (fn [e] (.stopPropagation e))}}
+         (command-palette {:search-text command-search})]])
+     ;; History panel (not an overlay - fixed position)
+     (when show-history?
+       (history-panel {:events events :state state}))]))
+
 
 ;; Forward declarations
 (declare render!)
@@ -491,7 +629,14 @@
       (p/let [result (load-and-sync-cards! handle)
               events (fs/load-log handle)
               state (:state result)
-              decks (:decks result)]
+              decks (:decks result)
+              md-files (fs/list-md-files handle)
+              ;; Ensure Default.md is in the list
+              files-with-default (if (seq md-files)
+                                   (if (some #(= "Default.md" %) md-files)
+                                     md-files
+                                     (vec (cons "Default.md" md-files)))
+                                   ["Default.md"])]
         (swap! !state assoc
                :dir-handle handle
                :state state
@@ -500,9 +645,12 @@
                :screen :review
                :current-card-hash nil
                :decks decks
-               :selected-deck nil)
+               :selected-deck nil
+               :available-files files-with-default
+               :new-card-file (first files-with-default))
         (js/console.log "Loaded state with" (count (:cards state)) "total cards")
-        (js/console.log "Available decks:" (pr-str decks))))
+        (js/console.log "Available decks:" (pr-str decks))
+        (js/console.log "Available .md files:" (pr-str files-with-default))))
 
     ::show-answer
     (swap! !state assoc :show-answer? true)
@@ -644,6 +792,46 @@
     ::toggle-stats
     (swap! !state update :show-stats? not)
 
+    ::toggle-add-card
+    (swap! !state update :show-add-card? not)
+
+    ::toggle-command-palette
+    (swap! !state assoc :show-command-palette? (not (:show-command-palette? @!state))
+                        :command-search "")
+
+    ::update-command-search
+    (let [new-text (first args)]
+      (swap! !state assoc :command-search new-text))
+
+    ::toggle-history
+    (swap! !state update :show-history? not)
+
+    ::update-card-text
+    (let [new-text (first args)]
+      (swap! !state assoc :new-card-text new-text))
+
+    ::select-card-file
+    (let [filename (first args)]
+      (swap! !state assoc :new-card-file filename))
+
+    ::save-new-card
+    (let [{:keys [dir-handle new-card-text new-card-file]} @!state]
+      (when (and dir-handle (seq new-card-text))
+        (let [parsed-card (core/parse-card new-card-text)]
+          (when parsed-card
+            (js/console.log "Saving new card to" new-card-file)
+            (p/let [_ (fs/append-card-text dir-handle new-card-file new-card-text)
+                    ;; Reload all cards from files
+                    {:keys [state decks]} (load-and-sync-cards! dir-handle)
+                    events (fs/load-log dir-handle)]
+              (swap! !state assoc
+                     :state state
+                     :events events
+                     :decks decks
+                     :new-card-text ""
+                     :show-add-card? false)
+              (js/console.log "Card saved and reloaded"))))))
+
     (js/console.warn "Unknown action:" action)))
 
 ;; Rendering
@@ -654,17 +842,55 @@
 
 ;; Keyboard shortcuts
 
+(defonce !leader-key-active (atom false))
+(defonce !leader-timeout (atom nil))
+
+(defn clear-leader-key! []
+  (reset! !leader-key-active false)
+  (when-let [timeout @!leader-timeout]
+    (js/clearTimeout timeout)
+    (reset! !leader-timeout nil)))
+
+(defn activate-leader-key! []
+  (reset! !leader-key-active true)
+  ;; Clear leader key after 1.5 seconds if no follow-up key
+  (when-let [timeout @!leader-timeout]
+    (js/clearTimeout timeout))
+  (reset! !leader-timeout (js/setTimeout clear-leader-key! 1500)))
+
 (defn handle-keydown [e]
   (let [{:keys [screen show-answer?]} @!state
         key (.-key e)
         ;; Ignore if typing in input/textarea/select
         target (.-target e)
-        tag-name (str/lower-case (.-tagName target))
+        tag-name (when (and target (.-tagName target))
+                   (str/lower-case (.-tagName target)))
         is-input? (contains? #{"input" "textarea" "select"} tag-name)]
 
     (when-not is-input?
-      (case screen
-        :review
+      ;; Leader key sequence
+      (cond
+        ;; Comma activates leader key
+        (= key ",")
+        (do (.preventDefault e)
+            (activate-leader-key!)
+            (js/console.log "Leader key activated"))
+
+        ;; Leader key + command
+        @!leader-key-active
+        (do (.preventDefault e)
+            (clear-leader-key!)
+            (case key
+              "a" (handle-event nil [::toggle-add-card])
+              "s" (handle-event nil [::toggle-stats])
+              "h" (handle-event nil [::toggle-history])
+              "o" (handle-event nil [::create-occlusion])
+              "f" (handle-event nil [::select-folder])
+              nil)
+            (render!))
+
+        ;; Regular shortcuts (review screen)
+        (= screen :review)
         (cond
           ;; Space to reveal answer
           (and (= key " ") (not show-answer?))
@@ -689,13 +915,15 @@
               (handle-event nil [::undo])
               (render!))
 
-          ;; r for redo (shift+u conflicts, so use r)
+          ;; r for redo
           (and (= key "r") (seq (:redo-stack (:state @!state))))
           (do (.preventDefault e)
               (handle-event nil [::redo])
               (render!)))
 
-        nil))))
+        ;; Default: do nothing
+        :else nil))))
+
 
 ;; Initialization
 
@@ -755,7 +983,13 @@
              (p/let [result (load-and-sync-cards! saved-handle)
                      events (fs/load-log saved-handle)
                      state (:state result)
-                     decks (:decks result)]
+                     decks (:decks result)
+                     md-files (fs/list-md-files saved-handle)
+                     files-with-default (if (seq md-files)
+                                          (if (some #(= "Default.md" %) md-files)
+                                            md-files
+                                            (vec (cons "Default.md" md-files)))
+                                          ["Default.md"])]
                (swap! !state assoc
                       :dir-handle saved-handle
                       :state state
@@ -763,9 +997,12 @@
                       :saved-handle saved-handle
                       :screen :review
                       :decks decks
-                      :selected-deck nil)
+                      :selected-deck nil
+                      :available-files files-with-default
+                      :new-card-file (first files-with-default))
                (js/console.log "Auto-resumed with" (count (:cards state)) "cards")
-               (js/console.log "Available decks:" (pr-str decks)))
+               (js/console.log "Available decks:" (pr-str decks))
+               (js/console.log "Available .md files:" (pr-str files-with-default)))
              (do
                (js/console.warn "Permission denied, showing setup screen")
                (swap! !state assoc :saved-handle saved-handle))))
