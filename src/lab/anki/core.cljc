@@ -1,12 +1,15 @@
 (ns lab.anki.core
   "Core Anki clone data structures and operations"
   (:require [clojure.string :as str]
-            [medley.core :as m]))
+            [clojure.edn :as edn]
+            [medley.core :as m]
+            [lab.anki.fsrs :as fsrs]
+            [core.time :as time])) ;; New import
 
 ;; Card parsing
 
 (def cloze-pattern #"\[([^\]]+)\]")
-(def image-occlusion-pattern #"^!\[(.+?)\]\((.+?)\)\s*\{(.+?)\}$")
+(def image-occlusion-pattern #"^!\[([^\]]+)\]\(([^)]+)\)\s*\{([^}]+)\}$")
 
 (defn parse-qa-multiline
   "Parse QA card from consecutive q/a lines"
@@ -18,12 +21,21 @@
                       (into {}))]
     (when (and (get line-map \q) (get line-map \a))
       {:question (str/trim (get line-map \q))
-       :answer   (str/trim (get line-map \a))})))
+       :answer (str/trim (get line-map \a))})))
 
 (def card-parsers
   "Registry of card parsers - add new card types here.
    Order matters: more specific patterns should come first."
-  [{:type :image-occlusion
+  [{:type :edn
+    :parse (fn [text]
+             (try
+               (let [data (edn/read-string text)]
+                 ;; Only return if it's a valid card map with :type
+                 (when (and (map? data) (:type data))
+                   data))
+               (catch #?(:clj Exception :cljs js/Error) _e
+                 nil)))}
+   {:type :image-occlusion
     :parse (fn [text]
              (when-let [[_ alt-text image-url regions] (re-matches image-occlusion-pattern text)]
                {:alt-text (str/trim alt-text)
@@ -62,47 +74,52 @@
              ;; Simple hash for CLJS (good enough for this use case)
              (str (cljs.core/hash s)))))
 
-;; Time helpers
-
-(defn now-ms
-  "Get current time in milliseconds"
-  []
-  #?(:clj (System/currentTimeMillis)
-     :cljs (.getTime (js/Date.))))
-
-(defn date-from-ms
-  "Create date from milliseconds"
-  [ms]
-  #?(:clj (java.util.Date. ms)
-     :cljs (js/Date. ms)))
-
 ;; Card metadata
 
 (defn new-card-meta
   "Create metadata for a new card"
   [h]
   {:card-hash h
-   :created-at (date-from-ms (now-ms))
-   :due-at (date-from-ms (now-ms))
+   :created-at (time/date-from-ms (time/now-ms))
+   :due-at (time/date-from-ms (time/now-ms))
    :reviews 0})
 
-;; Scheduling (mock algorithm for testing)
-
-(def rating->interval-ms
-  "Mock SRS intervals in milliseconds for each rating"
-  {:forgot 0
-   :hard 60000
-   :good 300000
-   :easy 600000})
+;; Scheduling (FSRS algorithm)
 
 (defn schedule-card
-  "Schedule next review based on rating. Rating: :forgot :hard :good :easy
-   Mock algorithm: increments review count and sets a fixed interval."
-  [card-meta rating]
-  (-> card-meta
-      (update :reviews inc)
-      (assoc :due-at (date-from-ms (+ (now-ms) (get rating->interval-ms rating 0)))
-             :last-rating rating)))
+  "Schedule next review using FSRS algorithm.
+   Rating: :forgot :hard :good :easy
+   review-time-ms: timestamp of the review (defaults to now)
+
+   For first review, card-meta should not have :stability or :difficulty.
+   For subsequent reviews, uses FSRS to calculate new stability/difficulty."
+  ([card-meta rating]
+   (schedule-card card-meta rating (time/now-ms)))
+  ([card-meta rating review-time-ms]
+   (let [;; Check if first review (no stability/difficulty yet)
+         first-review? (nil? (:stability card-meta))
+
+         ;; Calculate FSRS parameters
+         fsrs-result (fsrs/schedule-next-review
+                      (cond-> {:grade rating
+                               :review-time-ms review-time-ms}
+                        ;; Add current state for non-first reviews
+                        (not first-review?)
+                        (assoc :stability (:stability card-meta)
+                               :difficulty (:difficulty card-meta)
+                               :last-review-ms (or (:last-review-ms card-meta)
+                                                   (.getTime (:created-at card-meta))))))
+
+         ;; Build updated metadata
+         new-meta (-> card-meta
+                      (update :reviews inc)
+                      (assoc :stability (:stability fsrs-result)
+                             :difficulty (:difficulty fsrs-result)
+                             :due-at (:due-at fsrs-result)
+                             :interval-days (:interval fsrs-result)
+                             :last-rating rating
+                             :last-review-ms review-time-ms))]
+     new-meta)))
 
 ;; Event log
 
@@ -111,7 +128,7 @@
   [event-type data]
   {:event/id (random-uuid)
    :event/type event-type
-   :event/timestamp (date-from-ms (now-ms))
+   :event/timestamp (time/date-from-ms (time/now-ms))
    :event/data data})
 
 (defn review-event
@@ -121,10 +138,10 @@
                       :rating rating}))
 
 (defn card-created-event
-  "Create a card-created event"
-  [h card-data]
+  "Create a card-created event - stores only hash and deck reference, not content"
+  [h deck]
   (new-event :card-created {:card-hash h
-                            :card card-data}))
+                            :deck deck}))
 
 (defn undo-event
   "Create an undo event that marks a target event as undone"
@@ -161,30 +178,21 @@
 ;; State reduction
 
 (defn apply-event
-  "Apply an event to the current state"
+  "Apply an event to the current state.
+   Note: Cards are loaded from files, events only track metadata."
   [state event]
   (case (:event/type event)
     :card-created
-    (let [{h :card-hash card :card} (:event/data event)]
-      (if (= :image-occlusion (:type card))
-        ;; Store parent and expand into virtual children
-        (let [children (expand-image-occlusion h card)]
-          (reduce (fn [s [child-hash child-card]]
-                    (-> s
-                        (assoc-in [:cards child-hash] child-card)
-                        (assoc-in [:meta child-hash] (new-card-meta child-hash))))
-                  (assoc-in state [:cards h] card)
-                  children))
-        ;; Regular card
-        (-> state
-            (assoc-in [:cards h] card)
-            (assoc-in [:meta h] (new-card-meta h)))))
+    ;; Just create metadata entry - card content comes from files
+    (let [{h :card-hash} (:event/data event)]
+      (assoc-in state [:meta h] (new-card-meta h)))
 
     :review
     (let [{h :card-hash rating :rating} (:event/data event)
-          card-meta (get-in state [:meta h])]
+          card-meta (get-in state [:meta h])
+          review-time-ms (.getTime (:event/timestamp event))]
       (if card-meta
-        (assoc-in state [:meta h] (schedule-card card-meta rating))
+        (assoc-in state [:meta h] (schedule-card card-meta rating review-time-ms))
         state))
 
     ;; Unknown event type - ignore
@@ -261,7 +269,7 @@
 (defn due-cards
   "Get all cards that are due for review"
   [state]
-  (let [now (now-ms)]
+  (let [now (time/now-ms)]
     (->> (:meta state)
          (m/filter-vals (fn [card-meta]
                           (<= (.getTime (:due-at card-meta)) now)))
@@ -273,3 +281,135 @@
   [state h]
   (when-let [card (get-in state [:cards h])]
     (assoc card :meta (get-in state [:meta h]))))
+
+;; Statistics
+
+(defn- today-start-ms
+  "Get timestamp for start of today (midnight)"
+  []
+  #?(:clj (let [cal (doto (java.util.Calendar/getInstance)
+                      (.set java.util.Calendar/HOUR_OF_DAY 0)
+                      (.set java.util.Calendar/MINUTE 0)
+                      (.set java.util.Calendar/SECOND 0)
+                      (.set java.util.Calendar/MILLISECOND 0))]
+            (.getTimeInMillis cal))
+     :cljs (let [now (js/Date.)
+                 year (.getFullYear now)
+                 month (.getMonth now)
+                 date (.getDate now)]
+             (.getTime (js/Date. year month date 0 0 0 0)))))
+
+(defn compute-stats
+  "Compute statistics from state and events"
+  [state events]
+  (let [today-start (time/today-start-ms)
+        event-status-map (build-event-status-map events)
+        active-events (filter #(= :active (get event-status-map (:event/id %) :active))
+                              events)
+        review-events (filter #(= :review (:event/type %)) active-events)
+        today-reviews (filter #(>= (.getTime (:event/timestamp %)) today-start) review-events)
+
+        ;; Card counts (only count cards that exist in files)
+        card-hashes (set (keys (:cards state)))
+        total-cards (count (:cards state))
+        total-meta (count (m/filter-keys card-hashes (:meta state)))
+        due-now (->> (due-cards state)
+                     (filter card-hashes) ; Only count cards that exist in files
+                     count)
+        new-cards (->> (:meta state)
+                       (m/filter-keys card-hashes) ; Only count existing cards
+                       (m/filter-vals #(zero? (:reviews %)))
+                       count)
+
+        ;; Review counts
+        total-reviews (count review-events)
+        reviews-today (count today-reviews)
+
+        ;; Ratings breakdown (all time)
+        ratings-breakdown (->> review-events
+                               (map #(get-in % [:event/data :rating]))
+                               frequencies)
+
+        ;; Retention (good+easy vs total)
+        good-or-easy (+ (get ratings-breakdown :good 0)
+                        (get ratings-breakdown :easy 0))
+        retention-rate (if (pos? total-reviews)
+                         (/ good-or-easy total-reviews)
+                         0.0)
+
+        ;; Average reviews per card
+        avg-reviews-per-card (if (pos? total-meta)
+                               (/ total-reviews total-meta)
+                               0.0)]
+
+    {:total-cards total-cards
+     :due-now due-now
+     :new-cards new-cards
+     :total-reviews total-reviews
+     :reviews-today reviews-today
+     :retention-rate retention-rate
+     :avg-reviews-per-card avg-reviews-per-card
+     :ratings-breakdown ratings-breakdown}))
+
+;; Validation
+
+(defn check-integrity
+  "Check data integrity and return a report of issues"
+  [state events]
+  (let [event-status (build-event-status-map events)
+        active-events (filter #(= :active (get event-status (:event/id %) :active)) events)
+
+        ;; Find orphaned events (events for cards not in files)
+        card-hashes (set (keys (:cards state)))
+        orphaned-events (->> active-events
+                             (filter #(#{:card-created :review} (:event/type %)))
+                             (map (fn [e]
+                                    (case (:event/type e)
+                                      :card-created (get-in e [:event/data :card-hash])
+                                      :review (get-in e [:event/data :card-hash])
+                                      nil)))
+                             (remove nil?)
+                             (remove card-hashes)
+                             distinct
+                             vec)
+
+        ;; Find cards without metadata (in files but not in events)
+        meta-hashes (set (keys (:meta state)))
+        cards-without-meta (->> card-hashes
+                                (remove meta-hashes)
+                                vec)
+
+        ;; Check for duplicate event IDs
+        event-ids (map :event/id events)
+        duplicate-ids (->> event-ids
+                           frequencies
+                           (filter #(> (val %) 1))
+                           (map key)
+                           vec)
+
+        ;; Count active vs undone events
+        active-count (count active-events)
+        undone-count (- (count events) active-count)
+
+        issues []]
+
+    (cond-> issues
+      (seq orphaned-events)
+      (conj {:type :orphaned-events
+             :severity :warning
+             :message (str "Found " (count orphaned-events) " orphaned events (cards deleted from files)")
+             :data orphaned-events})
+
+      (seq cards-without-meta)
+      (conj {:type :cards-without-meta
+             :severity :info
+             :message (str "Found " (count cards-without-meta) " cards without metadata (new cards)")
+             :data cards-without-meta})
+
+      (seq duplicate-ids)
+      (conj {:type :duplicate-event-ids
+             :severity :error
+             :message (str "Found " (count duplicate-ids) " duplicate event IDs")
+             :data duplicate-ids}))))
+
+
