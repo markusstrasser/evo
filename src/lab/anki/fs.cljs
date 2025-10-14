@@ -176,6 +176,30 @@
                      new-content)]
     (write-markdown-file dir-handle "Occlusions.md" combined)))
 
+(defn append-card-text
+  "Append card text to a specific .md file (creates file if doesn't exist)"
+  [dir-handle filename card-text]
+  (p/let [;; Try to read existing content
+          existing-content (p/catch
+                            (read-markdown-file dir-handle filename)
+                            (fn [_e] ""))
+          ;; Combine with existing (add blank line separator if needed)
+          combined (if (seq existing-content)
+                     (str existing-content "\n\n" card-text)
+                     card-text)]
+    (write-markdown-file dir-handle filename combined)))
+
+(defn list-md-files
+  "List all .md files in directory (non-recursive, excludes Occlusions.md and log.edn)"
+  [dir-handle]
+  (p/let [entries (collect-async-iterator (.values dir-handle))]
+    (->> entries
+         (filter #(and (= "file" (.-kind %))
+                      (.endsWith (.-name %) ".md")
+                      (not= "Occlusions.md" (.-name %))))
+         (map #(.-name %))
+         (into []))))
+
 ;; Directory handle persistence using IndexedDB
 ;; FileSystemHandle can be stored directly in IndexedDB (not localStorage)
 
