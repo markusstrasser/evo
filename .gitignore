@@ -68,7 +68,8 @@ logs/
 
 .hgignore
 .hg/
-AUTO-DEV-OVERVIEW.md
-AUTO-PROJECT-OVERVIEW.md
-AUTO-SOURCE-OVERVIEW.md
+
+# Auto-generated overviews (from scripts/generate-overview.sh)
+dev/overviews/AUTO-*.md
+
 src/lab/srs/ops-log.edn

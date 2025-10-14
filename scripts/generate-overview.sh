@@ -55,8 +55,8 @@ EXAMPLES:
   $0 -t docs/                            # Custom: documentation overview
 
 OUTPUT:
-  - Auto mode: AUTO-SOURCE-OVERVIEW.md, AUTO-PROJECT-OVERVIEW.md, AUTO-DEV-OVERVIEW.md (gitignored)
-  - Manual mode: docs/overviews/YYYY-MM-DD-HH-MM-<target>-overview.md
+  - Auto mode: dev/overviews/AUTO-*-OVERVIEW.md (gitignored)
+  - Manual mode: timestamped file in current directory
 
 REQUIREMENTS:
   - repomix (for directory scanning)
@@ -184,15 +184,15 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 case "$MODE" in
   source)
     TARGET="src/"
-    PROMPT_FILE="$PROJECT_ROOT/AUTO-SOURCE-OVERVIEW-PROMPT.md"
+    PROMPT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-SOURCE-OVERVIEW-PROMPT.md"
     ;;
   project)
     TARGET="."
-    PROMPT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW-PROMPT.md"
+    PROMPT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-PROJECT-OVERVIEW-PROMPT.md"
     ;;
   dev)
     TARGET="dev/,bb/"
-    PROMPT_FILE="$PROJECT_ROOT/AUTO-DEV-OVERVIEW-PROMPT.md"
+    PROMPT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-DEV-OVERVIEW-PROMPT.md"
     ;;
   custom)
     # Target already set via -t
@@ -211,13 +211,13 @@ else
   # Default output based on mode
   case "$MODE" in
     source)
-      OUTPUT_FILE="$PROJECT_ROOT/AUTO-SOURCE-OVERVIEW.md"
+      OUTPUT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-SOURCE-OVERVIEW.md"
       ;;
     project)
-      OUTPUT_FILE="$PROJECT_ROOT/AUTO-PROJECT-OVERVIEW.md"
+      OUTPUT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-PROJECT-OVERVIEW.md"
       ;;
     dev)
-      OUTPUT_FILE="$PROJECT_ROOT/AUTO-DEV-OVERVIEW.md"
+      OUTPUT_FILE="$PROJECT_ROOT/dev/overviews/AUTO-DEV-OVERVIEW.md"
       ;;
     custom)
       # Custom mode: timestamped file
@@ -269,7 +269,7 @@ else
     if [[ "$TARGET" == "." ]]; then
       # Root mode: exclude code, artifacts, and research results (to avoid confusing the model)
       repomix --copy --output /dev/null \
-        --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**,docs/research/**,research/**,2025-*-overview.md,AUTO-*.md" \
+        --ignore "src/**,test/**,out/**,target/**,node_modules/**,.git/**,.shadow-cljs/**,agent/**,docs/research/**,research/**,dev/overviews/**,2025-*-overview.md" \
         > /dev/null 2>&1
     else
       # Normal directory
