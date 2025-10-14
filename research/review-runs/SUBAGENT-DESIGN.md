@@ -2,15 +2,47 @@
 
 ## Overview
 
-The review-flow MCP workflow has distinct stages, each requiring different expertise and tool access. Subagents can make this workflow more efficient by providing specialized AI assistance at each stage.
+After exploring 5 potential subagents (proposal-generator, proposal-evaluator, spec-refiner, implementation-executor, retrospective-analyzer), we implemented **only the researcher subagent** as it provides the most value.
 
-## Current Workflow Stages
+## Current Architecture
 
+**We already have**:
+- **Builder** = Main agent (Claude Code) - implements, edits, tests
+- **Critic** = eval-MCP - tournament ranking, already works
+- **Ideators** = Scripts calling gemini/codex/grok CLIs - parallel proposals
+
+**We added**:
+- **Researcher** = Subagent invoked by main agent - multi-source synthesis, uses MCP for storage
+
+## Why Only Researcher?
+
+The other 4 subagents we explored are **not needed**:
+
+1. **proposal-generator** - ❌ Scripts already do this (gemini/codex/grok CLIs)
+2. **proposal-evaluator** - ❌ eval-MCP already handles this (tournament ranking)
+3. **spec-refiner** - ❌ Main agent can do this (no need for separate context)
+4. **implementation-executor** - ❌ That's literally the main agent's job
+5. **retrospective-analyzer** - ❌ Main agent can compare proposals vs implementation
+
+Only **researcher** solves a real problem: Scripts dump raw LLM output without cross-referencing or synthesis.
+
+---
+
+# Researcher Subagent (Implemented)
+
+## Architecture Correction
+
+**WRONG** (what I initially designed):
 ```
-Idea → Proposals → Ranking → Refinement → Decision → Implementation → Retrospective
+MCP does research → Subagent runs inside MCP
 ```
 
-## Proposed Subagents
+**CORRECT** (what we actually built):
+```
+Main agent invokes subagent → Subagent uses MCP as storage backend
+```
+
+## Proposed Subagents (NOT IMPLEMENTED - OVER-ENGINEERING)
 
 ### 1. proposal-generator
 

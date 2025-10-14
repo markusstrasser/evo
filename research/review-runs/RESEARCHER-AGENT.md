@@ -7,53 +7,73 @@ Integrated a **researcher subagent** that conducts deep, multi-source research a
 ## Architecture
 
 ```
-User → researcher subagent → review-MCP tools → research/reports/{id}/
-         ↓
-    Multiple sources:
-    - Context7 (library docs)
-    - Exa (code examples)
-    - ~/Projects/best/* (reference repos)
-    - WebSearch (current practices)
-         ↓
-    Synthesized report
+User: "Research X"
+  ↓
+Main Agent (Claude Code): Invokes researcher subagent via Task tool
+  ↓
+Researcher Subagent (separate context):
+  - Calls start_research() MCP tool → gets research_id
+  - Queries multiple sources:
+    * Context7 (library docs)
+    * Exa (code examples)
+    * ~/Projects/best/* (reference repos)
+    * WebSearch (current practices)
+  - Calls update_research_progress() → logs progress
+  - Synthesizes findings
+  - Calls save_research_report() → persists to MCP
+  ↓
+Main Agent: "Research complete, saved at research://reports/{id}"
+  ↓
+Main Agent can query research://reports to see results
 ```
+
+**Key insight**: The MCP is just a **storage backend**. The researcher subagent does the actual work and USES the MCP to persist results.
 
 ## Components
 
 ### 1. MCP Server Extensions (`mcp/review/server.py`)
 
-**Tools** (3 new):
+**Role**: Storage backend ONLY. The MCP doesn't do research - it just persists results.
+
+**Storage Tools** (3 new):
 ```python
 start_research(topic, focus_areas) 
-→ Creates research_id, initializes state
+→ Creates research_id, initializes directory structure
+→ Like creating a new document
 
 update_research_progress(research_id, progress_note)
-→ Emits progress events during long research
+→ Logs progress event to ledger
+→ Like appending to a log file
 
 save_research_report(research_id, report_content, findings_summary)
-→ Saves markdown report, marks complete
+→ Persists report, updates metadata
+→ Like saving a completed document
 ```
 
-**Resources** (2 new):
+**Access Resources** (2 new):
 ```python
 research://reports/{research_id}
-→ Get specific report + metadata
+→ Read specific report + metadata
+→ Like querying a document by ID
 
 research://reports
 → List all research reports (sorted by date)
+→ Like listing all documents
 ```
 
-**Storage**:
+**File Structure**:
 ```
 research/reports/{research_id}/
-├── metadata.json  # Status, topic, focus areas
-└── report.md      # Synthesized research report
+├── metadata.json  # Status, topic, focus areas, timestamps
+└── report.md      # Synthesized research report (markdown)
 ```
 
 **Ledger Events**:
-- `research_started`
-- `research_progress`
-- `research_completed`
+- `research_started` - When storage initialized
+- `research_progress` - When progress logged
+- `research_completed` - When report saved
+
+**Important**: The MCP is a **storage API**, not a research engine. The researcher subagent does the actual work.
 
 ### 2. Subagent Configuration (`.claude/agents/researcher.md`)
 
