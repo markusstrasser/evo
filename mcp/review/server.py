@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ResourceError
 
 from .providers import call_gemini, call_codex, call_grok
 from .storage import (
@@ -252,11 +253,21 @@ Judge which proposal best fits these priorities.
     winner_id = winner["item_id"]
     confidence = winner.get("score", 0.5)
 
+    if ctx:
+        await ctx.info(f"🏆 Winner: {winner_id}")
+        await ctx.info(f"📊 Confidence: {confidence:.1%}")
+        if len(rankings) > 1:
+            await ctx.info(f"🥈 Runner-up: {rankings[1]['item_id']} ({rankings[1].get('score', 0):.1%})")
+
     # Quality gates
     valid = (
         ranking_result.get("schema-r2", 0) > 0.7
         and ranking_result.get("tau-split", 0) > 0.8
     )
+
+    if ctx:
+        await ctx.debug(f"Quality metrics - R²: {ranking_result.get('schema-r2', 0):.2f}, τ-split: {ranking_result.get('tau-split', 0):.2f}")
+        await ctx.info(f"✅ Ranking valid: {valid}")
 
     # Save ranking
     ranking_data = {
@@ -372,7 +383,8 @@ async def refine(
 
     for round_num in range(1, max_rounds + 1):
         if ctx:
-            await ctx.info(f"Refinement round {round_num}/{max_rounds}")
+            await ctx.info(f"🔄 Refinement round {round_num}/{max_rounds}")
+            await ctx.debug(f"Validating: tests, types, examples, tradeoffs")
 
         # TODO: Implement validation steps
         # - Validate tests exist
@@ -394,14 +406,23 @@ async def refine(
         all_passed = all(
             v for v in validation_results[-1].values() if isinstance(v, bool)
         )
+        
+        if ctx:
+            # Report validation results
+            checks = validation_results[-1]
+            passed = sum(1 for k, v in checks.items() if isinstance(v, bool) and v)
+            total = sum(1 for k, v in checks.items() if isinstance(v, bool))
+            await ctx.info(f"✅ Validation: {passed}/{total} checks passed")
+        
         if all_passed:
             if ctx:
-                await ctx.info(f"Validation passed in round {round_num}")
+                await ctx.info(f"🎯 Spec ready after {round_num} round(s)")
             break
 
         # Refine based on feedback (placeholder)
         if ctx:
-            await ctx.info("Refining spec based on feedback...")
+            await ctx.info("🔧 Refining spec based on feedback...")
+            await ctx.debug(f"Applying feedback: {feedback[:100]}...")
 
     spec_id = f"{run_id}-spec"
     spec_data = {
@@ -472,7 +493,8 @@ async def decide(
         }
     """
     if ctx:
-        await ctx.info(f"Recording decision for run: {run_id}")
+        await ctx.info(f"📝 Recording decision for run: {run_id}")
+        await ctx.info(f"Decision type: {decision.upper()}")
 
     run_data = load_run(run_id)
     if not run_data:
@@ -480,6 +502,12 @@ async def decide(
 
     if decision == "approve" and not proposal_id:
         raise ValueError("proposal_id required for 'approve' decision")
+
+    if ctx:
+        if proposal_id:
+            await ctx.debug(f"Approving proposal: {proposal_id}")
+        if reason:
+            await ctx.debug(f"Reason: {reason[:100]}...")
 
     # Generate ADR
     adr_id = f"adr-{run_id}"
@@ -574,13 +602,18 @@ async def review_cycle(
         }
     """
     if ctx:
-        await ctx.info("Starting one-shot review cycle")
+        await ctx.info("🚀 Starting one-shot review cycle")
+        await ctx.info(f"Auto-decide: {auto_decide} (threshold: {confidence_threshold:.0%})")
 
     # 1. Generate proposals
+    if ctx:
+        await ctx.info("📋 Stage 1/3: Generating proposals")
     proposal_result = await propose(description, ctx=ctx)
     run_id = proposal_result["run_id"]
 
     # 2. Rank proposals
+    if ctx:
+        await ctx.info("⚖️  Stage 2/3: Ranking proposals")
     ranking_result = await rank_proposals(
         run_id=run_id,
         auto_decide=auto_decide,
@@ -596,8 +629,17 @@ async def review_cycle(
 
     # 3. If auto-decided, include decision
     if ranking_result.get("auto_decided"):
+        if ctx:
+            await ctx.info("🎯 Stage 3/3: Auto-decision applied")
         run_data = load_run(run_id)
         result["decision"] = run_data.get("decision")
+    else:
+        if ctx:
+            await ctx.info("⏸️  Review cycle paused - manual decision needed")
+            await ctx.info(f"Next: decide(run_id='{run_id}', decision='approve', proposal_id='{ranking_result['winner_id']}')")
+
+    if ctx:
+        await ctx.info(f"✅ Review cycle complete: {run_id}")
 
     return result
 
@@ -612,7 +654,7 @@ async def get_run_state(run_id: str, ctx: Context = None) -> dict:
     """Get current state of a review run."""
     run_data = load_run(run_id)
     if not run_data:
-        raise ValueError(f"Run not found: {run_id}")
+        raise ResourceError(f"Run not found: {run_id}")
     return run_data
 
 
@@ -621,7 +663,7 @@ async def get_proposals(run_id: str, ctx: Context = None) -> list[dict]:
     """Get all proposals for a review run."""
     run_data = load_run(run_id)
     if not run_data:
-        raise ValueError(f"Run not found: {run_id}")
+        raise ResourceError(f"Run not found: {run_id}")
     return run_data.get("proposals", [])
 
 
@@ -630,7 +672,7 @@ async def get_ranking(run_id: str, ctx: Context = None) -> dict:
     """Get ranking results for a review run."""
     run_data = load_run(run_id)
     if not run_data:
-        raise ValueError(f"Run not found: {run_id}")
+        raise ResourceError(f"Run not found: {run_id}")
     return run_data.get("ranking", {})
 
 
