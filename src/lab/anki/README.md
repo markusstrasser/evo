@@ -1,158 +1,113 @@
 # Local-First Anki Clone
 
-A local-first spaced repetition system built with ClojureScript and Replicant.
+A local-first spaced repetition system (SRS) built with ClojureScript, using the FSRS algorithm for optimal review scheduling.
 
 ## Features
 
-- **Local-first**: All data stored as real files on disk (git-friendly, editor-friendly)
-- **Zero server dependencies**: Pure static site using File System Access API
-- **Pure functional UI**: Replicant's data-driven approach
-- **Event sourcing**: All actions stored as events, state derived by reduction
-- **SM-2 inspired scheduling**: Simple but effective spaced repetition algorithm
+- **Local-first**: Your card data stays on your device using the File System Access API
+- **Event sourcing**: Immutable event log tracks all reviews, with undo/redo support
+- **FSRS scheduling**: 19-parameter optimized algorithm for spaced repetition
+- **Multiple card types**: Q&A, cloze deletions, image occlusions
+- **Markdown storage**: Cards stored as plain `.md` files (ground truth)
+- **Deck organization**: Organize cards into decks using folder structure
 
 ## Architecture
 
-### File Structure
+### Core Components
 
-When you select a folder, the app creates these files:
+- `core.cljc` - Pure data transformations, event sourcing, card scheduling
+- `fsrs.cljc` - FSRS (Free Spaced Repetition Scheduler) algorithm implementation
+- `ui.cljs` - Replicant UI, event handlers, keyboard shortcuts
+- `fs.cljs` - File System Access API wrappers, IndexedDB handle persistence
+- `occlusion_creator.cljs` - Canvas-based image occlusion creation tool
+
+### Data Flow
 
 ```
-your-folder/
-├── cards.md      # Human-readable card content
-├── log.edn       # Append-only event log
-└── meta.edn      # Card metadata and scheduling info
+Markdown Files (Ground Truth)
+      ↓
+  Parse Cards
+      ↓
+Event Log (Metadata) → Reduce Events → App State
+      ↓                                     ↓
+ IndexedDB (Persist)                    UI Render
 ```
 
-### Card Formats
+### Event Sourcing
 
-**QA Cards** (question/answer):
-```
-What is the capital of France? ; Paris
-What is 2+2? ; 4
+All actions create immutable events:
+- `:card-created` - New card added to deck
+- `:review` - Card reviewed with rating (:forgot, :hard, :good, :easy)
+- `:undo` - Mark event as undone
+- `:redo` - Reactivate undone event
+
+Events stored in `log.edn`, cards in `*.md` files.
+
+## Card Types
+
+### Q&A
+```markdown
+q What is the capital of France?
+a Paris
 ```
 
-**Cloze Deletion**:
-```
-Human DNA has [3 Billion] base pairs
-The [mitochondria] is the [powerhouse] of the cell
+### Cloze Deletion
+```markdown
+c The [mitochondria] is the [powerhouse] of the cell
 ```
 
-### Data Model
-
-**Event Log** (`log.edn`):
+### Image Occlusion
+Created via the built-in canvas tool. Stored as EDN in `Occlusions.md`:
 ```clojure
-[{:event/type :card-created
-  :event/timestamp #inst "2025-10-07"
-  :event/data {:card-hash "abc123"
-               :card {:type :qa :question "Q" :answer "A"}}}
- {:event/type :review
-  :event/timestamp #inst "2025-10-07"
-  :event/data {:card-hash "abc123"
-               :rating :good}}]
+{:type :image-occlusion/item
+ :asset {:url "..." :width 800 :height 600}
+ :prompt "What is this structure?"
+ :occlusions [{:oid #uuid "..." :shape {:x 0.2 :y 0.3 :w 0.1 :h 0.1} :answer "Aorta"}]
+ :current-oid #uuid "..."
+ :mode :hide-one-guess-one}
 ```
 
-**State Shape** (derived from events):
-```clojure
-{:cards {"abc123" {:type :qa :question "Q" :answer "A"}}
- :meta {"abc123" {:card-hash "abc123"
-                  :created-at #inst "2025-10-07"
-                  :due-at #inst "2025-10-08"
-                  :interval 1
-                  :ease-factor 2.5
-                  :reviews 1}}}
-```
+## FSRS Algorithm
 
-### Card Hashing
+The Free Spaced Repetition Scheduler calculates optimal review intervals based on:
+- **Stability**: How long a memory lasts
+- **Difficulty**: How hard the card is (1.0 to 10.0)
+- **Retrievability**: Probability of recall at review time
 
-Cards are hashed based on their content. If you edit a card in `cards.md`, it becomes a new card with fresh review history. This ensures:
+Uses 19 optimized weights to predict when you'll forget a card and schedules the next review just before that point.
 
-- Content changes are tracked
-- Review history matches the actual content reviewed
-- No orphaned metadata
+## Performance
 
-### Scheduling Algorithm
+- File loading: ~5ms for 8 cards
+- Event log loading: ~1.4s (scales with review history)
+- Review processing: <50ms per card
 
-**Mock algorithm for testing** - simple fixed intervals:
+## Keyboard Shortcuts
 
-- **Forgot**: Review again immediately (0ms)
-- **Hard**: Review in 1 minute (60000ms)
-- **Good**: Review in 5 minutes (300000ms)
-- **Easy**: Review in 10 minutes (600000ms)
+- **Space**: Show answer
+- **1-4**: Rate card (Forgot, Hard, Good, Easy)
+- **u**: Undo last review
+- **r**: Redo undone review
 
-All ratings increment the review count and store the last rating.
+## Development
 
-_Note: This is a placeholder. Replace with a real spaced repetition algorithm (SM-2, FSRS, etc.) later._
-
-## Usage
-
-### Core Functions
-
-```clojure
-(require '[lab.anki.core :as core])
-
-;; Parse cards
-(core/parse-card "What is 2+2? ; 4")
-;; => {:type :qa :question "What is 2+2?" :answer "4"}
-
-(core/parse-card "DNA has [3 billion] base pairs")
-;; => {:type :cloze :template "DNA has [3 billion] base pairs" :deletions ["3 billion"]}
-
-;; Create events
-(core/card-created-event "hash123" {:type :qa :question "Q" :answer "A"})
-(core/review-event "hash123" :good)
-
-;; Reduce events to state
-(core/reduce-events events)
-
-;; Query
-(core/due-cards state)
-(core/card-with-meta state "hash123")
-```
-
-### File System Operations
-
-```clojure
-(require '[lab.anki.fs :as fs])
-(require '[promesa.core :as p])
-
-;; Pick directory
-(p/let [handle (fs/pick-directory)]
-  (fs/save-dir-handle handle))
-
-;; Load/save data
-(p/let [log (fs/load-log dir-handle)]
-  (prn log))
-
-(p/let [_ (fs/append-to-log dir-handle [event1 event2])]
-  (prn "Saved!"))
-```
-
-### UI Integration
-
-```clojure
-(require '[lab.anki.ui :as ui])
-
-;; Initialize app
-(p/let [app-state (ui/init-app!)]
-  ;; Render with Replicant
-  (replicant/render [ui/main-app app-state]))
-```
+See parent `CLAUDE.md` for:
+- REPL workflow (`dev/debug.cljs` - browser console helpers)
+- Testing (`npm test`)
+- Build system (shadow-cljs)
 
 ## Testing
-
-The core logic is fully tested in `test/lab/anki/core_test.cljc`:
-
-- Card parsing (QA and cloze)
-- Card hashing (content-based)
-- Scheduling algorithm
-- Event creation and application
-- State reduction
-- Queries (due cards, card with meta)
 
 Run tests:
 ```bash
 npm test
 ```
+
+125 tests covering:
+- Card parsing (Q&A, cloze, image occlusion)
+- Event sourcing (event reduction, undo/redo)
+- FSRS scheduling (intervals, stability, difficulty)
+- Data integrity checks
 
 ## Browser Compatibility
 
@@ -163,25 +118,6 @@ Requires the File System Access API, currently supported in:
 - Safari (partial support)
 
 Not supported in Firefox (as of 2025).
-
-## Future Enhancements
-
-- [ ] Undo/redo for reviews
-- [ ] Multiple cloze deletions per card
-- [ ] Card editing UI
-- [ ] Statistics and progress tracking
-- [ ] Multiple decks
-- [ ] Import from Anki format
-- [ ] Sync across devices (WebRTC/CRDT)
-
-## Design Principles
-
-1. **Pure functions**: All core logic is pure and testable
-2. **Event sourcing**: State is derived, not mutated
-3. **Local-first**: Files are the source of truth
-4. **Human-readable**: All data formats are git-friendly
-5. **Zero dependencies**: Works offline, no server needed
-6. **Progressive enhancement**: Start simple, add features incrementally
 
 ## Design Philosophy
 
@@ -197,7 +133,7 @@ This codebase follows **ruthless simplicity**:
 
 - **4 parallel agent analysis** (GPT-5 Codex, high reasoning): Different perspectives catch different issues
 - **Critical evaluation**: Rejected 63% of suggestions (12/19) as over-engineering
-- **Test after every change**: 103 tests, 374 assertions must pass
+- **Test after every change**: 125 tests, 594 assertions must pass
 - **Lint clean**: No new warnings introduced
 
 ### When to Refactor
@@ -223,4 +159,4 @@ This codebase follows **ruthless simplicity**:
 5. **Test after each change**: Compile, test, lint
 6. **Commit granularly**: One logical change per commit
 
-See `research/results/anki-refactor-round3-*/CRITICAL_ANALYSIS.md` for the latest analysis.
+See `.architect/results/anki-refactor-*` for analysis history.
