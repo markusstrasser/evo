@@ -1,0 +1,123 @@
+#!/bin/bash
+# Gemini API wrapper using curl
+# Usage: gemini-api [-m model] [-p prompt] [< input.txt]
+
+set -euo pipefail
+
+# Defaults
+MODEL="${GEMINI_MODEL:-gemini-2.5-pro}"
+PROMPT=""
+TEMPERATURE="0.7"
+MAX_TOKENS=""
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -m|--model)
+      MODEL="$2"
+      shift 2
+      ;;
+    -p|--prompt)
+      PROMPT="$2"
+      shift 2
+      ;;
+    -t|--temperature)
+      TEMPERATURE="$2"
+      shift 2
+      ;;
+    --max-tokens)
+      MAX_TOKENS="$2"
+      shift 2
+      ;;
+    -h|--help)
+      cat <<EOF
+Gemini API wrapper
+
+Usage: gemini-api [options]
+       cat prompt.txt | gemini-api
+       gemini-api -p "your question"
+
+Options:
+  -m, --model <model>         Model name (default: gemini-2.5-pro)
+                              Options: gemini-2.5-flash, gemini-2.5-pro,
+                                      gemini-2.0-flash, gemini-1.5-pro,
+                                      gemini-1.5-flash
+  -p, --prompt <prompt>       Prompt text (or read from stdin)
+  -t, --temperature <float>   Temperature 0-2 (default: 0.7)
+  --max-tokens <int>          Maximum tokens to generate (maxOutputTokens)
+  -h, --help                  Show this help
+
+Environment:
+  GEMINI_API_KEY              Google AI API key (required)
+  GEMINI_MODEL                Default model
+
+Examples:
+  gemini-api -p "Explain Clojure macros"
+  echo "What is a monad?" | gemini-api -m gemini-2.5-pro
+  cat research-prompt.txt | gemini-api > output.md
+  gemini-api -m gemini-2.0-flash -p "Generate code" --max-tokens 8000
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Check API key (try GEMINI_API_KEY first, fallback to .env)
+if [[ -z "${GEMINI_API_KEY:-}" ]]; then
+  if [[ -f .env ]]; then
+    source .env
+  fi
+  if [[ -z "${GEMINI_API_KEY:-}" ]]; then
+    echo "Error: GEMINI_API_KEY not set" >&2
+    exit 1
+  fi
+fi
+
+# Read prompt from stdin if not provided
+if [[ -z "$PROMPT" ]]; then
+  if [[ -t 0 ]]; then
+    echo "Error: No prompt provided. Use -p or pipe input." >&2
+    exit 1
+  fi
+  PROMPT=$(cat)
+fi
+
+# Escape prompt for JSON
+PROMPT_JSON=$(jq -n --arg p "$PROMPT" '$p')
+
+# Build generation config (conditionally include maxOutputTokens)
+GENERATION_CONFIG=$(cat <<EOF
+{
+  "temperature": $TEMPERATURE
+  $(if [[ -n "$MAX_TOKENS" ]]; then echo ", \"maxOutputTokens\": $MAX_TOKENS"; fi)
+}
+EOF
+)
+
+# Build request body
+REQUEST_BODY=$(cat <<EOF
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": $PROMPT_JSON
+        }
+      ]
+    }
+  ],
+  "generationConfig": $GENERATION_CONFIG
+}
+EOF
+)
+
+# Call API
+echo "$REQUEST_BODY" | curl -s \
+  "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent" \
+  -H "x-goog-api-key: $GEMINI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @- | jq -r '.candidates[0].content.parts[0].text'
