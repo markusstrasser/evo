@@ -1,9 +1,0 @@
-{
-  "timestamp": "2025-09-30T23:11:00Z",
-  "slug": "2025-09-30--best-repos-battle-test",
-  "type": "battle-test",
-  "models": ["gemini", "codex"],
-  "repositories": ["datascript", "meander", "reitit"],
-  "question": "How does this project implement its core data structures and operations?",
-  "outputs_count": 9
-}
