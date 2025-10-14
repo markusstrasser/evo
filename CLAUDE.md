@@ -32,10 +32,10 @@
 ## The Start
 
 **Start here**: Read both auto-generated overviews (created on src/ merge):
-1. `AUTO-SOURCE-OVERVIEW.md` - The code/logic (kernel implementation)
-2. `AUTO-PROJECT-OVERVIEW.md` - The project structure (tooling, docs, research)
+1. `dev/overviews/AUTO-SOURCE-OVERVIEW.md` - The code/logic (kernel implementation)
+2. `dev/overviews/AUTO-PROJECT-OVERVIEW.md` - The project structure (tooling, docs, research)
 
-Prompts: `AUTO-SOURCE-OVERVIEW-PROMPT.md`, `AUTO-PROJECT-OVERVIEW-PROMPT.md`
+Prompts: `dev/overviews/AUTO-SOURCE-OVERVIEW-PROMPT.md`, `dev/overviews/AUTO-PROJECT-OVERVIEW-PROMPT.md`
 
 You can use the gemini, codex, grok, and opencode CLI tools with repomix to get
 inspiration from the best-of projects.
