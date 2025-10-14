@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Activate virtual environment and run reference analysis
-cd "$(dirname "$0")/.."
-source .venv/bin/activate
-exec python scripts/visual-analyze-reference.py "$@"
