@@ -2,13 +2,15 @@
   "name": "evolver",
   "version": "0.0.1",
   "scripts": {
-    "dev": "npm run fix:cache && npx shadow-cljs watch app test",
-    "build": "npx shadow-cljs clean && npx shadow-cljs release app",
+    "dev": "concurrently --kill-others-on-fail \"npm run watch:cljs\" \"npm run watch:css\"",
+    "watch:cljs": "npx shadow-cljs watch anki",
+    "watch:css": "tailwindcss -i input.css -o public/output.css --watch",
+    "build": "npx shadow-cljs clean && npx shadow-cljs release anki && tailwindcss -i input.css -o public/output.css --minify",
     "test": "npx shadow-cljs compile test && node out/tests.js",
     "lint": "clj-kondo --lint src test --fail-level error",
     "lint:fresh": "rm -rf .clj-kondo/.cache && clj-kondo --lint src test --fail-level error",
     "check": "clj-kondo --lint src test --fail-level error && npx shadow-cljs compile test",
-    "fix:cache": "npx shadow-cljs clean && rm -rf .shadow-cljs out target .cpcache node_modules/.cache",
+    "fix:cache": "npx shadow-cljs clean && rm -rf .shadow-cljs out target .cpcache node_modules/.cache && rm -f public/output.css",
     "agent:health": "dev/bin/health-check.sh",
     "agent:preflight": "dev/bin/preflight.sh",
     "repl:health": "clj -M:dev -e '(require (quote [repl.session :as s])) (s/quick-health-check!)'",
@@ -17,7 +19,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
-    "shadow-cljs": "^3.2.0"
+    "@tailwindcss/cli": "^4.1.14",
+    "concurrently": "^9.2.1",
+    "shadow-cljs": "^3.2.0",
+    "tailwindcss": "^4.1.14"
   },
   "dependencies": {
     "three": "^0.180.0"
