@@ -1,4 +1,0 @@
-{:providers [:gpt5-codex]
- :max-rounds 2
- :tau-threshold 0.85
- :task-description "Compare SRS architecture proposals for extending a three-op kernel. Evaluate based on: (1) Proper reuse of kernel operations, (2) Clean separation of concerns, (3) Plugin extensibility, (4) Practical handling of markdown reconciliation and append-only log, (5) Concrete schemas and code examples, (6) Handling of image-occlusion cards."}
