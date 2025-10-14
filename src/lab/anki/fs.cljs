@@ -149,18 +149,32 @@
      (into [] cat results))))
 
 (defn load-cards
-  "Load cards from all .md files recursively"
+  "Load cards from all .md files recursively, returning structured data"
   [dir-handle]
   (p/let [md-files (load-all-md-files dir-handle)]
-    (->> md-files
-         (map (fn [{:keys [content deck filename]}]
-                (str ";; Deck: " deck " | File: " filename "\n" content)))
-         (str/join "\n\n"))))
+    ;; Return structured data with deck info
+    md-files))
 
 (defn save-cards
   "Save cards to cards.md"
   [dir-handle content]
   (write-markdown-file dir-handle "cards.md" content))
+
+(defn append-occlusion-cards
+  "Append occlusion cards to Occlusions.md (creates file if doesn't exist)"
+  [dir-handle cards]
+  (p/let [;; Try to read existing content
+          existing-content (p/catch
+                            (read-markdown-file dir-handle "Occlusions.md")
+                            (fn [_e] ""))
+          ;; Format cards as EDN blocks separated by blank lines
+          card-strings (mapv pr-str cards)
+          new-content (str/join "\n\n" card-strings)
+          ;; Combine with existing (add blank line separator if needed)
+          combined (if (seq existing-content)
+                     (str existing-content "\n\n" new-content)
+                     new-content)]
+    (write-markdown-file dir-handle "Occlusions.md" combined)))
 
 ;; Directory handle persistence using IndexedDB
 ;; FileSystemHandle can be stored directly in IndexedDB (not localStorage)
