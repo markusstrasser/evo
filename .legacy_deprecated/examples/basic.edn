@@ -1,4 +1,0 @@
-[{:op :insert :id "a" :type :text :props {:content "Hello"} :under "root" :at :last}
- {:op :insert :id "b" :type :text :props {:content "World"} :under "root" :at {:before "a"}}
- {:op :update-node :id "a" :props {:style {:bold true}}}
- {:op :add-ref :source-id "a" :target-id "b" :relation :mentions}]
