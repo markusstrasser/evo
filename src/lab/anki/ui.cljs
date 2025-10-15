@@ -26,6 +26,9 @@
                        :show-command-palette? false ; Command palette visibility
                        :command-search "" ; Command palette search text
                        :show-history? false ; Event history panel visibility
+                       :show-custom-interval? false ; Custom interval modal visibility
+                       :custom-interval-days "" ; Custom interval input
+                       :loading? false ; Loading state for async operations
                        }))
 
 ;; Helpers
@@ -87,13 +90,43 @@
     {:on {:click [::select-folder]}}
     (if saved-handle "Select Folder" "Select Folder")]])
 
-(defn rating-buttons []
+(defn loading-screen []
+  [:div.loading-screen
+   [:div.loading-content
+    [:p "Loading..."]]])
+
+(defn format-interval
+  "Format interval in days to a human-readable string"
+  [days]
+  (cond
+    (< days 1) (str "<" (Math/round (* days 24 60)) "m")
+    (= days 1) "1d"
+    :else (str (Math/round days) "d")))
+
+(defn calculate-next-intervals
+  "Calculate what the next interval would be for each rating"
+  [card-hash state]
+  (let [card-meta (get-in state [:meta card-hash])
+        now (.getTime (js/Date.))]
+    (into {}
+          (for [rating [:forgot :hard :good :easy]]
+            (let [scheduled (core/schedule-card card-meta rating now)
+                  interval-days (:interval-days scheduled)]
+              [rating (format-interval interval-days)])))))
+
+(defn rating-buttons
+  "Display rating buttons with next interval times"
+  [{:keys [intervals]}]
   [:div.rating-buttons
    (for [[idx rating] (map-indexed vector [:forgot :hard :good :easy])]
      ^{:key rating}
      [:button
       {:on {:click [::rate-card rating]}}
-      (str (str/capitalize (name rating)) " (" (inc idx) ")")])])
+      (str (str/capitalize (name rating)) " (" (inc idx) ")")
+      (when-let [interval (get intervals rating)]
+        [:br])
+      (when-let [interval (get intervals rating)]
+        [:span.interval-text interval])])])
 
 (defn- determine-occlusion-style
   "Determines the visual style for an occlusion based on review mode and state."
@@ -207,8 +240,10 @@
               (set! (.-fillStyle ctx) "rgba(0, 255, 0, 1.0)")
               (.fillRect ctx x y rect-w rect-h))))))))
 
-(defn review-card [{:keys [card show-answer?]}]
-  (let [{:keys [front back class-name]}
+(defn review-card [{:keys [card show-answer? card-hash state]}]
+  (let [intervals (when (and show-answer? card-hash state)
+                    (calculate-next-intervals card-hash state))
+        {:keys [front back class-name]}
         (case (:type card)
           :qa {:front [:div.question
                        [:h2 "Question"]
@@ -262,9 +297,13 @@
     [:div.review-card {:class class-name}
      front
      (when show-answer? back)
-     (if show-answer?
-       (rating-buttons)
-       [:button {:on {:click [::show-answer]}} "Show Answer (Space)"])]))
+     [:div.card-actions
+      (if show-answer?
+        (rating-buttons {:intervals intervals})
+        [:button {:on {:click [::show-answer]}} "Show Answer (Space)"])
+      [:div.card-management-buttons
+       [:button.btn-danger {:on {:click [::delete-card]}} "Delete " [:kbd ", d"]]
+       [:button.btn-warning {:on {:click [::suspend-card]}} "Suspend " [:kbd ", x"]]]]]))
 
 (defn review-history
   "Display recent review events"
@@ -320,7 +359,10 @@
            (when selected-deck
              (str " (Deck: " selected-deck ")"))]]
          [:div.review-content
-          (review-card {:card card :show-answer? show-answer?})]])
+          (review-card {:card card
+                        :show-answer? show-answer?
+                        :card-hash current-hash
+                        :state state})]])
       [:div.review-screen
        [:h2 "No cards due!"]
        [:p (if selected-deck
@@ -370,6 +412,22 @@
      {:on {:click [::toggle-stats]}}
      "Close"]]])
 
+(defn custom-interval-modal [{:keys [custom-interval-days on-close on-submit]}]
+  [:div.modal-overlay
+   {:on {:click on-close}}
+   [:div.modal-content
+    {:on {:click (fn [e] (.stopPropagation e))}}
+    [:h3 "Custom Interval"]
+    [:p "Enter the number of days until next review:"]
+    [:input {:type "number"
+             :min "0"
+             :value custom-interval-days
+             :placeholder "e.g., 7"
+             :on {:input [::update-custom-interval :event/target.value]}}]
+    [:div.modal-actions
+     [:button {:on {:click on-submit}} "Set Interval"]
+     [:button {:on {:click on-close}} "Cancel"]]]])
+
 (defn add-card-panel [{:keys [card-text selected-file available-files]}]
   (let [parsed-card (core/parse-card card-text)
         is-valid? (and (seq card-text) (some? parsed-card))
@@ -411,14 +469,16 @@
    {:id :create-occlusion :title "Create Occlusion Card" :shortcut ", o" :action ::create-occlusion}
    {:id :change-folder :title "Change Folder" :shortcut ", f" :action ::select-folder}
    {:id :toggle-history :title "Toggle Event History" :shortcut ", h" :action ::toggle-history}
+   {:id :delete-card :title "Delete Card" :shortcut ", d" :action ::delete-card}
+   {:id :suspend-card :title "Suspend Card" :shortcut ", x" :action ::suspend-card}
    {:id :undo :title "Undo Last Review" :shortcut "u" :action ::undo}
    {:id :redo :title "Redo Review" :shortcut "r" :action ::redo}])
 
 (defn command-palette [{:keys [search-text]}]
   (let [filtered-commands (if (seq search-text)
                             (filter #(str/includes? (str/lower-case (:title %))
-                                                   (str/lower-case search-text))
-                                   commands)
+                                                    (str/lower-case search-text))
+                                    commands)
                             commands)]
     [:div.command-palette
      [:div.command-search
@@ -457,81 +517,87 @@
            [:div.event-data
             (case (:event/type event)
               :review (str "Card: " (subs (str (get-in event [:event/data :card-hash])) 0 8)
-                          " | Rating: " (name (get-in event [:event/data :rating])))
+                           " | Rating: " (name (get-in event [:event/data :rating])))
               :card-created (str "Hash: " (subs (str (get-in event [:event/data :card-hash])) 0 8)
-                                " | Deck: " (get-in event [:event/data :deck]))
+                                 " | Deck: " (get-in event [:event/data :deck]))
               :undo (str "Undo event: " (subs (str (get-in event [:event/data :target-event-id])) 0 8))
               :redo (str "Redo event: " (subs (str (get-in event [:event/data :target-event-id])) 0 8))
               (pr-str (:event/data event)))]
            [:div.event-timestamp (time-ago (:event/timestamp event))]]))]]))
 
-(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash decks selected-deck show-stats? show-add-card? new-card-text new-card-file available-files show-command-palette? command-search show-history?]}]
-  (let [undo-stack (:undo-stack state)
-        redo-stack (:redo-stack state)
-        can-undo? (seq undo-stack)
-        can-redo? (seq redo-stack)]
-    [:div.anki-app
-     [:nav
-      [:h1 "Local-First Anki"]
-      [:p "Edit .md files in your folder to add/modify cards"]
-      [:div.nav-buttons
-       (when (= screen :review)
-         [:div {:style {:display "flex" :gap "10px" :align-items "center"}}
-          ;; Deck selector
-          (when (seq decks)
-            [:select {:value (or selected-deck "")
-                      :on {:change [::select-deck :event/target.value]}}
-             [:option {:value ""} "All Decks"]
-             (for [deck decks]
-               ^{:key deck}
-               [:option {:value deck} deck])])
-          [:button.btn-secondary {:on {:click [::toggle-add-card]}}
-           "Add Card" [:kbd ", a"]]
-          [:button.btn-secondary {:on {:click [::toggle-stats]}}
-           "Stats" [:kbd ", s"]]
-          [:button.btn-secondary {:on {:click [::toggle-history]}}
-           "History" [:kbd ", h"]]
-          [:button.btn-secondary {:on {:click [::create-occlusion]}}
-           "Occlusion" [:kbd ", o"]]
-          [:button.btn-secondary {:on {:click [::select-folder]}}
-           "Folder" [:kbd ", f"]]])
-       [:div.undo-redo-buttons
-        [:button.btn-secondary {:disabled (not can-undo?)
-                  :on {:click [::undo]}}
-         "Undo" [:kbd "u"]]
-        [:button.btn-secondary {:disabled (not can-redo?)
-                  :on {:click [::redo]}}
-         "Redo" [:kbd "r"]]]]]
-     [:main
-      (case screen
-        :setup (setup-screen {:saved-handle saved-handle})
-        :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash :selected-deck selected-deck})
-        :create-occlusion (creator-ui/creator-screen {:state @creator/!creator-state
-                                                      :on-save [::save-occlusion-card]
-                                                      :on-cancel [::cancel-occlusion]})
-        [:div "Unknown screen"])]
-     ;; Stats modal overlay
-     (when show-stats?
-       (stats-modal {:stats (core/compute-stats state events)
-                     :on-close [::toggle-stats]}))
-     ;; Add card panel overlay
-     (when show-add-card?
-       [:div.add-card-overlay
-        {:on {:click [::toggle-add-card]}}
-        [:div {:on {:click (fn [e] (.stopPropagation e))}}
-         (add-card-panel {:card-text new-card-text
-                          :selected-file new-card-file
-                          :available-files available-files})]])
-     ;; Command palette overlay
-     (when show-command-palette?
-       [:div.command-palette-overlay
-        {:on {:click [::toggle-command-palette]}}
-        [:div {:on {:click (fn [e] (.stopPropagation e))}}
-         (command-palette {:search-text command-search})]])
-     ;; History panel (not an overlay - fixed position)
-     (when show-history?
-       (history-panel {:events events :state state}))]))
-
+(defn main-app [{:keys [screen state events show-answer? saved-handle current-card-hash decks selected-deck show-stats? show-add-card? new-card-text new-card-file available-files show-command-palette? command-search show-history? show-custom-interval? custom-interval-days loading?]}]
+  (if loading?
+    (loading-screen)
+    (let [undo-stack (:undo-stack state)
+          redo-stack (:redo-stack state)
+          can-undo? (seq undo-stack)
+          can-redo? (seq redo-stack)]
+      [:div.anki-app
+       [:nav
+        [:h1 "Local-First Anki"]
+        [:p "Edit .md files in your folder to add/modify cards"]
+        [:div.nav-buttons
+         (when (= screen :review)
+           [:div {:style {:display "flex" :gap "10px" :align-items "center"}}
+            ;; Deck selector
+            (when (seq decks)
+              [:select {:value (or selected-deck "")
+                        :on {:change [::select-deck :event/target.value]}}
+               [:option {:value ""} "All Decks"]
+               (for [deck decks]
+                 ^{:key deck}
+                 [:option {:value deck} deck])])
+            [:button.btn-secondary {:on {:click [::toggle-add-card]}}
+             "Add Card" [:kbd ", a"]]
+            [:button.btn-secondary {:on {:click [::toggle-stats]}}
+             "Stats" [:kbd ", s"]]
+            [:button.btn-secondary {:on {:click [::toggle-history]}}
+             "History" [:kbd ", h"]]
+            [:button.btn-secondary {:on {:click [::create-occlusion]}}
+             "Occlusion" [:kbd ", o"]]
+            [:button.btn-secondary {:on {:click [::select-folder]}}
+             "Folder" [:kbd ", f"]]])
+         [:div.undo-redo-buttons
+          [:button.btn-secondary {:disabled (not can-undo?)
+                                  :on {:click [::undo]}}
+           "Undo" [:kbd "u"]]
+          [:button.btn-secondary {:disabled (not can-redo?)
+                                  :on {:click [::redo]}}
+           "Redo" [:kbd "r"]]]]]
+       [:main
+        (case screen
+          :setup (setup-screen {:saved-handle saved-handle})
+          :review (review-screen {:state state :events events :show-answer? show-answer? :current-card-hash current-card-hash :selected-deck selected-deck})
+          :create-occlusion (creator-ui/creator-screen {:state @creator/!creator-state
+                                                        :on-save [::save-occlusion-card]
+                                                        :on-cancel [::cancel-occlusion]})
+          [:div "Unknown screen"])]
+       ;; Stats modal overlay
+       (when show-stats?
+         (stats-modal {:stats (core/compute-stats state events)
+                       :on-close [::toggle-stats]}))
+       ;; Add card panel overlay
+       (when show-add-card?
+         [:div.add-card-overlay
+          {:on {:click [::toggle-add-card]}}
+          [:div {:on {:click (fn [e] (.stopPropagation e))}}
+           (add-card-panel {:card-text new-card-text
+                            :selected-file new-card-file
+                            :available-files available-files})]])
+       ;; Custom interval modal overlay
+       (when show-custom-interval?
+         (custom-interval-modal {:custom-interval-days custom-interval-days
+                                 :on-close [::toggle-custom-interval]
+                                 :on-submit [::rate-card-custom]}))
+       ;; Command palette overlay
+       (when show-command-palette?
+         [:div.command-palette-overlay
+          {:on {:click [::toggle-command-palette]}}
+          [:div {:on {:click (fn [e] (.stopPropagation e))}}
+           (command-palette {:search-text command-search})]])
+       ;; History panel (not an overlay - fixed position)
+       (when show-history?
+         (history-panel {:events events :state state}))])))
 
 ;; Forward declarations
 (declare render!)
@@ -543,69 +609,59 @@
    Returns {:state ... :decks [...]}"
   [dir-handle]
   (let [t-start (.now js/performance)]
-    (p/let [md-files (fs/load-cards dir-handle) ; [{:deck "Geography" :filename "..." :content "..."}]
+    (p/let [md-files (fs/load-cards dir-handle)
             t-files (.now js/performance)
             _ (js/console.log "⏱️  File loading:" (.toFixed (- t-files t-start) 1) "ms")
             events (fs/load-log dir-handle)
             t-events (.now js/performance)
             _ (js/console.log "⏱️  Event log loading:" (.toFixed (- t-events t-files) 1) "ms")]
-      (let [;; Extract unique decks
-            all-decks (->> md-files
+      (let [all-decks (->> md-files
                            (map :deck)
                            distinct
                            sort
                            vec)
-
-            ;; Parse cards from all files with deck info
             cards-with-decks (->> md-files
                                   (mapcat (fn [{:keys [deck content]}]
                                             (->> (str/split content #"\n\n+")
                                                  (keep core/parse-card)
                                                  (map #(assoc % :deck deck)))))
                                   (map (fn [card]
-                                         ;; Hash based on content only (not deck)
                                          (let [content-only (dissoc card :deck)
                                                h (core/card-hash content-only)]
                                            {:hash h
                                             :card card})))
                                   vec)
-
             _ (js/console.log "Parsed" (count cards-with-decks) "cards from" (count md-files) "files")
             _ (js/console.log "Found decks:" (pr-str all-decks))
-
-          ;; Build cards map from files (hash -> card)
-          cards-from-files (into {} (map (fn [{:keys [hash card]}]
-                                           [hash card])
-                                         cards-with-decks))
-
-          ;; Get existing metadata from events
-          meta-state (core/reduce-events events)
-          existing-meta (get meta-state :meta {})
-
-          ;; Find new cards (in files but not in events)
-          existing-hashes (set (keys existing-meta))
-          new-cards (remove #(contains? existing-hashes (:hash %)) cards-with-decks)
-
-          _ (js/console.log "Found" (count new-cards) "new cards")
-
-          ;; Create events for new cards (hash + deck only, no content)
-          new-events (mapv (fn [{:keys [hash card]}]
-                             (core/card-created-event hash (:deck card)))
-                           new-cards)]
-
-      ;; Save new events to log
-      (when (seq new-events)
-        (js/console.log "Saving" (count new-events) "new card events")
-        (p/do! (fs/append-to-log dir-handle new-events)))
-
-      ;; Rebuild state with file content + event metadata
-      (let [all-events (concat events new-events)
-            meta-state (core/reduce-events all-events)
-            final-state (assoc meta-state :cards cards-from-files)
-            t-end (.now js/performance)]
-        (js/console.log "⏱️  Total load time:" (.toFixed (- t-end t-start) 1) "ms")
-        {:state final-state
-         :decks all-decks})))))
+            cards-from-files (into {} (map (fn [{:keys [hash card]}]
+                                             [hash card])
+                                           cards-with-decks))
+            t-reduce-start (.now js/performance)
+            meta-state (core/reduce-events events)
+            t-reduce-end (.now js/performance)
+            _ (js/console.log "⏱️  Event reduction:" (.toFixed (- t-reduce-end t-reduce-start) 1) "ms")
+            existing-meta (get meta-state :meta {})
+            existing-hashes (set (keys existing-meta))
+            new-cards (remove #(contains? existing-hashes (:hash %)) cards-with-decks)
+            _ (js/console.log "Found" (count new-cards) "new cards")
+            new-events (mapv (fn [{:keys [hash card]}]
+                               (core/card-created-event hash (:deck card)))
+                             new-cards)]
+        (when (seq new-events)
+          (js/console.log "Saving" (count new-events) "new card events")
+          (p/do! (fs/append-to-log dir-handle new-events)))
+        (let [final-state (if (seq new-events)
+                            (let [t-reduce2-start (.now js/performance)
+                                  all-events (concat events new-events)
+                                  new-meta-state (core/reduce-events all-events)
+                                  t-reduce2-end (.now js/performance)]
+                              (js/console.log "⏱️  Event reduction (with new):" (.toFixed (- t-reduce2-end t-reduce2-start) 1) "ms")
+                              (assoc new-meta-state :cards cards-from-files))
+                            (assoc meta-state :cards cards-from-files))
+              t-end (.now js/performance)]
+          (js/console.log "⏱️  Total load time:" (.toFixed (- t-end t-start) 1) "ms")
+          {:state final-state
+           :decks all-decks})))))
 
 ;; Removed: create-test-occlusion-card - test code no longer needed
 
@@ -667,8 +723,7 @@
           review-hash (or current-card-hash (first due))]
       (when (and review-hash dir-handle)
         (let [card (get-in state [:cards review-hash])
-              old-meta (get-in state [:meta review-hash])
-              t-start (.now js/performance)]
+              old-meta (get-in state [:meta review-hash])]
           (js/console.log "📝 Rating card:" (get-card-preview card))
           (js/console.log "   Hash:" review-hash "Rating:" rating)
           (js/console.log "   Old due-at:" (:due-at old-meta) "Reviews:" (:reviews old-meta))
@@ -679,11 +734,9 @@
                 new-state (assoc new-meta-state :cards (:cards state))
                 new-meta (get-in new-state [:meta review-hash])
                 next-due (core/due-cards new-state)
-                next-hash (first next-due)
-                t-end (.now js/performance)]
+                next-hash (first next-due)]
 
             (js/console.log "   New due-at:" (:due-at new-meta) "Interval:" (:interval-days new-meta) "days")
-            (js/console.log "   Processing time:" (.toFixed (- t-end t-start) 1) "ms")
             (js/console.log "   Remaining due:" (count next-due))
 
             ;; Fire and forget - write to disk async (no waiting)
@@ -797,7 +850,7 @@
 
     ::toggle-command-palette
     (swap! !state assoc :show-command-palette? (not (:show-command-palette? @!state))
-                        :command-search "")
+           :command-search "")
 
     ::update-command-search
     (let [new-text (first args)]
@@ -831,6 +884,100 @@
                      :new-card-text ""
                      :show-add-card? false)
               (js/console.log "Card saved and reloaded"))))))
+
+    ::delete-card
+    (let [{:keys [state dir-handle current-card-hash]} @!state
+          card-hash (or current-card-hash (first (core/due-cards state)))]
+      (when (and card-hash dir-handle)
+        (let [event (core/delete-card-event card-hash)
+              new-events (conj (:events @!state) event)
+              new-meta-state (core/reduce-events new-events)
+              new-state (assoc new-meta-state :cards (:cards state))
+              due-cards (core/due-cards new-state)
+              next-hash (first due-cards)]
+          (js/console.log "Deleting card:" card-hash)
+          ;; Fire and forget - write to disk async
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :show-answer? false
+                 :current-card-hash next-hash)
+          (js/console.log "Card deleted"))))
+
+    ::suspend-card
+    (let [{:keys [state dir-handle current-card-hash]} @!state
+          card-hash (or current-card-hash (first (core/due-cards state)))]
+      (when (and card-hash dir-handle)
+        (let [card-meta (get-in state [:meta card-hash])
+              ;; Toggle suspension state
+              is-suspended? (:suspended? card-meta)
+              event (if is-suspended?
+                      (core/unsuspend-card-event card-hash)
+                      (core/suspend-card-event card-hash))
+              new-events (conj (:events @!state) event)
+              new-meta-state (core/reduce-events new-events)
+              new-state (assoc new-meta-state :cards (:cards state))
+              due-cards (core/due-cards new-state)
+              next-hash (first due-cards)]
+          (js/console.log (if is-suspended? "Unsuspending" "Suspending") "card:" card-hash)
+          ;; Fire and forget - write to disk async
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :show-answer? false
+                 :current-card-hash next-hash)
+          (js/console.log "Card" (if is-suspended? "unsuspended" "suspended")))))
+
+    ::toggle-custom-interval
+    (swap! !state update :show-custom-interval? not)
+
+    ::update-custom-interval
+    (let [new-value (first args)]
+      (swap! !state assoc :custom-interval-days new-value))
+
+    ::rate-card-custom
+    (let [{:keys [state dir-handle current-card-hash custom-interval-days]} @!state
+          card-hash (or current-card-hash (first (core/due-cards state)))
+          days (js/parseInt custom-interval-days 10)]
+      (when (and card-hash dir-handle (pos? days))
+        (let [card-meta (get-in state [:meta card-hash])
+              now (.getTime (js/Date.))
+              ;; Manually set the interval
+              interval-ms (* days 24 60 60 1000)
+              due-ms (+ now interval-ms)
+              due-at (js/Date. due-ms)
+              new-meta (-> card-meta
+                           (update :reviews inc)
+                           (assoc :due-at due-at
+                                  :interval-days days
+                                  :last-rating :custom
+                                  :last-review-ms now))
+              ;; Create review event with :good rating (for logging purposes)
+              event (core/review-event card-hash :good)
+              new-events (conj (:events @!state) event)
+              ;; Manually update meta with custom interval
+              new-meta-state (core/reduce-events new-events)
+              new-state (-> new-meta-state
+                            (assoc :cards (:cards state))
+                            (assoc-in [:meta card-hash] new-meta))
+              due-cards (core/due-cards new-state)
+              next-hash (first due-cards)]
+          (js/console.log "Custom interval set:" days "days for card:" card-hash)
+          ;; Fire and forget - write to disk async
+          (fs/append-to-log dir-handle [event])
+          ;; Update UI immediately
+          (swap! !state assoc
+                 :state new-state
+                 :events new-events
+                 :show-answer? false
+                 :current-card-hash next-hash
+                 :show-custom-interval? false
+                 :custom-interval-days "")
+          (js/console.log "Custom interval applied"))))
 
     (js/console.warn "Unknown action:" action)))
 
@@ -886,6 +1033,8 @@
               "h" (handle-event nil [::toggle-history])
               "o" (handle-event nil [::create-occlusion])
               "f" (handle-event nil [::select-folder])
+              "d" (handle-event nil [::delete-card])
+              "x" (handle-event nil [::suspend-card])
               nil)
             (render!))
 
@@ -902,12 +1051,18 @@
           (and show-answer? (contains? #{"1" "2" "3" "4"} key))
           (do (.preventDefault e)
               (let [rating (case key
-                            "1" :forgot
-                            "2" :hard
-                            "3" :good
-                            "4" :easy)]
+                             "1" :forgot
+                             "2" :hard
+                             "3" :good
+                             "4" :easy)]
                 (handle-event nil [::rate-card rating])
                 (render!)))
+
+          ;; 'c' for custom interval (only when answer is shown)
+          (and show-answer? (= key "c"))
+          (do (.preventDefault e)
+              (handle-event nil [::toggle-custom-interval])
+              (render!))
 
           ;; u for undo
           (and (= key "u") (seq (:undo-stack (:state @!state))))
@@ -923,7 +1078,6 @@
 
         ;; Default: do nothing
         :else nil))))
-
 
 ;; Initialization
 
@@ -977,6 +1131,7 @@
     (if saved-handle
       (do
         (js/console.log "Auto-resuming last session...")
+        (swap! !state assoc :loading? true)
         (p/catch
          (p/let [permission (.requestPermission saved-handle #js {:mode "readwrite"})]
            (if (= permission "granted")
@@ -999,14 +1154,15 @@
                       :decks decks
                       :selected-deck nil
                       :available-files files-with-default
-                      :new-card-file (first files-with-default))
+                      :new-card-file (first files-with-default)
+                      :loading? false)
                (js/console.log "Auto-resumed with" (count (:cards state)) "cards")
                (js/console.log "Available decks:" (pr-str decks))
                (js/console.log "Available .md files:" (pr-str files-with-default)))
              (do
                (js/console.warn "Permission denied, showing setup screen")
-               (swap! !state assoc :saved-handle saved-handle))))
+               (swap! !state assoc :saved-handle saved-handle :loading? false))))
          (fn [e]
            (js/console.error "Failed to auto-resume:" (.-message e))
-           (swap! !state assoc :saved-handle saved-handle))))
+           (swap! !state assoc :saved-handle saved-handle :loading? false))))
       (js/console.log "No saved session, showing setup screen"))))
