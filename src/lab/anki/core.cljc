@@ -153,6 +153,21 @@
   [target-event-id]
   (new-event :redo {:target-event-id target-event-id}))
 
+(defn delete-card-event
+  "Create a delete event for a card"
+  [card-hash]
+  (new-event :card-deleted {:card-hash card-hash}))
+
+(defn suspend-card-event
+  "Create a suspend event for a card"
+  [card-hash]
+  (new-event :card-suspended {:card-hash card-hash}))
+
+(defn unsuspend-card-event
+  "Create an unsuspend event for a card"
+  [card-hash]
+  (new-event :card-unsuspended {:card-hash card-hash}))
+
 ;; Image occlusion helpers
 
 (defn expand-image-occlusion
@@ -194,6 +209,21 @@
       (if card-meta
         (assoc-in state [:meta h] (schedule-card card-meta rating review-time-ms))
         state))
+
+    :card-deleted
+    ;; Mark card as deleted in metadata
+    (let [{h :card-hash} (:event/data event)]
+      (assoc-in state [:meta h :deleted?] true))
+
+    :card-suspended
+    ;; Mark card as suspended in metadata
+    (let [{h :card-hash} (:event/data event)]
+      (assoc-in state [:meta h :suspended?] true))
+
+    :card-unsuspended
+    ;; Remove suspension from metadata
+    (let [{h :card-hash} (:event/data event)]
+      (update-in state [:meta h] dissoc :suspended?))
 
     ;; Unknown event type - ignore
     state))
@@ -255,7 +285,7 @@
         active-events (filter #(let [event-id (:event/id %)
                                      status (get event-status event-id :active)]
                                  (and (= status :active)
-                                      (#{:card-created :review} (:event/type %))))
+                                      (#{:card-created :review :card-deleted :card-suspended :card-unsuspended} (:event/type %))))
                               events)
         {:keys [undo-stack redo-stack]} (build-undo-redo-stacks events event-status)
         base-state (reduce apply-event
@@ -267,13 +297,19 @@
 ;; Query helpers
 
 (defn due-cards
-  "Get all cards that are due for review"
+  "Get all cards that are due for review (excludes deleted, suspended, and missing cards)"
   [state]
-  (let [now (time/now-ms)]
+  (let [now (time/now-ms)
+        card-hashes (set (keys (:cards state)))]
     (->> (:meta state)
          (m/filter-vals (fn [card-meta]
-                          (<= (.getTime (:due-at card-meta)) now)))
+                          (and (<= (.getTime (:due-at card-meta)) now)
+                               (not (:deleted? card-meta))
+                               (not (:suspended? card-meta)))))
          keys
+         ;; CRITICAL: Filter out cards that don't exist in :cards
+         ;; (cards that were deleted from files but have review history)
+         (filter #(contains? card-hashes %))
          vec)))
 
 (defn card-with-meta
