@@ -1,32 +1,34 @@
 ## Table of Contents
 
+**⚡ Skills (Progressive-Disclosure Workflows):**
+- [Agent Skills Overview](#agent-skills-overview) - L1/L2/L3 loading, token savings
+- [Research Skill](#research-workflow) - Query best-of repos (40+ projects)
+- [Visual Validation Skill](#visual-validation) - Canvas/WebGL analysis
+- [REPL Debug Skill](#debugging-workflow) - REPL-first debugging
+- [Diagnostics Skill](#environment-validation--dev-diagnostics) - Health checks, cache management
+
 **Quick Start:**
 - [The Start](#the-start) - Session initialization, overview.md, LLM CLI usage
-- [Environment Validation](#environment-validation) - API keys, preflight checks
 - [Dev Tooling](#dev-tooling) - REPL, health checks, fixtures, config
-- [Debugging Workflow](#debugging-workflow) - REPL-first debugging, browser console, fast iteration
 - [NPM Commands](#npm-commands) - lint, test, fix:cache, agent:health
 
 **Research & Analysis:**
-- [Research Workflow](#research-workflow) - best-of repos exploration, repomix queries
 - [LLM Provider CLIs](#llm-provider-clis) - gemini, codex, grok syntax
 - [MCPs](#mcps) - tournament, architect, researcher subagent
+- [Available Projects](#available-projects) - ~/Projects/best/* repos
 
 **Development:**
 - [Quick Reference Index](#quick-reference-index) - Core files, testing, dev tools, MCP
 - [Dev Quality Gates](#dev-quality-gates) - pre-commit hooks, linting, module deps
 - [Investigation Tactics](#investigation-tactics) - bat, rg, error-catalog
-- [Visual Validation](#visual-validation) - Reference analysis, actionable comparison
 
 **Resources:**
-- [Available Projects](#available-projects) - ~/Projects/best/* repos
+- [Toolbox Index](#toolbox-index) - All tools (MCPs, Skills, CLIs, Scripts)
 - [Common Failure Modes](#common-failure-modes) - CLI troubleshooting
 
 **Gotcha Docs:**
 - `docs/REPLICANT.md` - Event handler syntax, :event/target.value, interpolation
 - `docs/CHROME_DEVTOOLS.md` - Stale snapshots, screenshot saving
-- `.agentlog/gemini-media-fixes-2025-10-02.md` - Binary uploads, HTTP client bugs
-
 ---
 
 ## The Start
@@ -46,49 +48,80 @@ USE codex at max settings for questions around taste, style, refactorings, and a
 
 For dev tooling and infrastructure: keep it simple - I'm a solo developer using AI agents as helpers. Focus on the 80/20, not performance or production use.
 
-### Environment Validation
+## Agent Skills Overview
 
-**CRITICAL**: Always verify environment before running research scripts.
+**What are Skills?** Filesystem-based workflows with progressive disclosure:
+- **L1 (Metadata)**: ~100 tokens, always loaded for discovery
+- **L2 (Instructions)**: 3-5k tokens, loaded when triggered
+- **L3+ (Resources)**: Unlimited, loaded as needed
 
-**Quick Check:**
+**Token Savings:** ~14.5k tokens per session (97% reduction vs loading all docs)
+
+### Available Skills
+
+**📚 Research** (`skills/research/`)
+- Query 40+ best-of Clojure/ClojureScript repos
+- Model selection (gemini/codex/grok)
+- Small/large repo strategies
+- **Triggers**: research, best-of, patterns, inspiration
+
+**🎨 Visual Validation** (`skills/visual/`)
+- Canvas/WebGL analysis (waves, lighting, geometry)
+- Compare reference vs implementation
+- Get actionable fixes
+- **Triggers**: visual, canvas, validate, compare
+
+**🐛 REPL Debugging** (`skills/repl-debug/`)
+- REPL-first debugging workflow
+- Browser console helpers
+- Common pitfalls catalog
+- **Triggers**: debug, repl, troubleshoot
+
+**🏥 Dev Diagnostics** (`skills/diagnostics/`)
+- Environment health checks
+- Cache management
+- Error diagnosis
+- **Triggers**: health, preflight, cache, diagnose
+
+**See also:** `dev/tooling-index.edn` for complete tool registry (MCPs, Skills, CLIs, Scripts)
+
+### Environment Validation & Dev Diagnostics
+
+**Use the Dev Diagnostics Skill for all environment checks:**
+
 ```bash
-# Verify API keys
-test -f .env && echo "✓ .env found" || echo "✗ .env missing"
-env | grep -E "(GROK|GEMINI|OPENAI)_API_KEY" | cut -d= -f1
+# Quick health check
+skills/diagnostics/run.sh health
+
+# Pre-flight before starting work
+skills/diagnostics/run.sh preflight
+
+# Check API keys
+skills/diagnostics/run.sh api-keys check
 ```
 
-**API Keys:**
-- Store in `.env` (gitignored, auto-sourced by scripts)
-- Required: `GROK_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`
-
+**See:** `skills/diagnostics/SKILL.md` for full documentation.
 
 ### Research Workflow
 
-**Path**: `~/Projects/best/{projectname}`
+**Use the Research Skill to query best-of repositories:**
 
-**1. Explore structure first (for large repos):**
 ```bash
-# Check size and structure
-tree -L 3 -d ~/Projects/best/{projectname}
-tokei ~/Projects/best/{projectname}  # Token/LOC counts
+# List available projects
+skills/research/run.sh list
 
-# For large repos (>50MB), zoom into subdirectories
-tree -L 2 ~/Projects/best/clojurescript/src/main/clojure
+# Explore a project
+skills/research/run.sh explore malli "schema composition patterns"
+
+# Compare across projects
+skills/research/run.sh compare "re-frame,electric" "reactive state"
 ```
 
-**2. Query with focused paths:**
-```bash
-# Small repos (<10MB): include full src
-repomix ~/Projects/best/{projectname} --copy --output /dev/null \
-  --include "src/**,README.md" > /dev/null 2>&1 && \
-  pbpaste | gemini --allowed-mcp-server-names context-prompt content-prompt -y -p "YOUR_QUESTION"
-
-# Large repos: zoom into specific subdirs (saves context, gets deeper insights)
-repomix ~/Projects/best/clojurescript/src/main/clojure/cljs \
-  --include "compiler.clj,analyzer.cljc" \
-  --copy --output /dev/null > /dev/null 2>&1 && \
-  pbpaste | gemini -y -p "YOUR_QUESTION"
-```
+**See:** `skills/research/SKILL.md` for full documentation including:
+- Model selection (gemini vs codex vs grok)
+- Small vs large repo strategies
+- Multi-turn research sessions
+- Common queries and patterns
 
 ### LLM Provider CLIs
 
@@ -183,83 +216,35 @@ reitit, replicant, rewrite-clj, ring, S, salsa, sci, slate, specter, thin_repos.
 
 ### Debugging Workflow
 
-**REPL-First Debugging** - Use REPL for rapid hypothesis testing before code changes:
+**Use the REPL-First Debugging Skill for interactive debugging:**
 
-```clojure
-;; In browser console (debug helpers auto-loaded in dev mode):
-DEBUG.summary()           // State overview: cards, events, stacks
-DEBUG.events()            // All events
-DEBUG.inspectEvents()     // Recent events with ✅/❌ status
-DEBUG.activeEvents()      // Only active events
-DEBUG.undoneEvents()      // Only undone events
-DEBUG.cards()             // All cards
-DEBUG.dueCards()          // Cards due now
-DEBUG.undoStack()         // Current undo stack
-DEBUG.redoStack()         // Current redo stack
-DEBUG.reload()            // Hard reload page
+**Core philosophy:** Test hypotheses in REPL BEFORE editing code (30 seconds vs 5+ minutes)
 
-// Test theories quickly:
-DEBUG.events().length                    // How many events?
-DEBUG.activeEvents().length              // How many active?
-core.build_event_status_map(DEBUG.events())  // Check status map
-```
-
-**Testing Workflow:**
+**Quick reference:**
 ```bash
-# Quick test specific namespace
-scripts/quick-test.sh lab.anki.core-test
+# Show debugging guide
+skills/repl-debug/run.sh guide
 
-# All tests
-scripts/quick-test.sh
+# Common patterns
+skills/repl-debug/run.sh patterns
+
+# Browser console helpers
+skills/repl-debug/run.sh browser-helpers
 ```
 
-**Process: Fast Debugging Loop**
-
-❌ **Slow way (what NOT to do):**
-1. Make educated guess
-2. Edit code
-3. Wait for compile
-4. Reload browser
-5. Check console
-6. Repeat...
-
-✅ **Fast way (REPL-first):**
-1. **Reproduce in REPL/console first** - Verify the problem
-2. **Test hypothesis in REPL** - Try fixes interactively
-3. **Only then update code** - Apply the working fix
-4. **Verify with browser** - Final integration test
-
-**Example: Debugging Array.from Bug**
-
-```clojure
-;; ❌ Slow: Edit code → compile → reload (5+ iterations)
-
-;; ✅ Fast: Test in REPL (30 seconds):
-(def handle (js/showDirectoryPicker))  ; user selects
-(def values (.values handle))
-(js/Array.from values)  ; => [] - AHA! Empty!
-(.next values)          ; => Promise! It's async!
-;; Now fix code once, done
-```
-
-**Browser State Inspection:**
+**Browser DEBUG helpers (always available in dev mode):**
 ```javascript
-// Check if new code loaded
-() => lab.anki.fs.load_all_md_files.toString().includes("Processing entry")
-
-// Inspect current state
-() => ({
-  cards: cljs.core.count(cljs.core.get(state, cljs.core.keyword("cards"))),
-  events: DEBUG.events().length,
-  undoStack: DEBUG.undoStack().length
-})
+DEBUG.summary()       // State overview
+DEBUG.events()        // All events
+DEBUG.inspectEvents() // Recent with ✅/❌ status
+DEBUG.reload()        // Hard reload
 ```
 
-**Common Pitfalls:**
-- Browser cache: Use DEBUG.reload() for hard refresh
-- Async iteration: `Array.from(asyncIterator)` returns empty - use `for await` or promises
-- Event sourcing: Use DEBUG.inspectEvents() to see active/undone status
-- Stale code: Check console for "🔧 Loading debug helpers..." on page load
+**See:** `skills/repl-debug/SKILL.md` for full documentation including:
+- REPL-first workflow (reproduce → test → apply → verify)
+- Common debugging patterns
+- Browser console helpers
+- Common pitfalls and solutions
 
 ### NPM Commands
 
@@ -290,6 +275,30 @@ scripts/quick-test.sh
 - Maintain kernel transaction architecture, invariants, instrumentation focus
 - Prefer synchronous/pure patterns unless async explicitly justified
 - Skip tests for docs-only changes; note "Tests: not run"
+
+### Toolbox Index
+
+**Complete tool registry:** `dev/tooling-index.edn`
+
+This EDN file maps all development tools (MCPs, Skills, CLIs, Scripts) with:
+- Natural language triggers
+- Tool descriptions and purposes
+- Paths and configurations
+- Migration status
+
+**Usage:**
+```clojure
+;; Load index
+(def idx (-> "dev/tooling-index.edn" slurp edn/read-string))
+
+;; Find research tools
+(keys (:skills idx))
+;=> (:research :visual-validate :repl-debug :dev-diagnostics)
+
+;; Get triggers
+(get-in idx [:skills :research :triggers])
+;=> ["research best-of repo" "query reference projects" ...]
+```
 
 ### Quick Reference Index
 
@@ -335,21 +344,24 @@ scripts/quick-test.sh
 
 **Visual Validation:**
 
-- `scripts/visual-analyze-reference` - Extract wave patterns, lighting, geometry from reference
-- `scripts/visual-compare-actionable` - Get specific fixes (e.g., "Scene 140% too bright → reduce lighting")
-- `scripts/README-VISUAL-VALIDATION.md` - Complete toolkit docs (basic + ML stages)
-- `docs/VISUAL_VALIDATION.md` - Architecture and design
+**Use the Visual Validation Skill for canvas/WebGL analysis:**
 
-**Workflow:**
 ```bash
-# 1. Analyze reference (what to implement)
-scripts/visual-analyze-reference reference.png
-# → Shows: 15 rings, spacing 17.1px, frequency ~6, brightness 71.2
+# Analyze reference
+skills/visual/run.sh analyze reference.png
 
-# 2. Compare and get fixes
-scripts/visual-compare-actionable reference.png impl.png
-# → Shows: "Scene 140% too bright → dir-light1: intensity *= -0.40"
+# Compare and get fixes
+skills/visual/run.sh compare reference.png implementation.png
+
+# Focus on specific aspect
+skills/visual/run.sh compare ref.png impl.png --aspect lighting
 ```
+
+**See:** `skills/visual/SKILL.md` for full documentation including:
+- Wave pattern extraction (rings, spacing, frequency)
+- Lighting analysis (brightness, contrast)
+- Geometry measurements
+- Actionable fix generation
 
 **Common Failure Modes:**
 
