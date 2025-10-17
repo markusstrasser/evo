@@ -31,6 +31,26 @@
    [:type :keyword]
    [:props :map]])
 
+(def Ref
+  "Reference to another node with kind and optional anchor.
+   
+   Can be either:
+   - Simple string ID (shorthand for link ref)
+   - Full map with :target, :kind, and optional :anchor
+   
+   Examples:
+   - \"node-123\"                                    ; link to node-123
+   - {:target \"node-123\" :kind :link}             ; explicit link
+   - {:target \"node-123\" :kind :selection}        ; selection
+   - {:target \"node-123\" :kind :highlight         ; highlight with anchor
+      :anchor {:path [:props :text] :range [10 24]}}"
+  [:or
+   :string
+   [:map
+    [:target Id]
+    [:kind [:enum :link :selection :highlight]]
+    [:anchor {:optional true} :map]]])
+
 (def Derived
   "Derived data structure"
   [:map

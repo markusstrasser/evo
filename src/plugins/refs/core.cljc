@@ -1,150 +1,240 @@
 (ns plugins.refs.core
-  "Citations and references plugin - demonstrates graph features as derived+policy.
+  "Typed refs plugin for links, selections, and highlights.
+   
+   Computes derived views over refs whose :target is in :doc tree.
+   Provides lint (warnings) and scrub (ops to fix dangling refs)."
+  (:require [clojure.set :as set]
+            [core.tree :as tree]
+            [plugins.registry :as registry]))
 
-   Refs are text/prop-level annotations stored in node properties.
-   Backlinks and citation counts are derived indexes.
-   Scrubbing dangling refs is policy, not kernel behavior.")
+;; =============================================================================
+;; Normalization
+;; =============================================================================
+
+(defn normalize-ref
+  "Normalize ref to canonical map form.
+   
+   String refs become {:target id :kind :link}
+   Map refs are validated and returned as-is.
+   Invalid refs return nil."
+  [r]
+  (cond
+    (string? r)
+    {:target r :kind :link}
+
+    (and (map? r) (:target r) (keyword? (:kind r)))
+    r
+
+    :else
+    nil))
+
+;; =============================================================================
+;; Doc Scope
+;; =============================================================================
+
+(defn doc-node-ids
+  "Return set of all node IDs that are descendants of :doc root."
+  [db]
+  (set (tree/descendants-of db :doc)))
+
+;; =============================================================================
+;; Derived Indexes
+;; =============================================================================
 
 (defn derive-indexes
-  "Compute derived ref indexes from node :refs properties.
-
-   Computes:
-   - :ref-outgoing - {src-id #{dst-id ...}} - outgoing refs from each node
-   - :ref-backlinks - {dst-id #{src-id ...}} - incoming refs to each node (inverted)
-   - :ref-citation-count - {dst-id count} - number of nodes referencing each node
-
-   Returns: map of derived ref data to be merged into db :derived"
-  [{:keys [nodes]}]
-  (let [;; Build outgoing ref map from node props (only non-empty refs)
-        outgoing (reduce-kv
-                  (fn [m id {:keys [props]}]
-                    (if-let [refs (:refs props)]
-                      (if (seq refs)
-                        (assoc m id (set refs))
-                        m)
-                      m))
-                  {}
-                  nodes)
-
-        ;; Invert to get backlinks (incoming refs)
-        backlinks (reduce-kv
-                   (fn [m src dsts]
-                     (reduce (fn [m' dst]
-                               (update m' dst (fnil conj #{}) src))
-                             m
-                             dsts))
-                   {}
-                   outgoing)
-
-        ;; Count citations
-        citation-count (into {}
-                            (map (fn [[dst srcs]] [dst (count srcs)])
-                                 backlinks))]
-
-    {:ref-outgoing outgoing
-     :ref-backlinks backlinks
-     :ref-citation-count citation-count}))
-
-(defn find-dangling-refs
-  "Find all references to nodes that don't exist.
-
-   Returns: vector of issue maps with:
-   - :reason ::dangling-ref
-   - :dst - the missing target node ID
-   - :srcs - set of node IDs that reference it
-   - :suggest - suggested fix (drop refs or redirect)"
-  [{:keys [nodes derived]}]
-  (let [backlinks (:ref-backlinks derived)]
-    (for [[dst srcs] backlinks
-          :when (not (contains? nodes dst))]
-      {:reason ::dangling-ref
-       :dst dst
-       :srcs srcs
-       :suggest {:action :drop-refs
-                 :nodes (vec srcs)
-                 :details "Remove :refs containing missing target from each source node"}})))
-
-(defn scrub-dangling-refs
-  "Remove references to nodes that no longer exist.
-
-   This is a POLICY operation, not a kernel operation.
-   Returns: vector of :update-node ops to remove dangling refs."
+  "Build refs-derived maps. Only count refs whose :target is in :doc.
+   
+   Returns map with keys:
+   - :ref/outgoing          {source-id #{target-id}}
+   - :ref/backlinks-by-kind {kind {target-id #{source-id}}}
+   - :ref/citations         {target-id count}
+   - :selection/outgoing    {source-id #{target-id}}
+   - :selection/backlinks   {target-id #{source-id}}
+   - :highlight/backlinks   {target-id #{source-id}}"
   [db]
-  (let [;; Compute derived indexes if not present
-        db-with-derived (if (empty? (:derived db))
-                          (assoc db :derived (derive-indexes db))
-                          db)
-        issues (find-dangling-refs db-with-derived)
-        dangling-targets (set (map :dst issues))]
-    (for [[src-id {:keys [props]}] (:nodes db)
-          :let [refs (:refs props)]
-          :when (and refs (some dangling-targets refs))]
-      {:op :update-node
-       :id src-id
-       :props {:refs (filterv #(not (contains? dangling-targets %)) refs)}})))
+  (let [doc-ids (doc-node-ids db)
+        nodes (:nodes db)
+
+        ;; Build outgoing refs per source (typed, with full ref data)
+        outgoing-typed
+        (reduce-kv
+         (fn [acc source-id {:keys [props]}]
+           (let [refs (->> (:refs props)
+                           (keep normalize-ref)
+                           (filter #(doc-ids (:target %))))]
+             (if (seq refs)
+               (assoc acc source-id (set refs))
+               acc)))
+         {}
+         nodes)
+
+        ;; Build backlinks by kind: {kind {target #{source}}}
+        backlinks-by-kind
+        (reduce-kv
+         (fn [acc source-id refs]
+           (reduce
+            (fn [acc' ref]
+              (let [{:keys [target kind]} ref]
+                (update-in acc' [kind target] (fnil conj #{}) source-id)))
+            acc
+            refs))
+         {}
+         outgoing-typed)
+
+        ;; Citation counts (count refs across all kinds, from all sources)
+        citations
+        (reduce-kv
+         (fn [acc _kind target-map]
+           (reduce-kv
+            (fn [acc' target sources]
+              (update acc' target (fnil + 0) (count sources)))
+            acc
+            target-map))
+         {}
+         backlinks-by-kind)
+
+        ;; Simplified outgoing (just target IDs, no kind)
+        outgoing-ids
+        (into {}
+              (for [[source-id refs] outgoing-typed]
+                [source-id (set (map :target refs))]))]
+
+    {:ref/outgoing outgoing-ids
+     :ref/backlinks-by-kind backlinks-by-kind
+     :ref/citations citations
+     :selection/outgoing (into {}
+                               (for [[source-id refs] outgoing-typed]
+                                 [source-id (->> refs
+                                                 (filter #(= :selection (:kind %)))
+                                                 (map :target)
+                                                 set)]))
+     :selection/backlinks (get backlinks-by-kind :selection {})
+     :highlight/backlinks (get backlinks-by-kind :highlight {})}))
+
+;; =============================================================================
+;; Hygiene: Lint & Scrub
+;; =============================================================================
 
 (defn lint
-  "Lint the database for ref-related issues.
-
-   Returns: vector of lint issues (warnings, not errors).
-
-   Checks:
-   - Dangling refs (refs to non-existent nodes)
-   - Circular refs (node referencing itself)
-   - Orphaned nodes (nodes with no refs in or out)"
+  "Return warnings about ref integrity (no mutation).
+   
+   Checks for:
+   - Dangling refs (target not in :doc tree or doesn't exist)
+   - Circular refs (source refs itself)
+   
+   Returns vector of issue maps:
+   [{:reason :dangling-ref :source id :missing #{id}}
+    {:reason :circular-ref :node id}]"
   [db]
-  (let [dangling (find-dangling-refs db)
-        {:keys [ref-outgoing]} (:derived db)
+  (let [nodes (:nodes db)
+        doc-ids (doc-node-ids db)
+        all-node-ids (set (keys nodes))
 
-        ;; Find circular refs (node refs itself)
-        circular (for [[src dsts] ref-outgoing
-                       :when (contains? dsts src)]
-                   {:reason ::circular-ref
-                    :node src
-                    :suggest {:action :remove-self-ref
-                              :details "Remove self-reference from :refs"}})]
+        ;; Build outgoing from raw props (not derived, to catch all refs)
+        outgoing-raw
+        (reduce-kv
+         (fn [acc source-id {:keys [props]}]
+           (let [refs (->> (:refs props)
+                           (keep normalize-ref)
+                           (map :target)
+                           set)]
+             (if (seq refs)
+               (assoc acc source-id refs)
+               acc)))
+         {}
+         nodes)
+
+        dangling
+        (for [[source-id targets] outgoing-raw
+              :let [missing-from-doc (seq (remove doc-ids targets))
+                    missing-completely (seq (remove all-node-ids targets))
+                    missing (or missing-completely missing-from-doc)]
+              :when missing]
+          {:reason :dangling-ref
+           :source source-id
+           :missing (set missing)})
+
+        circular
+        (for [[source-id targets] outgoing-raw
+              :when (contains? targets source-id)]
+          {:reason :circular-ref
+           :node source-id})]
 
     (vec (concat dangling circular))))
 
-(defn add-ref
-  "Add a reference from src-id to dst-id.
+(defn scrub-dangling-ops
+  "Return :update-node ops to remove refs whose :target no longer exists in :doc tree.
+   
+   Filters :refs prop to only include refs with valid targets in :doc.
+   Returns empty vector if no scrubbing needed."
+  [db]
+  (let [doc-ids (doc-node-ids db)]
+    (vec
+     (keep
+      (fn [[source-id {:keys [props]}]]
+        (let [refs (:refs props)
+              refs-normalized (keep normalize-ref refs)
+              refs-valid (filter #(contains? doc-ids (:target %)) refs-normalized)
+              refs-valid-vec (vec refs-valid)]
+          (when (not= (count refs-normalized) (count refs-valid))
+            {:op :update-node
+             :id source-id
+             :props {:refs refs-valid-vec}})))
+      (:nodes db)))))
 
-   Returns: :update-node op to add the ref."
-  [db src-id dst-id]
-  (let [current-refs (get-in db [:nodes src-id :props :refs] [])]
-    (if (some #(= % dst-id) current-refs)
-      nil ;; Already has this ref, no-op
+;; =============================================================================
+;; Intent Compilers (High-level → Ops)
+;; =============================================================================
+
+(defn add-selection-op
+  "Return :update-node op to add selection from source to target.
+   
+   Returns nil if selection already exists."
+  [db source-id target-id]
+  (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
+        selection-ref {:target target-id :kind :selection}
+        exists? (some #(= selection-ref (normalize-ref %)) current-refs)]
+    (when-not exists?
       {:op :update-node
-       :id src-id
-       :props {:refs (conj (vec current-refs) dst-id)}})))
+       :id source-id
+       :props {:refs (conj current-refs selection-ref)}})))
 
-(defn remove-ref
-  "Remove a reference from src-id to dst-id.
-
-   Returns: :update-node op to remove the ref."
-  [db src-id dst-id]
-  (let [current-refs (get-in db [:nodes src-id :props :refs] [])]
-    (if (some #(= % dst-id) current-refs)
+(defn remove-selection-op
+  "Return :update-node op to remove selection from source to target.
+   
+   Returns nil if selection doesn't exist."
+  [db source-id target-id]
+  (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
+        selection-ref {:target target-id :kind :selection}
+        filtered-refs (vec (remove #(= selection-ref (normalize-ref %)) current-refs))]
+    (when (not= (count current-refs) (count filtered-refs))
       {:op :update-node
-       :id src-id
-       :props {:refs (filterv #(not= % dst-id) current-refs)}}
-      nil))) ;; Doesn't have this ref, no-op
+       :id source-id
+       :props {:refs filtered-refs}})))
 
-(defn get-backlinks
-  "Get all nodes that reference the given node.
+(defn toggle-selection-op
+  "Return :update-node op to toggle selection from source to target.
+   
+   If selection exists, removes it. Otherwise adds it."
+  [db source-id target-id]
+  (or (remove-selection-op db source-id target-id)
+      (add-selection-op db source-id target-id)))
 
-   Returns: set of node IDs, or empty set if none."
-  [db node-id]
-  (get-in db [:derived :ref-backlinks node-id] #{}))
+(defn add-highlight-op
+  "Return :update-node op to add highlight from source to target with anchor.
+   
+   Anchor is optional map with implementation-defined keys (e.g., :path, :range, :coords)."
+  [db source-id target-id anchor]
+  (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
+        highlight-ref (cond-> {:target target-id :kind :highlight}
+                        anchor (assoc :anchor anchor))]
+    {:op :update-node
+     :id source-id
+     :props {:refs (conj current-refs highlight-ref)}}))
 
-(defn get-outgoing-refs
-  "Get all nodes referenced by the given node.
+;; =============================================================================
+;; Plugin Registration
+;; =============================================================================
 
-   Returns: set of node IDs, or empty set if none."
-  [db node-id]
-  (get-in db [:derived :ref-outgoing node-id] #{}))
-
-(defn citation-count
-  "Get the number of nodes referencing the given node."
-  [db node-id]
-  (get-in db [:derived :ref-citation-count node-id] 0))
+;; Auto-register on namespace load
+(registry/register! ::refs derive-indexes)
