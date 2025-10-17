@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Optional
 import re
 
+# Import prompt variants
+try:
+    import prompts
+except ImportError:
+    # Fallback if prompts module not found
+    prompts = None
+
 
 # Get project root
 PROJECT_ROOT = Path.cwd()
@@ -97,7 +104,7 @@ SHOULD (preferences):
 </constraints>"""
 
 
-def call_gemini(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None) -> str:
+def call_gemini(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
     """
     Call Gemini to generate a proposal.
 
@@ -107,16 +114,20 @@ def call_gemini(description: str, constraints: Optional[dict] = None, constraint
         description: Problem description
         constraints: Constraints dict (overrides file loading)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
     """
     # Load constraints if not provided
     if constraints is None:
         constraints = load_constraints(constraints_file)
 
-    # Build role based on context
-    role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
+    # Get prompt from prompts module if available, else use baseline
+    if prompts:
+        prompt = prompts.get_prompt("gemini", description, constraints, prompt_variant)
+    else:
+        # Fallback to baseline prompt
+        role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
 
-    # Structured prompt with clear hierarchy (universal best practice)
-    prompt = f"""<role>
+        prompt = f"""<role>
 {role}
 </role>
 
@@ -158,7 +169,7 @@ Use bullet points over paragraphs where possible.
         raise RuntimeError("gemini CLI not found - ensure it's in PATH") from None
 
 
-def call_codex(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None) -> str:
+def call_codex(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
     """
     Call OpenAI Codex (GPT-5) to generate a proposal.
 
@@ -168,17 +179,20 @@ def call_codex(description: str, constraints: Optional[dict] = None, constraints
         description: Problem description
         constraints: Constraints dict (overrides file loading)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
     """
     # Load constraints if not provided
     if constraints is None:
         constraints = load_constraints(constraints_file)
 
-    # Build role based on context
-    role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
+    # Get prompt from prompts module if available, else use baseline
+    if prompts:
+        prompt = prompts.get_prompt("codex", description, constraints, prompt_variant)
+    else:
+        # Fallback to baseline prompt
+        role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
 
-    # Structured prompt with clear hierarchy (universal best practice)
-    # GPT-5 benefits from explicit MUST/SHOULD to avoid wasting reasoning tokens
-    prompt = f"""<role>
+        prompt = f"""<role>
 {role}
 </role>
 
@@ -223,7 +237,7 @@ Use bullet points over paragraphs where possible.
         raise RuntimeError("codex CLI not found - ensure it's in PATH") from None
 
 
-def call_grok(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None) -> str:
+def call_grok(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
     """
     Call Grok to generate a proposal.
 
@@ -233,16 +247,20 @@ def call_grok(description: str, constraints: Optional[dict] = None, constraints_
         description: Problem description
         constraints: Constraints dict (overrides file loading)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
     """
     # Load constraints if not provided
     if constraints is None:
         constraints = load_constraints(constraints_file)
 
-    # Build role based on context
-    role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
+    # Get prompt from prompts module if available, else use baseline
+    if prompts:
+        prompt = prompts.get_prompt("grok", description, constraints, prompt_variant)
+    else:
+        # Fallback to baseline prompt
+        role = f"You are an architectural advisor.\n\nProject context: {constraints['context']}" if constraints['context'] else "You are an architectural advisor."
 
-    # Structured prompt with clear hierarchy (universal best practice)
-    prompt = f"""<role>
+        prompt = f"""<role>
 {role}
 </role>
 
@@ -285,7 +303,7 @@ Use bullet points over paragraphs where possible.
         raise RuntimeError("llmx CLI not found - ensure it's installed (uv tool install ~/Projects/llmx)") from None
 
 
-def call_provider(provider_name: str, description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None) -> str:
+def call_provider(provider_name: str, description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
     """
     Call a provider by name.
 
@@ -294,6 +312,7 @@ def call_provider(provider_name: str, description: str, constraints: Optional[di
         description: Problem description
         constraints: Constraints dict (overrides file loading)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
 
     Returns:
         Proposal text
@@ -311,4 +330,4 @@ def call_provider(provider_name: str, description: str, constraints: Optional[di
     if provider_name not in providers:
         raise ValueError(f"Unknown provider: {provider_name}. Available: {', '.join(providers.keys())}")
 
-    return providers[provider_name](description, constraints=constraints, constraints_file=constraints_file)
+    return providers[provider_name](description, constraints=constraints, constraints_file=constraints_file, prompt_variant=prompt_variant)
