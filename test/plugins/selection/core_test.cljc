@@ -1,13 +1,20 @@
 (ns plugins.selection.core-test
   "Tests for boolean-based selection plugin."
-  (:require [clojure.test :refer [deftest testing is]]
+  (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [core.db :as db]
             [core.interpret :as interp]
-            [plugins.selection.core :as sel]))
+            [plugins.selection.core :as sel]
+            [plugins.registry :as reg]))
 
 ;; =============================================================================
 ;; Test Helpers
 ;; =============================================================================
+
+(use-fixtures :each
+  (fn [f]
+    ;; Re-register plugin (may have been cleared by other tests)
+    (reg/register! ::sel/selection sel/derive-indexes)
+    (f)))
 
 (defn interpret-ops
   "Helper to interpret ops and return resulting db."
