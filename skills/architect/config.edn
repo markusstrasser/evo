@@ -4,7 +4,7 @@
   :type :workflow
   :triggers ["propose" "architecture" "adr" "design decision" "review" "tournament"]
   :network-required true  ; Calls LLM CLIs
-  :dependencies ["gemini" "codex" "grok" "tournament-mcp"]}
+  :dependencies ["gemini" "codex" "llmx" "tournament-mcp"]}
 
  :llm-providers
  {:gemini {:command "gemini"
@@ -14,7 +14,8 @@
           :default-model "gpt-5-codex"     ; CRITICAL: Always use gpt-5 with high reasoning
           :reasoning-effort "high"         ; REQUIRED: Maximum reasoning for architecture
           :session-support true}
-  :grok {:command "scripts/grok"
+  :grok {:command "llmx"
+         :provider "xai"
          :default-model "grok-4-latest"}}
 
  :tournament
