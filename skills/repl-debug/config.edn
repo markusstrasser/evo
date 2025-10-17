@@ -1,0 +1,43 @@
+{:skill-meta
+ {:name "REPL-First Debugging"
+  :version "1.0.0"
+  :type :guidance  ; Documentation/guidance rather than executable
+  :triggers ["debug" "repl" "troubleshoot" "browser console" "fast debugging"]
+  :network-required false
+  :dependencies []}
+
+ :browser-helpers
+ {:DEBUG
+  {:summary "State overview: cards, events, stacks"
+   :events "All events"
+   :activeEvents "Only active events"
+   :undoneEvents "Only undone events"
+   :cards "All cards"
+   :dueCards "Cards due now"
+   :inspectEvents "Recent events with status"
+   :undoStack "Current undo stack"
+   :redoStack "Current redo stack"
+   :reload "Hard reload page"}}
+
+ :debugging-patterns
+ {:reproduce-first "Test in REPL before editing code"
+  :async-iteration "Check for Promise returns"
+  :state-exploration "Use subscriptions to inspect"
+  :function-testing "Test with real data first"}
+
+ :common-pitfalls
+ {:browser-cache "Use DEBUG.reload()"
+  :async-iteration "Use for-await not Array.from"
+  :event-sourcing "Check DEBUG.inspectEvents()"
+  :stale-code "Verify function.toString()"}
+
+ :workflow
+ {:step-1 "Reproduce in REPL/console"
+  :step-2 "Test hypothesis interactively"
+  :step-3 "Apply working fix to code"
+  :step-4 "Verify with browser/tests"}
+
+ :time-savings
+ {:repl-first "~30 seconds per bug"
+  :code-first "5+ minutes per bug"
+  :ratio "10x faster"}}
