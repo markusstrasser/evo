@@ -79,3 +79,11 @@ src/lab/srs/ops-log.edn
 .clojure-mcp/scratch_pad.edn
 public/output.css
 skills/architect/uv.lock
+
+# llmx - ignore build artifacts but track source
+llmx/build/
+llmx/dist/
+llmx/*.egg-info
+llmx/__pycache__/
+llmx/**/__pycache__/
+llmx/**/*.pyc
