@@ -83,6 +83,12 @@ For dev tooling and infrastructure: keep it simple - I'm a solo developer using 
 - Error diagnosis
 - **Triggers**: health, preflight, cache, diagnose
 
+**Architecture:** All skills follow official Claude Skills best practices:
+- YAML frontmatter only (name + description, max 1024 chars)
+- All configuration as markdown tables/sections in SKILL.md
+- Progressive disclosure: L1 (metadata) → L2 (instructions) → L3 (resources)
+- No EDN config files (migrated 2025-10-17)
+
 **See also:** `dev/tooling-index.edn` for complete tool registry (MCPs, Skills, CLIs, Scripts)
 
 ### Environment Validation & Dev Diagnostics
@@ -110,7 +116,7 @@ skills/diagnostics/run.sh api-keys check
 # List available projects
 skills/research/run.sh list
 
-# Explore a project
+# Explore a project (uses llmx unified CLI)
 skills/research/run.sh explore malli "schema composition patterns"
 
 # Compare across projects
@@ -118,7 +124,7 @@ skills/research/run.sh compare "re-frame,electric" "reactive state"
 ```
 
 **See:** `skills/research/SKILL.md` for full documentation including:
-- Model selection (gemini vs codex vs grok)
+- Model selection (google/openai/xai providers via llmx)
 - Small vs large repo strategies
 - Multi-turn research sessions
 - Common queries and patterns
@@ -305,7 +311,13 @@ This EDN file maps all development tools (MCPs, Skills, CLIs, Scripts) with:
 - Natural language triggers
 - Tool descriptions and purposes
 - Paths and configurations
-- Migration status
+- Migration history (285 lines of config.edn removed, 2025-10-17)
+
+**Skills Architecture (Post-Migration):**
+- All skills use YAML frontmatter only (official Claude Skills standard)
+- Configuration stored as markdown tables in SKILL.md
+- No separate config.edn files
+- Research skill uses llmx unified CLI (replaced vendor-specific CLIs where appropriate)
 
 **Usage:**
 ```clojure
@@ -314,11 +326,11 @@ This EDN file maps all development tools (MCPs, Skills, CLIs, Scripts) with:
 
 ;; Find research tools
 (keys (:skills idx))
-;=> (:research :visual-validate :repl-debug :dev-diagnostics)
+;=> (:research :visual-validate :repl-debug :dev-diagnostics :architect)
 
-;; Get triggers
-(get-in idx [:skills :research :triggers])
-;=> ["research best-of repo" "query reference projects" ...]
+;; Check migration status
+(get-in idx [:migration :totals])
+;=> {:config-lines-removed 285, :files-deleted 5, :skills-migrated 6}
 ```
 
 ### Quick Reference Index
