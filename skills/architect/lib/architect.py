@@ -30,6 +30,7 @@ def propose(
     description: str,
     provider_names: list[str] = None,
     constraints_file: Optional[Path] = None,
+    prompt_variant: str = "baseline",
     verbose: bool = False,
 ) -> dict[str, Any]:
     """
@@ -42,6 +43,7 @@ def propose(
         description: Problem description and context
         provider_names: List of LLM providers to use (default: gemini, codex, grok)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
         verbose: Print progress messages
 
     Returns:
@@ -63,12 +65,14 @@ def propose(
     if verbose:
         print(f"Starting review cycle: {run_id}")
         print(f"Generating proposals from {len(provider_names)} providers...")
+        if prompt_variant != "baseline":
+            print(f"Using prompt variant: {prompt_variant}")
 
     # Call providers in parallel
     proposals = []
     with ThreadPoolExecutor(max_workers=len(provider_names)) as executor:
         future_to_provider = {
-            executor.submit(providers.call_provider, name, description, constraints_file=constraints_file): name
+            executor.submit(providers.call_provider, name, description, constraints_file=constraints_file, prompt_variant=prompt_variant): name
             for name in provider_names
         }
 
@@ -604,6 +608,7 @@ def review_cycle(
     auto_decide: bool = False,
     confidence_threshold: float = 0.85,
     constraints_file: Optional[Path] = None,
+    prompt_variant: str = "baseline",
     verbose: bool = False,
 ) -> dict[str, Any]:
     """
@@ -616,6 +621,7 @@ def review_cycle(
         auto_decide: Automatically approve if confidence > threshold
         confidence_threshold: Min confidence for auto-decision (default: 0.85)
         constraints_file: Path to constraints file (default: .architect/project-constraints.md)
+        prompt_variant: Prompt variant to use ('baseline', 'variant-a')
         verbose: Print progress messages
 
     Returns:
@@ -633,7 +639,7 @@ def review_cycle(
     # 1. Generate proposals
     if verbose:
         print("📋 Stage 1/3: Generating proposals")
-    proposal_result = propose(description, constraints_file=constraints_file, verbose=verbose)
+    proposal_result = propose(description, constraints_file=constraints_file, prompt_variant=prompt_variant, verbose=verbose)
     run_id = proposal_result["run_id"]
 
     # 2. Rank proposals
