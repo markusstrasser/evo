@@ -4,22 +4,16 @@
  ;; === MCPs (Model Context Protocol servers) ===
  ;; Long-running, stateful services
  :mcps
- {:architect
+ {:tournament
   {:type :mcp
    :status :available
-   :path "~/Projects/architect-mcp/"
-   :description "Proposal → tournament → ADR workflow"
-   :config ".mcp.json"
-   :state-dir ".architect/"
-   :triggers ["generate proposals" "run tournament" "create adr"]}
-
-  :tournament
-  {:type :mcp
-   :status :available
+   :deployment :dual  ; Both MCP server AND global CLI via uv
    :path "~/Projects/tournament-mcp/"
    :description "Bradley-Terry ranking via Swiss-Lite tournaments"
-   :config ".mcp.json"
-   :triggers ["compare items" "rank proposals" "run tournament"]}
+   :cli-command "tournament"  ; Available as CLI: uv tool install ~/Projects/tournament-mcp
+   :mcp-config ".mcp.json"    ; Also runs as MCP server
+   :triggers ["compare items" "rank proposals" "run tournament"]
+   :note "Dual deployment: MCP for Claude, CLI for skills/scripts"}
 
   :shadow-cljs
   {:type :mcp
@@ -45,9 +39,21 @@
  ;; === Skills (Progressive-disclosure resources) ===
  ;; Filesystem-based, L1/L2/L3 loading
  :skills
- {:research
+ {:architect
   {:type :skill
-   :status :planned
+   :status :available
+   :path "skills/architect/"
+   :description "Architectural proposals → tournament → ADR workflow"
+   :triggers ["propose" "architecture" "adr" "design decision" "review" "tournament"]
+   :resources ["tournament-mcp integration" "LLM CLI orchestration" "ADR templates"]
+   :network-required true  ; Calls LLM CLIs
+   :state-dir ".architect/"
+   :docs-ref "CLAUDE.md#agent-skills-overview"
+   :note "Migrated from MCP to Skill (2025-10-17)"}
+
+  :research
+  {:type :skill
+   :status :available
    :path "skills/research/"
    :description "Query ~/Projects/best/* repos using repomix + LLM CLIs"
    :triggers ["research best-of repo" "query reference projects" "explore codebase patterns"]
@@ -57,7 +63,7 @@
 
   :visual-validate
   {:type :skill
-   :status :planned
+   :status :available
    :path "skills/visual/"
    :description "Canvas/WebGL analysis - geometry, lighting, wave patterns"
    :triggers ["validate visual output" "analyze canvas" "compare reference"]
@@ -66,7 +72,7 @@
 
   :repl-debug
   {:type :skill
-   :status :planned
+   :status :available
    :path "skills/repl-debug/"
    :description "REPL-first debugging patterns and browser console helpers"
    :triggers ["debug issue" "repl workflow" "browser console"]
@@ -75,7 +81,7 @@
 
   :dev-diagnostics
   {:type :skill
-   :status :planned
+   :status :available
    :path "skills/diagnostics/"
    :description "Environment validation, health checks, error catalog"
    :triggers ["health check" "validate environment" "diagnose error"]
@@ -105,12 +111,18 @@
    :use-cases ["code review" "taste/style questions" "architecture" "refactoring"]
    :docs-ref "CLAUDE.md#llm-provider-clis"}
 
-  :grok
+  :llmx
   {:type :cli
-   :path "scripts/grok"
-   :description "xAI Grok API wrapper"
+   :path "llmx"  ; In PATH via uv tool install
+   :description "Unified API wrapper for 100+ LLM providers via LiteLLM"
+   :deployment :global-uv
    :network-required true
-   :env-vars ["GROK_API_KEY"]
+   :providers ["google" "openai" "anthropic" "xai" "deepseek" "100+ via LiteLLM"]
+   :env-vars ["GEMINI_API_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "XAI_API_KEY" "DEEPSEEK_API_KEY"]
+   :use-cases ["scripts automation" "skills orchestration" "quick queries" "provider comparison"]
+   :replaces ["scripts/grok" "scripts/.archived-gemini-api" "scripts/.archived-openai"]
+   :install "uv tool install ~/Projects/llmx"
+   :also-importable true  ; Can be imported in Python like tournament
    :docs-ref "CLAUDE.md#llm-provider-clis"}
 
   :opencode
@@ -125,7 +137,17 @@
    :path "repomix"  ; In PATH
    :description "Bundle repository for LLM context"
    :use-cases ["prepare codebase for LLM query" "extract code patterns"]
-   :docs-ref "CLAUDE.md#research-workflow"}}
+   :docs-ref "CLAUDE.md#research-workflow"}
+
+  :tournament
+  {:type :cli
+   :path "tournament"  ; In PATH via uv tool install
+   :description "Tournament evaluation CLI (also available as MCP)"
+   :deployment :global-uv
+   :use-cases ["rank proposals in architect skill" "batch comparisons"]
+   :also-available-as :mcp
+   :install "uv tool install ~/Projects/tournament-mcp"
+   :docs-ref "CLAUDE.md#mcps"}}
 
  ;; === Scripts (Simple automation) ===
  ;; Keep as bash scripts, don't over-engineer
@@ -171,12 +193,13 @@
 
  ;; === Migration Status ===
  :migration
- {:phase :planning
-  :priorities
-  [{:priority 1 :item :research-skill :reason "Most-used, highest value"}
-   {:priority 2 :item :visual-skill :reason "Complex Python + domain knowledge"}
-   {:priority 3 :item :repl-skill :reason "Low effort, package existing docs"}
-   {:priority 4 :item :diagnostics-skill :reason "Multiple scattered utilities"}]
-  :completed []
+ {:phase :complete
+  :completed
+  [{:item :architect-skill :date "2025-10-17" :note "Migrated from MCP to Skill"}
+   {:item :research-skill :date "2025-10-17" :note "Initial implementation"}
+   {:item :visual-skill :date "2025-10-17" :note "Initial implementation"}
+   {:item :repl-skill :date "2025-10-17" :note "Initial implementation"}
+   {:item :diagnostics-skill :date "2025-10-17" :note "Initial implementation"}]
   :in-progress []
-  :planned [:research :visual-validate :repl-debug :dev-diagnostics]}}
+  :planned []
+  :notes "All planned skills implemented. Tournament kept as MCP (genuinely stateful)"}}
