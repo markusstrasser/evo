@@ -154,11 +154,13 @@ Use bullet points over paragraphs where possible.
 """
 
     try:
+        # Use llmx with google provider
         result = subprocess.run(
-            ["gemini", "--model", "gemini-2.0-flash-exp", "-y", "-p", prompt],
+            f'echo {repr(prompt)} | llmx --provider google --model gemini-2.0-flash-exp',
             capture_output=True,
             text=True,
             check=True,
+            shell=True,
             cwd=PROJECT_ROOT,
         )
         return result.stdout.strip()
@@ -166,7 +168,7 @@ Use bullet points over paragraphs where possible.
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Gemini call failed: {e.stderr}") from e
     except FileNotFoundError:
-        raise RuntimeError("gemini CLI not found - ensure it's in PATH") from None
+        raise RuntimeError("llmx CLI not found - ensure it's installed (uv tool install ~/Projects/llmx)") from None
 
 
 def call_codex(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
@@ -219,10 +221,9 @@ Use bullet points over paragraphs where possible.
 """
 
     try:
-        # Use codex exec with --full-auto for non-interactive batch processing
-        # model_reasoning_effort="high" for architectural decisions (GPT-5 specific)
+        # Use llmx with openai provider and reasoning-effort=high
         result = subprocess.run(
-            f'echo {repr(prompt)} | codex exec -m gpt-5-codex -c model_reasoning_effort="high" --full-auto -',
+            f'echo {repr(prompt)} | llmx --provider openai --model gpt-5-codex --reasoning-effort high',
             capture_output=True,
             text=True,
             check=True,
@@ -234,7 +235,7 @@ Use bullet points over paragraphs where possible.
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Codex call failed: {e.stderr}") from e
     except FileNotFoundError:
-        raise RuntimeError("codex CLI not found - ensure it's in PATH") from None
+        raise RuntimeError("llmx CLI not found - ensure it's installed (uv tool install ~/Projects/llmx)") from None
 
 
 def call_grok(description: str, constraints: Optional[dict] = None, constraints_file: Optional[Path] = None, prompt_variant: str = "baseline") -> str:
