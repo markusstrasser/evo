@@ -194,12 +194,26 @@
  ;; === Migration Status ===
  :migration
  {:phase :complete
+  :date-completed "2025-10-17"
+  :summary "All skills migrated to Claude Skills best practices"
+  :changes
+  [{:type :config-consolidation
+    :description "Deleted all config.edn files (285 lines)"
+    :rationale "Official Claude Skills only support YAML frontmatter (name + description)"}
+   {:type :cli-unification
+    :description "Research skill now uses llmx instead of vendor CLIs"
+    :note "Gemini/codex still used directly where vendor-specific features needed"}
+   {:type :markdown-migration
+    :description "All config moved to SKILL.md markdown tables and sections"
+    :benefit "Single source of truth, progressive disclosure maintained"}]
   :completed
-  [{:item :architect-skill :date "2025-10-17" :note "Migrated from MCP to Skill"}
-   {:item :research-skill :date "2025-10-17" :note "Initial implementation"}
-   {:item :visual-skill :date "2025-10-17" :note "Initial implementation"}
-   {:item :repl-skill :date "2025-10-17" :note "Initial implementation"}
-   {:item :diagnostics-skill :date "2025-10-17" :note "Initial implementation"}]
-  :in-progress []
-  :planned []
-  :notes "All planned skills implemented. Tournament kept as MCP (genuinely stateful)"}}
+  [{:skill :research :config-lines-removed 68 :cli-changes ["vendor → llmx for grok"]}
+   {:skill :diagnostics :config-lines-removed 58 :cli-changes []}
+   {:skill :repl-debug :config-lines-removed 44 :cli-changes []}
+   {:skill :visual :config-lines-removed 51 :cli-changes []}
+   {:skill :architect :config-lines-removed 64 :cli-changes []}
+   {:skill :gpt5-prompting :config-lines-removed 0 :note "Documentation-only, no config"}]
+  :totals {:config-lines-removed 285
+           :files-deleted 5
+           :skills-migrated 6}
+  :notes "All skills now follow official Claude Skills patterns: YAML frontmatter only, markdown for config, progressive disclosure (L1/L2/L3)"}}
