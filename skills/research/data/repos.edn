@@ -1,0 +1,338 @@
+{:base-path "~/Projects/best"
+ :repos [
+  {:name "adapton.rust"
+   :loc 5313
+   :langs "Rust: 5298, TOML: 12, Shell: 3"
+   :tree "└── src|    └── catalog||3 directories|"
+   :readme "<img src="http://adapton.org/adapton-logo-bonsai-64.png" alt="Logo" style="width: 64px;"/> [Adapton](http://adapton.org) in Rust  [![Travis](https://api.travis-ci.org/Adapton/adapton.rust.svg?branch=master)](https://travis-ci.org/Adapton/adapton.rust)"}
+  {:name "aero"
+   :loc 588
+   :langs "ClojureC: 565, Clojure: 20, Edn: 2"
+   :tree "└── src|    └── aero||3 directories|"
+   :readme "![Workflow](https://github.com/juxt/aero/actions/workflows/tests.yml/badge.svg?branch=master)"}
+  {:name "athens"
+   :loc 33649
+   :langs "ClojureScript: 13902, ClojureC: 9526, TSX: 5529"
+   :tree "├── athens-data|├── classes|├── data|├── doc|│   └── adr|├── resources|│   └── public|├── src|│   ├── clj|│   ├── cljc|│   ├── cljs|│   └── js|├── test|│   ├── athens|│   ├── e2e|│   └── event_sync|├── vercel-release|└── vercel-static|    └── athens|"
+   :readme "Some links are provided below for posterity."}
+  {:name "bevy"
+   :loc 278190
+   :langs "Rust: 269975, TOML: 7000, SVG: 1096"
+   :tree "├── assets|│   ├── android-res|│   ├── animation_graphs|│   ├── branding|│   ├── cursors|│   ├── data|│   ├── environment_maps|│   ├── external|│   ├── fonts|│   ├── irradiance_volumes|│   ├── lightmaps|│   ├── models|│   ├── pixel|│   ├── scenes|│   ├── shaders|│   ├── sounds|│   ├── textures|│   └── volumes|├── crates|│   ├── bevy_a11y|"
+   :readme "[![License](https://img.shields.io/badge/license-MIT%2FApache-blue.svg)](https://github.com/bevyengine/bevy#license)"}
+  {:name "claude-code"
+   :loc 468
+   :langs "TypeScript: 401, Python: 67, Markdown: 0"
+   :tree "├── examples|│   └── hooks|└── scripts||4 directories|"
+   :readme "![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code)"}
+  {:name "claude-code-docs"
+   :loc 1197
+   :langs "Shell: 474, Python: 467, JSON: 256"
+   :tree "├── docs|└── scripts||3 directories|"
+   :readme "[![Last Update](https://img.shields.io/github/last-commit/ericbuess/claude-code-docs/main.svg?label=docs%20updated)](https://github.com/ericbuess/claude-code-docs/commits/main)"}
+  {:name "claude-cookbooks"
+   :loc 147023
+   :langs "JSON: 141146, Python: 5373, YAML: 365"
+   :tree "├── anthropic_cookbook|├── claude_code_sdk|│   ├── chief_of_staff_agent|│   ├── observability_agent|│   ├── research_agent|│   └── utils|├── extended_thinking|├── finetuning|│   └── datasets|├── images|│   ├── best_practices|│   ├── reading_charts_graphs|│   ├── tool_use|│   ├── transcribe|│   └── using_sub_agents|├── misc|│   └── data|├── multimodal|│   └── documents|├── observability|"
+   :readme "The Claude Cookbooks provide code and guides designed to help developers build with Claude, offering copy-able code snippets that you can easily integrate into your own projects."}
+  {:name "clerk"
+   :loc 10274
+   :langs "Clojure: 4678, ClojureC: 2522, ClojureScript: 2390"
+   :tree "├── resources|│   ├── clj-kondo.exports|│   ├── META-INF|│   ├── public|│   └── stylesheets|└── src|    └── nextjournal||8 directories|"
+   :readme "![Clerk: Local-First Notebooks for Clojure](https://cdn.nextjournal.com/data/QmQfj66AwEThMukaNiAcvKuBxTo1oF8XYmUH8ewbG8aXqy?filename=Clerk-GitHub.png&content-type=image/png)"}
+  {:name "cljfmt"
+   :loc 1198
+   :langs "Clojure: 585, ClojureC: 539, Shell: 33"
+   :tree "├── cljfmt|│   ├── resources|│   └── src|└── lein-cljfmt|    └── src||6 directories|"
+   :readme "cljfmt is a tool for detecting and fixing formatting errors in"}
+  {:name "clojure"
+   :loc 63672
+   :langs "Java: 43092, Clojure: 19666, XML: 618"
+   :tree "├── codegen|└── src|    ├── assembly|    ├── clj|    ├── jvm|    ├── resources|    └── script||8 directories|"
+   :readme ""}
+  {:name "clojure-mcp"
+   :loc 13764
+   :langs "Clojure: 13475, Edn: 274, Shell: 15"
+   :tree "├── resources|│   ├── clojure_mcp|│   ├── clojure-mcp|│   └── configs|├── src|│   └── clojure_mcp|└── test|    └── clojure_mcp||9 directories|"
+   :readme "> **⚠️ Alpha Software - Work in Progress**"}
+  {:name "clojurescript"
+   :loc 42852
+   :langs "ClojureScript: 18319, ClojureC: 13276, Clojure: 9619"
+   :tree "├── resources|└── src|    ├── assembly|    └── main||5 directories|"
+   :readme "[ClojureScript](https://clojurescript.org) is a compiler for [Clojure](https://clojure.org) that targets JavaScript. It is designed to emit JavaScript code which is compatible with the advanced compilation mode of the [Google Closure](https://developers.google.com/closure/compiler/) optimizing compiler."}
+  {:name "Common-Metadata-Repository"
+   :loc 0
+   :langs ""
+   :tree "|0 directories|"
+   :readme ""}
+  {:name "compojure"
+   :loc 578
+   :langs "Clojure: 578, Markdown: 0, Plain Text: 0"
+   :tree "└── src|    └── compojure||3 directories|"
+   :readme "Compojure is a small routing library for [Ring][1] that allows web"}
+  {:name "component"
+   :loc 545
+   :langs "Clojure: 303, ClojureC: 218, ClojureScript: 24"
+   :tree "├── src|│   └── com|└── test|    └── com||5 directories|"
+   :readme "'Component' is a tiny Clojure framework for managing the lifecycle and"}
+  {:name "component-docs"
+   :loc 21
+   :langs "TOML: 20, Handlebars: 1, Markdown: 0"
+   :tree "└── component-model|    ├── src|    └── theme||4 directories|"
+   :readme "This repository contains user-facing documentation for the WebAssembly component model.  "User-facing" means it focuses on how to use the component model, not on the internal design and implementation details."}
+  {:name "conduit"
+   :loc 2948
+   :langs "JSON: 1949, ClojureScript: 982, Edn: 17"
+   :tree "└── src|    └── conduit||3 directories|"
+   :readme "> ### [ClojureScript](https://clojurescript.org/) and [re-frame](https://github.com/Day8/re-frame) codebase containing real world examples (CRUD, auth, advanced patterns, etc) that adheres to the [RealWorld](https://github.com/gothinkster/realworld-example-apps) spec and API."}
+  {:name "core.async"
+   :loc 6272
+   :langs "Clojure: 4504, ClojureScript: 1443, HTML: 225"
+   :tree "└── src|    └── main||3 directories|"
+   :readme "A Clojure library providing facilities for async programming and communication."}
+  {:name "core.logic"
+   :loc 6391
+   :langs "Clojure: 5334, ClojureScript: 783, HTML: 225"
+   :tree "└── src|    └── main||3 directories|"
+   :readme "core.logic"}
+  {:name "core.typed"
+   :loc 46032
+   :langs "Clojure: 32706, ClojureC: 10000, HTML: 2475"
+   :tree "└── typed|    ├── analyzer.common|    ├── analyzer.js|    ├── analyzer.jvm|    ├── annotator.jvm|    ├── checker.js|    ├── checker.jvm|    ├── lang.jvm|    ├── lib.clojure|    ├── lib.core.async|    └── runtime.jvm||12 directories|"
+   :readme "<a href='https://typedclojure.org'><img src='doc/images/part-of-typed-clojure-project.png'></a>"}
+  {:name "datalevin"
+   :loc 49976
+   :langs "Java: 27448, Clojure: 22439, YAML: 45"
+   :tree "└── src|    ├── datalevin|    ├── java|    └── pod||5 directories|"
+   :readme "<p align="center"><img src="logo.png" alt="datalevin logo""}
+  {:name "datascript"
+   :loc 6532
+   :langs "ClojureC: 5913, Clojure: 414, ClojureScript: 141"
+   :tree "└── src|    └── datascript||3 directories|"
+   :readme "<img src="./extras/logo.svg">"}
+  {:name "editscript"
+   :loc 1436
+   :langs "ClojureC: 1343, Clojure: 63, JSON: 19"
+   :tree "└── src|    └── editscript||3 directories|"
+   :readme "<p align="center"><img src="logo.png" alt="editscript logo" height="140"></img></p>"}
+  {:name "electric"
+   :loc 17431
+   :langs "ClojureC: 9349, JSON: 4412, Clojure: 3055"
+   :tree "├── resources|│   └── public|├── src|│   ├── clj-kondo.exports|│   ├── contrib|│   └── hyperfiddle|├── src-build|└── src-dev||9 directories|"
+   :readme "`com.hyperfiddle/electric {:mvn/version "v3-alpha-SNAPSHOT"}`"}
+  {:name "environ"
+   :loc 170
+   :langs "Clojure: 103, ClojureC: 67, Markdown: 0"
+   :tree "├── boot-environ|│   └── src|├── environ|│   └── src|└── lein-environ|    └── src||7 directories|"
+   :readme "Environ is a Clojure library for managing environment settings from a"}
+  {:name "exa-mcp-server"
+   :loc 4655
+   :langs "JSON: 3711, TypeScript: 928, Dockerfile: 15"
+   :tree "└── src|    ├── tools|    └── utils||4 directories|"
+   :readme "[![npm version](https://badge.fury.io/js/exa-mcp-server.svg)](https://www.npmjs.com/package/exa-mcp-server)"}
+  {:name "expresso"
+   :loc 4126
+   :langs "Clojure: 4046, XML: 80, Markdown: 0"
+   :tree "└── src|    └── main||3 directories|"
+   :readme "expresso"}
+  {:name "fastmcp"
+   :loc 30055
+   :langs "Python: 29570, JSON: 365, TOML: 120"
+   :tree "├── src|│   └── fastmcp|└── tests|    ├── cli|    ├── client|    ├── resources|    ├── server|    └── utilities||9 directories|"
+   :readme "<div align="center">"}
+  {:name "garden"
+   :loc 3030
+   :langs "ClojureC: 2859, Clojure: 165, Edn: 4"
+   :tree "└── src|    └── garden||3 directories|"
+   :readme "Garden is a library for rendering CSS in Clojure and ClojureScript."}
+  {:name "honeysql"
+   :loc 3991
+   :langs "ClojureC: 3836, Edn: 92, Clojure: 63"
+   :tree "└── src|    └── honey||3 directories|"
+   :readme "SQL as Clojure data structures. Build queries programmatically -- even at runtime -- without having to bash strings together."}
+  {:name "integrant"
+   :loc 643
+   :langs "ClojureC: 600, Clojure: 31, Edn: 12"
+   :tree "└── src|    └── integrant||3 directories|"
+   :readme "> integrant /ˈɪntɪɡr(ə)nt/"}
+  {:name "javelin"
+   :loc 2714
+   :langs "JSON: 1662, Clojure: 529, ClojureScript: 274"
+   :tree "├── clj-kondo|│   └── clj-kondo.exports|└── src|    └── javelin||5 directories|"
+   :readme "<img src="https://raw.github.com/hoplon/javelin/master/img/javelin.png""}
+  {:name "kakoune"
+   :loc 48996
+   :langs "C++: 24187, Kakoune script: 14456, C++ Header: 8732"
+   :tree "├── colors|├── contrib|├── libexec|│   └── kak|├── rc|│   ├── detection|│   ├── filetype|│   ├── tools|│   └── windowing|├── share|│   └── kak|└── src||13 directories|"
+   :readme ""}
+  {:name "logseq"
+   :loc 179816
+   :langs "ClojureScript: 87505, CSS: 20657, Edn: 18038"
+   :tree "├── android|│   ├── app|│   └── gradle|├── assets|├── clj-e2e|│   ├── dev|│   ├── src|│   └── test|├── docs|│   └── assets|├── externs|├── fastlane|│   └── metadata|├── features|├── icons|├── ios|│   └── App|├── libs|│   └── src|├── packages|"
+   :readme "<!-- logo -->"}
+  {:name "malli"
+   :loc 8096
+   :langs "ClojureC: 6719, Clojure: 398, JSON: 363"
+   :tree "├── app|│   └── malli|├── resources|│   └── clj-kondo|└── src|    └── malli||7 directories|"
+   :readme "[![Build Status](https://github.com/metosin/malli/actions/workflows/clojure.yml/badge.svg)](https://github.com/metosin/malli/actions)"}
+  {:name "meander"
+   :loc 11395
+   :langs "ClojureC: 10384, Clojure: 973, Edn: 34"
+   :tree "└── src|    └── meander||3 directories|"
+   :readme "Meander is a Clojure/ClojureScript library that empowers you to write transparent data transformation code that allows you to plainly see the input and output of these transformations."}
+  {:name "medley"
+   :loc 687
+   :langs "ClojureC: 652, Clojure: 34, Edn: 1"
+   :tree "└── src|    └── medley||3 directories|"
+   :readme "Medley is a lightweight Clojure/ClojureScript library of useful,"}
+  {:name "Miscellaneous"
+   :loc 0
+   :langs ""
+   :tree "|0 directories|"
+   :readme ""}
+  {:name "missionary"
+   :loc 8337
+   :langs "Java: 4859, ClojureScript: 2526, ClojureC: 831"
+   :tree "├── java|│   └── missionary|└── src|    └── missionary||5 directories|"
+   :readme "Missionary is a reactive dataflow programming toolkit providing referentially transparent operators for lazy continuous signals, eager discrete streams, and IO actions. Missionary aims to improve over state-of-the-art reactive systems, it can be used as a general-purpose asynchronous programming toolkit but also as a basis for event streaming and incremental computations."}
+  {:name "modelcontextprotocol"
+   :loc 26836
+   :langs "JSON: 23714, TypeScript: 1868, SVG: 554"
+   :tree "├── blog|│   ├── archetypes|│   ├── assets|│   ├── content|│   ├── layouts|│   └── static|├── docs|│   ├── about|│   ├── community|│   ├── development|│   ├── docs|│   ├── images|│   ├── legacy|│   ├── logo|│   ├── sdk|│   ├── snippets|│   ├── specification|│   └── tutorials|└── schema|    ├── 2024-11-05|"
+   :readme "_Just heard of MCP and not sure where to start? See [the documentation website instead](https://modelcontextprotocol.io)._"}
+  {:name "morphdom"
+   :loc 7134
+   :langs "JSON: 6625, JavaScript: 490, TypeScript: 19"
+   :tree "└── src||2 directories|"
+   :readme "morphdom"}
+  {:name "neanderthal"
+   :loc 23875
+   :langs "Clojure: 21152, C Header: 2309, C++ Header: 228"
+   :tree "├── neanderthal-accelerate|│   └── src|├── neanderthal-aot|├── neanderthal-base|│   └── src|├── neanderthal-cuda|│   └── src|├── neanderthal-mkl|│   └── src|├── neanderthal-openblas|│   └── src|└── neanderthal-opencl|    └── src||14 directories|"
+   :readme "[New books available for subscription](https://aiprobook.com)"}
+  {:name "neovim"
+   :loc 604443
+   :langs "C: 265769, Vim script: 242726, Lua: 75416"
+   :tree "├── cmake|├── contrib|│   └── gdb|├── runtime|│   ├── autoload|│   ├── colors|│   ├── compiler|│   ├── doc|│   ├── ftplugin|│   ├── indent|│   ├── keymap|│   ├── lua|│   ├── plugin|│   ├── queries|│   ├── scripts|│   ├── spell|│   ├── syntax|│   └── tutor|├── src|│   ├── cjson|"
+   :readme "<h1 align="center">"}
+  {:name "onyx"
+   :loc 17056
+   :langs "Clojure: 10976, ClojureC: 6028, XML: 52"
+   :tree "├── resources|└── src|    └── onyx||4 directories|"
+   :readme "[![Join the chat at https://gitter.im/onyx-platform/onyx](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/onyx-platform/onyx?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)"}
+  {:name "opencode"
+   :loc 106090
+   :langs "Go: 34082, TypeScript: 23352, JSON: 18429"
+   :tree "├── github|│   └── script|├── packages|│   ├── app|│   ├── console|│   ├── function|│   ├── identity|│   ├── opencode|│   ├── plugin|│   ├── sdk|│   ├── tui|│   └── web|├── patches|└── sdks|    └── vscode||16 directories|"
+   :readme "<p align="center">"}
+  {:name "overtone"
+   :loc 27965
+   :langs "Clojure: 27811, XML: 128, Edn: 26"
+   :tree "├── resources|└── src|    └── overtone||4 directories|"
+   :readme "                                                              888"}
+  {:name "pathom3"
+   :loc 12348
+   :langs "ClojureC: 7874, JSON: 4112, Clojure: 138"
+   :tree "└── src|    ├── main|    ├── promesa|    └── tasks||5 directories|"
+   :readme "![Pathom Logo](repo-resources/pathom-banner-padded.png)"}
+  {:name "portal"
+   :loc 28122
+   :langs "JSON: 12308, ClojureScript: 9610, ClojureC: 3189"
+   :tree "├── extension-electron|├── extension-intellij|│   ├── gradle|│   └── src|├── extension-vscode|├── resources|│   └── runtime|└── src|    └── portal||10 directories|"
+   :readme "A clojure tool to navigate through your data."}
+  {:name "prosemirror"
+   :loc 404
+   :langs "JavaScript: 334, JSON: 68, SVG: 2"
+   :tree "├── assets|└── bin||3 directories|"
+   :readme "[ [**WEBSITE**](https://prosemirror.net) | [**ISSUES**](https://github.com/prosemirror/prosemirror/issues) | [**FORUM**](https://discuss.prosemirror.net) ]"}
+  {:name "quil"
+   :loc 9705
+   :langs "ClojureC: 8383, Clojure: 1027, ClojureScript: 146"
+   :tree "├── resources|│   └── public|└── src|    ├── bb|    ├── clj|    ├── cljc|    └── cljs||8 directories|"
+   :readme "[![Clojars Version](https://img.shields.io/clojars/v/quil)](https://clojars.org/quil)"}
+  {:name "re-frame"
+   :loc 3947
+   :langs "ClojureC: 3632, YAML: 135, Edn: 71"
+   :tree "└── src|    └── re_frame||3 directories|"
+   :readme "<p align="center"><a href="https://day8.github.io/re-frame" target="_blank" rel="noopener noreferrer"><img src="docs/images/logo/re-frame-colour.png?raw=true" alt="re-frame logo"></a></p>"}
+  {:name "re-frame-10x"
+   :loc 7964
+   :langs "ClojureScript: 7596, ClojureC: 228, Clojure: 73"
+   :tree "├── resources|│   └── day8|└── src|    └── day8||5 directories|"
+   :readme "[![Clojars Project](https://img.shields.io/clojars/v/day8.re-frame/re-frame-10x?style=for-the-badge&logo=clojure&logoColor=fff)](https://clojars.org/day8.re-frame/re-frame-10x)"}
+  {:name "Reactive-Programming"
+   :loc 0
+   :langs ""
+   :tree "|0 directories|"
+   :readme ""}
+  {:name "reitit"
+   :loc 8715
+   :langs "ClojureC: 3320, JSON: 3023, Clojure: 1466"
+   :tree "└── modules|    ├── reitit|    ├── reitit-core|    ├── reitit-dev|    ├── reitit-frontend|    ├── reitit-http|    ├── reitit-interceptors|    ├── reitit-malli|    ├── reitit-middleware|    ├── reitit-openapi|    ├── reitit-pedestal|    ├── reitit-ring|    ├── reitit-schema|    ├── reitit-sieppari|    ├── reitit-spec|    ├── reitit-swagger|    └── reitit-swagger-ui||18 directories|"
+   :readme "[![Build Status](https://github.com/metosin/reitit/actions/workflows/testsuite.yml/badge.svg)](https://github.com/metosin/reitit/actions)"}
+  {:name "replicant"
+   :loc 2218
+   :langs "ClojureC: 1783, ClojureScript: 185, Clojure: 113"
+   :tree "└── src|    ├── clj-kondo.exports|    └── replicant||4 directories|"
+   :readme "Replicant is a data-driven rendering library for Clojure(Script). It renders"}
+  {:name "rewrite-clj"
+   :loc 10165
+   :langs "ClojureC: 6530, JSON: 2257, AsciiDoc: 801"
+   :tree "├── resources|│   └── clj-kondo.exports|└── src|    └── rewrite_clj||5 directories|"
+   :readme ""}
+  {:name "ring"
+   :loc 3346
+   :langs "Clojure: 3242, CSS: 104, Markdown: 0"
+   :tree "├── ring-core|│   └── src|├── ring-core-protocols|│   └── src|├── ring-devel|│   ├── resources|│   └── src|├── ring-jakarta-servlet|│   └── src|├── ring-jetty-adapter|│   └── src|├── ring-servlet|│   └── src|└── ring-websocket-protocols|    └── src||16 directories|"
+   :readme "Ring is a Clojure web applications library inspired by Python's WSGI"}
+  {:name "S"
+   :loc 4231
+   :langs "JSON: 3067, TypeScript: 1141, JavaScript: 23"
+   :tree "└── src||2 directories|"
+   :readme "S.js is a small reactive programming library.  It combines an automatic dependency graph with a synchronous execution engine.  The goal is to make reactive programming simple, clean, and fast.  "}
+  {:name "salsa"
+   :loc 15566
+   :langs "Rust: 15440, TOML: 126, Markdown: 0"
+   :tree "├── components|│   ├── salsa-macro-rules|│   └── salsa-macros|└── src|    ├── accumulator|    ├── function|    ├── input|    ├── runtime|    ├── table|    └── tracked_struct||11 directories|"
+   :readme "[![Test](https://github.com/salsa-rs/salsa/workflows/Test/badge.svg)](https://github.com/salsa-rs/salsa/actions?query=workflow%3ATest)"}
+  {:name "sci"
+   :loc 9964
+   :langs "ClojureC: 9026, Clojure: 310, ClojureScript: 261"
+   :tree "├── libsci|│   ├── bb|│   ├── from-rust|│   └── src|├── resources|│   └── clj-kondo.exports|├── src|│   └── sci|└── types||10 directories|"
+   :readme "<img src="logo/logo-300dpi.png" width="100px">"}
+  {:name "slate"
+   :loc 13752
+   :langs "TypeScript: 10449, TSX: 2627, JSON: 488"
+   :tree "├── config|│   ├── babel|│   ├── rollup|│   └── typescript|└── packages|    ├── slate|    ├── slate-dom|    ├── slate-history|    ├── slate-hyperscript|    └── slate-react||11 directories|"
+   :readme "<p align="center">"}
+  {:name "specter"
+   :loc 3075
+   :langs "ClojureC: 2903, Clojure: 136, Java: 19"
+   :tree "└── src|    ├── clj|    └── java||4 directories|"
+   :readme "Specter rejects Clojure's restrictive approach to immutable data structure manipulation, instead exposing an elegant API to allow any sort of manipulation imaginable. Specter especially excels at querying and transforming nested and recursive data, important use cases that are very complex to handle with vanilla Clojure."}
+  {:name "tree-sitter"
+   :loc 61073
+   :langs "Rust: 32300, C: 13250, JSON: 5612"
+   :tree "├── crates|│   ├── cli|│   ├── config|│   ├── generate|│   ├── highlight|│   ├── language|│   ├── loader|│   ├── tags|│   └── xtask|└── lib|    ├── binding_rust|    ├── binding_web|    ├── include|    ├── lldb_pretty_printers|    └── src||16 directories|"
+   :readme "[![DOI](https://zenodo.org/badge/14164618.svg)](https://zenodo.org/badge/latestdoi/14164618)"}
+  {:name "unison"
+   :loc 119648
+   :langs "Haskell: 113128, Cabal: 3483, YAML: 2312"
+   :tree "├── codebase2|│   ├── codebase|│   ├── codebase-sqlite|│   ├── codebase-sqlite-hashing-v2|│   ├── codebase-sync|│   ├── core|│   ├── util-serialization|│   └── util-term|├── contrib|├── editor-support|│   ├── atom|│   └── vim|├── lib|│   ├── orphans|│   ├── unison-hash|│   ├── unison-hashing|│   ├── unison-prelude|│   ├── unison-pretty-printer|│   ├── unison-sqlite|│   ├── unison-util-base32hex|"
+   :readme "The Unison language"}
+  {:name "vlojure"
+   :loc 7301
+   :langs "ClojureScript: 5307, JSON: 1140, Clojure: 503"
+   :tree "├── resources|│   └── public|└── src|    ├── clj|    ├── cljc|    └── cljs||7 directories|"
+   :readme "Vlojure is a visual programming interface for ClojureScript. You can use vlojure by visiting [vlojure.io](https://vlojure.io) in your browser. See [vlojure.io/about](https://vlojure.io/about)"}
+  {:name "xi-editor"
+   :loc 29787
+   :langs "Rust: 27960, Python: 963, TOML: 625"
+   :tree "├── python|│   └── xi_plugin|└── rust|    ├── core-lib|    ├── experimental|    ├── lsp-lib|    ├── plugin-lib|    ├── rope|    ├── rpc|    ├── sample-plugin|    ├── src|    ├── syntect-plugin|    ├── trace|    └── unicode||15 directories|"
+   :readme "***Maintenance status:*** *The xi-editor project is currently discontinued. Although we will happily accept bug fixes, no new features are currently planned. You may be interested in [the Lapce editor](https://github.com/lapce/lapce), which can be considered a spiritual successor to the xi-editor."}
+  {:name "zed"
+   :loc 786856
+   :langs "Rust: 731391, JSON: 28409, TOML: 8968"
+   :tree "├── assets|│   ├── badge|│   ├── fonts|│   ├── icons|│   ├── images|│   ├── keymaps|│   ├── prompts|│   ├── settings|│   ├── sounds|│   └── themes|├── crates|│   ├── acp_thread|│   ├── acp_tools|│   ├── action_log|│   ├── activity_indicator|│   ├── agent|│   ├── agent_servers|│   ├── agent_settings|│   ├── agent_ui|│   ├── agent2|"
+   :readme "[![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)"}
+ ]}
