@@ -32,7 +32,7 @@ COMMANDS:
     info <project>              Show project details
 
 OPTIONS:
-    --model <model>            LLM model to use (gemini|codex|grok)
+    --model <model>            LLM model to use (google|openai|xai)
     --focused <paths>          Comma-separated paths for focused extraction
     --save-session <name>      Save as named research session
     --help                     Show this help
@@ -59,8 +59,7 @@ EOF
 check_requirements() {
     local missing=()
     command -v repomix >/dev/null || missing+=("repomix")
-    command -v gemini >/dev/null || missing+=("gemini")
-    command -v codex >/dev/null || missing+=("codex")
+    command -v llmx >/dev/null || missing+=("llmx")
 
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo -e "${RED}✗ Missing required commands: ${missing[*]}${NC}" >&2
