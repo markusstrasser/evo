@@ -185,7 +185,7 @@ explore_project() {
             pbpaste | codex -m gpt-5-codex -c model_reasoning_effort="high" "$query"
             ;;
         grok)
-            pbpaste | "${SCRIPT_DIR}/../../scripts/grok" -p "$query"
+            pbpaste | llmx --provider xai "$query"
             ;;
         *)
             echo -e "${RED}✗ Unknown model: $model${NC}"
