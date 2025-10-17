@@ -98,8 +98,9 @@
    :network-required true
    :session-support true
    :env-vars ["GEMINI_API_KEY"]
-   :use-cases ["high token-count queries" "multi-turn research"]
-   :docs-ref "CLAUDE.md#llm-provider-clis"}
+   :use-cases ["HUMAN INTERACTIVE USE ONLY" "high token-count queries" "multi-turn research" "MCP-aware queries"]
+   :note "NOT for agent scripts (use llmx)"
+   :docs-ref "CLAUDE.md#unified-toolchain"}
 
   :codex
   {:type :cli
@@ -108,22 +109,26 @@
    :network-required true
    :session-support true
    :env-vars ["OPENAI_API_KEY"]
-   :use-cases ["code review" "taste/style questions" "architecture" "refactoring"]
-   :docs-ref "CLAUDE.md#llm-provider-clis"}
+   :use-cases ["HUMAN INTERACTIVE USE ONLY" "code review" "taste/style questions" "architecture" "reasoning_effort=high"]
+   :note "NOT for agent scripts (use llmx)"
+   :docs-ref "CLAUDE.md#unified-toolchain"}
 
   :llmx
   {:type :cli
    :path "llmx"  ; In PATH via uv tool install
    :description "Unified API wrapper for 100+ LLM providers via LiteLLM"
+   :status :PRIMARY-CLI-FOR-AGENT-SCRIPTS
    :deployment :global-uv
    :network-required true
    :providers ["google" "openai" "anthropic" "xai" "deepseek" "100+ via LiteLLM"]
+   :features ["reasoning-effort support for OpenAI o1/GPT-5" "provider comparison" "streaming"]
    :env-vars ["GEMINI_API_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "XAI_API_KEY" "DEEPSEEK_API_KEY"]
-   :use-cases ["scripts automation" "skills orchestration" "quick queries" "provider comparison"]
-   :replaces ["scripts/grok" "scripts/.archived-gemini-api" "scripts/.archived-openai"]
+   :use-cases ["ALL agent scripts" "skills orchestration" "provider comparison" "reasoning-effort queries"]
+   :replaces ["Vendor CLI calls in code-research skill" "Custom providers.py in architect skill" "scripts/grok" "scripts/.archived-gemini-api" "scripts/.archived-openai"]
    :install "uv tool install ~/Projects/llmx"
    :also-importable true  ; Can be imported in Python like tournament
-   :docs-ref "CLAUDE.md#llm-provider-clis"}
+   :migration-date "2025-10-17"
+   :docs-ref "CLAUDE.md#unified-toolchain"}
 
   :opencode
   {:type :cli
@@ -183,37 +188,115 @@
    :description "Compare reference vs implementation, get specific fixes"
    :deps ["Python" "OpenCV"]}}
 
+ ;; === Task Runners ===
+ :task-runners
+ {:babashka
+  {:type :task-runner
+   :config "bb.edn"
+   :status :PRIMARY
+   :tasks [:lint :check :test :fix-cache
+           :health :preflight :env-debug :research
+           :dev :repl-health :docs-overview :install-hooks]
+   :note "Unified Clojure-native task runner (created 2025-10-17)"
+   :docs-ref "CLAUDE.md#unified-toolchain"}
+
+  :npm
+  {:type :task-runner
+   :config "package.json"
+   :status :LEGACY
+   :scripts [:lint :check :test "fix:cache" "agent:health" "agent:preflight"]
+   :note "Still available, but bb tasks preferred"}}
+
+ ;; === REPL ===
+ :repl
+ {:namespace 'repl
+  :path "dev/repl/init.clj"
+  :status :CONSOLIDATED
+  :entry-point 'go!
+  :functions
+  {:go! "One-command startup: connect, load namespaces, health check"
+   :connect! "Connect to shadow-cljs REPL"
+   :init! "Load core namespaces"
+   :quick-health-check! "REPL diagnostics"
+   :rt! "Run all tests"
+   :rq! "Reload and run specific test"
+   :save-session! "Save REPL session state"
+   :restore-session! "Restore REPL session"
+   :cljs! "Evaluate ClojureScript in browser"
+   :clj! "Evaluate Clojure on JVM"}
+  :migration "Consolidated from dev/repl/init.clj + dev/repl/session.clj (2025-10-17)"
+  :docs-ref "CLAUDE.md#dev-tooling"}
+
  ;; === Configuration ===
  :config
  {:mcp-config ".mcp.json"
   :claude-config "~/.claude.json"
   :env-file ".env"
   :project-docs "CLAUDE.md"
-  :api-keys-required ["GEMINI_API_KEY" "OPENAI_API_KEY" "GROK_API_KEY"]}
+  :api-keys-required ["GEMINI_API_KEY" "OPENAI_API_KEY" "XAI_API_KEY"]}
 
  ;; === Migration Status ===
  :migration
- {:phase :complete
+ {:phase :unification-complete
   :date-completed "2025-10-17"
-  :summary "All skills migrated to Claude Skills best practices"
+  :summary "Toolchain unified around Skills model with llmx, bb.edn, and consolidated REPL"
   :changes
   [{:type :config-consolidation
     :description "Deleted all config.edn files (285 lines)"
     :rationale "Official Claude Skills only support YAML frontmatter (name + description)"}
    {:type :cli-unification
-    :description "Research skill now uses llmx instead of vendor CLIs"
-    :note "Gemini/codex still used directly where vendor-specific features needed"}
+    :description "ALL agent scripts now use llmx (unified LLM CLI)"
+    :details ["Added reasoning-effort support to llmx"
+              "code-research skill: replaced gemini/codex → llmx"
+              "architect skill: replaced custom providers.py → llmx CLI calls"
+              "Vendor CLIs (gemini/codex) reserved for human interactive use only"]}
+   {:type :repl-consolidation
+    :description "Merged dev/repl/session.clj into init.clj"
+    :details ["Single entry point: (repl/go!)"
+              "Idempotent startup: connect + load + health check"
+              "Deleted dev/repl/session.clj"]}
+   {:type :task-runner-unification
+    :description "Created bb.edn (Babashka task runner)"
+    :details ["Unified interface for quality gates, skills, and dev tasks"
+              "Replaces npm for common workflows"
+              "Clojure-native, works with project deps"]}
+   {:type :diagnostics-consolidation
+    :description "Absorbed standalone scripts into diagnostics skill"
+    :details ["bin/debug-env.sh → diagnostics env-debug command"
+              "bin/uv-dev-reinstall.sh → diagnostics uv-reinstall command"
+              "Scripts still in bin/, invoked via skill commands"]}
+   {:type :documentation-refactor
+    :description "Refactored CLAUDE.md from 405 → 291 lines (28% reduction)"
+    :details ["Removed inlined workflow docs"
+              "Links to SKILL.md files for progressive disclosure"
+              "Concise entry point following ADR-013 vision"]}
    {:type :markdown-migration
     :description "All config moved to SKILL.md markdown tables and sections"
     :benefit "Single source of truth, progressive disclosure maintained"}]
   :completed
-  [{:skill :research :config-lines-removed 68 :cli-changes ["vendor → llmx for grok"]}
-   {:skill :diagnostics :config-lines-removed 58 :cli-changes []}
+  [{:skill :research :config-lines-removed 68 :cli-changes ["vendor CLIs → llmx (gemini/codex/grok all via llmx)"]}
+   {:skill :diagnostics :config-lines-removed 58 :cli-changes [] :new-commands [:env-debug :uv-reinstall]}
    {:skill :repl-debug :config-lines-removed 44 :cli-changes []}
    {:skill :visual :config-lines-removed 51 :cli-changes []}
-   {:skill :architect :config-lines-removed 64 :cli-changes []}
+   {:skill :architect :config-lines-removed 64 :cli-changes ["custom providers.py → llmx CLI calls"]}
    {:skill :gpt5-prompting :config-lines-removed 0 :note "Documentation-only, no config"}]
   :totals {:config-lines-removed 285
-           :files-deleted 5
-           :skills-migrated 6}
-  :notes "All skills now follow official Claude Skills patterns: YAML frontmatter only, markdown for config, progressive disclosure (L1/L2/L3)"}}
+           :files-deleted 6  ; 5 config.edn + 1 session.clj
+           :skills-migrated 6
+           :claude-md-reduction "28% (405→291 lines)"}
+  :deprecated
+  ["dev/repl/session.clj (merged into init.clj)"
+   "Direct gemini/codex calls in agent scripts (use llmx)"
+   "Custom Python providers in architect skill (use llmx CLI)"]
+  :completed-post-unification
+  [{:date "2025-10-17"
+    :change "Converted debug-env.sh to Babashka"
+    :details ["277-line bash script → 254-line Babashka script"
+              "Proper data structures (maps, vectors) instead of bash arrays"
+              "Same CLI interface, same output"
+              "Much more maintainable and testable"
+              "Old bash script kept in bin/ for reference"]}]
+
+  :future
+  ["Full Babashka migration for remaining complex shell scripts (only when strictly better)"]
+  :notes "Toolchain now unified around Skills model: llmx for LLM calls, bb for tasks, (repl/go!) for REPL, progressive disclosure for docs"}}
