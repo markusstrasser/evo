@@ -1,8 +1,0 @@
-[{:id :refactor-1
-  :text "Align Image Occlusion Model with Schema: Use parent-child architecture instead of creating multiple independent cards. This simplifies the UI code and makes the architecture consistent."}
-
- {:id :refactor-2
-  :text "Simplify Complex UI Rendering Logic: Separate decision-making logic from drawing implementation in draw-occlusion-mask!. Create a pure function to determine what to draw, then loop through occlusions."}
-
- {:id :refactor-3
-  :text "Unify State Management: Consolidate !creator-state into main !state atom. Make occlusion creator a managed component with pure functions taking state as arguments."}]

@@ -1,4 +1,3 @@
-# MCP Integration Reference
 
 Quick reference for Model Context Protocol (MCP) integration with Claude Code.
 

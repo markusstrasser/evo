@@ -1,19 +1,49 @@
-# Dev Diagnostics Skill
-
-<!-- L1: Metadata (always loaded, ~100 tokens) -->
-**Name:** Dev Environment Diagnostics
-**Description:** Environment validation, health checks, cache management, error diagnosis for Clojure/ClojureScript development.
-**Triggers:** health check, validate environment, diagnose error, preflight, cache
-**Network Required:** No (except for API key validation)
-**Resources:** health.clj, error-catalog.edn, preflight scripts
-
+---
+name: Dev Environment Diagnostics
+description: Environment validation, health checks, cache management, error diagnosis for Clojure/ClojureScript development. Triggers on health, preflight, cache, diagnose, validate environment. Includes API key checks, dependency verification, cache clearing. No network required except for API validation.
 ---
 
-<!-- L2: Instructions (loaded when skill triggered, <5k tokens) -->
+# Dev Environment Diagnostics
 
-## Overview
+## Prerequisites
 
-This skill consolidates development environment diagnostics - health checks, cache management, error diagnosis, and pre-flight validation for smooth ClojureScript development.
+**Required Tools:**
+- `java` - JVM for Clojure
+- `clojure` - Clojure CLI
+- `node` - Node.js runtime
+- `npm` - Package manager
+- `shadow-cljs` - ClojureScript compiler
+
+**Optional Tools:**
+- `git` - Version control
+- `rlwrap` - REPL line editing
+
+**API Keys (optional):**
+```bash
+# In .env file
+GEMINI_API_KEY=your-key
+OPENAI_API_KEY=your-key
+XAI_API_KEY=your-key
+```
+
+## Quick Start
+
+```bash
+# Quick health check
+./run.sh health
+
+# Pre-flight before starting work
+./run.sh preflight
+
+# Clear all caches
+./run.sh cache clear
+
+# Diagnose specific error
+./run.sh diagnose "Cannot resolve symbol"
+
+# Check API keys
+./run.sh api-keys check
+```
 
 ## When to Use
 
@@ -27,7 +57,7 @@ Use this skill when:
 
 ## Available Commands
 
-### `health` - Quick Health Check
+### health - Quick Health Check
 
 ```bash
 ./run.sh health
@@ -41,21 +71,7 @@ Checks:
 - ✅ Git status
 - ✅ API keys (if .env exists)
 
-**Output:**
-```
-=== Environment Health Check ===
-✓ Java 21.0.1
-✓ Clojure 1.11.1
-✓ Node.js v20.10.0
-✓ npm 10.2.3
-✓ Shadow-CLJS 2.26.0
-✓ Git repository (clean)
-✓ API keys present (GEMINI, OPENAI, GROK)
-
-All checks passed!
-```
-
-### `preflight` - Pre-Flight Checks
+### preflight - Pre-Flight Checks
 
 ```bash
 ./run.sh preflight
@@ -68,12 +84,12 @@ More thorough checks before starting work:
 - REPL connectivity (if server running)
 - Workspace cleanliness
 
-**Use before:**
+Use before:
 - Starting new feature
 - After pulling changes
 - When switching branches
 
-### `cache` - Cache Management
+### cache - Cache Management
 
 ```bash
 # Show cache status
@@ -83,18 +99,22 @@ More thorough checks before starting work:
 ./run.sh cache clear
 
 # Clear specific cache
-./run.sh cache clear shadow
-./run.sh cache clear clj-kondo
-./run.sh cache clear npm
+./run.sh cache clear shadow      # .shadow-cljs/
+./run.sh cache clear clj-kondo   # .clj-kondo/.cache/
+./run.sh cache clear clojure     # .cpcache/
+./run.sh cache clear npm         # node_modules/.cache/
 ```
 
-Manages:
-- Shadow-CLJS cache (`.shadow-cljs/`)
-- Clojure cache (`.cpcache/`, `.clj-kondo/.cache/`)
-- npm cache
-- Skills cache (`.cache/`)
+**Cache locations:**
+| Cache | Path | When to Clear |
+|-------|------|---------------|
+| Shadow-CLJS | `.shadow-cljs/` | Weird compilation errors, stale code |
+| Clj-kondo | `.clj-kondo/.cache/` | Linter not finding symbols, false warnings |
+| Clojure | `.cpcache/` | Dependency resolution issues |
+| npm | `node_modules/.cache/` | After package.json changes |
+| Skills | `.cache/` | Research or visual cache issues |
 
-### `diagnose` - Error Diagnosis
+### diagnose - Error Diagnosis
 
 ```bash
 # Diagnose specific error
@@ -111,128 +131,72 @@ Uses `dev/error-catalog.edn` to:
 
 **Example:**
 ```bash
-./run.sh diagnose "Cannot resolve symbol"
+$ ./run.sh diagnose "Cannot resolve symbol"
 
 Found match: :unresolved-symbol
-Likely cause: Missing require or alias
-Fix: Add (require '[missing.namespace :as alias])
-Auto-fix: Check imports in namespace
+Category: compilation
+Likely causes:
+  - Missing require
+  - Typo in name
+  - Wrong alias
+Fixes:
+  - Add (require '[namespace :as alias])
+  - Check spelling
+  - Verify namespace exists
 ```
 
-### `api-keys` - API Key Validation
+### api-keys - API Key Validation
 
 ```bash
 # Check which keys are set
 ./run.sh api-keys check
 
-# Validate keys work
+# Validate keys work (makes test API calls)
 ./run.sh api-keys validate
 
 # Show required keys
 ./run.sh api-keys required
 ```
 
-Checks:
-- `.env` file exists
-- Required keys present (GEMINI, OPENAI, GROK)
-- Optional keys (ANTHROPIC, GROQ, etc.)
-- Can optionally test keys (make API calls)
-
-### `deps` - Dependency Checks
-
-```bash
-# Check for outdated deps
-./run.sh deps outdated
-
-# Verify all deps downloadable
-./run.sh deps verify
-
-# Show dependency tree
-./run.sh deps tree
-```
+**Required keys:** GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY
+**Optional keys:** ANTHROPIC_API_KEY, GROQ_API_KEY
 
 ## NPM Commands Integration
 
 The skill wraps existing npm commands:
 
-- `npm run agent:health` → `./run.sh health`
-- `npm run agent:preflight` → `./run.sh preflight`
-- `npm run fix:cache` → `./run.sh cache clear`
-- `npm run repl:health` → Part of `./run.sh preflight`
+| NPM Command | Skill Command |
+|-------------|---------------|
+| `npm run agent:health` | `./run.sh health` |
+| `npm run agent:preflight` | `./run.sh preflight` |
+| `npm run fix:cache` | `./run.sh cache clear` |
+| `npm run repl:health` | Part of `./run.sh preflight` |
 
 ## Error Catalog
 
-Maintains `dev/error-catalog.edn` with common errors:
+Maintains `dev/error-catalog.edn` with common errors and fixes:
 
-```clojure
-{:unresolved-symbol
- {:pattern #"Cannot resolve symbol"
-  :category :compilation
-  :likely-causes ["Missing require" "Typo in name" "Wrong alias"]
-  :fixes ["Add (require '[ns :as alias])"
-          "Check spelling"
-          "Verify namespace exists"]
-  :auto-fix "Check imports"}
+### Common Errors
 
- :stale-cache
- {:pattern #"Unexpected error|Strange behavior"
-  :category :cache
-  :likely-causes ["Stale cache" "Old compilation artifacts"]
-  :fixes ["Clear shadow-cljs cache: rm -rf .shadow-cljs/"
-          "Clear clj-kondo cache: rm -rf .clj-kondo/.cache/"]
-  :auto-fix "./run.sh cache clear"}}
-```
+**Unresolved Symbol**
+- Pattern: `Cannot resolve symbol`
+- Category: compilation
+- Fix: Add `(require '[namespace :as alias])`
 
-## Pre-Flight Checklist
+**Stale Cache**
+- Pattern: `Unexpected error` / Strange behavior
+- Category: cache
+- Fix: `./run.sh cache clear`
 
-**Before starting work:**
+**Port In Use**
+- Pattern: `port.*in use` / `address.*in use`
+- Category: runtime
+- Fix: `pkill -f shadow-cljs`
 
-```bash
-./run.sh preflight
-```
-
-Validates:
-1. Environment tools installed
-2. Dependencies up-to-date
-3. Caches clean (no stale data)
-4. API keys present
-5. REPL server reachable
-6. Git workspace clean
-
-## Cache Management Patterns
-
-### When to Clear Cache
-
-**Clear Shadow-CLJS cache:**
-- Weird compilation errors
-- Stale code loading
-- After dependency changes
-
-**Clear Clj-kondo cache:**
-- Linter not finding new symbols
-- False positive warnings
-
-**Clear NPM cache:**
-- Dependency resolution issues
-- After package.json changes
-
-**Clear all caches:**
-- "Turn it off and on again" moment
-- Before important demo
-- After major refactor
-
-### Safe Clear Order
-
-```bash
-# 1. Try selective clear first
-./run.sh cache clear shadow
-
-# 2. If still broken, clear all
-./run.sh cache clear
-
-# 3. Rebuild
-npm run dev  # or shadow-cljs watch app
-```
+**API Key Missing**
+- Pattern: `api.*key` / `authentication`
+- Category: configuration
+- Fix: Check `.env` file and `source .env`
 
 ## Common Diagnostics Scenarios
 
@@ -245,10 +209,7 @@ npm run dev  # or shadow-cljs watch app
 # 2. Clear caches
 ./run.sh cache clear
 
-# 3. Check dependencies
-./run.sh deps verify
-
-# 4. Rebuild
+# 3. Rebuild
 npm run dev
 ```
 
@@ -271,8 +232,8 @@ npm run lint
 # 2. Validate keys work
 ./run.sh api-keys validate
 
-# 3. Check .env sourced
-source .env && env | grep API_KEY
+# 3. Source .env if needed
+source .env
 ```
 
 ### Scenario 4: "Strange runtime behavior"
@@ -285,6 +246,41 @@ source .env && env | grep API_KEY
 ./run.sh cache clear
 ```
 
+## Cache Management Patterns
+
+### Safe Clear Order
+
+```bash
+# 1. Try selective clear first
+./run.sh cache clear shadow
+
+# 2. If still broken, clear all
+./run.sh cache clear
+
+# 3. Rebuild
+npm run dev
+```
+
+### When to Clear Cache
+
+**Clear Shadow-CLJS cache:**
+- Weird compilation errors
+- Stale code loading
+- After dependency changes
+
+**Clear Clj-kondo cache:**
+- Linter not finding new symbols
+- False positive warnings
+
+**Clear NPM cache:**
+- Dependency resolution issues
+- After package.json changes
+
+**Clear all caches:**
+- "Turn it off and on again" moment
+- Before important demo
+- After major refactor
+
 ## Integration with CI/CD
 
 ### Pre-commit Hook
@@ -293,10 +289,7 @@ source .env && env | grep API_KEY
 #!/bin/bash
 # .git/hooks/pre-commit
 
-# Quick health check
 ./skills/diagnostics/run.sh health || exit 1
-
-# Linting (handled by .pre-commit-check.sh)
 npm run lint || exit 1
 ```
 
@@ -307,103 +300,41 @@ npm run lint || exit 1
 - name: Environment Check
   run: ./skills/diagnostics/run.sh health
 
-- name: Cache Management
+- name: Cache Status
   run: ./skills/diagnostics/run.sh cache status
 ```
 
-## Configuration
+## Configuration Options
 
-Edit `config.edn` to customize:
+**Health check thresholds:**
+- Required tools must be present
+- Optional tools warn if missing
+- API keys checked if .env exists
 
-```clojure
-{:health-checks
- {:required ["java" "clojure" "node" "npm" "shadow-cljs"]
-  :optional ["git" "rlwrap"]
-  :api-keys ["GEMINI_API_KEY" "OPENAI_API_KEY"]}
+**Cache management:**
+- Auto-clear threshold: 500 MB
+- Warn size: 200 MB
+- Clear on error: disabled by default
 
- :cache-paths
- {:shadow-cljs ".shadow-cljs/"
-  :clj-kondo ".clj-kondo/.cache/"
-  :clojure ".cpcache/"
-  :npm "node_modules/.cache/"
-  :skills ".cache/"}
-
- :preflight
- {:check-deps true
-  :check-repl true
-  :check-git true
-  :warn-dirty-git true}
-
- :error-catalog
- {:path "../../dev/error-catalog.edn"
-  :auto-update true}}
-```
-
-## Error Catalog Format
-
-Errors in `dev/error-catalog.edn`:
-
-```clojure
-{:error-id
- {:pattern #"regex pattern"
-  :category :compilation | :runtime | :cache | :env
-  :severity :error | :warning | :info
-  :likely-causes ["cause 1" "cause 2"]
-  :fixes ["fix 1" "fix 2"]
-  :auto-fix "command to run"
-  :docs-ref "URL or local path"}}
-```
-
-## Quick Reference
-
-```bash
-# Health check
-./run.sh health
-
-# Pre-flight
-./run.sh preflight
-
-# Clear cache
-./run.sh cache clear
-
-# Diagnose error
-./run.sh diagnose "error message"
-
-# Check API keys
-./run.sh api-keys check
-
-# Check dependencies
-./run.sh deps outdated
-```
+**Error diagnosis:**
+- Uses `dev/error-catalog.edn`
+- Verbose output: disabled
+- Suggest fixes: enabled
 
 ## Tips & Best Practices
 
-1. **Run health check at session start**
-   - Catch problems early
-   - Verify environment ready
-
-2. **Clear cache when in doubt**
-   - Shadow-CLJS cache is safe to delete
-   - Rebuild is usually fast
-
-3. **Keep error catalog updated**
-   - Add new patterns as encountered
-   - Document fixes for team
-
-4. **Use preflight before commits**
-   - Catch issues before pushing
-   - Verify tests pass
-
-5. **Monitor cache sizes**
-   - Large caches may indicate issues
-   - Regular clearing prevents bloat
+1. **Run health check at session start** - Catch problems early
+2. **Clear cache when in doubt** - Shadow-CLJS cache is safe to delete
+3. **Keep error catalog updated** - Add new patterns as encountered
+4. **Use preflight before commits** - Catch issues before pushing
+5. **Monitor cache sizes** - Large caches may indicate issues
 
 ## Common Pitfalls
 
-- **Forgetting to source .env**: API keys won't be available
-- **Partial cache clear**: Sometimes need to clear all
-- **Skipping preflight**: Issues found late in development
-- **Stale node_modules**: Occasional `rm -rf node_modules && npm install` needed
+- **Forgetting to source .env** - API keys won't be available
+- **Partial cache clear** - Sometimes need to clear all
+- **Skipping preflight** - Issues found late in development
+- **Stale node_modules** - Occasional `rm -rf node_modules && npm install` needed
 
 ## Troubleshooting
 
@@ -424,13 +355,19 @@ Errors in `dev/error-catalog.edn`:
 
 **"Diagnose finds no match"**
 - Error might be new
-- Add to error catalog
+- Add to error catalog manually
 - Use interactive mode
+
+## Resources (Level 3)
+
+- `run.sh` - Main CLI wrapper
+- `dev/health.clj` - Clojure health check functions
+- `dev/error-catalog.edn` - Error pattern database
+- `dev/bin/health-check.sh` - Standalone health check
+- `dev/bin/preflight.sh` - Preflight validation script
 
 ## See Also
 
 - Project docs: `../../CLAUDE.md#dev-tooling`
-- Health checks: `../../dev/health.clj`
-- Error catalog: `../../dev/error-catalog.edn`
-- Scripts: `../../dev/bin/`
 - NPM commands: `../../package.json`
+- Pre-commit hook: `../../.pre-commit-check.sh`
