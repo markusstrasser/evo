@@ -1,3 +1,0 @@
-#!/usr/bin/env -S bash -c "source .venv/bin/activate && exec python \"\$0\" \"\$@\"" --
-"""
-Geometric Validation - Verify structural correctness before aesthetics
