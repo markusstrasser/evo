@@ -1,8 +1,11 @@
 (ns plugins.refs.core
-  "Typed refs plugin for links, selections, and highlights.
+  "Typed refs plugin for links, citations, and highlights.
    
    Computes derived views over refs whose :target is in :doc tree.
-   Provides lint (warnings) and scrub (ops to fix dangling refs)."
+   Provides lint (warnings) and scrub (ops to fix dangling refs).
+   
+   Note: Selection is handled separately via plugins.selection.core
+   which uses boolean :selected? properties (see ADR-012)."
   (:require [clojure.set :as set]
             [core.tree :as tree]
             [plugins.registry :as registry]))
@@ -48,8 +51,7 @@
    - :ref/outgoing          {source-id #{target-id}}
    - :ref/backlinks-by-kind {kind {target-id #{source-id}}}
    - :ref/citations         {target-id count}
-   - :selection/outgoing    {source-id #{target-id}}
-   - :selection/backlinks   {target-id #{source-id}}
+   - :link/backlinks        {target-id #{source-id}}
    - :highlight/backlinks   {target-id #{source-id}}"
   [db]
   (let [doc-ids (doc-node-ids db)
@@ -102,13 +104,7 @@
     {:ref/outgoing outgoing-ids
      :ref/backlinks-by-kind backlinks-by-kind
      :ref/citations citations
-     :selection/outgoing (into {}
-                               (for [[source-id refs] outgoing-typed]
-                                 [source-id (->> refs
-                                                 (filter #(= :selection (:kind %)))
-                                                 (map :target)
-                                                 set)]))
-     :selection/backlinks (get backlinks-by-kind :selection {})
+     :link/backlinks (get backlinks-by-kind :link {})
      :highlight/backlinks (get backlinks-by-kind :highlight {})}))
 
 ;; =============================================================================
@@ -186,39 +182,18 @@
 ;; Intent Compilers (High-level → Ops)
 ;; =============================================================================
 
-(defn add-selection-op
-  "Return :update-node op to add selection from source to target.
+(defn add-link-op
+  "Return :update-node op to add link from source to target.
    
-   Returns nil if selection already exists."
+   Returns nil if link already exists."
   [db source-id target-id]
   (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
-        selection-ref {:target target-id :kind :selection}
-        exists? (some #(= selection-ref (normalize-ref %)) current-refs)]
+        link-ref {:target target-id :kind :link}
+        exists? (some #(= link-ref (normalize-ref %)) current-refs)]
     (when-not exists?
       {:op :update-node
        :id source-id
-       :props {:refs (conj current-refs selection-ref)}})))
-
-(defn remove-selection-op
-  "Return :update-node op to remove selection from source to target.
-   
-   Returns nil if selection doesn't exist."
-  [db source-id target-id]
-  (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
-        selection-ref {:target target-id :kind :selection}
-        filtered-refs (vec (remove #(= selection-ref (normalize-ref %)) current-refs))]
-    (when (not= (count current-refs) (count filtered-refs))
-      {:op :update-node
-       :id source-id
-       :props {:refs filtered-refs}})))
-
-(defn toggle-selection-op
-  "Return :update-node op to toggle selection from source to target.
-   
-   If selection exists, removes it. Otherwise adds it."
-  [db source-id target-id]
-  (or (remove-selection-op db source-id target-id)
-      (add-selection-op db source-id target-id)))
+       :props {:refs (conj current-refs link-ref)}})))
 
 (defn add-highlight-op
   "Return :update-node op to add highlight from source to target with anchor.
