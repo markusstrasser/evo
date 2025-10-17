@@ -27,6 +27,8 @@ COMMANDS:
     diagnose <error>       Diagnose error using catalog
     api-keys <action>      API key validation (check|validate|required)
     deps <action>          Dependency checks (outdated|verify|tree)
+    env-debug <var>        Debug .env variable hierarchy
+    uv-reinstall           Reinstall UV Python environment
     help                   Show this help
 
 EXAMPLES:
@@ -47,6 +49,12 @@ EXAMPLES:
 
     # Check API keys
     run.sh api-keys check
+
+    # Debug .env variable
+    run.sh env-debug GEMINI_API_KEY
+
+    # Reinstall UV environment
+    run.sh uv-reinstall
 EOF
 }
 
@@ -373,6 +381,13 @@ main() {
         deps)
             shift
             deps_check "${1:-outdated}"
+            ;;
+        env-debug)
+            shift
+            "${SCRIPT_DIR}/lib/env_debug.bb" "$@"
+            ;;
+        uv-reinstall)
+            "${SCRIPT_DIR}/bin/uv-dev-reinstall.sh"
             ;;
         help|--help|-h)
             usage
