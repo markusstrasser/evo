@@ -14,7 +14,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 # Import local modules
@@ -29,6 +29,7 @@ TOURNAMENT_AVAILABLE = shutil.which("tournament") is not None
 def propose(
     description: str,
     provider_names: list[str] = None,
+    constraints_file: Optional[Path] = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """
@@ -40,6 +41,7 @@ def propose(
     Args:
         description: Problem description and context
         provider_names: List of LLM providers to use (default: gemini, codex, grok)
+        constraints_file: Path to constraints file (default: .architect/project-constraints.md)
         verbose: Print progress messages
 
     Returns:
@@ -66,7 +68,7 @@ def propose(
     proposals = []
     with ThreadPoolExecutor(max_workers=len(provider_names)) as executor:
         future_to_provider = {
-            executor.submit(providers.call_provider, name, description): name
+            executor.submit(providers.call_provider, name, description, constraints_file=constraints_file): name
             for name in provider_names
         }
 
@@ -128,6 +130,7 @@ def rank_proposals(
     run_id: str,
     auto_decide: bool = False,
     confidence_threshold: float = 0.8,
+    constraints_file: Optional[Path] = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """
@@ -140,6 +143,7 @@ def rank_proposals(
         run_id: Review run ID
         auto_decide: Automatically approve winner if confidence > threshold
         confidence_threshold: Min confidence for auto-decision (0-1)
+        constraints_file: Path to constraints file (default: .architect/project-constraints.md)
         verbose: Print progress messages
 
     Returns:
@@ -169,26 +173,40 @@ def rank_proposals(
     if len(proposals) < 2:
         raise ValueError(f"Need at least 2 proposals to rank (found {len(proposals)})")
 
-    # Prepare evaluation prompt
-    eval_prompt = f"""This is for a solo developer who "can barely keep track of things" - needs extreme simplicity.
+    # Load constraints
+    constraints = providers.load_constraints(constraints_file)
 
-Project: {run_data.get('description', 'No description')}
+    # Build context
+    context = f"""You are evaluating architectural proposals.
 
-Evaluation criteria (PRIORITY ORDER):
-1. **Simplicity** - Solo dev can understand/debug easily (HIGHEST)
-2. **Debuggability** - Observable state, clear errors, REPL-friendly
-3. **Flexibility** - Can skip stages, run tools independently
-4. **Provenance** - Trace which proposal → spec → implementation
-5. **Quality gates** - Catch bad specs before implementation
+Project context: {constraints['context']}
 
-Red flags:
-- Infinite refinement loops
-- Hidden automation
-- Complex orchestration (hard to debug when stuck)
-- Tight coupling (can't run stages independently)
-- Over-engineering (10+ agents, dynamic planning)
+Problem: {run_data.get('description', 'No description')}"""
 
-Judge which proposal best fits these priorities.
+    # Build constraints section
+    constraints_section = providers.format_constraints_prompt(constraints).replace("<constraints>", "<criteria>").replace("</constraints>", "</criteria>")
+
+    # Prepare evaluation prompt (used by tournament judges)
+    eval_prompt = f"""<context>
+{context}
+</context>
+
+{constraints_section}
+
+<scoring>
+For EACH constraint listed above:
+- Score both proposals: 0.0 (completely fails) to 10.0 (exceptional)
+- Justify score with specific evidence from proposal
+- Use the full scoring range (don't cluster around middle values)
+</scoring>
+
+<verdict>
+Decision logic:
+1. Calculate average score across all MUST requirements for each proposal
+2. Choose the proposal with higher average
+3. Tie-breaking: If averages differ by < 0.5 points, choose the SIMPLER proposal
+4. Document: Explain key differences that drove your decision
+</verdict>
 """
 
     # Try tournament CLI first
@@ -585,6 +603,7 @@ def review_cycle(
     description: str,
     auto_decide: bool = False,
     confidence_threshold: float = 0.85,
+    constraints_file: Optional[Path] = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """
@@ -596,6 +615,7 @@ def review_cycle(
         description: Problem description
         auto_decide: Automatically approve if confidence > threshold
         confidence_threshold: Min confidence for auto-decision (default: 0.85)
+        constraints_file: Path to constraints file (default: .architect/project-constraints.md)
         verbose: Print progress messages
 
     Returns:
@@ -613,7 +633,7 @@ def review_cycle(
     # 1. Generate proposals
     if verbose:
         print("📋 Stage 1/3: Generating proposals")
-    proposal_result = propose(description, verbose=verbose)
+    proposal_result = propose(description, constraints_file=constraints_file, verbose=verbose)
     run_id = proposal_result["run_id"]
 
     # 2. Rank proposals
@@ -623,6 +643,7 @@ def review_cycle(
         run_id=run_id,
         auto_decide=auto_decide,
         confidence_threshold=confidence_threshold,
+        constraints_file=constraints_file,
         verbose=verbose,
     )
 
