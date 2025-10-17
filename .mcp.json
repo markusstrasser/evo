@@ -30,22 +30,6 @@
         "GROQ_API_KEY": "${GROQ_API_KEY}",
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
       }
-    },
-    "architect": {
-      "type": "local",
-      "enabled": true,
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/Users/alien/Projects/architect-mcp",
-        "run",
-        "server.py"
-      ],
-      "env": {
-        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
-        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
-        "GROK_API_KEY": "${GROK_API_KEY}"
-      }
     }
   }
 }
