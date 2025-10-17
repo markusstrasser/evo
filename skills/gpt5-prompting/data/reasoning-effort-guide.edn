@@ -1,0 +1,74 @@
+;; Reasoning effort decision tree for GPT-5
+
+{:reasoning-effort-guide
+ {:minimal
+  {:description "Fastest, least tokens, minimal deliberation"
+   :use-when ["Speed-critical tasks"
+              "Deterministic operations"
+              "Simple extraction"
+              "Format conversion"
+              "Basic classification"]
+   :examples ["Extract JSON from log"
+              "Format code with prettier"
+              "Classify sentiment (positive/negative/neutral)"
+              "Parse structured data"]
+   :cost "Cheapest"
+   :latency "Fastest (~1-2s)"}
+
+  :medium
+  {:description "Balanced deliberation (default)"
+   :use-when ["Standard coding tasks"
+              "Refactoring"
+              "Bug fixes"
+              "General queries"
+              "Most workflows"]
+   :examples ["Implement binary search"
+              "Refactor function for clarity"
+              "Fix type error"
+              "Generate test cases"]
+   :cost "Moderate"
+   :latency "Moderate (~3-5s)"}
+
+  :high
+  {:description "Maximum deliberation, deepest reasoning"
+   :use-when ["Architecture decisions (ALWAYS)"
+              "Code review (ALWAYS)"
+              "Taste/style judgment (ALWAYS)"
+              "Multi-step planning"
+              "Complex problem-solving"
+              "High-stakes decisions"]
+   :examples ["Compare event sourcing vs CQRS"
+              "Review code for maintainability"
+              "Design API architecture"
+              "Evaluate tradeoffs between approaches"]
+   :cost "Most expensive"
+   :latency "Slowest (~10-30s)"}}
+
+ :decision-rules
+ [{:if "Architecture or design decision"
+   :then "ALWAYS use high"}
+
+  {:if "Code review or taste question"
+   :then "ALWAYS use high"}
+
+  {:if "Multi-step planning with dependencies"
+   :then "Use high"}
+
+  {:if "Simple extraction or formatting"
+   :then "Use minimal"}
+
+  {:if "Standard coding or refactoring"
+   :then "Start with medium, upgrade if needed"}
+
+  {:if "Unsure"
+   :then "Default to medium"}]
+
+ :cost-optimization
+ {:strategy "Use minimal/medium when possible, high when necessary"
+  :anti-patterns ["Using high for simple tasks"
+                  "Using minimal for architecture"
+                  "Not setting effort at all (defaults to medium)"]
+  :best-practices ["Profile your tasks by complexity"
+                   "Start medium, upgrade to high if quality insufficient"
+                   "Use minimal for bulk operations"
+                   "Reserve high for critical decisions"]}}
