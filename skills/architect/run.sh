@@ -48,6 +48,9 @@ COMMANDS:
     show <run-id>                   Show run details
     ledger                          Show provenance ledger
 
+OPTIONS (for review/rank/propose):
+    --constraints-file <path>       Path to project constraints file (default: .architect/project-constraints.md)
+
 OPTIONS (for review/rank):
     --auto-decide                   Auto-approve if confidence > threshold
     --confidence <float>            Confidence threshold (default: 0.85/0.80)
@@ -100,27 +103,39 @@ cmd_review() {
 
     local auto_decide=false
     local confidence=0.85
+    local constraints_file=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --auto-decide) auto_decide=true; shift ;;
             --confidence) confidence="$2"; shift 2 ;;
+            --constraints-file) constraints_file="$2"; shift 2 ;;
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
 
     echo -e "${BLUE}🚀 Starting review cycle${NC}"
 
+    # Convert bash boolean to Python boolean
+    local py_auto_decide=$([[ "$auto_decide" == "true" ]] && echo "True" || echo "False")
+
+    # Build constraints_file argument
+    local py_constraints_arg=""
+    if [[ -n "$constraints_file" ]]; then
+        py_constraints_arg=", constraints_file=Path('$constraints_file')"
+    fi
+
     $PYTHON_CMD -c "
 import sys
 sys.path.insert(0, '$LIB_DIR')
 import architect
 import json
+from pathlib import Path
 
 result = architect.review_cycle(
     description='$description',
-    auto_decide=$auto_decide,
-    confidence_threshold=$confidence,
+    auto_decide=$py_auto_decide,
+    confidence_threshold=$confidence$py_constraints_arg,
     verbose=True
 )
 
@@ -137,27 +152,36 @@ cmd_propose() {
     shift
 
     local providers="gemini,codex,grok"
+    local constraints_file=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --providers) providers="$2"; shift 2 ;;
+            --constraints-file) constraints_file="$2"; shift 2 ;;
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
 
     echo -e "${BLUE}📋 Generating proposals${NC}"
 
+    # Build constraints_file argument
+    local py_constraints_arg=""
+    if [[ -n "$constraints_file" ]]; then
+        py_constraints_arg=", constraints_file=Path('$constraints_file')"
+    fi
+
     $PYTHON_CMD -c "
 import sys
 sys.path.insert(0, '$LIB_DIR')
 import architect
 import json
+from pathlib import Path
 
 provider_list = [p.strip() for p in '$providers'.split(',')]
 
 result = architect.propose(
     description='$description',
-    provider_names=provider_list,
+    provider_names=provider_list$py_constraints_arg,
     verbose=True
 )
 
@@ -179,27 +203,39 @@ cmd_rank() {
 
     local auto_decide=false
     local confidence=0.8
+    local constraints_file=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --auto-decide) auto_decide=true; shift ;;
             --confidence) confidence="$2"; shift 2 ;;
+            --constraints-file) constraints_file="$2"; shift 2 ;;
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
 
     echo -e "${BLUE}⚖️  Ranking proposals${NC}"
 
+    # Convert bash boolean to Python boolean
+    local py_auto_decide=$([[ "$auto_decide" == "true" ]] && echo "True" || echo "False")
+
+    # Build constraints_file argument
+    local py_constraints_arg=""
+    if [[ -n "$constraints_file" ]]; then
+        py_constraints_arg=", constraints_file=Path('$constraints_file')"
+    fi
+
     $PYTHON_CMD -c "
 import sys
 sys.path.insert(0, '$LIB_DIR')
 import architect
 import json
+from pathlib import Path
 
 result = architect.rank_proposals(
     run_id='$run_id',
-    auto_decide=$auto_decide,
-    confidence_threshold=$confidence,
+    auto_decide=$py_auto_decide,
+    confidence_threshold=$confidence$py_constraints_arg,
     verbose=True
 )
 
