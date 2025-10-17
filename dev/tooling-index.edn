@@ -1,0 +1,182 @@
+{:version "1.0.0"
+ :description "Toolbox index for all development tooling - MCPs, Skills, CLIs, Scripts"
+
+ ;; === MCPs (Model Context Protocol servers) ===
+ ;; Long-running, stateful services
+ :mcps
+ {:architect
+  {:type :mcp
+   :status :available
+   :path "~/Projects/architect-mcp/"
+   :description "Proposal → tournament → ADR workflow"
+   :config ".mcp.json"
+   :state-dir ".architect/"
+   :triggers ["generate proposals" "run tournament" "create adr"]}
+
+  :tournament
+  {:type :mcp
+   :status :available
+   :path "~/Projects/tournament-mcp/"
+   :description "Bradley-Terry ranking via Swiss-Lite tournaments"
+   :config ".mcp.json"
+   :triggers ["compare items" "rank proposals" "run tournament"]}
+
+  :shadow-cljs
+  {:type :mcp
+   :status :available
+   :description "Clojure/ClojureScript REPL integration"
+   :config ".mcp.json"
+   :stateful true
+   :long-running true}
+
+  :exa
+  {:type :mcp
+   :status :available
+   :description "Third-party code/web search service"
+   :config ".mcp.json"
+   :network-required true}
+
+  :context7
+  {:type :mcp
+   :status :available
+   :description "Library documentation lookup"
+   :network-required true}}
+
+ ;; === Skills (Progressive-disclosure resources) ===
+ ;; Filesystem-based, L1/L2/L3 loading
+ :skills
+ {:research
+  {:type :skill
+   :status :planned
+   :path "skills/research/"
+   :description "Query ~/Projects/best/* repos using repomix + LLM CLIs"
+   :triggers ["research best-of repo" "query reference projects" "explore codebase patterns"]
+   :resources ["repos.edn" "repomix wrapper" "LLM CLI orchestration"]
+   :network-required true  ; Calls LLM CLIs
+   :docs-ref "CLAUDE.md#research-workflow"}
+
+  :visual-validate
+  {:type :skill
+   :status :planned
+   :path "skills/visual/"
+   :description "Canvas/WebGL analysis - geometry, lighting, wave patterns"
+   :triggers ["validate visual output" "analyze canvas" "compare reference"]
+   :resources ["Python analysis scripts" "ML models" "reference data"]
+   :docs-ref "CLAUDE.md#visual-validation"}
+
+  :repl-debug
+  {:type :skill
+   :status :planned
+   :path "skills/repl-debug/"
+   :description "REPL-first debugging patterns and browser console helpers"
+   :triggers ["debug issue" "repl workflow" "browser console"]
+   :resources ["DEBUG helpers" "common patterns" "pitfall catalog"]
+   :docs-ref "CLAUDE.md#debugging-workflow"}
+
+  :dev-diagnostics
+  {:type :skill
+   :status :planned
+   :path "skills/diagnostics/"
+   :description "Environment validation, health checks, error catalog"
+   :triggers ["health check" "validate environment" "diagnose error"]
+   :resources ["health.clj" "error-catalog.edn" "preflight checks"]
+   :docs-ref "CLAUDE.md#dev-tooling"}}
+
+ ;; === CLIs (Command-line tools) ===
+ ;; Simple wrappers, composable in pipes
+ :clis
+ {:gemini
+  {:type :cli
+   :path "gemini"  ; In PATH
+   :description "Google Gemini API wrapper"
+   :network-required true
+   :session-support true
+   :env-vars ["GEMINI_API_KEY"]
+   :use-cases ["high token-count queries" "multi-turn research"]
+   :docs-ref "CLAUDE.md#llm-provider-clis"}
+
+  :codex
+  {:type :cli
+   :path "codex"  ; In PATH
+   :description "OpenAI Codex wrapper"
+   :network-required true
+   :session-support true
+   :env-vars ["OPENAI_API_KEY"]
+   :use-cases ["code review" "taste/style questions" "architecture" "refactoring"]
+   :docs-ref "CLAUDE.md#llm-provider-clis"}
+
+  :grok
+  {:type :cli
+   :path "scripts/grok"
+   :description "xAI Grok API wrapper"
+   :network-required true
+   :env-vars ["GROK_API_KEY"]
+   :docs-ref "CLAUDE.md#llm-provider-clis"}
+
+  :opencode
+  {:type :cli
+   :path "opencode"  ; In PATH
+   :description "DeepSeek OpenCode wrapper"
+   :network-required true
+   :env-vars ["OPENCODE_API_KEY"]}
+
+  :repomix
+  {:type :cli
+   :path "repomix"  ; In PATH
+   :description "Bundle repository for LLM context"
+   :use-cases ["prepare codebase for LLM query" "extract code patterns"]
+   :docs-ref "CLAUDE.md#research-workflow"}}
+
+ ;; === Scripts (Simple automation) ===
+ ;; Keep as bash scripts, don't over-engineer
+ :scripts
+ {:generate-overview
+  {:type :script
+   :path "scripts/generate-overview.sh"
+   :description "Generate AI architectural overviews"
+   :args ["--source" "--project" "--auto" "-t path" "-m model"]
+   :outputs ["dev/overviews/AUTO-SOURCE-OVERVIEW.md" "dev/overviews/AUTO-PROJECT-OVERVIEW.md"]}
+
+  :quick-test
+  {:type :script
+   :path "scripts/quick-test.sh"
+   :description "Run specific test namespace quickly"
+   :args ["[namespace]"]
+   :examples ["scripts/quick-test.sh lab.anki.core-test"]}
+
+  :install-hooks
+  {:type :script
+   :path "scripts/install-hooks.sh"
+   :description "Install git pre-commit hooks"}
+
+  :visual-analyze-reference
+  {:type :script
+   :path "scripts/visual-analyze-reference"
+   :description "Extract wave patterns, lighting, geometry from reference image"
+   :deps ["Python" "OpenCV"]}
+
+  :visual-compare-actionable
+  {:type :script
+   :path "scripts/visual-compare-actionable"
+   :description "Compare reference vs implementation, get specific fixes"
+   :deps ["Python" "OpenCV"]}}
+
+ ;; === Configuration ===
+ :config
+ {:mcp-config ".mcp.json"
+  :claude-config "~/.claude.json"
+  :env-file ".env"
+  :project-docs "CLAUDE.md"
+  :api-keys-required ["GEMINI_API_KEY" "OPENAI_API_KEY" "GROK_API_KEY"]}
+
+ ;; === Migration Status ===
+ :migration
+ {:phase :planning
+  :priorities
+  [{:priority 1 :item :research-skill :reason "Most-used, highest value"}
+   {:priority 2 :item :visual-skill :reason "Complex Python + domain knowledge"}
+   {:priority 3 :item :repl-skill :reason "Low effort, package existing docs"}
+   {:priority 4 :item :diagnostics-skill :reason "Multiple scattered utilities"}]
+  :completed []
+  :in-progress []
+  :planned [:research :visual-validate :repl-debug :dev-diagnostics]}}
