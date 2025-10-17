@@ -336,9 +336,77 @@ For each workflow → Skill conversion:
 - Agent Skills spec: `docs/agent-skills-claude.md`
 - Architectural proposals: Gemini + Codex consensus (2025-10-17)
 
+## Dual Deployment Pattern
+
+**Discovery (2025-10-17):** Some packages benefit from **dual deployment** - both MCP server and CLI.
+
+### Pattern: MCP + CLI from Single Package
+
+**Use case:** Tool is useful for:
+- Interactive agent workflows (MCP)
+- Batch automation/skills (CLI)
+
+**Example: tournament-mcp**
+
+```
+~/Projects/tournament-mcp/
+├── tournament/
+│   ├── cli.py          # CLI entry point
+│   └── eval_server.py  # MCP server entry point
+└── pyproject.toml
+    [project.scripts]
+    tournament = "tournament.cli:main"
+```
+
+**Deployment:**
+
+1. **Global CLI** via uv:
+```bash
+uv tool install ~/Projects/tournament-mcp
+# Creates: ~/.local/bin/tournament
+```
+
+2. **MCP Server** via .mcp.json:
+```json
+{
+  "tournament": {
+    "command": "uv",
+    "args": ["--directory", "/Users/alien/Projects/tournament-mcp", "run", "eval_server.py"]
+  }
+}
+```
+
+**Usage:**
+
+- **Skills/scripts**: `subprocess.run(["tournament", "compare", ...])`
+- **Claude Code**: `mcp__tournament__compare_items(...)`
+
+### Benefits
+
+1. **Single codebase, dual interfaces** - One implementation, multiple access patterns
+2. **Skills don't need MCP running** - CLI works offline in execution container
+3. **Global installation** - One `uv tool install` serves all projects
+4. **Optimal for each context** - MCP for interactive, CLI for batch
+
+### When to Use
+
+**Dual deployment** when service is:
+- Stateful but self-contained (Bradley-Terry state)
+- Useful for both interactive and batch use
+- Complex enough to justify Python package
+
+**MCP only** when:
+- Long-running connections (shadow-cljs REPL)
+- Third-party services (exa, context7)
+
+**CLI only** when:
+- Simple API wrappers (gemini, codex, grok)
+- Stateless transformations (repomix)
+
 ## See Also
 
 - ADR 000: Refs as Derived (plugin pattern)
 - ADR 011: Refs as Policy (typed relationships)
 - Research on progressive disclosure benefits
 - Claude Code documentation on Skills
+- Dual deployment: tournament-mcp implementation
