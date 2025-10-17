@@ -15,48 +15,46 @@
    Returns:
    - :selection/active - #{node-ids} of selected nodes"
   [db]
-  (let [nodes (:nodes db)
-        active-selections (->> nodes
-                               (filter (fn [[_id node]]
-                                         (get-in node [:props :selected?])))
-                               (map first)
-                               set)]
-    {:selection/active active-selections}))
+  {:selection/active
+   (->> (:nodes db)
+        (keep (fn [[id node]]
+                (when (get-in node [:props :selected?])
+                  id)))
+        set)})
 
 ;; =============================================================================
 ;; Intent Compilers
 ;; =============================================================================
 
-(defn toggle-selection-op
+(defn toggle-selection
   "Return :update-node op to toggle selection on node.
 
    Sets :selected? to opposite of current value."
   [db node-id]
-  (let [currently-selected? (get-in db [:nodes node-id :props :selected?])]
+  (let [selected? (get-in db [:nodes node-id :props :selected?])]
     {:op :update-node
      :id node-id
-     :props {:selected? (not currently-selected?)}}))
+     :props {:selected? (not selected?)}}))
 
-(defn select-op
+(defn select
   "Return :update-node op to select node (idempotent)."
-  [db node-id]
+  [_db node-id]
   {:op :update-node
    :id node-id
    :props {:selected? true}})
 
-(defn deselect-op
+(defn deselect
   "Return :update-node op to deselect node (idempotent)."
-  [db node-id]
+  [_db node-id]
   {:op :update-node
    :id node-id
    :props {:selected? false}})
 
-(defn clear-all-selections-ops
+(defn clear-all-selections
   "Return ops to deselect all currently selected nodes."
   [db]
   (let [selected-ids (get-in db [:derived :selection/active] #{})]
-    (vec (for [node-id selected-ids]
-           (deselect-op db node-id)))))
+    (mapv #(deselect db %) selected-ids)))
 
 ;; =============================================================================
 ;; Query Helpers
