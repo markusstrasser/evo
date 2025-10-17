@@ -6,8 +6,7 @@
    
    Note: Selection is handled separately via plugins.selection.core
    which uses boolean :selected? properties (see ADR-012)."
-  (:require [clojure.set :as set]
-            [core.tree :as tree]
+  (:require [core.tree :as tree]
             [plugins.registry :as registry]))
 
 ;; =============================================================================
@@ -41,6 +40,73 @@
   (set (tree/descendants-of db :doc)))
 
 ;; =============================================================================
+;; Derived Indexes - Helper Functions
+;; =============================================================================
+
+(defn- valid-refs-for-node
+  "Extract valid, normalized refs from a node that target doc nodes.
+   Returns set of ref maps with :target and :kind."
+  [node doc-ids]
+  (->> (:refs (:props node))
+       (keep normalize-ref)
+       (filter #(doc-ids (:target %)))
+       set))
+
+(defn- build-outgoing-refs
+  "Build map of source-id to set of typed refs: {source-id #{ref-map}}
+   Only includes refs whose targets exist in doc tree."
+  [nodes doc-ids]
+  (into {}
+        (keep (fn [[source-id node]]
+                (let [refs (valid-refs-for-node node doc-ids)]
+                  (when (seq refs)
+                    [source-id refs]))))
+        nodes))
+
+(defn- refs-to-backlinks-entries
+  "Convert source-id and its refs to backlink entries.
+   Returns seq of [kind target source-id] tuples for grouping."
+  [source-id refs]
+  (for [{:keys [kind target]} refs]
+    [kind target source-id]))
+
+(defn- group-backlinks-by-kind
+  "Transform outgoing refs into backlinks grouped by kind.
+   Returns: {kind {target-id #{source-id}}}"
+  [outgoing-typed]
+  (->> outgoing-typed
+       (mapcat (fn [[source-id refs]]
+                 (refs-to-backlinks-entries source-id refs)))
+       (group-by first) ;; Group by kind
+       (into {}
+             (map (fn [[kind entries]]
+                    [kind (reduce (fn [acc [_ target source]]
+                                    (update acc target (fnil conj #{}) source))
+                                  {}
+                                  entries)])))))
+
+(defn- calculate-citation-counts
+  "Count total citations per target across all ref kinds.
+   Returns: {target-id total-citation-count}"
+  [backlinks-by-kind]
+  (reduce (fn [citations [_kind target-to-sources]]
+            (reduce (fn [acc [target sources]]
+                      (update acc target (fnil + 0) (count sources)))
+                    citations
+                    target-to-sources))
+          {}
+          backlinks-by-kind))
+
+(defn- simplify-outgoing-to-targets
+  "Convert typed outgoing refs to simple target ID sets.
+   Returns: {source-id #{target-id}}"
+  [outgoing-typed]
+  (into {}
+        (map (fn [[source-id refs]]
+               [source-id (set (map :target refs))]))
+        outgoing-typed))
+
+;; =============================================================================
 ;; Derived Indexes
 ;; =============================================================================
 
@@ -58,48 +124,16 @@
         nodes (:nodes db)
 
         ;; Build outgoing refs per source (typed, with full ref data)
-        outgoing-typed
-        (reduce-kv
-         (fn [acc source-id {:keys [props]}]
-           (let [refs (->> (:refs props)
-                           (keep normalize-ref)
-                           (filter #(doc-ids (:target %))))]
-             (if (seq refs)
-               (assoc acc source-id (set refs))
-               acc)))
-         {}
-         nodes)
+        outgoing-typed (build-outgoing-refs nodes doc-ids)
 
-        ;; Build backlinks by kind: {kind {target #{source}}}
-        backlinks-by-kind
-        (reduce-kv
-         (fn [acc source-id refs]
-           (reduce
-            (fn [acc' ref]
-              (let [{:keys [target kind]} ref]
-                (update-in acc' [kind target] (fnil conj #{}) source-id)))
-            acc
-            refs))
-         {}
-         outgoing-typed)
+        ;; Transform into backlinks grouped by kind
+        backlinks-by-kind (group-backlinks-by-kind outgoing-typed)
 
-        ;; Citation counts (count refs across all kinds, from all sources)
-        citations
-        (reduce-kv
-         (fn [acc _kind target-map]
-           (reduce-kv
-            (fn [acc' target sources]
-              (update acc' target (fnil + 0) (count sources)))
-            acc
-            target-map))
-         {}
-         backlinks-by-kind)
+        ;; Calculate citation counts across all kinds
+        citations (calculate-citation-counts backlinks-by-kind)
 
-        ;; Simplified outgoing (just target IDs, no kind)
-        outgoing-ids
-        (into {}
-              (for [[source-id refs] outgoing-typed]
-                [source-id (set (map :target refs))]))]
+        ;; Simplify outgoing to just target IDs
+        outgoing-ids (simplify-outgoing-to-targets outgoing-typed)]
 
     {:ref/outgoing outgoing-ids
      :ref/backlinks-by-kind backlinks-by-kind
@@ -110,6 +144,39 @@
 ;; =============================================================================
 ;; Hygiene: Lint & Scrub
 ;; =============================================================================
+
+(defn- extract-raw-target-ids
+  "Extract all target IDs from a node's refs, regardless of validity.
+   Used for lint checks to find all references."
+  [node]
+  (->> (:refs (:props node))
+       (keep normalize-ref)
+       (map :target)
+       set))
+
+(defn- find-dangling-refs
+  "Find refs that point to non-existent or out-of-scope targets.
+   Returns seq of issue maps."
+  [nodes doc-ids all-node-ids]
+  (for [[source-id node] nodes
+        :let [targets (extract-raw-target-ids node)
+              missing-from-doc (seq (remove doc-ids targets))
+              missing-completely (seq (remove all-node-ids targets))
+              missing (or missing-completely missing-from-doc)]
+        :when missing]
+    {:reason :dangling-ref
+     :source source-id
+     :missing (set missing)}))
+
+(defn- find-circular-refs
+  "Find refs where source references itself.
+   Returns seq of issue maps."
+  [nodes]
+  (for [[source-id node] nodes
+        :let [targets (extract-raw-target-ids node)]
+        :when (contains? targets source-id)]
+    {:reason :circular-ref
+     :node source-id}))
 
 (defn lint
   "Return warnings about ref integrity (no mutation).
@@ -126,35 +193,8 @@
         doc-ids (doc-node-ids db)
         all-node-ids (set (keys nodes))
 
-        ;; Build outgoing from raw props (not derived, to catch all refs)
-        outgoing-raw
-        (reduce-kv
-         (fn [acc source-id {:keys [props]}]
-           (let [refs (->> (:refs props)
-                           (keep normalize-ref)
-                           (map :target)
-                           set)]
-             (if (seq refs)
-               (assoc acc source-id refs)
-               acc)))
-         {}
-         nodes)
-
-        dangling
-        (for [[source-id targets] outgoing-raw
-              :let [missing-from-doc (seq (remove doc-ids targets))
-                    missing-completely (seq (remove all-node-ids targets))
-                    missing (or missing-completely missing-from-doc)]
-              :when missing]
-          {:reason :dangling-ref
-           :source source-id
-           :missing (set missing)})
-
-        circular
-        (for [[source-id targets] outgoing-raw
-              :when (contains? targets source-id)]
-          {:reason :circular-ref
-           :node source-id})]
+        dangling (find-dangling-refs nodes doc-ids all-node-ids)
+        circular (find-circular-refs nodes)]
 
     (vec (concat dangling circular))))
 
@@ -167,15 +207,16 @@
   (let [doc-ids (doc-node-ids db)]
     (vec
      (keep
-      (fn [[source-id {:keys [props]}]]
-        (let [refs (:refs props)
-              refs-normalized (keep normalize-ref refs)
-              refs-valid (filter #(contains? doc-ids (:target %)) refs-normalized)
-              refs-valid-vec (vec refs-valid)]
-          (when (not= (count refs-normalized) (count refs-valid))
+      (fn [[source-id node]]
+        (let [refs (:refs (:props node))
+              valid-refs (->> refs
+                              (keep normalize-ref)
+                              (filter #(contains? doc-ids (:target %)))
+                              vec)]
+          (when (not= (count (keep normalize-ref refs)) (count valid-refs))
             {:op :update-node
              :id source-id
-             :props {:refs refs-valid-vec}})))
+             :props {:refs valid-refs}})))
       (:nodes db)))))
 
 ;; =============================================================================
@@ -189,8 +230,8 @@
   [db source-id target-id]
   (let [current-refs (vec (get-in db [:nodes source-id :props :refs] []))
         link-ref {:target target-id :kind :link}
-        exists? (some #(= link-ref (normalize-ref %)) current-refs)]
-    (when-not exists?
+        link-exists? (some #(= link-ref (normalize-ref %)) current-refs)]
+    (when-not link-exists?
       {:op :update-node
        :id source-id
        :props {:refs (conj current-refs link-ref)}})))
