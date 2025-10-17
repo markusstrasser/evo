@@ -8,6 +8,9 @@ out
 .env
 *.env
 
+src/.ck/*
+**/.ck/*
+.ck/*
 # Python virtual environments
 .venv/
 venv/
