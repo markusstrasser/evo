@@ -87,3 +87,6 @@ llmx/*.egg-info
 llmx/__pycache__/
 llmx/**/__pycache__/
 llmx/**/*.pyc
+
+# Archived files
+.archived/
