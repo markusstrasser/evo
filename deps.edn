@@ -4,48 +4,49 @@
   org.clojure/clojurescript             {:mvn/version "1.12.42"}
   metosin/malli                         {:mvn/version "0.19.1"}
   org.clojure/core.match                {:mvn/version "1.1.0"}
-  thheller/shadow-cljs                  {:mvn/version "3.2.0"}
+  thheller/shadow-cljs                  {:mvn/version "3.2.1"}
   medley/medley                         {:mvn/version "1.4.0"}
 
   datascript/datascript                 {:mvn/version "1.7.5"}
-  com.rpl/specter                       {:mvn/version "1.1.4"}
+  com.rpl/specter                       {:mvn/version "1.1.5"}
   binaryage/devtools                    {:mvn/version "1.0.7"}
   hiccup/hiccup                         {:mvn/version "2.0.0"}
   markdown-to-hiccup/markdown-to-hiccup {:mvn/version "0.6.2"}
   org.clojure/test.check                {:mvn/version "1.1.1"}
   org.clojure/data.json                 {:mvn/version "2.5.1"}
-  org.clojure/core.async                {:mvn/version "1.6.681"}
-  clj-http/clj-http                     {:mvn/version "3.13.0"}
-  garden/garden                         {:mvn/version "1.3.10"}}
+  org.clojure/core.async                {:mvn/version "1.9.808-alpha1"}
+  clj-http/clj-http                     {:mvn/version "3.13.1"}
+  garden/garden                         {:mvn/version "1.3.10"}
+  com.cognitect/transit-cljs            {:mvn/version "0.8.280"}}
 
  :aliases {;; nREPL server for AI to connect to
            ;; Include all paths you want available for development
-           :nrepl {:extra-paths ["src" "test" "dev" "agent"]
-                   :extra-deps  {nrepl/nrepl {:mvn/version "1.3.1"}}
-                   ;; this allows nrepl to interrupt runaway repl evals
-                   :jvm-opts    ["-Djdk.attach.allowAttachSelf"]
-                   :main-opts   ["-m" "nrepl.cmdline" "--port" "7888"]}
+           :nrepl           {:extra-paths ["src" "test" "dev" "agent"]
+                             :extra-deps  {nrepl/nrepl {:mvn/version "1.3.1"}}
+                             ;; this allows nrepl to interrupt runaway repl evals
+                             :jvm-opts    ["-Djdk.attach.allowAttachSelf"]
+                             :main-opts   ["-m" "nrepl.cmdline" "--port" "7888"]}
 
            ;; MCP dev-diagnostics server (minimal deps)
-           :mcp {:extra-paths ["mcp" "dev"]
-                 :extra-deps {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.12.1"}
-                              org.clojure/data.json {:mvn/version "2.5.1"}
-                              org.slf4j/slf4j-simple {:mvn/version "2.0.9"}}
-                 :main-opts  ["-m" "servers.dev-diagnostics"]}
+           :mcp             {:extra-paths ["mcp" "dev"]
+                             :extra-deps  {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.13.0"}
+                                           org.clojure/data.json           {:mvn/version "2.5.1"}
+                                           org.slf4j/slf4j-simple          {:mvn/version "2.1.0-alpha1"}}
+                             :main-opts   ["-m" "servers.dev-diagnostics"]}
 
            ;; Full clojure-mcp server with shadow-cljs support
            :mcp-shadow-dual {:extra-deps {io.github.bhauman/clojure-mcp
                                           {:git/sha "2dd09e595df7bb9b01a7c811955a354777253dc2"}}
-                             :exec-fn clojure-mcp.main/start-mcp-server
-                             :exec-args {:port 55449}} ; shadow-cljs nREPL port from npm run dev
+                             :exec-fn    clojure-mcp.main/start-mcp-server
+                             :exec-args  {:port 55449}} ; shadow-cljs nREPL port from npm run dev
 
            ;; Test runner with property-based testing
-           :test {:extra-paths ["test"]
-                  :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
-                  :main-opts   ["-m" "kaocha.runner"]
-                  :exec-fn     kaocha.runner/exec-fn
-                  :exec-args   {:color? true
-                                :fail-fast? false}}}}
+           :test            {:extra-paths ["test"]
+                             :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+                             :main-opts   ["-m" "kaocha.runner"]
+                             :exec-fn     kaocha.runner/exec-fn
+                             :exec-args   {:color?     true
+                                           :fail-fast? false}}}}
 
 
 

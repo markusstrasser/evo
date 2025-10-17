@@ -2,7 +2,8 @@
   "File System Access API operations"
   (:require [promesa.core :as p]
             [clojure.edn :as edn]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [cognitect.transit :as transit]))
 
 ;; File System Access API wrappers
 
@@ -29,6 +30,18 @@
     (p/do!
      (.write w content)
      (.close w))))
+
+(defn delete-file
+  "Delete a file from the directory"
+  [dir-handle filename]
+  (p/catch
+   (p/let [fh (get-file-handle dir-handle filename false)]
+     (.remove fh)
+     (js/console.log "Deleted file:" filename)
+     true)
+   (fn [e]
+     (js/console.log "Could not delete file:" filename "Error:" e)
+     false)))
 
 ;; Generic file operations with optional transformation
 
@@ -57,6 +70,20 @@
   [dir-handle filename]
   (read-file dir-handle filename edn/read-string))
 
+(defn read-transit-file
+  "Read and parse a Transit file"
+  [dir-handle filename]
+  (p/let [content (read-file dir-handle filename identity)
+          reader (transit/reader :json)]
+    (transit/read reader content)))
+
+(defn write-transit-file
+  "Write data to a Transit file"
+  [dir-handle filename data]
+  (let [writer (transit/writer :json)
+        content (transit/write writer data)]
+    (write-file dir-handle filename content identity)))
+
 (defn write-edn-file
   "Write data to an EDN file"
   [dir-handle filename data]
@@ -77,20 +104,20 @@
 ;; SRS-specific file operations
 
 (defn load-log
-  "Load the event log from log.edn, returning empty vector if file doesn't exist"
+  "Load the event log from Transit format. Returns empty vector if file doesn't exist."
   [dir-handle]
   (p/catch
-   (read-edn-file dir-handle "log.edn")
-   (fn [e]
+   (read-transit-file dir-handle "log.transit.json")
+   (fn [_error]
      (js/console.log "No existing log file, starting fresh")
      [])))
 
 (defn append-to-log
-  "Append events to the log file"
+  "Append events to the log file (writes in Transit format for performance)"
   [dir-handle events]
   (p/let [curr-log (load-log dir-handle)
           combined-log (into curr-log events)]
-    (write-edn-file dir-handle "log.edn" combined-log)))
+    (write-transit-file dir-handle "log.transit.json" combined-log)))
 
 (defn get-subdir
   "Get subdirectory handle"
@@ -116,6 +143,9 @@
         acc
         (p/recur (conj acc (.-value item)))))))
 
+;; Forward declaration for mutual recursion
+(declare load-all-md-files)
+
 (defn- process-md-entry
   "Process a single directory entry (file or subdirectory)"
   [entry path-prefix]
@@ -124,9 +154,14 @@
     (js/console.log "Processing entry:" name "kind:" kind)
     (cond
       (and (= kind "file") (.endsWith name ".md"))
-      (p/let [content (get-file-content entry)]
-        (js/console.log "Loaded .md file:" name)
-        [{:deck (if (seq path-prefix) path-prefix "default")
+      (p/let [content (get-file-content entry)
+              ;; Construct deck name from path + filename (without .md)
+              base-name (str/replace name #"\.md$" "")
+              deck-name (if (seq path-prefix)
+                          (str path-prefix "/" base-name)
+                          base-name)]
+        (js/console.log "Loaded .md file:" name "-> deck:" deck-name)
+        [{:deck deck-name
           :filename name
           :content content}])
 
@@ -195,8 +230,8 @@
   (p/let [entries (collect-async-iterator (.values dir-handle))]
     (->> entries
          (filter #(and (= "file" (.-kind %))
-                      (.endsWith (.-name %) ".md")
-                      (not= "Occlusions.md" (.-name %))))
+                       (.endsWith (.-name %) ".md")
+                       (not= "Occlusions.md" (.-name %))))
          (map #(.-name %))
          (into []))))
 
