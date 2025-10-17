@@ -178,10 +178,10 @@ explore_project() {
 
     case "$model" in
         gemini)
-            pbpaste | gemini -y -p "$query"
+            pbpaste | llmx --provider google "$query"
             ;;
         codex)
-            pbpaste | codex -m gpt-5-codex -c model_reasoning_effort="high" "$query"
+            pbpaste | llmx --provider openai --model gpt-5-codex --reasoning-effort high "$query"
             ;;
         grok)
             pbpaste | llmx --provider xai "$query"
@@ -225,7 +225,7 @@ compare_projects() {
     echo -e "${GREEN}📡 Comparing with $model...${NC}"
     echo ""
 
-    cat "$combined" | codex -m gpt-5-codex -c model_reasoning_effort="high" \\
+    cat "$combined" | llmx --provider openai --model gpt-5-codex --reasoning-effort high \\
         "Compare how these projects handle: $aspect. Focus on differences in approach, tradeoffs, and best practices."
 
     rm -f "$combined"
