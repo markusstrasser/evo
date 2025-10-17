@@ -68,7 +68,7 @@
 (deftest toggle-selection-test
   (testing "Toggle adds selection when not selected"
     (let [db0 (create-base-db)
-          op (sel/toggle-selection-op db0 "doc-a")
+          op (sel/toggle-selection db0 "doc-a")
           db1 (interpret-ops db0 [op])]
       (is (= true (get-in db1 [:nodes "doc-a" :props :selected?])))
       (is (= #{"doc-a"} (get-in db1 [:derived :selection/active])))))
@@ -78,7 +78,7 @@
           db1 (interpret-ops db0 [{:op :update-node
                                    :id "doc-a"
                                    :props {:selected? true}}])
-          op (sel/toggle-selection-op db1 "doc-a")
+          op (sel/toggle-selection db1 "doc-a")
           db2 (interpret-ops db1 [op])]
       (is (= false (get-in db2 [:nodes "doc-a" :props :selected?])))
       (is (= #{} (get-in db2 [:derived :selection/active]))))))
@@ -86,9 +86,9 @@
 (deftest toggle-idempotence-test
   (testing "Toggle twice returns to original state"
     (let [db0 (create-base-db)
-          op1 (sel/toggle-selection-op db0 "doc-a")
+          op1 (sel/toggle-selection db0 "doc-a")
           db1 (interpret-ops db0 [op1])
-          op2 (sel/toggle-selection-op db1 "doc-a")
+          op2 (sel/toggle-selection db1 "doc-a")
           db2 (interpret-ops db1 [op2])]
       ;; After two toggles, both should be falsey (nil or false)
       (is (not (get-in db0 [:nodes "doc-a" :props :selected?])))
@@ -100,9 +100,9 @@
 (deftest select-op-idempotent-test
   (testing "select-op is idempotent"
     (let [db0 (create-base-db)
-          op1 (sel/select-op db0 "doc-a")
+          op1 (sel/select db0 "doc-a")
           db1 (interpret-ops db0 [op1])
-          op2 (sel/select-op db1 "doc-a")
+          op2 (sel/select db1 "doc-a")
           db2 (interpret-ops db1 [op2])]
       (is (= true (get-in db1 [:nodes "doc-a" :props :selected?])))
       (is (= true (get-in db2 [:nodes "doc-a" :props :selected?]))))))
@@ -113,9 +113,9 @@
           db1 (interpret-ops db0 [{:op :update-node
                                    :id "doc-a"
                                    :props {:selected? true}}])
-          op1 (sel/deselect-op db1 "doc-a")
+          op1 (sel/deselect db1 "doc-a")
           db2 (interpret-ops db1 [op1])
-          op2 (sel/deselect-op db2 "doc-a")
+          op2 (sel/deselect db2 "doc-a")
           db3 (interpret-ops db2 [op2])]
       (is (= false (get-in db2 [:nodes "doc-a" :props :selected?])))
       (is (= false (get-in db3 [:nodes "doc-a" :props :selected?]))))))
@@ -129,7 +129,7 @@
                                   {:op :update-node
                                    :id "doc-b"
                                    :props {:selected? true}}])
-          clear-ops (sel/clear-all-selections-ops db1)
+          clear-ops (sel/clear-all-selections db1)
           db2 (interpret-ops db1 clear-ops)]
       (is (= 2 (count (get-in db1 [:derived :selection/active]))))
       (is (= #{} (get-in db2 [:derived :selection/active]))))))
@@ -168,7 +168,7 @@
   (testing "Selection does not affect structural indexes"
     (let [db0 (create-base-db)
           struct0 (select-keys (:derived db0) [:parent-of :index-of :pre :post])
-          db1 (interpret-ops db0 [(sel/select-op db0 "doc-a")
-                                  (sel/select-op db0 "doc-b")])
+          db1 (interpret-ops db0 [(sel/select db0 "doc-a")
+                                  (sel/select db0 "doc-b")])
           struct1 (select-keys (:derived db1) [:parent-of :index-of :pre :post])]
       (is (= struct0 struct1)))))
