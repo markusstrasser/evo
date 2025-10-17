@@ -1,15 +1,9 @@
-# REPL-First Debugging Skill
-
-<!-- L1: Metadata (always loaded, ~100 tokens) -->
-**Name:** REPL-First Debugging
-**Description:** Interactive Clojure/ClojureScript debugging workflow - REPL-first hypothesis testing, browser console patterns, fast iteration loop.
-**Triggers:** debug, repl, troubleshoot, browser console, fast debugging
-**Network Required:** No
-**Resources:** DEBUG helpers, patterns, pitfalls catalog
-
+---
+name: REPL-First Debugging
+description: REPL-first debugging workflow for ClojureScript. Test hypotheses in REPL before editing code (30s vs 5+ min per bug). Includes browser console helpers (DEBUG.summary, DEBUG.events, DEBUG.inspectEvents). Triggers on debug, repl, troubleshoot, browser console, fast debugging. No network required.
 ---
 
-<!-- L2: Instructions (loaded when skill triggered, <5k tokens) -->
+# REPL-First Debugging
 
 ## Overview
 
@@ -459,6 +453,52 @@ DEBUG.dueCards().length  // Should match expected
    - Look for "🔧 Loading debug helpers..."
    - Check for compilation errors
    - Look for shadow-cljs warnings
+
+## Configuration
+
+### Browser Helpers
+
+The DEBUG namespace is automatically loaded in dev mode via `dev/debug.cljs`. It provides:
+- State overview functions (summary, events, cards)
+- Event status inspection (inspectEvents, activeEvents)
+- Stack inspection (undoStack, redoStack)
+- Utilities (reload)
+
+### Debugging Patterns
+
+| Pattern | Description | Time Saved |
+|---------|-------------|------------|
+| Reproduce First | Test in REPL before editing | 10x faster |
+| Async Iteration | Check for Promise returns | Immediate fix |
+| State Exploration | Use subscriptions to inspect | Real-time insight |
+| Function Testing | Test with real data first | Avoid wrong guesses |
+
+### Common Pitfalls
+
+| Pitfall | Symptom | Solution |
+|---------|---------|----------|
+| Browser Cache | Changes not appearing | DEBUG.reload() |
+| Async Iteration | Array.from returns [] | Use for-await |
+| Event Sourcing | Events missing in UI | DEBUG.inspectEvents() |
+| Stale Code | Old code still running | Check .toString() |
+
+## Workflow Summary
+
+| Step | Action | Time |
+|------|--------|------|
+| 1. Reproduce | Test in REPL/console | 10-30s |
+| 2. Hypothesis | Try fixes interactively | 10-30s |
+| 3. Apply | Update code once | 10s |
+| 4. Verify | Final integration test | 10s |
+| **Total** | **REPL-first approach** | **~1 min** |
+| vs Code-first | Edit → compile → reload × 5+ | **5+ min** |
+
+## Resources (Level 3)
+
+- `run.sh` - Show debugging guides, patterns, browser helpers
+- `dev/debug.cljs` - Browser console DEBUG helpers
+- `scripts/quick-test.sh` - Fast test runner
+- `dev/repl/session.clj` - REPL session helpers
 
 ## See Also
 

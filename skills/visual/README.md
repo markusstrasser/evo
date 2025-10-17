@@ -2,6 +2,15 @@
 
 Analyze and compare canvas/WebGL visual outputs - extract patterns, get actionable fixes.
 
+## Full Documentation
+
+See **[SKILL.md](SKILL.md)** for complete documentation including:
+- Two-stage workflow (analyze → compare)
+- Configuration (thresholds, tolerances, output formats)
+- Examples (waves, lighting, geometry)
+- Tips and troubleshooting
+- CI/CD integration
+
 ## Quick Start
 
 ```bash
@@ -46,9 +55,3 @@ Fixes:
   ✓ Brightness OK (within 10%)
   ✓ Overall match good
 ```
-
-## See Also
-
-- Full docs: `SKILL.md`
-- Scripts: `../../scripts/visual-*`
-- Project docs: `../../CLAUDE.md#visual-validation`

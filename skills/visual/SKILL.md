@@ -1,15 +1,9 @@
-# Visual Validation Skill
-
-<!-- L1: Metadata (always loaded, ~100 tokens) -->
-**Name:** Visual Validation Toolkit
-**Description:** Analyze and compare visual outputs from canvas/WebGL - extract wave patterns, lighting, geometry, and get actionable fixes.
-**Triggers:** validate visual, analyze canvas, compare reference, visual output, geometry analysis
-**Network Required:** No
-**Resources:** Python scripts, OpenCV, analysis tools
-
+---
+name: Visual Validation Toolkit
+description: Analyze and compare visual outputs from canvas/WebGL. Extract wave patterns, lighting, geometry, and get actionable fixes (e.g., "reduce lighting by 40%"). Triggers on visual, canvas, webgl, validate, compare, analyze. Requires Python3, OpenCV, numpy, pillow. No network required.
 ---
 
-<!-- L2: Instructions (loaded when skill triggered, <5k tokens) -->
+# Visual Validation Toolkit
 
 ## Overview
 
@@ -26,6 +20,24 @@ Use this skill when you need to:
 - Get specific parameter adjustments (e.g., "reduce lighting by 40%")
 - Analyze geometry (ring count, spacing, radius)
 - Compare brightness, contrast, color distribution
+
+## Prerequisites
+
+**Required:**
+- Python 3.7+
+- OpenCV (`opencv-python`)
+- NumPy
+- Pillow (PIL)
+
+**Install:**
+```bash
+pip3 install opencv-python numpy pillow
+```
+
+**Verify:**
+```bash
+./run.sh check-env
+```
 
 ## Workflow
 
@@ -117,13 +129,36 @@ Fixes needed:
 ./run.sh batch compare references/ implementations/
 ```
 
-## Scripts Wrapped
+## Configuration
 
-The skill orchestrates these existing scripts:
+### Analysis Settings
 
-- `scripts/visual-analyze-reference` - OpenCV pattern extraction
-- `scripts/visual-compare-actionable` - Diff + fixes generation
-- Python analysis scripts in `scripts/` (basic + ML stages)
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Wave detection threshold | 0.5 | Sensitivity for wave detection |
+| Min ring count | 5 | Minimum rings to detect |
+| Max ring count | 50 | Maximum rings to detect |
+| Brightness tolerance | 5% | Acceptable brightness variance |
+| Contrast tolerance | 10% | Acceptable contrast variance |
+| Position tolerance | 2.0px | Acceptable position drift |
+| Size tolerance | 5% | Acceptable size variance |
+
+### Comparison Thresholds
+
+| Threshold | Value | Meaning |
+|-----------|-------|---------|
+| Fail | >15% | Significant difference, fix required |
+| Warn | >5% | Moderate difference, review recommended |
+| Pass | <2% | Acceptable difference |
+
+### Output Formats
+
+| Format | Use For | Features |
+|--------|---------|----------|
+| text | Human reading | Emoji, percentages, fixes |
+| json | Automation, CI/CD | Parseable, metadata |
+| markdown | Documentation | Summary, details, formatting |
+| yaml | Config-style output | Structured, readable |
 
 ## Output Formats
 
@@ -168,52 +203,6 @@ Fixes:
 ### Fixes Required
 - ❌ **Brightness**: Scene 40% too bright → `dir-light1.intensity *= 0.71`
 - ✅ **Geometry**: Matches reference
-```
-
-## Python Environment
-
-**Required packages:**
-- OpenCV (`cv2`)
-- NumPy
-- Pillow (PIL)
-
-**Install:**
-```bash
-pip install opencv-python numpy pillow
-```
-
-**Verify:**
-```bash
-./run.sh check-env
-```
-
-## Configuration
-
-Edit `config.edn` to customize:
-
-```clojure
-{:analysis
- {:wave-detection
-  {:threshold 0.5          ; Sensitivity for wave detection
-   :min-ring-count 5       ; Minimum rings to detect
-   :max-ring-count 50}     ; Maximum rings to detect
-
-  :lighting
-  {:brightness-tolerance 0.05  ; 5% acceptable variance
-   :contrast-tolerance 0.10}
-
-  :geometry
-  {:position-tolerance 2.0     ; 2px acceptable drift
-   :size-tolerance 0.05}}      ; 5% size variance
-
- :comparison
- {:fail-threshold 0.15          ; >15% diff = fail
-  :warn-threshold 0.05          ; >5% diff = warn
-  :output-format :text}         ; :text | :json | :yaml | :markdown
-
- :paths
- {:python-scripts "../../scripts/"
-  :cache-dir ".cache/visual/"}}
 ```
 
 ## Examples
@@ -282,7 +271,6 @@ Edit `config.edn` to customize:
 3. **Adjust tolerances for your use case**
    - Tighter tolerances for precise graphics
    - Looser for stylized/approximate rendering
-   - Configure in `config.edn`
 
 4. **Use batch mode for regression testing**
    - Catch visual regressions early
@@ -298,27 +286,25 @@ Edit `config.edn` to customize:
 
 - **Python not installed**: Check with `./run.sh check-env`
 - **Images different sizes**: Will resize automatically but may affect measurements
-- **No clear patterns**: Increase `threshold` in config
-- **False positives**: Tighten tolerances or use specific `--aspect`
+- **No clear patterns**: Increase threshold setting
+- **False positives**: Use specific `--aspect` or tighten tolerances
 
 ## Troubleshooting
 
 **"OpenCV not found"**
 ```bash
-pip install opencv-python
-# or
 pip3 install opencv-python
 ```
 
 **"Analysis produces no results"**
 - Check image is not completely black/white
-- Try lowering `threshold` in config
+- Try lowering threshold
 - Ensure image has detectable patterns
 
 **"Fixes are wildly off"**
 - Verify reference and implementation are same resolution
 - Check units match (pixels vs relative)
-- Adjust tolerances in config
+- Adjust tolerances
 
 **"Batch mode fails midway"**
 - Check all images readable
@@ -352,19 +338,29 @@ pip3 install opencv-python
 ### Quick Check During Development
 
 ```bash
-# Add to REPL session or watch script
+# Watch for changes
 watch -n 5 './skills/visual/run.sh compare reference.png output/latest.png'
 ```
 
-## Data Resources
+## Scripts Wrapped
 
+The skill orchestrates these existing scripts:
+- `scripts/visual-analyze-reference` - OpenCV pattern extraction
+- `scripts/visual-compare-actionable` - Diff + fixes generation
+- Python analysis scripts in `scripts/` (basic + ML stages)
+
+## Resources (Level 3)
+
+- `run.sh` - Main CLI wrapper with analyze, compare, batch commands
 - `data/test-references/` - Example reference images
 - `data/test-outputs/` - Example outputs for testing
 - `data/calibration/` - Calibration images for tolerance tuning
+- `scripts/visual-analyze-reference` - Reference analysis script
+- `scripts/visual-compare-actionable` - Comparison script
 
 ## See Also
 
-- Project docs: `CLAUDE.md#visual-validation`
-- Scripts: `scripts/visual-analyze-reference`, `scripts/visual-compare-actionable`
-- Full toolkit docs: `scripts/README-VISUAL-VALIDATION.md`
-- Architecture: `docs/VISUAL_VALIDATION.md`
+- Project docs: `../../CLAUDE.md#visual-validation`
+- Scripts: `../../scripts/visual-analyze-reference`, `../../scripts/visual-compare-actionable`
+- Full toolkit docs: `../../scripts/README-VISUAL-VALIDATION.md`
+- Architecture: `../../docs/VISUAL_VALIDATION.md`
