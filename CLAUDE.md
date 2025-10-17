@@ -89,8 +89,6 @@ For dev tooling and infrastructure: keep it simple - I'm a solo developer using 
 - Progressive disclosure: L1 (metadata) → L2 (instructions) → L3 (resources)
 - No EDN config files (migrated 2025-10-17)
 
-**See also:** `dev/tooling-index.edn` for complete tool registry (MCPs, Skills, CLIs, Scripts)
-
 ### Environment Validation & Dev Diagnostics
 
 **Use the Dev Diagnostics Skill for all environment checks:**
@@ -303,35 +301,25 @@ DEBUG.reload()        // Hard reload
 - Prefer synchronous/pure patterns unless async explicitly justified
 - Skip tests for docs-only changes; note "Tests: not run"
 
-### Toolbox Index
+### Skills Index
 
-**Complete tool registry:** `dev/tooling-index.edn`
+**All available skills** (located in `skills/` directory):
 
-This EDN file maps all development tools (MCPs, Skills, CLIs, Scripts) with:
-- Natural language triggers
-- Tool descriptions and purposes
-- Paths and configurations
-- Migration history (285 lines of config.edn removed, 2025-10-17)
+| Skill | Path | Triggers | Description |
+|-------|------|----------|-------------|
+| **Research** | `skills/research/` | research, best-of, patterns | Query 40+ Clojure/ClojureScript repos using llmx |
+| **Diagnostics** | `skills/diagnostics/` | health, preflight, cache, diagnose | Environment validation, health checks, cache management |
+| **REPL Debug** | `skills/repl-debug/` | debug, repl, troubleshoot | REPL-first debugging workflow with browser helpers |
+| **Visual** | `skills/visual/` | visual, canvas, validate, compare | Canvas/WebGL analysis with actionable fixes |
+| **Architect** | `skills/architect/` | propose, architecture, adr, review | Architectural proposals → tournament → ADR workflow |
+| **GPT-5 Prompting** | `skills/gpt5-prompting/` | - | Best practices documentation for GPT-5 API/CLI usage |
 
-**Skills Architecture (Post-Migration):**
+**Skills Architecture (Post-Migration 2025-10-17):**
 - All skills use YAML frontmatter only (official Claude Skills standard)
 - Configuration stored as markdown tables in SKILL.md
-- No separate config.edn files
-- Research skill uses llmx unified CLI (replaced vendor-specific CLIs where appropriate)
-
-**Usage:**
-```clojure
-;; Load index
-(def idx (-> "dev/tooling-index.edn" slurp edn/read-string))
-
-;; Find research tools
-(keys (:skills idx))
-;=> (:research :visual-validate :repl-debug :dev-diagnostics :architect)
-
-;; Check migration status
-(get-in idx [:migration :totals])
-;=> {:config-lines-removed 285, :files-deleted 5, :skills-migrated 6}
-```
+- No separate config.edn files (285 lines removed)
+- Research skill uses llmx unified CLI for all providers
+- Progressive disclosure maintained: L1 (metadata) → L2 (instructions) → L3 (resources)
 
 ### Quick Reference Index
 
