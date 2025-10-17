@@ -78,7 +78,7 @@ echo "Working in: $TMPDIR"
 # Generate proposals in parallel
 echo "🤖 Generating proposals from 3 LLM providers..."
 
-echo "$PROMPT" | /Users/alien/scripts/grok -m grok-4-latest > "$TMPDIR/proposal-grok.txt" 2>&1 &
+echo "$PROMPT" | aictl --provider xai -m grok-4-latest --no-stream > "$TMPDIR/proposal-grok.txt" 2>&1 &
 PID_GROK=$!
 
 echo "$PROMPT" | gemini --model gemini-2.5-flash -y > "$TMPDIR/proposal-gemini.txt" 2>&1 &
