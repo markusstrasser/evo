@@ -159,13 +159,34 @@ codex --resume    # Resume last session
 # Sessions stored in: ~/.codex/sessions/*.jsonl
 ```
 
-**Grok** (curl wrapper at `scripts/grok`):
+**llmx** - Unified API wrapper (100+ providers via LiteLLM):
 ```bash
-scripts/grok -p "question"
-scripts/grok -m grok-4-latest -p "question"
-echo "question" | scripts/grok
+# Default provider (Google)
+llmx "your prompt"
 
-# Requires: export XAI_API_KEY="your-key"
+# Specific providers
+llmx --provider xai "prompt"      # Grok
+llmx --provider google "prompt"   # Gemini
+llmx --provider openai "prompt"   # OpenAI
+llmx --provider anthropic "prompt" # Claude
+
+# With specific model
+llmx --provider xai -m grok-4-latest "prompt"
+
+# From stdin
+echo "prompt" | llmx --provider xai
+
+# Compare providers
+llmx --compare "Which is better: tabs or spaces?"
+llmx --compare --providers google,openai,xai "prompt"
+
+# Non-streaming for scripts
+llmx --provider xai --no-stream "prompt" > output.txt
+
+# Debug logging
+llmx --debug "prompt" 2>&1 | grep "🔍"
+
+# Requires: API keys in .env (GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY, etc.)
 ```
 
 **Multi-turn Research Pattern**:
