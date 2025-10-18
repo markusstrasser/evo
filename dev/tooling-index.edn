@@ -2,157 +2,109 @@
  :description "Toolbox index for all development tooling - MCPs, Skills, CLIs, Scripts"
 
  ;; === MCPs (Model Context Protocol servers) ===
- ;; Long-running, stateful services
  :mcps
  {:tournament
   {:type :mcp
-   :status :available
-   :deployment :dual  ; Both MCP server AND global CLI via uv
    :path "~/Projects/tournament-mcp/"
    :description "Bradley-Terry ranking via Swiss-Lite tournaments"
-   :cli-command "tournament"  ; Available as CLI: uv tool install ~/Projects/tournament-mcp
-   :mcp-config ".mcp.json"    ; Also runs as MCP server
    :triggers ["compare items" "rank proposals" "run tournament"]
-   :note "Dual deployment: MCP for Claude, CLI for skills/scripts"}
+   :note "Also available as CLI"}
 
   :shadow-cljs
   {:type :mcp
-   :status :available
    :description "Clojure/ClojureScript REPL integration"
-   :config ".mcp.json"
-   :stateful true
-   :long-running true}
+   :stateful true}
 
   :exa
   {:type :mcp
-   :status :available
    :description "Third-party code/web search service"
-   :config ".mcp.json"
    :network-required true}
 
   :context7
   {:type :mcp
-   :status :available
    :description "Library documentation lookup"
    :network-required true}}
 
  ;; === Skills (Progressive-disclosure resources) ===
- ;; Filesystem-based, L1/L2/L3 loading
  :skills
  {:architect
-  {:type :skill
-   :status :available
-   :path "skills/architect/"
+  {:path "skills/architect/"
    :description "Architectural proposals → tournament → ADR workflow"
-   :triggers ["propose" "architecture" "adr" "design decision" "review" "tournament"]
-   :resources ["tournament-mcp integration" "LLM CLI orchestration" "ADR templates"]
-   :network-required true  ; Calls LLM CLIs
-   :state-dir ".architect/"
-   :docs-ref "CLAUDE.md#agent-skills-overview"
-   :note "Migrated from MCP to Skill (2025-10-17)"}
+   :triggers ["propose" "architecture" "adr" "design decision"]
+   :network-required true}
 
   :research
-  {:type :skill
-   :status :available
-   :path "skills/research/"
+  {:path "skills/research/"
    :description "Query ~/Projects/best/* repos using repomix + LLM CLIs"
-   :triggers ["research best-of repo" "query reference projects" "explore codebase patterns"]
-   :resources ["repos.edn" "repomix wrapper" "LLM CLI orchestration"]
-   :network-required true  ; Calls LLM CLIs
-   :docs-ref "CLAUDE.md#research-workflow"}
+   :triggers ["research best-of repo" "query reference projects"]
+   :network-required true}
 
   :visual-validate
-  {:type :skill
-   :status :available
-   :path "skills/visual/"
+  {:path "skills/visual/"
    :description "Canvas/WebGL analysis - geometry, lighting, wave patterns"
-   :triggers ["validate visual output" "analyze canvas" "compare reference"]
-   :resources ["Python analysis scripts" "ML models" "reference data"]
-   :docs-ref "CLAUDE.md#visual-validation"}
+   :triggers ["validate visual output" "analyze canvas"]}
 
   :repl-debug
-  {:type :skill
-   :status :available
-   :path "skills/repl-debug/"
+  {:path "skills/repl-debug/"
    :description "REPL-first debugging patterns and browser console helpers"
-   :triggers ["debug issue" "repl workflow" "browser console"]
-   :resources ["DEBUG helpers" "common patterns" "pitfall catalog"]
-   :docs-ref "CLAUDE.md#debugging-workflow"}
+   :triggers ["debug issue" "repl workflow"]}
 
   :dev-diagnostics
-  {:type :skill
-   :status :available
-   :path "skills/diagnostics/"
+  {:path "skills/diagnostics/"
    :description "Environment validation, health checks, error catalog"
-   :triggers ["health check" "validate environment" "diagnose error"]
-   :resources ["health.clj" "error-catalog.edn" "preflight checks"]
-   :docs-ref "CLAUDE.md#dev-tooling"}}
+   :triggers ["health check" "validate environment"]}}
 
  ;; === CLIs (Command-line tools) ===
  ;; Simple wrappers, composable in pipes
  :clis
  {:gemini
   {:type :cli
-   :path "gemini"  ; In PATH
-   :description "Google Gemini API wrapper"
+   :path "gemini"
+   :description "Google Gemini API wrapper (human interactive use)"
    :network-required true
    :session-support true
    :env-vars ["GEMINI_API_KEY"]
-   :use-cases ["HUMAN INTERACTIVE USE ONLY" "high token-count queries" "multi-turn research" "MCP-aware queries"]
-   :note "NOT for agent scripts (use llmx)"
-   :docs-ref "CLAUDE.md#unified-toolchain"}
+   :use-cases ["high token-count queries" "multi-turn research" "MCP-aware queries"]}
 
   :codex
   {:type :cli
-   :path "codex"  ; In PATH
-   :description "OpenAI Codex wrapper"
+   :path "codex"
+   :description "OpenAI Codex wrapper (human interactive use)"
    :network-required true
    :session-support true
    :env-vars ["OPENAI_API_KEY"]
-   :use-cases ["HUMAN INTERACTIVE USE ONLY" "code review" "taste/style questions" "architecture" "reasoning_effort=high"]
-   :note "NOT for agent scripts (use llmx)"
-   :docs-ref "CLAUDE.md#unified-toolchain"}
+   :use-cases ["code review" "taste/style questions" "architecture" "reasoning_effort=high"]}
 
   :llmx
   {:type :cli
-   :path "llmx"  ; In PATH via uv tool install
-   :description "Unified API wrapper for 100+ LLM providers via LiteLLM"
-   :status :PRIMARY-CLI-FOR-AGENT-SCRIPTS
-   :deployment :global-uv
+   :path "llmx"
+   :description "Unified LLM CLI for agent scripts (100+ providers via LiteLLM)"
    :network-required true
-   :providers ["google" "openai" "anthropic" "xai" "deepseek" "100+ via LiteLLM"]
-   :features ["reasoning-effort support for OpenAI o1/GPT-5" "provider comparison" "streaming"]
+   :providers ["google" "openai" "anthropic" "xai" "deepseek" "100+ others"]
+   :features ["reasoning-effort support" "provider comparison" "streaming"]
    :env-vars ["GEMINI_API_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "XAI_API_KEY" "DEEPSEEK_API_KEY"]
-   :use-cases ["ALL agent scripts" "skills orchestration" "provider comparison" "reasoning-effort queries"]
-   :replaces ["Vendor CLI calls in code-research skill" "Custom providers.py in architect skill" "scripts/grok" "scripts/.archived-gemini-api" "scripts/.archived-openai"]
-   :install "uv tool install ~/Projects/llmx"
-   :also-importable true  ; Can be imported in Python like tournament
-   :migration-date "2025-10-17"
-   :docs-ref "CLAUDE.md#unified-toolchain"}
+   :use-cases ["all agent scripts" "skills orchestration"]
+   :install "uv tool install ~/Projects/llmx"}
 
   :opencode
   {:type :cli
-   :path "opencode"  ; In PATH
+   :path "opencode"
    :description "DeepSeek OpenCode wrapper"
    :network-required true
    :env-vars ["OPENCODE_API_KEY"]}
 
   :repomix
   {:type :cli
-   :path "repomix"  ; In PATH
+   :path "repomix"
    :description "Bundle repository for LLM context"
-   :use-cases ["prepare codebase for LLM query" "extract code patterns"]
-   :docs-ref "CLAUDE.md#research-workflow"}
+   :use-cases ["prepare codebase for LLM query"]}
 
   :tournament
   {:type :cli
-   :path "tournament"  ; In PATH via uv tool install
-   :description "Tournament evaluation CLI (also available as MCP)"
-   :deployment :global-uv
-   :use-cases ["rank proposals in architect skill" "batch comparisons"]
-   :also-available-as :mcp
-   :install "uv tool install ~/Projects/tournament-mcp"
-   :docs-ref "CLAUDE.md#mcps"}}
+   :path "tournament"
+   :description "Tournament evaluation CLI (also MCP)"
+   :use-cases ["rank proposals" "batch comparisons"]
+   :install "uv tool install ~/Projects/tournament-mcp"}}
 
  ;; === Scripts (Simple automation) ===
  ;; Keep as bash scripts, don't over-engineer
@@ -193,25 +145,21 @@
  {:babashka
   {:type :task-runner
    :config "bb.edn"
-   :status :PRIMARY
    :tasks [:lint :check :test :fix-cache
            :health :preflight :env-debug :research
            :dev :repl-health :docs-overview :install-hooks]
-   :note "Unified Clojure-native task runner (created 2025-10-17)"
    :docs-ref "CLAUDE.md#unified-toolchain"}
 
   :npm
   {:type :task-runner
    :config "package.json"
-   :status :LEGACY
-   :scripts [:lint :check :test "fix:cache" "agent:health" "agent:preflight"]
-   :note "Still available, but bb tasks preferred"}}
+   :scripts [:dev :watch:cljs :watch:css :build "kb:thin"]
+   :note "Build/dev tooling only"}}
 
  ;; === REPL ===
  :repl
  {:namespace 'repl
   :path "dev/repl/init.clj"
-  :status :CONSOLIDATED
   :entry-point 'go!
   :functions
   {:go! "One-command startup: connect, load namespaces, health check"
@@ -224,7 +172,6 @@
    :restore-session! "Restore REPL session"
    :cljs! "Evaluate ClojureScript in browser"
    :clj! "Evaluate Clojure on JVM"}
-  :migration "Consolidated from dev/repl/init.clj + dev/repl/session.clj (2025-10-17)"
   :docs-ref "CLAUDE.md#dev-tooling"}
 
  ;; === Configuration ===
@@ -233,70 +180,4 @@
   :claude-config "~/.claude.json"
   :env-file ".env"
   :project-docs "CLAUDE.md"
-  :api-keys-required ["GEMINI_API_KEY" "OPENAI_API_KEY" "XAI_API_KEY"]}
-
- ;; === Migration Status ===
- :migration
- {:phase :unification-complete
-  :date-completed "2025-10-17"
-  :summary "Toolchain unified around Skills model with llmx, bb.edn, and consolidated REPL"
-  :changes
-  [{:type :config-consolidation
-    :description "Deleted all config.edn files (285 lines)"
-    :rationale "Official Claude Skills only support YAML frontmatter (name + description)"}
-   {:type :cli-unification
-    :description "ALL agent scripts now use llmx (unified LLM CLI)"
-    :details ["Added reasoning-effort support to llmx"
-              "code-research skill: replaced gemini/codex → llmx"
-              "architect skill: replaced custom providers.py → llmx CLI calls"
-              "Vendor CLIs (gemini/codex) reserved for human interactive use only"]}
-   {:type :repl-consolidation
-    :description "Merged dev/repl/session.clj into init.clj"
-    :details ["Single entry point: (repl/go!)"
-              "Idempotent startup: connect + load + health check"
-              "Deleted dev/repl/session.clj"]}
-   {:type :task-runner-unification
-    :description "Created bb.edn (Babashka task runner)"
-    :details ["Unified interface for quality gates, skills, and dev tasks"
-              "Replaces npm for common workflows"
-              "Clojure-native, works with project deps"]}
-   {:type :diagnostics-consolidation
-    :description "Absorbed standalone scripts into diagnostics skill"
-    :details ["bin/debug-env.sh → diagnostics env-debug command"
-              "bin/uv-dev-reinstall.sh → diagnostics uv-reinstall command"
-              "Scripts still in bin/, invoked via skill commands"]}
-   {:type :documentation-refactor
-    :description "Refactored CLAUDE.md from 405 → 291 lines (28% reduction)"
-    :details ["Removed inlined workflow docs"
-              "Links to SKILL.md files for progressive disclosure"
-              "Concise entry point following ADR-013 vision"]}
-   {:type :markdown-migration
-    :description "All config moved to SKILL.md markdown tables and sections"
-    :benefit "Single source of truth, progressive disclosure maintained"}]
-  :completed
-  [{:skill :research :config-lines-removed 68 :cli-changes ["vendor CLIs → llmx (gemini/codex/grok all via llmx)"]}
-   {:skill :diagnostics :config-lines-removed 58 :cli-changes [] :new-commands [:env-debug :uv-reinstall]}
-   {:skill :repl-debug :config-lines-removed 44 :cli-changes []}
-   {:skill :visual :config-lines-removed 51 :cli-changes []}
-   {:skill :architect :config-lines-removed 64 :cli-changes ["custom providers.py → llmx CLI calls"]}
-   {:skill :gpt5-prompting :config-lines-removed 0 :note "Documentation-only, no config"}]
-  :totals {:config-lines-removed 285
-           :files-deleted 6  ; 5 config.edn + 1 session.clj
-           :skills-migrated 6
-           :claude-md-reduction "28% (405→291 lines)"}
-  :deprecated
-  ["dev/repl/session.clj (merged into init.clj)"
-   "Direct gemini/codex calls in agent scripts (use llmx)"
-   "Custom Python providers in architect skill (use llmx CLI)"]
-  :completed-post-unification
-  [{:date "2025-10-17"
-    :change "Converted debug-env.sh to Babashka"
-    :details ["277-line bash script → 254-line Babashka script"
-              "Proper data structures (maps, vectors) instead of bash arrays"
-              "Same CLI interface, same output"
-              "Much more maintainable and testable"
-              "Old bash script kept in bin/ for reference"]}]
-
-  :future
-  ["Full Babashka migration for remaining complex shell scripts (only when strictly better)"]
-  :notes "Toolchain now unified around Skills model: llmx for LLM calls, bb for tasks, (repl/go!) for REPL, progressive disclosure for docs"}}
+  :api-keys-required ["GEMINI_API_KEY" "OPENAI_API_KEY" "XAI_API_KEY"]}}
