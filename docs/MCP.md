@@ -58,15 +58,46 @@ Quick reference for Model Context Protocol (MCP) integration with Claude Code.
 
 ## Active Servers
 
-1. **evo-dev** - Dev diagnostics (`mcp/evo/mcp/dev_diagnostics.clj`)
-   - Tools: `evo_health_check`, `evo_cache_stats`, `evo_clear_caches`, `evo_repl_health`
+**Main Agent MCPs:**
 
-2. **clojure-shadow-cljs** - Full REPL + editing
+1. **clojure-shadow-cljs** - Full REPL + editing
    - nREPL via shadow-cljs (port 55449)
    - Usage: `(require '[core.db :as db])`
 
-3. **chrome-devtools** - Browser control
+2. **chrome-devtools** - Browser control
    - DevTools Protocol: JS exec, console, DOM
+
+3. **tournament** - Bradley-Terry ranking
+   - Swiss-Lite tournaments for evaluations
+
+4. **computer-use** - Computer control
+   - Screenshots, mouse, keyboard actions
+   - Visual debugging and UI testing
+
+5. **context7** - Library documentation
+   - Up-to-date docs for any library
+   - Usage: `resolve-library-id` → `get-library-docs`
+   - Inherited by researcher subagent
+
+6. **exa** - Code examples and web search
+   - Real-world usage patterns
+   - Tools: `web_search_exa`, `get_code_context_exa`
+   - Inherited by researcher subagent
+
+**Researcher Subagent:**
+- Inherits all MCPs from main agent
+- See: `.claude/agents/researcher.md` for configuration
+- Note: Subagents cannot have MCPs that main agent doesn't have
+
+**Skills:**
+- `ck` CLI - Code search (semantic, regex, hybrid)
+- `skills/computer-use/` - MCP helper commands (status, info)
+- `skills/architect/` - Proposal generation and evaluation
+
+**Removed MCPs:**
+- `ck-search` - Use `ck` CLI directly
+- `evo-dev` - Deprecated (use `bb health` instead)
+- `architect` - Now a skill at `skills/architect/`
 
 ## Critical: Stdio Logging
 
