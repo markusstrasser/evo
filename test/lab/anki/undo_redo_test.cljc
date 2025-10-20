@@ -20,15 +20,18 @@
     (let [card1 (core/card-created-event "c1" {:type :qa :question "Q1" :answer "A1"})
           review1 (core/review-event "c1" :good)
           events [card1 review1]
-          initial-state (core/reduce-events events)
+          initial-state (-> (core/reduce-events events)
+                            (assoc :cards {"c1" {:type :qa :question "Q1" :answer "A1"}}))
 
           ;; Undo the review
           undo-event (core/undo-event (last (:undo-stack initial-state)))
-          after-undo (core/reduce-events (conj events undo-event))
+          after-undo (-> (core/reduce-events (conj events undo-event))
+                         (assoc :cards {"c1" {:type :qa :question "Q1" :answer "A1"}}))
 
           ;; Redo the review
           redo-event (core/redo-event (last (:redo-stack after-undo)))
-          after-redo (core/reduce-events (conj (conj events undo-event) redo-event))]
+          after-redo (-> (core/reduce-events (conj (conj events undo-event) redo-event))
+                         (assoc :cards {"c1" {:type :qa :question "Q1" :answer "A1"}}))]
 
       ;; After undo
       (is (= 0 (count (:undo-stack after-undo)))
@@ -77,15 +80,21 @@
           review1 (core/review-event "c1" :good)
           review2 (core/review-event "c2" :easy)
           events [card1 card2 card3 review1 review2]
-          initial-state (core/reduce-events events)
+          cards {"c1" {:type :qa :question "Q1" :answer "A1"}
+                 "c2" {:type :qa :question "Q2" :answer "A2"}
+                 "c3" {:type :qa :question "Q3" :answer "A3"}}
+          initial-state (-> (core/reduce-events events)
+                            (assoc :cards cards))
 
           ;; First undo
           undo1 (core/undo-event (last (:undo-stack initial-state)))
-          after-undo1 (core/reduce-events (conj events undo1))
+          after-undo1 (-> (core/reduce-events (conj events undo1))
+                          (assoc :cards cards))
 
           ;; Second undo
           undo2 (core/undo-event (last (:undo-stack after-undo1)))
-          after-undo2 (core/reduce-events (conj (conj events undo1) undo2))]
+          after-undo2 (-> (core/reduce-events (conj (conj events undo1) undo2))
+                          (assoc :cards cards))]
 
       (is (= 2 (count (:undo-stack initial-state)))
           "Initially 2 reviews are undoable")
@@ -103,10 +112,13 @@
     (let [card1 (core/card-created-event "c1" {:type :qa :question "Q1" :answer "A1"})
           review1 (core/review-event "c1" :good)
           events [card1 review1]
-          initial-state (core/reduce-events events)
+          cards {"c1" {:type :qa :question "Q1" :answer "A1"}}
+          initial-state (-> (core/reduce-events events)
+                            (assoc :cards cards))
 
           undo-event (core/undo-event (last (:undo-stack initial-state)))
-          after-undo (core/reduce-events (conj events undo-event))]
+          after-undo (-> (core/reduce-events (conj events undo-event))
+                         (assoc :cards cards))]
 
       (is (= [] (core/due-cards initial-state))
           "Card should not be due after review")
