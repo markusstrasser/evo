@@ -1,79 +1,81 @@
 {:paths ["dev" "src" "test"]
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        org.clojure/clojurescript {:mvn/version "1.11.60"}}
+  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+         org.clojure/clojurescript {:mvn/version "1.11.60"}}
 
- :tasks
- {:requires ([babashka.fs :as fs]
-             [clojure.string :as str])
+  :tasks
+  {:requires ([babashka.fs :as fs]
+              [clojure.string :as str])
 
-  ;; Quality gates
-  lint        {:doc "Run clj-kondo linter"
-               :task (shell "clj-kondo --lint src test dev")}
+   ;; Quality gates
+   lint        {:doc "Run clj-kondo linter"
+                :task (shell "clj-kondo --lint src test dev")}
 
-  check       {:doc "Lint + compile check (full quality gate)"
-               :task (do
-                       (run 'lint)
-                       (shell "npx shadow-cljs compile :frontend"))}
+   check       {:doc "Lint + compile check (full quality gate)"
+                :task (do
+                        (run 'lint)
+                        (shell "npx shadow-cljs compile :frontend"))}
 
-  test        {:doc "Run test suite"
-               :task (shell "npx shadow-cljs compile :test && node target/test.js")}
+   test        {:doc "Run test suite"
+                :task (do
+                        (shell "npx shadow-cljs compile :test")
+                        (shell "node out/tests.js"))}
 
-  ;; Cache management
-  fix-cache   {:doc "Clear all caches (shadow-cljs, .cpcache, node_modules/.cache)"
-               :task (do
-                       (println "Clearing caches...")
-                       (fs/delete-tree ".shadow-cljs")
-                       (fs/delete-tree ".cpcache")
-                       (when (fs/exists? "node_modules/.cache")
-                         (fs/delete-tree "node_modules/.cache"))
-                       (println "✓ Caches cleared"))}
+   ;; Cache management
+   fix-cache   {:doc "Clear all caches (shadow-cljs, .cpcache, node_modules/.cache)"
+                :task (do
+                        (println "Clearing caches...")
+                        (fs/delete-tree ".shadow-cljs")
+                        (fs/delete-tree ".cpcache")
+                        (when (fs/exists? "node_modules/.cache")
+                          (fs/delete-tree "node_modules/.cache"))
+                        (println "✓ Caches cleared"))}
 
-  ;; Skill commands (agent-facing workflows)
-  health      {:doc "Run environment health checks"
-               :task (shell "skills/diagnostics/run.sh health")}
+   ;; Skill commands (agent-facing workflows)
+   health      {:doc "Run environment health checks"
+                :task (shell "skills/diagnostics/run.sh health")}
 
-  preflight   {:doc "Pre-flight checks before starting work"
-               :task (shell "skills/diagnostics/run.sh preflight")}
+   preflight   {:doc "Pre-flight checks before starting work"
+                :task (shell "skills/diagnostics/run.sh preflight")}
 
-  env-debug   {:doc "Debug .env variable hierarchy (var-name or --conflicts)"
-               :task (shell "skills/diagnostics/lib/env_debug.bb" (str/join " " *command-line-args*))}
+   env-debug   {:doc "Debug .env variable hierarchy (var-name or --conflicts)"
+                :task (shell "skills/diagnostics/lib/env_debug.bb" (str/join " " *command-line-args*))}
 
-  research    {:doc "Code research across best-of repos (code-research skill)"
-               :task (shell "skills/code-research/run.sh" (str/join " " *command-line-args*))}
+   research    {:doc "Code research across best-of repos (code-research skill)"
+                :task (shell "skills/code-research/run.sh" (str/join " " *command-line-args*))}
 
-  ;; REPL helpers
-  repl-health {:doc "Quick REPL diagnostics (requires running REPL)"
-               :task (shell "clj -M -e '(require '[repl :as repl]) (repl/quick-health-check!)'")}
+   ;; REPL helpers
+   repl-health {:doc "Quick REPL diagnostics (requires running REPL)"
+                :task (shell "clj -M -e '(require '[repl :as repl]) (repl/quick-health-check!)'")}
 
-  ;; Documentation
-  docs-overview {:doc "Generate AI architectural overview"
-                 :task (shell "scripts/generate-overview.sh" (str/join " " *command-line-args*))}
+   ;; Documentation
+   docs-overview {:doc "Generate AI architectural overview"
+                  :task (shell "scripts/generate-overview.sh" (str/join " " *command-line-args*))}
 
-  ;; Development server
-  dev         {:doc "Start shadow-cljs dev server + watch"
-               :task (shell "npx shadow-cljs watch :frontend")}
+   ;; Development server
+   dev         {:doc "Start shadow-cljs dev server + watch"
+                :task (shell "npx shadow-cljs watch :frontend")}
 
-  ;; Git hooks
-  install-hooks {:doc "Install git pre-commit hooks"
-                 :task (shell "scripts/install-hooks.sh")}
+   ;; Git hooks
+   install-hooks {:doc "Install git pre-commit hooks"
+                  :task (shell "scripts/install-hooks.sh")}
 
-  ;; Help
-  help        {:doc "Show available tasks"
-               :task (do
-                       (println "Available Babashka tasks:\n")
-                       (println "Quality Gates:")
-                       (println "  bb lint          - Run clj-kondo linter")
-                       (println "  bb check         - Lint + compile check")
-                       (println "  bb test          - Run test suite")
-                       (println "  bb fix-cache     - Clear all caches\n")
-                       (println "Skills (Agent Workflows):")
-                       (println "  bb health        - Environment health checks")
-                       (println "  bb preflight     - Pre-flight diagnostics")
-                       (println "  bb env-debug VAR - Debug .env variable")
-                       (println "  bb research ...  - Code research tool\n")
-                       (println "Development:")
-                       (println "  bb dev           - Start dev server + watch")
-                       (println "  bb repl-health   - REPL diagnostics")
-                       (println "  bb docs-overview - Generate overview\n")
-                       (println "Setup:")
-                       (println "  bb install-hooks - Install git hooks"))}}}
+   ;; Help
+   help        {:doc "Show available tasks"
+                :task (do
+                        (println "Available Babashka tasks:\n")
+                        (println "Quality Gates:")
+                        (println "  bb lint          - Run clj-kondo linter")
+                        (println "  bb check         - Lint + compile check")
+                        (println "  bb test          - Run test suite")
+                        (println "  bb fix-cache     - Clear all caches\n")
+                        (println "Skills (Agent Workflows):")
+                        (println "  bb health        - Environment health checks")
+                        (println "  bb preflight     - Pre-flight diagnostics")
+                        (println "  bb env-debug VAR - Debug .env variable")
+                        (println "  bb research ...  - Code research tool\n")
+                        (println "Development:")
+                        (println "  bb dev           - Start dev server + watch")
+                        (println "  bb repl-health   - REPL diagnostics")
+                        (println "  bb docs-overview - Generate overview\n")
+                        (println "Setup:")
+                        (println "  bb install-hooks - Install git hooks"))}}}
