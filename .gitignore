@@ -69,6 +69,9 @@ logs/
 !.architect/specs/
 !.architect/background/
 
+# Beads issue tracker database
+.beads/
+
 .hgignore
 .hg/
 
