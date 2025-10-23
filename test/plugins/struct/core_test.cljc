@@ -1,4 +1,4 @@
-(ns core.struct-test
+(ns plugins.struct.core-test
   "Integration tests for structural editing intent compiler.
    Tests verify end-to-end behavior: intent → ops → final DB state."
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
@@ -6,7 +6,7 @@
                :cljs [cljs.test :refer [deftest is testing]])
             [core.db :as D]
             [core.interpret :as I]
-            [core.struct :as S]))
+            [plugins.struct.core :as S]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
 
