@@ -1,6 +1,6 @@
-(ns kernel.anchor-test
+(ns algebra.anchor-test
   (:require [clojure.test :refer [deftest is testing]]
-            [kernel.anchor :as anchor]))
+            [algebra.anchor :as anchor]))
 
 (def sample-db
   {:children-by-parent {"P" ["A" "B" "C" "D"]}})

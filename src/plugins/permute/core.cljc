@@ -2,8 +2,8 @@
   "Intent-level reordering and movement operations.
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
-   Uses kernel.anchor for position resolution and kernel.permutation for deterministic ordering."
-  (:require [kernel.anchor :as anchor]))
+   Uses algebra.anchor for position resolution and algebra.permutation for deterministic ordering."
+  (:require [algebra.anchor :as anchor]))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
