@@ -44,7 +44,7 @@ OPTIONS:
   -h, --help          Show this help message
   -o, --output PATH   Custom output path (overrides default naming)
   -p, --prompt TEXT   Additional focus/instructions appended to prompt
-  -m, --model MODEL   Gemini model to use (default: gemini-2.5-pro, fast: gemini-2.5-flash)
+  -m, --model MODEL   Gemini model to use (default: gemini/gemini-2.5-pro, fast: gemini/gemini-2.0-flash-exp)
 
 EXAMPLES:
   $0 --auto                              # Post-merge: generate all overviews
@@ -70,7 +70,7 @@ MODE=""
 TARGET=""
 OUTPUT_PATH=""
 APPEND_PROMPT=""
-GEMINI_MODEL="gemini-2.5-pro"
+GEMINI_MODEL="gemini/gemini-2.5-pro"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -359,7 +359,7 @@ PROMPT_SIZE=$(wc -c < "$TEMP_PROMPT")
 PROMPT_TOKENS=$((PROMPT_SIZE / 4))  # Rough estimate: 1 token ≈ 4 chars
 
 # Gemini-2.5-flash limit: 1M tokens/min, Pro: 2M tokens/min
-if [[ "$GEMINI_MODEL" == *"flash"* ]]; then
+if [[ "$GEMINI_MODEL" == *"flash"* || "$GEMINI_MODEL" == *"exp"* ]]; then
   TOKEN_LIMIT=1000000
 else
   TOKEN_LIMIT=2000000
@@ -370,9 +370,17 @@ if [[ $PROMPT_TOKENS -gt $TOKEN_LIMIT ]]; then
   echo "   Consider using --model gemini-2.5-flash or reducing input size" >&2
 fi
 
-# Process with gemini (disable MCP servers for batch processing)
-echo "3️⃣  Processing with gemini (~${PROMPT_TOKENS} tokens)..."
-cat "$TEMP_PROMPT" | gemini -y --model "$GEMINI_MODEL" --allowed-mcp-server-names > "$OUTPUT_FILE"
+# Process with llmx (using google provider)
+echo "3️⃣  Processing with llmx/gemini (~${PROMPT_TOKENS} tokens)..."
+
+# Source .env if it exists (for API keys)
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+  set -a  # auto-export variables
+  source "$PROJECT_ROOT/.env"
+  set +a
+fi
+
+cat "$TEMP_PROMPT" | llmx --provider google --model "$GEMINI_MODEL" > "$OUTPUT_FILE" 2>&1
 
 # Cleanup
 rm -f "$TEMP_CONTENT" "$TEMP_PROMPT"

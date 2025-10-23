@@ -154,9 +154,9 @@ Use bullet points over paragraphs where possible.
 """
 
     try:
-        # Use llmx with google provider
+        # Use llmx with google provider (correct model format)
         result = subprocess.run(
-            f'echo {repr(prompt)} | llmx --provider google --model gemini-2.0-flash-exp',
+            f'echo {repr(prompt)} | llmx --provider google --model gemini/gemini-2.0-flash-exp',
             capture_output=True,
             text=True,
             check=True,
@@ -222,8 +222,9 @@ Use bullet points over paragraphs where possible.
 
     try:
         # Use llmx with openai provider and reasoning-effort=high
+        # GPT-5 models only support temperature=1
         result = subprocess.run(
-            f'echo {repr(prompt)} | llmx --provider openai --model gpt-5-codex --reasoning-effort high',
+            f'echo {repr(prompt)} | llmx --provider openai --model gpt-5-codex --reasoning-effort high --temperature 1',
             capture_output=True,
             text=True,
             check=True,
