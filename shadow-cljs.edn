@@ -22,7 +22,7 @@
   :builds
   {:frontend
    {:target :browser
-    :modules {:main {:init-fn kernel.main/main}}}
+    :modules {:main {:init-fn app.main/main}}}
                      ;; :preloads [evolver.dev-preload] ; ARCHIVED: see .archived/dev_preload.cljs}
    :app
    {:target :browser
