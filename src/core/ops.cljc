@@ -14,7 +14,7 @@
      Updated database"
   [db id node-type props]
   (if (contains? (:nodes db) id)
-    db ; idempotent - node already exists
+    db
     (assoc-in db [:nodes id] {:type node-type :props props})))
 
 (defn- find-anchor-index
@@ -161,4 +161,4 @@
   [db id props]
   (if (contains? (:nodes db) id)
     (update-in db [:nodes id :props] #(deep-merge % props))
-    db)) ; no-op if node doesn't exist
+    db))
