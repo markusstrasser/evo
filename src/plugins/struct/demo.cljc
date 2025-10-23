@@ -1,9 +1,9 @@
-(ns core.demo-struct
+(ns plugins.struct.demo
   "Demo and smoke test for structural editing intent compiler.
    Shows compilation of intents → ops → final tree state."
   (:require [core.db :as D]
             [core.interpret :as I]
-            [core.struct :as S]))
+            [plugins.struct.core :as S]))
 
 (defn demo-struct
   "One-call demo showing structural editing intents in action.
