@@ -1,4 +1,4 @@
-(ns core.struct
+(ns plugins.struct.core
   "Structural-edit intent compiler → core ops.
 
    Lowers high-level structural editing intents (delete, indent, outdent, etc.)
@@ -9,7 +9,7 @@
 
    Design principle: Delete is archive by design - nodes are moved to :trash,
    never destroyed. This maintains referential integrity and enables undo."
-  (:require [kernel.permutation :as perm]
+  (:require [algebra.permutation :as perm]
             [plugins.siblings-order :as so]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
@@ -33,15 +33,13 @@
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
 (defn delete-ops
-  "Compiles a delete intent into a :place operation that moves the node to :trash.
-   Delete is archive - we never destroy nodes."
+  "Compiles a delete intent into a :place operation that moves the node to :trash."
   [_DB id]
   [{:op :place :id id :under :trash :at :last}])
 
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
-   under its previous sibling. Returns empty vector if no previous sibling exists
-   (no-op safety)."
+   under its previous sibling."
   [DB id]
   (if-let [sib (prev-sibling DB id)]
     [{:op :place :id id :under sib :at :last}]
@@ -49,8 +47,7 @@
 
 (defn outdent-ops
   "Compiles an outdent intent into a :place operation that moves the node
-   to be a sibling of its parent (under its grandparent, after its parent).
-   Returns empty vector if no grandparent exists (no-op safety)."
+   to be a sibling of its parent (under its grandparent, after its parent)."
   [DB id]
   (let [p  (parent-of DB id)
         gp (grandparent-of DB id)]
