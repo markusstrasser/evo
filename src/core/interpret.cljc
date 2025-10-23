@@ -6,8 +6,7 @@
             [medley.core :as m]))
 
 (defn- find-index
-  "Find index of target-id in siblings vector. Returns -1 if not found.
-   Uses medley's indexed for idiomatic Clojure."
+  "Find index of target-id in siblings vector. Returns -1 if not found."
   [siblings target-id]
   (or (some (fn [[idx id]] (when (= id target-id) idx))
             (m/indexed siblings))
