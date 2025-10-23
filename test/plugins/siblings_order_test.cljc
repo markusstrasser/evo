@@ -4,7 +4,7 @@
             [plugins.siblings-order :as so]
             [plugins.registry :as reg]
             [core.db :as db]
-            [kernel.permutation :as perm]))
+            [algebra.permutation :as perm]))
 
 (use-fixtures :each
   (fn [f]
