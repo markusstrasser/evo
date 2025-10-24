@@ -2,17 +2,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './src',
-  testMatch: '**/test/**/*.spec.js',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  testDir: './test-browser',
+  testMatch: '**/*.spec.js',
+  fullyParallel: false,
+  retries: 0,
+  workers: 1,
+  reporter: 'list',
 
   use: {
-    baseURL: 'http://localhost:8000',
-    trace: 'on-first-retry',
+    baseURL: 'http://localhost:8080',
+    headless: false, // Show browser for debugging
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
 
   projects: [
@@ -22,9 +23,6 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'python3 -m http.server 8000',
-    url: 'http://localhost:8000',
-    reuseExistingServer: !process.env.CI,
-  },
+  // Don't start a web server - shadow-cljs already running
+  webServer: undefined,
 });
