@@ -103,8 +103,8 @@
                        (.focus elem)))
                    50)))))
 
-      ;; Move block up/down
-      (and mod? shift? (= key "ArrowUp"))
+      ;; Alt+Shift+Up/Down - Move block up/down (structural change)
+      (and alt? shift? (= key "ArrowUp"))
       (do (.preventDefault e)
           (with-history!
             #(let [db @!db
@@ -114,7 +114,7 @@
                (when (and focus prev parent)
                  (interpret! [{:op :place :id focus :under parent :at {:before prev}}])))))
 
-      (and mod? shift? (= key "ArrowDown"))
+      (and alt? shift? (= key "ArrowDown"))
       (do (.preventDefault e)
           (with-history!
             #(let [db @!db
@@ -143,23 +143,49 @@
             (when (.-contentEditable focused-elem)
               (.blur focused-elem))))
 
-      ;; Navigation: Up/Down arrows (select different block)
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+      ;; Alt+Up/Down - Navigate to prev/next block (works in edit mode!)
+      (and alt? (not shift?) (= key "ArrowDown"))
       (do (.preventDefault e)
-          (apply-intent! {:type :select-next-sibling}))
+          (let [db @!db
+                focus (sel/get-focus db)
+                next-id (get-in db [:derived :next-id-of focus])]
+            (when next-id
+              (update-db! sel/select next-id)
+              ;; Stay in edit mode - focus the new block's contentEditable
+              (js/setTimeout
+                (fn []
+                  (when-let [elem (js/document.querySelector (str "[data-block-id='" next-id "']"))]
+                    (.focus elem)))
+                50))))
+
+      (and alt? (not shift?) (= key "ArrowUp"))
+      (do (.preventDefault e)
+          (let [db @!db
+                focus (sel/get-focus db)
+                prev-id (get-in db [:derived :prev-id-of focus])]
+            (when prev-id
+              (update-db! sel/select prev-id)
+              ;; Stay in edit mode - focus the new block's contentEditable
+              (js/setTimeout
+                (fn []
+                  (when-let [elem (js/document.querySelector (str "[data-block-id='" prev-id "']"))]
+                    (.focus elem)))
+                50))))
+
+      ;; Plain Up/Down - Only work when NOT in contentEditable (navigation mode)
+      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+      (let [target (.-target e)
+            in-edit-mode? (and target (.-contentEditable target))]
+        (when-not in-edit-mode?
+          (.preventDefault e)
+          (apply-intent! {:type :select-next-sibling})))
 
       (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-      (do (.preventDefault e)
-          (apply-intent! {:type :select-prev-sibling}))
-
-      ;; Alt+Shift+Up/Down - same as Shift+Up/Down (extend selection)
-      (and alt? shift? (= key "ArrowDown"))
-      (do (.preventDefault e)
-          (apply-intent! {:type :extend-to-next-sibling}))
-
-      (and alt? shift? (= key "ArrowUp"))
-      (do (.preventDefault e)
-          (apply-intent! {:type :extend-to-prev-sibling}))
+      (let [target (.-target e)
+            in-edit-mode? (and target (.-contentEditable target))]
+        (when-not in-edit-mode?
+          (.preventDefault e)
+          (apply-intent! {:type :select-prev-sibling})))
 
       ;; Extend selection (Shift+Up/Down)
       (and shift? (not mod?) (not alt?) (= key "ArrowDown"))
@@ -292,22 +318,22 @@
     [:span.hotkeys-hint "Click a block to select it"]]
    [:div.hotkeys-grid
     [:div.hotkey-group
-     [:h5 "Selection"]
+     [:h5 "Navigation"]
      [:div.hotkey-item
-      [:span.hotkey-desc "Select block"]
-      [:div.hotkey-keys [:kbd "Click"]]]
+      [:span.hotkey-desc "Next block (edit)"]
+      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↓"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Next block"]
-      [:div.hotkey-keys [:kbd "↓"]]]
+      [:span.hotkey-desc "Prev block (edit)"]
+      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↑"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Previous block"]
-      [:div.hotkey-keys [:kbd "↑"]]]
+      [:span.hotkey-desc "Move block down"]
+      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↓"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Extend down"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↓"]]]
+      [:span.hotkey-desc "Move block up"]
+      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Extend up"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑"]]]]
+      [:span.hotkey-desc "Extend selection"]
+      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑/↓"]]]]
 
     [:div.hotkey-group
      [:h5 "Editing"]
