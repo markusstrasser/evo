@@ -29,3 +29,7 @@
 {"type": "proposals_ranked", "run_id": "7fd9ac2a-7bfe-4e1a-9037-39b6d177f888", "winner_id": "7fd9ac2a-7bfe-4e1a-9037-39b6d177f888-gemini-1", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T17:46:23.736626"}
 {"type": "proposals_generated", "run_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6", "proposal_count": 3, "timestamp": "2025-10-24T19:04:15.287319"}
 {"type": "proposals_ranked", "run_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6", "winner_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T19:04:18.343060"}
+{"type": "proposals_generated", "run_id": "fa9f9a58-03bf-49f5-bb4a-abd6783cd52c", "proposal_count": 3, "timestamp": "2025-10-24T21:29:37.434677"}
+{"type": "proposals_ranked", "run_id": "fa9f9a58-03bf-49f5-bb4a-abd6783cd52c", "winner_id": "fa9f9a58-03bf-49f5-bb4a-abd6783cd52c-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T21:30:13.183819"}
+{"type": "decision_made", "run_id": "fa9f9a58-03bf-49f5-bb4a-abd6783cd52c", "decision": "approve", "adr_id": "adr-fa9f9a58-03bf-49f5-bb4a-abd6783cd52c", "timestamp": "2025-10-24T21:30:13.185094"}
+{"type": "proposals_generated", "run_id": "30e6b0a5-d246-484c-9edf-3f18b8366194", "proposal_count": 3, "timestamp": "2025-10-24T22:14:57.012859"}
