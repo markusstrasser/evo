@@ -8,7 +8,7 @@
    [medley "1.4.0"]
    [datascript "1.7.5"]
    [binaryage/devtools "1.0.7"]
-   [com.rpl/specter "1.1.4"]
+   [com.rpl/specter "1.1.5"]
    [org.clojure/core.match "1.1.0"]
    [hiccup/hiccup "2.0.0"]
    [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]
@@ -33,7 +33,12 @@
    {:target :browser
     :output-dir "public/js/anki"
     :asset-path "/js/anki"
-    :modules {:main {:init-fn lab.anki.ui/main}}}
+    :modules {:vendor {:entries [cljs.core
+                                 replicant.dom
+                                 malli.core
+                                 medley.core]}
+              :main {:init-fn lab.anki.ui/main
+                     :depends-on #{:vendor}}}}
    :blocks-ui
    {:target :browser
     :output-dir "public/js/blocks-ui"
