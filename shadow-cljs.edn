@@ -34,6 +34,11 @@
     :output-dir "public/js/anki"
     :asset-path "/js/anki"
     :modules {:main {:init-fn lab.anki.ui/main}}}
+   :blocks-ui
+   {:target :browser
+    :output-dir "public/js/blocks-ui"
+    :asset-path "/js/blocks-ui"
+    :modules {:main {:init-fn app.blocks-ui/main}}}
    :test
    {:target :node-test
     :output-to "out/tests.js"
