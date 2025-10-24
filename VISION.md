@@ -17,10 +17,9 @@ Build → Learn → Extract → Generalize
 > You’re not building a UI framework; you’re carving a UI IR + interpreter
 > that’s LLM-native and human (cognitive complexity) friendly.
 
-Give the LLM “the absolute right tools” by freezing a tiny set of primitives and
+Give the LLM "the absolute right tools" by freezing a tiny set of primitives and
 nothing else:
-• Model: persistent document (tree+refs), workspace (user-persistent view
-prefs), session (selection/undo).
+• Model: persistent document (tree+refs), session (selection/undo/ephemeral overlays).
 • Intents (IR): total, idempotent EDN ops, stable IDs, deterministic ordering.
 • Reactivity: signal, derived, effect—no other FRP. Effects are
 capability-scoped and named (debuggable).
