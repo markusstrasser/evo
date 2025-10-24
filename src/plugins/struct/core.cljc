@@ -10,7 +10,8 @@
    Design principle: Delete is archive by design - nodes are moved to :trash,
    never destroyed. This maintains referential integrity and enables undo."
   (:require [algebra.permutation :as perm]
-            [plugins.siblings-order :as so]))
+            [plugins.siblings-order :as so]
+            [plugins.selection.core :as selection]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 
@@ -47,11 +48,13 @@
 
 (defn outdent-ops
   "Compiles an outdent intent into a :place operation that moves the node
-   to be a sibling of its parent (under its grandparent, after its parent)."
+   to be a sibling of its parent (under its grandparent, after its parent).
+   Prevents outdenting if grandparent is a root container (:doc, :trash)."
   [DB id]
   (let [p  (parent-of DB id)
-        gp (grandparent-of DB id)]
-    (if (and p gp)
+        gp (grandparent-of DB id)
+        roots (:roots DB #{:doc :trash})]
+    (if (and p gp (not (contains? roots gp)))
       [{:op :place :id id :under gp :at {:after p}}]
       [])))
 
@@ -121,6 +124,37 @@
 (defmethod compile-intent :default
   [_DB _]
   [])
+
+;; ── Multi-select intents ──────────────────────────────────────────────────────
+
+(defn- sort-by-doc-order
+  "Sort node IDs by document order (pre-order traversal).
+   Ensures operations are applied top-to-bottom, left-to-right."
+  [DB ids]
+  (sort-by #(get-in DB [:derived :pre %] ##Inf) ids))
+
+(defmethod compile-intent :delete-selected
+  [DB _]
+  ;; Delete all currently selected nodes in document order
+  (let [selected (selection/get-selected-nodes DB)
+        ordered (sort-by-doc-order DB selected)]
+    (mapcat #(delete-ops DB %) ordered)))
+
+(defmethod compile-intent :indent-selected
+  [DB _]
+  ;; Indent all currently selected nodes in document order
+  ;; Processing top-to-bottom ensures correct parent-child relationships
+  (let [selected (selection/get-selected-nodes DB)
+        ordered (sort-by-doc-order DB selected)]
+    (mapcat #(indent-ops DB %) ordered)))
+
+(defmethod compile-intent :outdent-selected
+  [DB _]
+  ;; Outdent all currently selected nodes in document order
+  ;; Processing top-to-bottom ensures correct parent-child relationships
+  (let [selected (selection/get-selected-nodes DB)
+        ordered (sort-by-doc-order DB selected)]
+    (mapcat #(outdent-ops DB %) ordered)))
 
 ;; ── Public API ────────────────────────────────────────────────────────────────
 
