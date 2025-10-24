@@ -14,7 +14,8 @@
   (:require [algebra.permutation :as perm]
             [core.intent :as intent]
             [plugins.siblings-order :as so]
-            [plugins.selection.core :as selection]))
+            [plugins.selection.core :as selection]
+            [plugins.editing.core :as editing]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 
@@ -52,12 +53,13 @@
 (defn outdent-ops
   "Compiles an outdent intent into a :place operation that moves the node
    to be a sibling of its parent (under its grandparent, after its parent).
-   Prevents outdenting if grandparent is a root container (:doc, :trash)."
+   Prevents outdenting if parent is a root container (already at top level)."
   [DB id]
   (let [p  (parent-of DB id)
         gp (grandparent-of DB id)
         roots (:roots DB #{:doc :trash})]
-    (if (and p gp (not (contains? roots gp)))
+    ;; Can outdent if: has parent, has grandparent, parent is NOT a root
+    (if (and p gp (not (contains? roots p)))
       [{:op :place :id id :under gp :at {:after p}}]
       [])))
 
@@ -74,6 +76,15 @@
 (defmethod intent/intent->ops :outdent
   [DB {:keys [id]}]
   (outdent-ops DB id))
+
+(defmethod intent/intent->ops :create-and-place
+  [_DB {:keys [id parent after]}]
+  [{:op :create-node :id id :type :block :props {:text ""}}
+   {:op :place :id id :under parent :at (if after {:after after} :last)}])
+
+(defmethod intent/intent->ops :delete-block
+  [DB {:keys [block-id]}]
+  (delete-ops DB block-id))
 
 ;; ── Reorder intents ───────────────────────────────────────────────────────────
 
@@ -130,23 +141,32 @@
 (defmethod intent/intent->ops :delete-selected
   [DB _]
   ;; Delete all currently selected nodes in document order
+  ;; If nothing selected, delete the currently editing block
   (let [selected (selection/get-selected-nodes DB)
-        ordered (sort-by-doc-order DB selected)]
+        editing-id (editing/editing-block-id DB)
+        targets (if (seq selected) selected (if editing-id [editing-id] []))
+        ordered (sort-by-doc-order DB targets)]
     (vec (mapcat #(delete-ops DB %) ordered))))
 
 (defmethod intent/intent->ops :indent-selected
   [DB _]
   ;; Indent all currently selected nodes in document order
+  ;; If nothing selected, indent the currently editing block
   ;; Processing top-to-bottom ensures correct parent-child relationships
   (let [selected (selection/get-selected-nodes DB)
-        ordered (sort-by-doc-order DB selected)]
+        editing-id (editing/editing-block-id DB)
+        targets (if (seq selected) selected (if editing-id [editing-id] []))
+        ordered (sort-by-doc-order DB targets)]
     (vec (mapcat #(indent-ops DB %) ordered))))
 
 (defmethod intent/intent->ops :outdent-selected
   [DB _]
   ;; Outdent all currently selected nodes in document order
+  ;; If nothing selected, outdent the currently editing block
   ;; Processing top-to-bottom ensures correct parent-child relationships
   (let [selected (selection/get-selected-nodes DB)
-        ordered (sort-by-doc-order DB selected)]
+        editing-id (editing/editing-block-id DB)
+        targets (if (seq selected) selected (if editing-id [editing-id] []))
+        ordered (sort-by-doc-order DB targets)]
     (vec (mapcat #(outdent-ops DB %) ordered))))
 
