@@ -1,12 +1,20 @@
 (ns app.blocks-ui
-  "Simple blocks UI for testing structural editing with Logseq hotkeys."
+  "Blocks UI demo - composition layer only.
+
+   Demonstrates proper architecture:
+   - Plugins provide getters and extend intent multimethods
+   - Components use getters and dispatch intents
+   - App just composes components and routes intents"
   (:require [replicant.dom :as d]
             [core.db :as DB]
             [core.intent :as intent]
             [core.interpret :as I]
             [core.history :as H]
+            [components.block :as block]
             [plugins.selection.core :as sel]
-            [plugins.struct.core :as struct]))
+            [plugins.struct.core :as struct]
+            [plugins.navigation.core :as nav]
+            [plugins.editing.core :as edit]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -19,286 +27,86 @@
                           {:op :place :id "a" :under "page" :at :last}
                           {:op :create-node :id "b" :type :block :props {:text "Second block"}}
                           {:op :place :id "b" :under "page" :at :last}
-                          {:op :create-node :id "c" :type :block :props {:text "Third block"}}
+                          {:op :create-node :id "c" :type :block :props {:text "Third block\nwith multiple\nlines for testing"}}
                           {:op :place :id "c" :under "page" :at :last}
                           {:op :create-node :id "d" :type :block :props {:text "Nested block"}}
                           {:op :place :id "d" :under "b" :at :last}])
             :db
             (H/record))))  ;; Record initial state for undo
 
-;; ── Helper functions ──────────────────────────────────────────────────────────
+;; ── Intent dispatcher (routes to kernel or plugins) ──────────────────────────
 
-(defn update-db! [f & args]
-  (swap! !db #(apply f % args)))
+(defn interpret!
+  "Interpret ops through kernel, update DB, record history."
+  [ops]
+  (js/console.log "Interpreting ops:" (pr-str ops))
+  (swap! !db (fn [db]
+               (let [result (I/interpret db ops)]
+                 (if (empty? (:issues result))
+                   (H/record (:db result))
+                   (do
+                     (js/console.error "Interpret issues:" (pr-str (:issues result)))
+                     db))))))
 
-(defn interpret! [ops]
-  (js/console.log "interpret! called with ops:" (pr-str ops))
-  (update-db! (fn [db]
-                (js/console.log "DB before interpret:" (pr-str (get-in db [:children-by-parent "page"])))
-                (let [result (I/interpret db ops)]
-                  (js/console.log "interpret result issues:" (pr-str (:issues result)))
-                  (js/console.log "DB after interpret:" (pr-str (get-in (:db result) [:children-by-parent "page"])))
-                  (if (empty? (:issues result))
-                    (:db result)
-                    (do
-                      (js/console.error "Interpret issues:" (pr-str (:issues result)))
-                      db))))))
+(defn handle-intent
+  "Single intent dispatcher - routes via multimethods.
 
-(defn with-history! [f]
-  (update-db! H/record)  ;; Save before action
-  (f)
-  (update-db! identity))  ;; Trigger re-render
-
-(defn apply-intent!
-  "Apply an intent through the unified router.
-   Structural intents are interpreted, view intents update DB directly."
-  [intent]
+   This is the ONLY place intents are dispatched.
+   Components just call (on-intent {:type ...})."
+  [intent-map]
+  (js/console.log "Intent:" (pr-str intent-map))
   (let [db-before @!db
-        {:keys [db ops path]} (intent/apply-intent db-before intent)]
+        {:keys [db ops path]} (intent/apply-intent db-before intent-map)]
     (case path
-      :ops (interpret! ops)  ;; Structural: interpret ops
-      :db  (reset! !db db)   ;; View: update db directly
-      :unknown (js/console.warn "Unknown intent type:" (:type intent)))))
+      :ops (interpret! ops)       ;; Structural: interpret through kernel
+      :db  (swap! !db (constantly db))  ;; View: direct DB update
+      :unknown (js/console.warn "Unknown intent type:" (:type intent-map)))))
 
-;; ── Keyboard handlers ─────────────────────────────────────────────────────────
+;; ── Global keyboard shortcuts ─────────────────────────────────────────────────
 
-(defn handle-keydown [e]
+(defn handle-global-keydown [e]
+  "Global keyboard shortcuts (Cmd+Z, etc) - NOT block-level events."
   (let [key (.-key e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
-        shift? (.-shiftKey e)
-        alt? (.-altKey e)]
-
+        shift? (.-shiftKey e)]
     (cond
       ;; Undo/Redo
       (and mod? shift? (= key "z"))
       (do (.preventDefault e)
-          (update-db! (fn [db] (or (H/redo db) db))))
+          (swap! !db (fn [db] (or (H/redo db) db))))
 
       (and mod? (= key "z"))
       (do (.preventDefault e)
-          (update-db! (fn [db] (or (H/undo db) db))))
-
-      ;; Shift+Enter - insert newline within block (don't create new block)
-      (and (= key "Enter") shift? (not mod?) (not alt?))
-      ;; Let browser handle newline insertion naturally
-      nil
-
-      ;; Enter - create new block after current
-      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (do (.preventDefault e)
-          (with-history!
-            #(let [db @!db
-                   focus (sel/get-focus db)
-                   parent (get-in db [:derived :parent-of focus])
-                   new-id (str "block-" (random-uuid))]
-               (when (and focus parent)
-                 (interpret! [{:op :create-node :id new-id :type :block :props {:text ""}}
-                              {:op :place :id new-id :under parent :at {:after focus}}])
-                 ;; Select and focus the new block
-                 (update-db! sel/select new-id)
-                 ;; Focus the contentEditable span after render
-                 (js/setTimeout
-                   (fn []
-                     (when-let [elem (js/document.querySelector (str "[data-block-id='" new-id "']"))]
-                       (.focus elem)))
-                   50)))))
-
-      ;; Alt+Shift+Up/Down - Move block up/down (structural change)
-      (and alt? shift? (= key "ArrowUp"))
-      (do (.preventDefault e)
-          (with-history!
-            #(let [db @!db
-                   focus (sel/get-focus db)
-                   prev (get-in db [:derived :prev-id-of focus])
-                   parent (get-in db [:derived :parent-of focus])]
-               (when (and focus prev parent)
-                 (interpret! [{:op :place :id focus :under parent :at {:before prev}}])))))
-
-      (and alt? shift? (= key "ArrowDown"))
-      (do (.preventDefault e)
-          (with-history!
-            #(let [db @!db
-                   focus (sel/get-focus db)
-                   next (get-in db [:derived :next-id-of focus])
-                   parent (get-in db [:derived :parent-of focus])]
-               (when (and focus next parent)
-                 (interpret! [{:op :place :id focus :under parent :at {:after next}}])))))
-
-      ;; Indent/Outdent (exit edit mode after)
-      (and (not shift?) (= key "Tab"))
-      (do (.preventDefault e)
-          (with-history!
-            #(apply-intent! {:type :indent-selected}))
-          ;; Blur to exit edit mode (Logseq behavior)
-          (when-let [focused-elem (.-activeElement js/document)]
-            (when (.-contentEditable focused-elem)
-              (.blur focused-elem))))
-
-      (and shift? (= key "Tab"))
-      (do (.preventDefault e)
-          (with-history!
-            #(apply-intent! {:type :outdent-selected}))
-          ;; Blur to exit edit mode (Logseq behavior)
-          (when-let [focused-elem (.-activeElement js/document)]
-            (when (.-contentEditable focused-elem)
-              (.blur focused-elem))))
-
-      ;; Alt+Up/Down - Navigate to prev/next block (works in edit mode!)
-      (and alt? (not shift?) (= key "ArrowDown"))
-      (do (.preventDefault e)
-          (let [db @!db
-                focus (sel/get-focus db)
-                next-id (get-in db [:derived :next-id-of focus])]
-            (when next-id
-              (update-db! sel/select next-id)
-              ;; Stay in edit mode - focus the new block's contentEditable
-              (js/setTimeout
-                (fn []
-                  (when-let [elem (js/document.querySelector (str "[data-block-id='" next-id "']"))]
-                    (.focus elem)))
-                50))))
-
-      (and alt? (not shift?) (= key "ArrowUp"))
-      (do (.preventDefault e)
-          (let [db @!db
-                focus (sel/get-focus db)
-                prev-id (get-in db [:derived :prev-id-of focus])]
-            (when prev-id
-              (update-db! sel/select prev-id)
-              ;; Stay in edit mode - focus the new block's contentEditable
-              (js/setTimeout
-                (fn []
-                  (when-let [elem (js/document.querySelector (str "[data-block-id='" prev-id "']"))]
-                    (.focus elem)))
-                50))))
-
-      ;; Plain Up/Down - Only work when NOT in contentEditable (navigation mode)
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-      (let [target (.-target e)
-            in-edit-mode? (and target (.-contentEditable target))]
-        (when-not in-edit-mode?
-          (.preventDefault e)
-          (apply-intent! {:type :select-next-sibling})))
-
-      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-      (let [target (.-target e)
-            in-edit-mode? (and target (.-contentEditable target))]
-        (when-not in-edit-mode?
-          (.preventDefault e)
-          (apply-intent! {:type :select-prev-sibling})))
-
-      ;; Extend selection (Shift+Up/Down)
-      (and shift? (not mod?) (not alt?) (= key "ArrowDown"))
-      (do (.preventDefault e)
-          (apply-intent! {:type :extend-to-next-sibling}))
-
-      (and shift? (not mod?) (not alt?) (= key "ArrowUp"))
-      (do (.preventDefault e)
-          (apply-intent! {:type :extend-to-prev-sibling}))
-
-      ;; Backspace - merge with previous block if at start of empty/start of block
-      (and (= key "Backspace") (not (sel/has-selection? @!db)))
-      (let [target (.-target e)
-            text-content (.-textContent target)
-            selection (.getSelection js/window)
-            is-at-start (and selection (= (.-anchorOffset selection) 0))]
-        (when (or (empty? text-content) is-at-start)
-          (.preventDefault e)
-          (with-history!
-            #(let [db @!db
-                   focus (sel/get-focus db)
-                   prev (get-in db [:derived :prev-id-of focus])
-                   parent (get-in db [:derived :parent-of focus])]
-               (when (and focus prev)
-                 ;; If empty, just delete this block
-                 (if (empty? text-content)
-                   (do
-                     (interpret! [{:op :place :id focus :under :trash :at :last}])
-                     (update-db! sel/select prev))
-                   ;; If at start with content, merge with previous
-                   (let [prev-text (get-in db [:nodes prev :props :text] "")
-                         merged-text (str prev-text text-content)]
-                     (interpret! [{:op :update-node :id prev :props {:text merged-text}}
-                                  {:op :place :id focus :under :trash :at :last}])
-                     (update-db! sel/select prev))))))))
-
-      ;; Delete selected blocks
-      (and (= key "Backspace") (sel/has-selection? @!db))
-      (do (.preventDefault e)
-          (with-history!
-            #(apply-intent! {:type :delete-selected})))
-
-      ;; Collapse/Expand
-      (and mod? (= key "ArrowUp"))
-      (do (.preventDefault e)
-          (js/console.log "Collapse (not implemented)"))
-
-      (and mod? (= key "ArrowDown"))
-      (do (.preventDefault e)
-          (js/console.log "Expand (not implemented)"))
-
-      ;; Escape - Exit edit mode (blur contentEditable)
-      (= key "Escape")
-      (do (.preventDefault e)
-          (when-let [focused-elem (.-activeElement js/document)]
-            (when (.-contentEditable focused-elem)
-              (.blur focused-elem)))))))
+          (swap! !db (fn [db] (or (H/undo db) db)))))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
-(defn render-block [db block-id depth]
-  (let [block (get-in db [:nodes block-id])
-        children (get-in db [:children-by-parent block-id] [])
-        selected? (sel/selected? db block-id)
-        focus? (= (sel/get-focus db) block-id)
-        text (get-in block [:props :text] "")]
-    [:div.block {:key block-id
-                 :style {:margin-left (str (* depth 20) "px")
-                         :padding "4px 8px"
-                         :cursor "text"
-                         :background-color (cond
-                                             focus? "#b3d9ff"
-                                             selected? "#e6f2ff"
-                                             :else "transparent")
-                         :border-left (if selected? "3px solid #0066cc" "3px solid #ccc")
-                         :margin-bottom "2px"}
-                 :on {:click (fn [e]
-                               (.stopPropagation e)
-                               (if (.-shiftKey e)
-                                 (update-db! sel/extend-selection block-id)
-                                 (update-db! sel/select block-id)))}}
-     [:span {:style {:margin-right "8px"}} "•"]
-     [:span {:contentEditable true
-             :suppressContentEditableWarning true
-             :style {:outline "none"
-                     :min-width "1px"  ; Ensure cursor is visible in empty blocks
-                     :display "inline-block"}
-             :data-block-id block-id
-             :on {:input (fn [e]
-                          (let [new-text (-> e .-target .-textContent)]
-                            ;; Don't trigger re-render during typing to preserve cursor
-                            (swap! !db assoc-in [:nodes block-id :props :text] new-text)))
-                  :blur (fn [e]
-                         ;; Save to history on blur
-                         (update-db! H/record))
-                  :focus (fn [e]
-                          ;; Select block when text is focused
-                          (update-db! sel/select block-id))}}
-      text]
-     (when (seq children)
-       (into [:div {:style {:margin-top "2px"}}]
-             (map #(render-block db % (inc depth)) children)))]))
+(defn MockText
+  "Hidden element for cursor position detection (Logseq technique)."
+  []
+  [:div#mock-text
+   {:style {:width "100%"
+            :height "100%"
+            :position "absolute"
+            :visibility "hidden"
+            :top 0
+            :left 0
+            :pointer-events "none"
+            :z-index -1000}}])
 
-(defn render-tree [db]
-  (let [page-id "page"
-        page-children (get-in db [:children-by-parent page-id] [])]
-    [:div.tree {:style {:font-family "system-ui, -apple-system, sans-serif"
-                        :padding "10px"}}
-     [:h3 {:style {:margin-top 0}} "My Page"]
-     (into [:div]
-           (map #(render-block db % 0) page-children))]))
+(defn Outline
+  "Render outline tree by composing Block components."
+  [{:keys [db root-id on-intent]}]
+  (let [children (get-in db [:children-by-parent root-id] [])]
+    (into [:div.outline]
+          (map (fn [child-id]
+                 (block/Block {:db db
+                               :block-id child-id
+                               :depth 0
+                               :on-intent on-intent}))
+               children))))
 
-(defn render-debug [db]
+(defn DebugPanel [db]
   [:div {:style {:margin-top "30px"
                  :padding "15px"
                  :background-color "#f8f9fa"
@@ -307,81 +115,75 @@
                  :font-size "12px"}}
    [:div [:strong "Selection: "] (pr-str (sel/get-selection db))]
    [:div [:strong "Focus: "] (pr-str (sel/get-focus db))]
-   [:div [:strong "Anchor: "] (pr-str (sel/get-anchor db))]
+   [:div [:strong "Editing: "] (pr-str (edit/editing-block-id db))]
    [:div {:style {:margin-top "10px"}} [:strong "Can undo: "] (str (H/can-undo? db))]
    [:div [:strong "Can redo: "] (str (H/can-redo? db))]])
 
-(defn render-hotkeys []
+(defn HotkeysReference []
   [:div.hotkeys-footer
-   [:div.hotkeys-header
-    [:h4 "Keyboard Shortcuts (Logseq Style)"]
-    [:span.hotkeys-hint "Click a block to select it"]]
-   [:div.hotkeys-grid
-    [:div.hotkey-group
+   {:style {:margin-top "30px"
+            :padding "20px"
+            :background-color "#f0f0f0"
+            :border-radius "4px"}}
+   [:h4 "Keyboard Shortcuts (Logseq Style)"]
+   [:div {:style {:display "grid"
+                  :grid-template-columns "repeat(2, 1fr)"
+                  :gap "10px"}}
+    [:div
      [:h5 "Navigation"]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Next block (edit)"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↓"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Prev block (edit)"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↑"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Move block down"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↓"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Move block up"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Extend selection"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑/↓"]]]]
-
-    [:div.hotkey-group
+     [:div "↑/↓ - Move cursor (or navigate blocks at boundary)"]
+     [:div "Esc - Exit edit mode"]
+     [:div "Click - Select block"]]
+    [:div
      [:h5 "Editing"]
-     [:div.hotkey-item
-      [:span.hotkey-desc "New block"]
-      [:div.hotkey-keys [:kbd "Enter"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Newline in block"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Enter"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Exit edit mode"]
-      [:div.hotkey-keys [:kbd "Esc"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Indent"]
-      [:div.hotkey-keys [:kbd "Tab"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Outdent"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Tab"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Delete/Merge"]
-      [:div.hotkey-keys [:kbd "Backspace"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Undo"]
-      [:div.hotkey-keys [:kbd "⌘/Ctrl"] [:span.key-separator "+"] [:kbd "Z"]]]
-     [:div.hotkey-item
-      [:span.hotkey-desc "Redo"]
-      [:div.hotkey-keys [:kbd "⌘/Ctrl"] [:span.key-separator "+"] [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Z"]]]]]])
+     [:div "Enter - New block"]
+     [:div "Shift+Enter - Newline in block"]
+     [:div "Backspace - Delete/merge"]
+     [:div "Tab - Indent"]
+     [:div "Shift+Tab - Outdent"]]
+    [:div
+     [:h5 "Undo/Redo"]
+     [:div "⌘/Ctrl+Z - Undo"]
+     [:div "⌘/Ctrl+Shift+Z - Redo"]]]])
 
-(defn render-app []
+(defn App []
+  "Main app - pure composition, no business logic."
   (let [db @!db]
     [:div.app
-     [:h2 "Structural Editing Demo"]
-     [:p {:style {:color "#666"}} "Select blocks and use keyboard shortcuts to edit the structure."]
-     (render-tree db)
-     (render-debug db)
-     (render-hotkeys)]))
+     {:style {:font-family "system-ui, -apple-system, sans-serif"
+              :padding "20px"
+              :max-width "800px"
+              :margin "0 auto"}}
+
+     ;; Mock-text for cursor detection
+     (MockText)
+
+     [:h2 "Blocks UI - Architectural Demo"]
+     [:p {:style {:color "#666"}}
+      "Demonstrating: Plugins (multimethods) → Components (getters/intents) → App (composition)"]
+
+     ;; Main outline
+     (Outline {:db db
+               :root-id "page"
+               :on-intent handle-intent})
+
+     ;; Debug info
+     (DebugPanel db)
+
+     ;; Hotkeys reference
+     (HotkeysReference)]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
 (defn render! []
   (d/render (js/document.getElementById "root")
-            (render-app)))
+            (App)))
 
 (defn main []
-  (js/console.log "Blocks UI starting...")
+  (js/console.log "Blocks UI starting with proper architecture...")
 
-  ;; Set up keyboard event listener
-  (.addEventListener js/document "keydown" handle-keydown)
+  ;; Set up global keyboard listener (Cmd+Z, etc)
+  (.addEventListener js/document "keydown" handle-global-keydown)
 
   ;; Set up auto-render on state changes
   (add-watch !db :render (fn [_ _ _ _] (render!)))
