@@ -14,7 +14,7 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
 
   test('should load blocks UI with initial blocks', async ({ page }) => {
     // Check title
-    await expect(page.locator('h2')).toContainText('Structural Editing Demo');
+    await expect(page.locator('h2')).toContainText('Blocks UI - Architectural Demo');
 
     // Check initial blocks exist (from blocks_ui.cljs initialization)
     const blocks = page.locator('.block');
