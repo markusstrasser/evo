@@ -2,6 +2,7 @@
   "name": "evolver",
   "version": "0.0.1",
   "scripts": {
+    "start": "npm run dev",
     "dev": "concurrently --kill-others-on-fail \"npm run watch:cljs\" \"npm run watch:css\"",
     "watch:cljs": "npx shadow-cljs watch anki",
     "watch:css": "tailwindcss -i input.css -o public/output.css --watch",
