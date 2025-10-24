@@ -57,7 +57,7 @@
         {:keys [db ops path]} (intent/apply-intent db-before intent)]
     (case path
       :ops (interpret! ops)  ;; Structural: interpret ops
-      :db  (reset! !db db)  ;; View: update db directly
+      :db  (reset! !db db)   ;; View: update db directly
       :unknown (js/console.warn "Unknown intent type:" (:type intent)))))
 
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
@@ -77,6 +77,20 @@
       (and mod? (= key "z"))
       (do (.preventDefault e)
           (update-db! (fn [db] (or (H/undo db) db))))
+
+      ;; Enter - create new block after current
+      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+      (do (.preventDefault e)
+          (with-history!
+            #(let [db @!db
+                   focus (sel/get-focus db)
+                   parent (get-in db [:derived :parent-of focus])
+                   new-id (str "block-" (random-uuid))]
+               (when (and focus parent)
+                 (interpret! [{:op :create-node :id new-id :type :block :props {:text ""}}
+                              {:op :place :id new-id :under parent :at {:after focus}}])
+                 ;; Select the new block
+                 (update-db! sel/select new-id)))))
 
       ;; Move block up/down
       (and mod? shift? (= key "ArrowUp"))
@@ -110,21 +124,30 @@
           (with-history!
             #(apply-intent! {:type :outdent-selected})))
 
-      ;; Selection navigation (Alt+Up/Down - select different block)
-      (and alt? (= key "ArrowDown"))
+      ;; Navigation: Up/Down arrows (select different block)
+      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
       (do (.preventDefault e)
           (apply-intent! {:type :select-next-sibling}))
 
-      (and alt? (= key "ArrowUp"))
+      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
       (do (.preventDefault e)
           (apply-intent! {:type :select-prev-sibling}))
 
-      ;; Extend selection (Shift+Up/Down)
-      (and shift? (not mod?) (= key "ArrowDown"))
+      ;; Alt+Shift+Up/Down - same as Shift+Up/Down (extend selection)
+      (and alt? shift? (= key "ArrowDown"))
       (do (.preventDefault e)
           (apply-intent! {:type :extend-to-next-sibling}))
 
-      (and shift? (not mod?) (= key "ArrowUp"))
+      (and alt? shift? (= key "ArrowUp"))
+      (do (.preventDefault e)
+          (apply-intent! {:type :extend-to-prev-sibling}))
+
+      ;; Extend selection (Shift+Up/Down)
+      (and shift? (not mod?) (not alt?) (= key "ArrowDown"))
+      (do (.preventDefault e)
+          (apply-intent! {:type :extend-to-next-sibling}))
+
+      (and shift? (not mod?) (not alt?) (= key "ArrowUp"))
       (do (.preventDefault e)
           (apply-intent! {:type :extend-to-prev-sibling}))
 
@@ -154,7 +177,7 @@
     [:div.block {:key block-id
                  :style {:margin-left (str (* depth 20) "px")
                          :padding "4px 8px"
-                         :cursor "pointer"
+                         :cursor "text"
                          :background-color (cond
                                              focus? "#b3d9ff"
                                              selected? "#e6f2ff"
@@ -167,7 +190,19 @@
                                  (update-db! sel/extend-selection block-id)
                                  (update-db! sel/select block-id)))}}
      [:span {:style {:margin-right "8px"}} "•"]
-     [:span text]
+     [:span {:contentEditable true
+             :suppressContentEditableWarning true
+             :style {:outline "none"}
+             :on {:input (fn [e]
+                          (let [new-text (-> e .-target .-textContent)]
+                            (interpret! [{:op :update-node :id block-id :props {:text new-text}}])))
+                  :keydown (fn [e]
+                            (let [key (.-key e)]
+                              (when (= key "Enter")
+                                (.preventDefault e)
+                                ;; Handle Enter in the keydown handler for the whole app
+                                nil)))}}
+      text]
      (when (seq children)
        (into [:div {:style {:margin-top "2px"}}]
              (map #(render-block db % (inc depth)) children)))]))
@@ -206,14 +241,11 @@
       [:span.hotkey-desc "Select block"]
       [:div.hotkey-keys [:kbd "Click"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Extend selection"]
-      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Click"]]]
-     [:div.hotkey-item
       [:span.hotkey-desc "Next block"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↓"]]]
+      [:div.hotkey-keys [:kbd "↓"]]]
      [:div.hotkey-item
       [:span.hotkey-desc "Previous block"]
-      [:div.hotkey-keys [:kbd "Alt"] [:span.key-separator "+"] [:kbd "↑"]]]
+      [:div.hotkey-keys [:kbd "↑"]]]
      [:div.hotkey-item
       [:span.hotkey-desc "Extend down"]
       [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↓"]]]
@@ -222,7 +254,10 @@
       [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "↑"]]]]
 
     [:div.hotkey-group
-     [:h5 "Structure"]
+     [:h5 "Editing"]
+     [:div.hotkey-item
+      [:span.hotkey-desc "New block"]
+      [:div.hotkey-keys [:kbd "Enter"]]]
      [:div.hotkey-item
       [:span.hotkey-desc "Indent"]
       [:div.hotkey-keys [:kbd "Tab"]]]
