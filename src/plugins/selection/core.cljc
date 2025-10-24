@@ -4,8 +4,11 @@
    Manages the :selection namespace at DB root with focus tracking.
    Structure: {:selection {:nodes #{id1 id2} :focus id2 :anchor id1}}
 
-   This supersedes ADR-012's boolean property approach."
-  (:require [clojure.set :as set]))
+   This supersedes ADR-012's boolean property approach.
+
+   Implements intent->db multimethod from core.intent for view intents."
+  (:require [clojure.set :as set]
+            [core.intent :as intent]))
 
 ;; ── Selection state accessors ────────────────────────────────────────────────
 
@@ -170,3 +173,49 @@
         (select DB all-siblings))
       DB)
     DB))
+
+;; ── Intent → Database (ADR-016) ───────────────────────────────────────────────
+
+(defmethod intent/intent->db :select
+  [DB {:keys [ids]}]
+  (select DB ids))
+
+(defmethod intent/intent->db :extend-selection
+  [DB {:keys [ids]}]
+  (extend-selection DB ids))
+
+(defmethod intent/intent->db :deselect
+  [DB {:keys [ids]}]
+  (deselect DB ids))
+
+(defmethod intent/intent->db :clear-selection
+  [DB _]
+  (clear DB))
+
+(defmethod intent/intent->db :toggle-selection
+  [DB {:keys [id]}]
+  (toggle DB id))
+
+(defmethod intent/intent->db :select-next-sibling
+  [DB _]
+  (select-next-sibling DB))
+
+(defmethod intent/intent->db :select-prev-sibling
+  [DB _]
+  (select-prev-sibling DB))
+
+(defmethod intent/intent->db :extend-to-next-sibling
+  [DB _]
+  (extend-to-next-sibling DB))
+
+(defmethod intent/intent->db :extend-to-prev-sibling
+  [DB _]
+  (extend-to-prev-sibling DB))
+
+(defmethod intent/intent->db :select-parent
+  [DB _]
+  (select-parent DB))
+
+(defmethod intent/intent->db :select-all-siblings
+  [DB _]
+  (select-all-siblings DB))

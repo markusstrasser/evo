@@ -2,6 +2,7 @@
   "Simple blocks UI for testing structural editing with Logseq hotkeys."
   (:require [replicant.dom :as d]
             [core.db :as DB]
+            [core.intent :as intent]
             [core.interpret :as I]
             [core.history :as H]
             [plugins.selection.core :as sel]
@@ -48,6 +49,17 @@
   (f)
   (update-db! identity))  ;; Trigger re-render
 
+(defn apply-intent!
+  "Apply an intent through the unified router.
+   Structural intents are interpreted, view intents update DB directly."
+  [intent]
+  (let [db-before @!db
+        {:keys [db ops path]} (intent/apply-intent db-before intent)]
+    (case path
+      :ops (interpret! ops)  ;; Structural: interpret ops
+      :db  (reset! !db db)  ;; View: update db directly
+      :unknown (js/console.warn "Unknown intent type:" (:type intent)))))
+
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-keydown [e]
@@ -91,36 +103,36 @@
       (and (not shift?) (= key "Tab"))
       (do (.preventDefault e)
           (with-history!
-            #(interpret! (struct/compile-intents @!db [{:type :indent-selected}]))))
+            #(apply-intent! {:type :indent-selected})))
 
       (and shift? (= key "Tab"))
       (do (.preventDefault e)
           (with-history!
-            #(interpret! (struct/compile-intents @!db [{:type :outdent-selected}]))))
+            #(apply-intent! {:type :outdent-selected})))
 
       ;; Selection navigation (Alt+Up/Down - select different block)
       (and alt? (= key "ArrowDown"))
       (do (.preventDefault e)
-          (update-db! sel/select-next-sibling))
+          (apply-intent! {:type :select-next-sibling}))
 
       (and alt? (= key "ArrowUp"))
       (do (.preventDefault e)
-          (update-db! sel/select-prev-sibling))
+          (apply-intent! {:type :select-prev-sibling}))
 
       ;; Extend selection (Shift+Up/Down)
       (and shift? (not mod?) (= key "ArrowDown"))
       (do (.preventDefault e)
-          (update-db! sel/extend-to-next-sibling))
+          (apply-intent! {:type :extend-to-next-sibling}))
 
       (and shift? (not mod?) (= key "ArrowUp"))
       (do (.preventDefault e)
-          (update-db! sel/extend-to-prev-sibling))
+          (apply-intent! {:type :extend-to-prev-sibling}))
 
       ;; Delete selected
       (and (= key "Backspace") (sel/has-selection? @!db))
       (do (.preventDefault e)
           (with-history!
-            #(interpret! (struct/compile-intents @!db [{:type :delete-selected}]))))
+            #(apply-intent! {:type :delete-selected})))
 
       ;; Collapse/Expand
       (and mod? (= key "ArrowUp"))

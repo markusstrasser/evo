@@ -8,8 +8,11 @@
    - :update-node
 
    Design principle: Delete is archive by design - nodes are moved to :trash,
-   never destroyed. This maintains referential integrity and enables undo."
+   never destroyed. This maintains referential integrity and enables undo.
+
+   Implements intent->ops multimethod from core.intent for structural intents."
   (:require [algebra.permutation :as perm]
+            [core.intent :as intent]
             [plugins.siblings-order :as so]
             [plugins.selection.core :as selection]))
 
@@ -58,22 +61,17 @@
       [{:op :place :id id :under gp :at {:after p}}]
       [])))
 
-;; ── Multimethod dispatch ──────────────────────────────────────────────────────
+;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
 
-(defmulti compile-intent
-  "Compiles a single high-level intent into a vector of core operations.
-   Dispatch on the :type key of the intent map."
-  (fn [_DB intent] (:type intent)))
-
-(defmethod compile-intent :delete
+(defmethod intent/intent->ops :delete
   [DB {:keys [id]}]
   (delete-ops DB id))
 
-(defmethod compile-intent :indent
+(defmethod intent/intent->ops :indent
   [DB {:keys [id]}]
   (indent-ops DB id))
 
-(defmethod compile-intent :outdent
+(defmethod intent/intent->ops :outdent
   [DB {:keys [id]}]
   (outdent-ops DB id))
 
@@ -98,7 +96,7 @@
                {:after (nth dst (dec i))})})
       dst))))
 
-(defmethod compile-intent :reorder/children
+(defmethod intent/intent->ops :reorder/children
   [DB {:keys [parent order]}]
   ;; Reorder children to an explicit target order.
   ;; Intent: {:type :reorder/children, :parent P, :order [id1 id2 ...]}
@@ -112,7 +110,7 @@
         i      (if after (inc (.indexOf items' after)) 0)]
     (vec (concat (subvec items' 0 i) ids (subvec items' i)))))
 
-(defmethod compile-intent :reorder/move-blocks
+(defmethod intent/intent->ops :reorder/move-blocks
   [DB {:keys [parent ids after]}]
   ;; Move contiguous selection after pivot.
   ;; Intent: {:type :reorder/move-blocks, :parent P, :ids [...], :after pivot}
@@ -120,10 +118,6 @@
         dst (splice-after src ids after)
         p   (perm/from-to src dst)]
     (realize-permutation->places DB parent p)))
-
-(defmethod compile-intent :default
-  [_DB _]
-  [])
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
@@ -133,35 +127,26 @@
   [DB ids]
   (sort-by #(get-in DB [:derived :pre %] ##Inf) ids))
 
-(defmethod compile-intent :delete-selected
+(defmethod intent/intent->ops :delete-selected
   [DB _]
   ;; Delete all currently selected nodes in document order
   (let [selected (selection/get-selected-nodes DB)
         ordered (sort-by-doc-order DB selected)]
-    (mapcat #(delete-ops DB %) ordered)))
+    (vec (mapcat #(delete-ops DB %) ordered))))
 
-(defmethod compile-intent :indent-selected
+(defmethod intent/intent->ops :indent-selected
   [DB _]
   ;; Indent all currently selected nodes in document order
   ;; Processing top-to-bottom ensures correct parent-child relationships
   (let [selected (selection/get-selected-nodes DB)
         ordered (sort-by-doc-order DB selected)]
-    (mapcat #(indent-ops DB %) ordered)))
+    (vec (mapcat #(indent-ops DB %) ordered))))
 
-(defmethod compile-intent :outdent-selected
+(defmethod intent/intent->ops :outdent-selected
   [DB _]
   ;; Outdent all currently selected nodes in document order
   ;; Processing top-to-bottom ensures correct parent-child relationships
   (let [selected (selection/get-selected-nodes DB)
         ordered (sort-by-doc-order DB selected)]
-    (mapcat #(outdent-ops DB %) ordered)))
+    (vec (mapcat #(outdent-ops DB %) ordered))))
 
-;; ── Public API ────────────────────────────────────────────────────────────────
-
-(defn compile-intents
-  "Compiles a sequence of high-level intents into a vector of core operations.
-   Each intent is compiled independently and the results are concatenated."
-  [DB intents]
-  (->> intents
-       (mapcat #(compile-intent DB %))
-       vec))

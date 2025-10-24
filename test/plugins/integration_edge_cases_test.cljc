@@ -18,8 +18,7 @@
 
 (use-fixtures :each
   (fn [f]
-    ;; Re-register plugins
-    (reg/register! ::sel/selection sel/derive-indexes)
+    ;; Re-register plugins (selection has no derived indexes)
     (reg/register! ::refs/refs refs/derive-indexes)
     (f)))
 
@@ -48,8 +47,8 @@
   (testing "Selection persists when node is moved within :doc tree"
     (let [db0 (create-base-db)
 
-          ;; Select node 'a'
-          db1 (interpret-ops db0 [(sel/select db0 "a")])
+          ;; Select node 'a' (direct DB update, not ops)
+          db1 (sel/select db0 "a")
 
           ;; Move 'a' to different position (still under :doc)
           db2 (interpret-ops db1 [{:op :place :id "a" :under :doc :at 1}])]
@@ -62,34 +61,30 @@
   (testing "Selection is cleared when node moved to :trash"
     (let [db0 (create-base-db)
 
-          ;; Select node 'a'
-          db1 (interpret-ops db0 [(sel/select db0 "a")])
+          ;; Select node 'a' (direct DB update)
+          db1 (sel/select db0 "a")
 
           ;; Move 'a' to trash
           db2 (interpret-ops db1 [{:op :place :id "a" :under :trash :at :last}])]
 
       (is (sel/selected? db1 "a") "Node should be selected before trashing")
-      (is (sel/selected? db2 "a") "Selection prop still exists (boolean doesn't auto-clear)")
-      ;; Note: In production, you'd want a separate op to clear selections on trash
-      ;; This is expected behavior - boolean props don't auto-clear
+      (is (sel/selected? db2 "a") "Selection persists (manual clear needed)")
+      ;; Note: Selection state is independent of node location
+      ;; Application code should clear selection when trashing
       )))
 
 (deftest multi-select-deselect-order-independence-test
   (testing "Multiple deselect ops are order-independent"
     (let [db0 (create-base-db)
 
-          ;; Select all three
-          db1 (interpret-ops db0 [(sel/select db0 "a")
-                                  (sel/select db0 "b")
-                                  (sel/select db0 "c")])
+          ;; Select all three (direct DB updates)
+          db1 (sel/select db0 ["a" "b" "c"])
 
           ;; Deselect in one order
-          db2a (interpret-ops db1 [(sel/deselect db1 "a")
-                                   (sel/deselect db1 "b")])
+          db2a (-> db1 (sel/deselect "a") (sel/deselect "b"))
 
           ;; Deselect in different order
-          db2b (interpret-ops db1 [(sel/deselect db1 "b")
-                                   (sel/deselect db1 "a")])]
+          db2b (-> db1 (sel/deselect "b") (sel/deselect "a"))]
 
       (is (= (sel/get-selected-nodes db2a)
              (sel/get-selected-nodes db2b))
@@ -177,12 +172,13 @@
   (testing "Selection and refs are independent - don't affect each other"
     (let [db0 (create-base-db)
 
-          ;; Select node and add ref in same transaction
-          db1 (interpret-ops db0 [(sel/select db0 "a")
-                                  (refs/add-link-op db0 "a" "b")])
+          ;; Select node (direct DB update) and add ref (via interpret)
+          db1 (-> db0
+                  (sel/select "a")
+                  (interpret-ops [(refs/add-link-op db0 "a" "b")]))
 
-          ;; Clear selection
-          db2 (interpret-ops db1 (sel/clear-all-selections db1))]
+          ;; Clear selection (direct DB update)
+          db2 (sel/clear db1)]
 
       ;; Refs should persist after clearing selection
       (is (= #{"b"} (get-in db2 [:derived :ref/outgoing "a"]))
