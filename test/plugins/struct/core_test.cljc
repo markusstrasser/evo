@@ -5,6 +5,7 @@
   (:require #?(:clj  [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
             [core.db :as D]
+            [core.intent :as intent]
             [core.interpret :as I]
             [plugins.struct.core :as S]))
 
@@ -29,7 +30,7 @@
 (deftest delete-archives-to-trash
   (testing "Delete intent compiles to :place under :trash"
     (let [db (build-doc)
-          ops (S/compile-intents db [{:type :delete :id "a"}])
+          {:keys [ops]} (intent/apply-intent db {:type :delete :id "a"})
           res (I/interpret db ops)]
       (is (empty? (:issues res))
           "Delete operation should not generate issues")
@@ -42,12 +43,12 @@
   (testing "Indent followed by outdent restores original structure"
     (let [db (build-doc)
           ;; Indent b under a: doc1 -> [a -> [b]]
-          ops1 (S/compile-intents db [{:type :indent :id "b"}])
-          r1   (I/interpret db ops1)
+          {:keys [ops]} (intent/apply-intent db {:type :indent :id "b"})
+          r1   (I/interpret db ops)
           db1  (:db r1)
           ;; Outdent b back to doc1: doc1 -> [a, b]
-          ops2 (S/compile-intents db1 [{:type :outdent :id "b"}])
-          r2   (I/interpret db1 ops2)]
+          {:keys [ops]} (intent/apply-intent db1 {:type :outdent :id "b"})
+          r2   (I/interpret db1 ops)]
       (is (empty? (:issues r1))
           "Indent operation should not generate issues")
       (is (empty? (:issues r2))
@@ -61,30 +62,32 @@
   (testing "Indent on first child returns empty ops (no-op safety)"
     (let [db (build-doc)
           first-id (first (get-in db [:children-by-parent "doc1"]))
-          ops (S/compile-intents db [{:type :indent :id first-id}])]
+          {:keys [ops]} (intent/apply-intent db {:type :indent :id first-id})]
       (is (= [] ops)
           "Cannot indent first child (no previous sibling)")))
 
   (testing "Outdent on direct child of root returns empty ops"
     (let [db (build-doc)
-          ops (S/compile-intents db [{:type :outdent :id "doc1"}])]
+          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "doc1"})]
       (is (= [] ops)
           "Cannot outdent top-level document (no grandparent)"))))
 
 (deftest compile-multiple-intents
   (testing "Multiple intents compile into sequential ops"
     (let [db (build-doc)
-          intents [{:type :indent :id "b"}
-                   {:type :delete :id "a"}]
-          ops (S/compile-intents db intents)]
-      (is (= 2 (count ops))
+          {ops1 :ops} (intent/apply-intent db {:type :indent :id "b"})
+          {ops2 :ops} (intent/apply-intent db {:type :delete :id "a"})
+          all-ops (concat ops1 ops2)]
+      (is (= 2 (count all-ops))
           "Two intents should produce two ops")
-      (is (every? #(contains? % :op) ops)
+      (is (every? #(contains? % :op) all-ops)
           "All compiled outputs should be valid ops"))))
 
 (deftest unknown-intent-type-is-noop
-  (testing "Unknown intent type returns empty ops"
+  (testing "Unknown intent type returns :unknown path"
     (let [db (build-doc)
-          ops (S/compile-intents db [{:type :unknown-intent :id "a"}])]
-      (is (= [] ops)
-          "Unknown intent type should compile to no-op"))))
+          result (intent/apply-intent db {:type :unknown-intent :id "a"})]
+      (is (= :unknown (:path result))
+          "Unknown intent should return :unknown path")
+      (is (= [] (:ops result))
+          "Unknown intent should have no ops"))))
