@@ -10,3 +10,22 @@
 {"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 3: Real-world examples - TDD enforcement, auto-commit, observability patterns","timestamp":"2025-10-13T21:11:00.000Z"}
 {"type":"research_progress","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","note":"Completed Focus Area 4: Anki use cases - Card tracking, session summary, backup hooks identified","timestamp":"2025-10-13T21:14:00.000Z"}
 {"type":"research_completed","research_id":"1b06ce58-17cd-41d0-a9bb-47a35b7303d0","report_path":"research/reports/1b06ce58-17cd-41d0-a9bb-47a35b7303d0/report.md","timestamp":"2025-10-13T21:15:00.000Z"}
+{"type": "proposals_generated", "run_id": "e880be27-486a-4ca6-aa85-b28604647125", "proposal_count": 0, "timestamp": "2025-10-18T11:28:13.014771"}
+{"type": "proposals_generated", "run_id": "52974d55-a213-4e0b-a77b-dd27b277cfd6", "proposal_count": 0, "timestamp": "2025-10-23T21:38:58.222980"}
+{"type": "proposals_generated", "run_id": "54c49bfc-df01-4f21-9c2f-8ce15583da5e", "proposal_count": 1, "timestamp": "2025-10-23T21:45:51.267427"}
+{"type": "proposals_generated", "run_id": "b5222b9a-e1f0-4719-a9db-e8c58b96ce6c", "proposal_count": 2, "timestamp": "2025-10-23T21:47:34.846923"}
+{"type": "proposals_ranked", "run_id": "b5222b9a-e1f0-4719-a9db-e8c58b96ce6c", "winner_id": "b5222b9a-e1f0-4719-a9db-e8c58b96ce6c-codex", "confidence": 1.0, "valid": true, "timestamp": "2025-10-23T21:47:37.817066"}
+{"type": "proposals_generated", "run_id": "9aff0e37-28ff-4cbc-b6e5-7548e1de0f48", "proposal_count": 3, "timestamp": "2025-10-23T23:22:03.246998"}
+{"type": "proposals_ranked", "run_id": "9aff0e37-28ff-4cbc-b6e5-7548e1de0f48", "winner_id": "9aff0e37-28ff-4cbc-b6e5-7548e1de0f48-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-23T23:22:35.601288"}
+{"type": "proposals_generated", "run_id": "07fb0227-2b4e-483f-9cd4-1a213144e688", "proposal_count": 3, "timestamp": "2025-10-23T23:59:58.253374"}
+{"type": "proposals_ranked", "run_id": "07fb0227-2b4e-483f-9cd4-1a213144e688", "winner_id": "07fb0227-2b4e-483f-9cd4-1a213144e688-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T00:00:34.531597"}
+{"type": "proposals_generated", "run_id": "7102cb63-7401-4b80-ba86-83abb519b54b", "proposal_count": 5, "timestamp": "2025-10-24T16:53:14.776936"}
+{"type": "proposals_ranked", "run_id": "7102cb63-7401-4b80-ba86-83abb519b54b", "winner_id": "7102cb63-7401-4b80-ba86-83abb519b54b-codex-3", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T16:54:07.737290"}
+{"type": "proposals_generated", "run_id": "0d7ea747-2898-4e65-b910-749f96661e2e", "proposal_count": 5, "timestamp": "2025-10-24T17:20:28.139381"}
+{"type": "proposals_ranked", "run_id": "0d7ea747-2898-4e65-b910-749f96661e2e", "winner_id": "0d7ea747-2898-4e65-b910-749f96661e2e-gemini-1", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T17:21:14.932530"}
+{"type": "proposals_generated", "run_id": "6c6159a7-ca25-4f4c-90cb-9da1acd89711", "proposal_count": 5, "timestamp": "2025-10-24T17:25:45.272168"}
+{"type": "proposals_ranked", "run_id": "6c6159a7-ca25-4f4c-90cb-9da1acd89711", "winner_id": "6c6159a7-ca25-4f4c-90cb-9da1acd89711-gemini-1", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T17:26:31.580003"}
+{"type": "proposals_generated", "run_id": "7fd9ac2a-7bfe-4e1a-9037-39b6d177f888", "proposal_count": 5, "timestamp": "2025-10-24T17:45:34.191424"}
+{"type": "proposals_ranked", "run_id": "7fd9ac2a-7bfe-4e1a-9037-39b6d177f888", "winner_id": "7fd9ac2a-7bfe-4e1a-9037-39b6d177f888-gemini-1", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T17:46:23.736626"}
+{"type": "proposals_generated", "run_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6", "proposal_count": 3, "timestamp": "2025-10-24T19:04:15.287319"}
+{"type": "proposals_ranked", "run_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6", "winner_id": "94e5d782-6afb-4af8-9944-b93bea37a2f6-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-24T19:04:18.343060"}
