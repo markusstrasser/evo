@@ -69,21 +69,28 @@ def propose(
             print(f"Using prompt variant: {prompt_variant}")
 
     # Call providers in parallel
+    # Track provider name counts to handle duplicates
+    provider_counts = {}
     proposals = []
     with ThreadPoolExecutor(max_workers=len(provider_names)) as executor:
-        future_to_provider = {
-            executor.submit(providers.call_provider, name, description, constraints_file=constraints_file, prompt_variant=prompt_variant): name
-            for name in provider_names
-        }
+        # Track futures with (provider_name, instance_number)
+        future_to_provider_info = {}
+        for name in provider_names:
+            provider_counts[name] = provider_counts.get(name, 0) + 1
+            instance = provider_counts[name]
+            future = executor.submit(providers.call_provider, name, description, constraints_file=constraints_file, prompt_variant=prompt_variant)
+            future_to_provider_info[future] = (name, instance)
 
-        for future in as_completed(future_to_provider):
-            provider_name = future_to_provider[future]
+        for future in as_completed(future_to_provider_info):
+            provider_name, instance = future_to_provider_info[future]
             try:
                 result = future.result()
-                proposal_id = f"{run_id}-{provider_name}"
+                # Add instance number if there are multiple instances of same provider
+                provider_suffix = f"-{instance}" if provider_counts[provider_name] > 1 else ""
+                proposal_id = f"{run_id}-{provider_name}{provider_suffix}"
                 proposal = {
                     "id": proposal_id,
-                    "provider": provider_name,
+                    "provider": f"{provider_name}{provider_suffix}",
                     "content": result,
                     "created_at": datetime.utcnow().isoformat(),
                 }
@@ -93,11 +100,12 @@ def propose(
                 storage.save_proposal(run_id, proposal)
 
                 if verbose:
-                    print(f"✓ {provider_name}: {len(result)} chars")
+                    print(f"✓ {provider_name}{provider_suffix}: {len(result)} chars")
 
             except Exception as e:
                 if verbose:
-                    print(f"✗ {provider_name} failed: {e}", file=sys.stderr)
+                    provider_suffix = f"-{instance}" if provider_counts.get(provider_name, 0) > 1 else ""
+                    print(f"✗ {provider_name}{provider_suffix} failed: {e}", file=sys.stderr)
 
     if verbose:
         print(f"Generated {len(proposals)} proposals")

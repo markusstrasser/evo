@@ -265,6 +265,38 @@ See `plugins/catalog.cljc` for all available derived data.
 - **Repeated `get-in` calls** - More verbose than auto-resolution
   - *Mitigation:* Acceptable trade-off for explicitness
 
+### Escape Hatch: Data Functions for Complex Derivations
+
+For components with expensive or reusable data extraction, use **data-fn pattern**:
+
+```clojure
+;; Reusable data extraction (can be shared across components)
+(defn card-analytics-data [state card-id]
+  "Compute expensive analytics - test independently"
+  {:citations (get-in state [:derived :ref/citations card-id])
+   :backlinks (get-in state [:derived :ref/backlinks-by-kind :link card-id])
+   :related-cards (find-related-cards state card-id)  ; expensive computation
+   :activity-score (compute-activity state card-id)})
+
+;; Component uses data-fn for complex data, inline get-in for simple
+(defn review-card-advanced [{:keys [card-hash state]}]
+  (let [card (get-in state [:nodes card-hash])           ; Simple - inline
+        analytics (card-analytics-data state card-hash)] ; Complex - data-fn
+    [:div.card
+     [:h3 (:text card)]
+     [:div.analytics analytics]]))
+```
+
+**Use data-fn when:**
+- Data derivation is complex/expensive to compute
+- Same computation needed by multiple components
+- Testing derivation logic independently is valuable
+
+**Default to inline `get-in` when:**
+- Simple data access (single get-in call)
+- Component-specific data needs
+- Clarity benefits from seeing data access in situ
+
 ### When This Breaks Down
 
 **If future requirements emerge:**
@@ -297,6 +329,75 @@ See `plugins/catalog.cljc` for all available derived data.
 | LLM learnability | High | Medium | Medium |
 
 **For solo dev + LLM generation: Catalog Only wins.**
+
+### Why Manifests Were Rejected: No Runtime Resolver
+
+**The critical issue with manifests:** They're only valuable if something **consumes** them.
+
+**Manifests WITH resolver (like re-frame):**
+```clojure
+;; Manifest declares needs
+(c/defcomponent review-card
+  {:needs {:citations [:derived :ref/citations :card-hash]}}
+  (fn [{:keys [citations]}]  ; Auto-resolved by framework!
+    [:div citations]))
+
+;; Consumer just passes params - framework wires everything
+[review-card {:card-hash "123"}]  ; Works!
+```
+
+**Manifests WITHOUT resolver (our system):**
+```clojure
+;; Manifest is just documentation - nothing reads it!
+(c/defcomponent review-card
+  {:needs {:citations [:derived :ref/citations :card-hash]}}  ; Unused!
+  (fn [{:keys [citations]}]
+    [:div citations]))
+
+;; Consumer STILL has to do manual wiring:
+(let [citations (get-in state [:derived :ref/citations card-hash])]
+  [review-card {:citations citations :card-hash card-hash}])
+;; The manifest saved zero work - it's pure ceremony!
+```
+
+**What you'd need to build for manifests to be useful:**
+1. Runtime wiring layer to read manifests and auto-resolve data
+2. Template substitution (replace `:card-hash` placeholder with actual value)
+3. Error handling when paths don't exist
+4. Debugging tools when auto-resolution fails
+
+**Verdict:** Manifests without resolver = boilerplate without benefit. Function signatures already document what components need (via destructuring).
+
+### Industry Validation: Svelte 5 (2024)
+
+Svelte 5 faced the same decision: auto-wiring vs explicit data flow.
+
+**Svelte 4 (implicit/auto-wiring):**
+```javascript
+let count = 0;  // Compiler magically makes this reactive
+$: doubled = count * 2;  // Compiler infers dependency
+```
+
+**Svelte 5 (explicit):**
+```javascript
+let count = $state(0);           // Developer declares reactivity
+let doubled = $derived(count * 2);  // Explicit dependency
+```
+
+**Why they switched to explicit (from Svelte 5 docs):**
+- "Figuring out which values are reactive and which aren't can get tricky"
+- Large component trees require debuggability over convenience
+- Explicit dependencies make data flow clear
+- Type safety requires visible contracts
+
+**Key quote:** "Prop drilling is documentation, not a code smell."
+
+**This validates our choice:** When generating 100+ components (especially via LLMs), explicit data flow beats hidden magic.
+
+**Sources:**
+- Svelte 5 Runes Introduction (2024)
+- Frontend Masters: Fine-Grained Reactivity in Svelte 5
+- Research report: `.architect/analysis/svelte-5-component-patterns.md` (2025-10-24)
 
 ## Examples
 
@@ -358,3 +459,18 @@ LLM: "I want to show citation counts"
 - **Context:** Component API design for LLM-driven generation at scale
 - **Alternatives considered:** defcomponent macro, metadata annotations
 - **Outcome:** Catalog-only approach, no runtime declarations
+
+### Addendum: 2025-10-24
+
+**Re-evaluation:** Tournament comparison of all three approaches (Gemini explicit, Codex manifests, Grok slots) + Svelte 5 research
+
+**Findings:**
+- Tournament showed approaches are **architecturally equivalent** (INVALID status = unanimous agreement)
+- Key difference: Where complexity lives (component vs consumer vs framework)
+- Svelte 5 independently validated explicit approach in 2024 for same reasons
+- Manifests require runtime resolver to provide value; without it, they're ceremony without benefit
+- Data-fn pattern identified as useful escape hatch for complex derivations
+
+**Validation:** Original decision reaffirmed. Catalog-only approach remains optimal for this project's constraints.
+
+**Tournament results:** `/tmp/component-architecture-tournament-*.json`

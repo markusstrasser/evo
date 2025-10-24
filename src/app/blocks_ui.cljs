@@ -78,6 +78,11 @@
       (do (.preventDefault e)
           (update-db! (fn [db] (or (H/undo db) db))))
 
+      ;; Shift+Enter - insert newline within block (don't create new block)
+      (and (= key "Enter") shift? (not mod?) (not alt?))
+      ;; Let browser handle newline insertion naturally
+      nil
+
       ;; Enter - create new block after current
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))
       (do (.preventDefault e)
@@ -89,8 +94,14 @@
                (when (and focus parent)
                  (interpret! [{:op :create-node :id new-id :type :block :props {:text ""}}
                               {:op :place :id new-id :under parent :at {:after focus}}])
-                 ;; Select the new block
-                 (update-db! sel/select new-id)))))
+                 ;; Select and focus the new block
+                 (update-db! sel/select new-id)
+                 ;; Focus the contentEditable span after render
+                 (js/setTimeout
+                   (fn []
+                     (when-let [elem (js/document.querySelector (str "[data-block-id='" new-id "']"))]
+                       (.focus elem)))
+                   50)))))
 
       ;; Move block up/down
       (and mod? shift? (= key "ArrowUp"))
@@ -113,16 +124,24 @@
                (when (and focus next parent)
                  (interpret! [{:op :place :id focus :under parent :at {:after next}}])))))
 
-      ;; Indent/Outdent
+      ;; Indent/Outdent (exit edit mode after)
       (and (not shift?) (= key "Tab"))
       (do (.preventDefault e)
           (with-history!
-            #(apply-intent! {:type :indent-selected})))
+            #(apply-intent! {:type :indent-selected}))
+          ;; Blur to exit edit mode (Logseq behavior)
+          (when-let [focused-elem (.-activeElement js/document)]
+            (when (.-contentEditable focused-elem)
+              (.blur focused-elem))))
 
       (and shift? (= key "Tab"))
       (do (.preventDefault e)
           (with-history!
-            #(apply-intent! {:type :outdent-selected})))
+            #(apply-intent! {:type :outdent-selected}))
+          ;; Blur to exit edit mode (Logseq behavior)
+          (when-let [focused-elem (.-activeElement js/document)]
+            (when (.-contentEditable focused-elem)
+              (.blur focused-elem))))
 
       ;; Navigation: Up/Down arrows (select different block)
       (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
@@ -151,7 +170,33 @@
       (do (.preventDefault e)
           (apply-intent! {:type :extend-to-prev-sibling}))
 
-      ;; Delete selected
+      ;; Backspace - merge with previous block if at start of empty/start of block
+      (and (= key "Backspace") (not (sel/has-selection? @!db)))
+      (let [target (.-target e)
+            text-content (.-textContent target)
+            selection (.getSelection js/window)
+            is-at-start (and selection (= (.-anchorOffset selection) 0))]
+        (when (or (empty? text-content) is-at-start)
+          (.preventDefault e)
+          (with-history!
+            #(let [db @!db
+                   focus (sel/get-focus db)
+                   prev (get-in db [:derived :prev-id-of focus])
+                   parent (get-in db [:derived :parent-of focus])]
+               (when (and focus prev)
+                 ;; If empty, just delete this block
+                 (if (empty? text-content)
+                   (do
+                     (interpret! [{:op :place :id focus :under :trash :at :last}])
+                     (update-db! sel/select prev))
+                   ;; If at start with content, merge with previous
+                   (let [prev-text (get-in db [:nodes prev :props :text] "")
+                         merged-text (str prev-text text-content)]
+                     (interpret! [{:op :update-node :id prev :props {:text merged-text}}
+                                  {:op :place :id focus :under :trash :at :last}])
+                     (update-db! sel/select prev))))))))
+
+      ;; Delete selected blocks
       (and (= key "Backspace") (sel/has-selection? @!db))
       (do (.preventDefault e)
           (with-history!
@@ -164,7 +209,14 @@
 
       (and mod? (= key "ArrowDown"))
       (do (.preventDefault e)
-          (js/console.log "Expand (not implemented)")))))
+          (js/console.log "Expand (not implemented)"))
+
+      ;; Escape - Exit edit mode (blur contentEditable)
+      (= key "Escape")
+      (do (.preventDefault e)
+          (when-let [focused-elem (.-activeElement js/document)]
+            (when (.-contentEditable focused-elem)
+              (.blur focused-elem)))))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -192,16 +244,20 @@
      [:span {:style {:margin-right "8px"}} "•"]
      [:span {:contentEditable true
              :suppressContentEditableWarning true
-             :style {:outline "none"}
+             :style {:outline "none"
+                     :min-width "1px"  ; Ensure cursor is visible in empty blocks
+                     :display "inline-block"}
+             :data-block-id block-id
              :on {:input (fn [e]
                           (let [new-text (-> e .-target .-textContent)]
-                            (interpret! [{:op :update-node :id block-id :props {:text new-text}}])))
-                  :keydown (fn [e]
-                            (let [key (.-key e)]
-                              (when (= key "Enter")
-                                (.preventDefault e)
-                                ;; Handle Enter in the keydown handler for the whole app
-                                nil)))}}
+                            ;; Don't trigger re-render during typing to preserve cursor
+                            (swap! !db assoc-in [:nodes block-id :props :text] new-text)))
+                  :blur (fn [e]
+                         ;; Save to history on blur
+                         (update-db! H/record))
+                  :focus (fn [e]
+                          ;; Select block when text is focused
+                          (update-db! sel/select block-id))}}
       text]
      (when (seq children)
        (into [:div {:style {:margin-top "2px"}}]
@@ -259,13 +315,19 @@
       [:span.hotkey-desc "New block"]
       [:div.hotkey-keys [:kbd "Enter"]]]
      [:div.hotkey-item
+      [:span.hotkey-desc "Newline in block"]
+      [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Enter"]]]
+     [:div.hotkey-item
+      [:span.hotkey-desc "Exit edit mode"]
+      [:div.hotkey-keys [:kbd "Esc"]]]
+     [:div.hotkey-item
       [:span.hotkey-desc "Indent"]
       [:div.hotkey-keys [:kbd "Tab"]]]
      [:div.hotkey-item
       [:span.hotkey-desc "Outdent"]
       [:div.hotkey-keys [:kbd "Shift"] [:span.key-separator "+"] [:kbd "Tab"]]]
      [:div.hotkey-item
-      [:span.hotkey-desc "Delete selected"]
+      [:span.hotkey-desc "Delete/Merge"]
       [:div.hotkey-keys [:kbd "Backspace"]]]
      [:div.hotkey-item
       [:span.hotkey-desc "Undo"]

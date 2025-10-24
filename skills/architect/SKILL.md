@@ -13,12 +13,36 @@ Minimal-linear review workflow for architectural decision-making: **proposals �
 # Full cycle (generate → rank → optionally decide)
 skills/architect/run.sh review "How should we implement event sourcing?"
 
-# Step-by-step workflow
-skills/architect/run.sh propose "How should we handle state management?"
+# Step-by-step workflow with source context (RECOMMENDED)
+cat proposal.md src/core/*.cljc | \
+  skills/architect/run.sh propose "Should we add fourth kernel operation?"
+
 skills/architect/run.sh rank <run-id>
-skills/architect/run.sh refine <run-id> <proposal-id> "Add more examples"
 skills/architect/run.sh decide <run-id> approve <proposal-id> "Best approach"
 ```
+
+## Critical: Provide Full Context
+
+**Lesson learned:** LLMs need complete context to understand architectural decisions correctly.
+
+**Good prompt (80% success):**
+```bash
+cat .architect/analysis/proposal.md \
+    src/core/ops.cljc \
+    src/plugins/selection/core.cljc | \
+  skills/architect/run.sh propose "Evaluate this specific proposal"
+```
+
+**Bad prompt (0% success):**
+```bash
+skills/architect/run.sh propose "Should we add a fourth operation?"
+# → LLMs guess what you mean, usually incorrectly
+```
+
+**Why this matters:**
+- Generic descriptions → misunderstanding
+- Source code context → accurate evaluation
+- Explicit framing → focused analysis
 
 ## Commands
 
@@ -54,7 +78,7 @@ skills/architect/run.sh propose "problem description"
 
 ### `rank` - Rank Proposals
 
-Rank proposals using tournament-based evaluation (via tournament-mcp)
+**NOTE:** Ranking uses simple fallback heuristic because tournament CLI is not available.
 
 ```bash
 skills/architect/run.sh rank <run-id>
@@ -68,6 +92,22 @@ skills/architect/run.sh rank <run-id>
 **Output:**
 - `.architect/review-runs/{run-id}/ranking.json` - Rankings with winner
 - Shows next actions: approve, revise, or reject_all
+
+**Limitation:** The Python script runs in subprocess and cannot access MCP tools.
+
+**Better approach:** Use tournament MCP from Claude Code directly:
+```bash
+# After propose finishes, ask Claude Code to rank via tournament MCP
+# Example: "Use tournament MCP to rank proposals from run <run-id>"
+```
+
+**Important distinction:**
+- **Validation use case:** Same prompt → multiple providers → check consensus
+  - If tournament returns INVALID (all theta=1.0), proposals are identical = validation success!
+- **Comparison use case:** Different architectures → rank by quality
+  - Requires semantically different proposals to compare
+
+See `IMPROVEMENTS.md` for details on tournament integration and use cases.
 
 ### `refine` - Refine Proposal
 
@@ -249,14 +289,19 @@ skills/architect/run.sh review "How to handle async operations?" \
 
 ### With Tournament-MCP
 
-The skill uses tournament-mcp for ranking if available:
+The skill can use tournament-mcp for ranking when called from Claude Code:
 
 ```bash
-# Check if tournament-mcp is available
-which tournament-mcp
+# Generate proposals
+skills/architect/run.sh propose "problem description"
 
-# If not available, ranking will use simplified comparison
+# Then ask Claude Code to rank them
+# "Use tournament MCP to rank proposals from run <run-id>"
 ```
+
+**Two use cases:**
+1. **Validation:** Same prompt, multiple providers → check consensus (INVALID = good!)
+2. **Comparison:** Different architectures → rank by quality
 
 ### With Research Skill
 
