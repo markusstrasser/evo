@@ -20,6 +20,9 @@
                         (shell "npx shadow-cljs compile :test")
                         (shell "node out/tests.js"))}
 
+   check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
+                    :task (shell "scripts/check-version-sync.sh")}
+
    ;; Cache management
    fix-cache   {:doc "Clear all caches (shadow-cljs, .cpcache, node_modules/.cache)"
                 :task (do
@@ -29,6 +32,26 @@
                         (when (fs/exists? "node_modules/.cache")
                           (fs/delete-tree "node_modules/.cache"))
                         (println "✓ Caches cleared"))}
+
+   rebuild-index {:doc "Rebuild ck (semantic search) embeddings index"
+                  :task (do
+                          (println "Rebuilding semantic search index...")
+                          (println "Cleaning orphaned files...")
+                          (shell "ck --clean-orphans .")
+                          (println "Indexing source files...")
+                          (shell "ck --sem --threshold 0.0 --limit 1 'test' src/")
+                          (println "Indexing session files...")
+                          (shell "ck --sem --threshold 0.0 --limit 1 'test' ~/.claude/projects/-Users-alien-Projects-evo/")
+                          (println "✓ Index rebuilt"))}
+
+   clean-index   {:doc "Clean ck index and orphaned files"
+                  :task (do
+                          (println "Cleaning semantic search index...")
+                          (shell "ck --clean-orphans .")
+                          (doseq [dir (fs/glob "." "**/.ck")]
+                            (println (str "  Removing " dir))
+                            (fs/delete-tree dir))
+                          (println "✓ Index cleaned"))}
 
    ;; Skill commands (agent-facing workflows)
    health      {:doc "Run environment health checks"
@@ -42,6 +65,9 @@
 
    research    {:doc "Code research across best-of repos (code-research skill)"
                 :task (shell "skills/code-research/run.sh" (str/join " " *command-line-args*))}
+
+   sessions    {:doc "Session memory & analysis (session-memory skill)"
+                :task (shell "skills/session-memory/run.sh" (str/join " " *command-line-args*))}
 
    ;; REPL helpers
    repl-health {:doc "Quick REPL diagnostics (requires running REPL)"
@@ -64,15 +90,20 @@
                 :task (do
                         (println "Available Babashka tasks:\n")
                         (println "Quality Gates:")
-                        (println "  bb lint          - Run clj-kondo linter")
-                        (println "  bb check         - Lint + compile check")
-                        (println "  bb test          - Run test suite")
-                        (println "  bb fix-cache     - Clear all caches\n")
+                        (println "  bb lint              - Run clj-kondo linter")
+                        (println "  bb check             - Lint + compile check")
+                        (println "  bb test              - Run test suite")
+                        (println "  bb check-deps-sync   - Verify dependency versions match")
+                        (println "  bb fix-cache         - Clear all caches\n")
                         (println "Skills (Agent Workflows):")
                         (println "  bb health        - Environment health checks")
                         (println "  bb preflight     - Pre-flight diagnostics")
                         (println "  bb env-debug VAR - Debug .env variable")
-                        (println "  bb research ...  - Code research tool\n")
+                        (println "  bb research ...  - Code research tool")
+                        (println "  bb sessions ...  - Session memory & analysis\n")
+                        (println "Search & Indexing:")
+                        (println "  bb rebuild-index - Rebuild ck semantic index")
+                        (println "  bb clean-index   - Clean ck index + orphans\n")
                         (println "Development:")
                         (println "  bb dev           - Start dev server + watch")
                         (println "  bb repl-health   - REPL diagnostics")
