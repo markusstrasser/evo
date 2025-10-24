@@ -17,7 +17,7 @@
 
 ```bash
 # Quality gates
-bb lint check test fix-cache
+bb lint check test check-deps-sync fix-cache
 
 # Skills
 bb health preflight env-debug research
@@ -25,6 +25,30 @@ bb health preflight env-debug research
 # Development
 bb dev repl-health docs-overview install-hooks help
 ```
+
+### Semantic Search & Indexing
+
+The `ck` tool provides semantic, lexical, and hybrid code search with embeddings:
+
+```bash
+# Rebuild embeddings index (do this regularly)
+bb rebuild-index
+
+# Clean orphaned index files
+bb clean-index
+
+# Semantic search in code
+ck --sem "event sourcing patterns" src/
+
+# Search session history
+bb sessions search --hybrid "kernel IR architecture" --limit 5
+```
+
+**Index management:**
+- **`.ck/` directories** - Gitignored embeddings cache (auto-generated)
+- **Rebuild regularly** - Run `bb rebuild-index` after major refactors or weekly
+- **First search is slow** - Builds index automatically, subsequent searches are instant
+- **Session search** - Uses ck to find conceptually similar conversations
 
 ### llmx CLI (Agent Scripts)
 
@@ -85,6 +109,16 @@ DEBUG.inspectEvents() // Recent with ✅/❌ status
 DEBUG.reload()        // Hard reload
 ```
 
+### Hot Reload
+
+**Status:** ✅ Working by default (shadow-cljs auto-reload enabled)
+
+- Shadow-cljs automatically reloads code changes for `:browser` targets
+- File changes trigger incremental compilation (0.64s average)
+- Browser automatically reloads changed namespaces
+- **Note:** `:preloads [evolver.dev-preload]` in shadow-cljs.edn is archived (was for custom behavior)
+- Use `DEBUG.reload()` for hard reload if needed
+
 ### Key Files
 
 - `dev/repl/init.clj` - REPL helpers (go!, connect!, init!, rt!, rq!)
@@ -106,6 +140,15 @@ DEBUG.reload()        // Hard reload
 - `test/core_interpret_test.cljc` - Comprehensive operation tests
 - `dev/fixtures.cljc` - Test data generators
 - Run: `bb test` or `(repl/rt!)`
+
+**Test Execution Strategy:**
+- **ClojureScript tests**: Compiled via `shadow-cljs compile :test` → run with `node out/tests.js`
+- **`bb test`**: Runs full test suite (compile + execute)
+- **REPL testing**: `(repl/rt!)` for all tests, `(repl/rq! 'namespace-test)` for specific
+- **157 tests** with 651 assertions, runs in ~1.8 seconds
+- **Property-based tests**: Uses `test.check` for algebra layer (100-200 iterations per property)
+- **Test organization**: Mirrors `/src` structure in `/test`
+- **Fixtures**: Generic fixtures in `/dev/fixtures.cljc`, domain-specific in test files
 
 ---
 
@@ -199,3 +242,4 @@ Metadata: `docs/research/sources/repos.edn`
 - AGENTS.md is a symlink to CLAUDE.md - edit CLAUDE.md only
 - Use `bat`, `rg`, targeted file reads for token efficiency
 - Check `dev/error-catalog.edn` for self-diagnosis patterns
+We track work in Beads instead of Markdown. Run `bd quickstart` to see how.
