@@ -54,13 +54,13 @@
       (is (db-valid? db)))))
 
 (deftest test-place-positions
-  (testing "place respects :first, :last, and numeric positions"
+  (testing "place respects :first, :last, and relational positions"
     (let [db (apply-ops [(create-op "a" :div)
                          (create-op "b" :div)
                          (create-op "c" :div)
                          (place-op "a" :doc :first)
                          (place-op "b" :doc :last)
-                         (place-op "c" :doc 1)])]
+                         (place-op "c" :doc {:after "a"})])]
       (is (= ["a" "c" "b"] (children-of db :doc)))
       (is (db-valid? db)))))
 
@@ -199,8 +199,8 @@
                          (place-op "c" "a" :last)])
           all-nodes (keys (:nodes db))
           ;; Roots like "session" exist in :nodes but not in :parent-of
-          ;; Node IDs are strings, but roots set contains keywords
-          roots-set (:roots db)
+          ;; Node IDs are strings, but roots is now a vector of keywords
+          roots-set (set (:roots db))
           is-root? (fn [node-id] (contains? roots-set (keyword node-id)))
           placed-nodes (remove is-root? all-nodes)
           nodes-with-parents (keys (get-in db [:derived :parent-of]))]
