@@ -49,13 +49,13 @@
       (is (S/selected? db' "c")))))
 
 (deftest extend-selection-test
-  (testing "Extend selection adds to existing"
+  (testing "Extend selection selects range between anchor and focus"
     (let [db (build-doc)
           db' (-> db
                   (S/select "a")
                   (S/extend-selection "c"))]
-      (is (= #{"a" "c"} (S/get-selection db'))
-          "Selection should contain both nodes"))))
+      (is (= #{"a" "b" "c"} (S/get-selection db'))
+          "Range selection should include intermediate nodes"))))
 
 (deftest deselect-test
   (testing "Deselect removes from selection"
