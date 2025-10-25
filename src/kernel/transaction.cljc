@@ -205,7 +205,6 @@
                     :create-node (validate-create-node db op op-index)
                     :place (validate-place db op op-index)
                     :update-node (validate-update-node db op op-index)
-                    :update-ui []  ; Always valid - just merges into :ui
                     [(make-issue op op-index :unknown-op
                                  (str "Unknown operation: " (:op op)))])]
 
@@ -217,8 +216,7 @@
   (case op
     :create-node (ops/create-node db id node-type props)
     :place (ops/place db id under at)
-    :update-node (ops/update-node db id props)
-    :update-ui (ops/update-ui db props)))
+    :update-node (ops/update-node db id props)))
 
 (defn- validate-ops
   "Validate all operations in sequence, accumulating issues.
