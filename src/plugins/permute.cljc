@@ -2,7 +2,7 @@
   "Intent-level reordering and movement operations.
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
-   Uses core.position for position resolution and algebra.permutation for deterministic ordering."
+   Uses core.position for position resolution and core.permutation for deterministic ordering."
   (:require [core.position :as pos]))
 
 (defn planned-positions

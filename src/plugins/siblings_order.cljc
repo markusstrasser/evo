@@ -1,6 +1,6 @@
 (ns plugins.siblings-order
   "Plugin for canonical child ordering and reorder permutation computation."
-  (:require [algebra.permutation :as perm]
+  (:require [core.permutation :as perm]
             [plugins.registry :as registry]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════

@@ -111,3 +111,53 @@
   [intent-type]
   (or (has-ops-handler? intent-type)
       (has-db-handler? intent-type)))
+
+;; ── Intent Registry ───────────────────────────────────────────────────────────
+
+(defonce ^:private intent-registry (atom {}))
+
+(defn get-intent-meta
+  "Get metadata for an intent type (doc, spec, etc.)."
+  [intent-type]
+  (get @intent-registry intent-type))
+
+(defn list-intents
+  "List all registered intent types with their metadata."
+  []
+  @intent-registry)
+
+;; ── defintent Macro ───────────────────────────────────────────────────────────
+
+#?(:clj
+   (defmacro defintent
+     "Define an intent with both handlers and metadata in one place.
+
+      Usage:
+        (defintent :select
+          {:sig [db {:keys [ids]}]
+           :doc \"Set selection; last id is focus.\"
+           :spec [:map [:type [:= :select]] [:ids [:vector :string]]]
+           :ops nil
+           :db  (assoc db :selection {:nodes (set ids) :focus (peek ids)})})
+
+      This expands to:
+        - defmethod for intent->ops (if :ops provided)
+        - defmethod for intent->db (if :db provided)
+        - registry entry with :doc and :spec"
+     [intent-kw {:keys [sig doc ops db spec]}]
+     (let [[db-sym intent-destructure] sig]
+       `(do
+          ~(when ops
+             `(defmethod intent->ops ~intent-kw
+                [~db-sym ~intent-destructure]
+                ~ops))
+          ~(when db
+             `(defmethod intent->db ~intent-kw
+                [~db-sym ~intent-destructure]
+                ~db))
+          (swap! intent-registry assoc ~intent-kw
+                 {:doc ~doc
+                  :spec ~spec
+                  :has-ops? ~(boolean ops)
+                  :has-db? ~(boolean db)})
+          ~intent-kw))))
