@@ -43,16 +43,6 @@
   [db ops]
   (remove #(is-noop-place? db %) ops))
 
-(defn- deep-props-merge
-  "Deep merge props maps, preserving nested structure.
-   When both values are maps, recursively merge. Otherwise take the new value."
-  [a b]
-  (merge-with (fn [x y]
-                (if (and (map? x) (map? y))
-                  (deep-props-merge x y)
-                  y))
-              a b))
-
 (defn- merge-adjacent-updates
   "Merge adjacent :update-node operations on the same id.
    Uses deep merge to preserve nested property updates."
@@ -62,7 +52,7 @@
      (if-let [prev (peek acc)]
        (if (and (= :update-node (:op op) (:op prev))
                 (= (:id op) (:id prev)))
-         (conj (pop acc) (update prev :props deep-props-merge (:props op)))
+         (conj (pop acc) (update prev :props ops/deep-merge (:props op)))
          (conj acc op))
        [op]))
    []
@@ -215,6 +205,7 @@
                     :create-node (validate-create-node db op op-index)
                     :place (validate-place db op op-index)
                     :update-node (validate-update-node db op op-index)
+                    :update-ui []  ; Always valid - just merges into :ui
                     [(make-issue op op-index :unknown-op
                                  (str "Unknown operation: " (:op op)))])]
 
@@ -226,7 +217,8 @@
   (case op
     :create-node (ops/create-node db id node-type props)
     :place (ops/place db id under at)
-    :update-node (ops/update-node db id props)))
+    :update-node (ops/update-node db id props)
+    :update-ui (ops/update-ui db props)))
 
 (defn- validate-ops
   "Validate all operations in sequence, accumulating issues.
