@@ -4,9 +4,7 @@
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
    Uses core.position for position resolution and core.permutation for deterministic ordering."
   (:require [kernel.position :as pos]
-            [kernel.intent :as intent])
-  #?(:clj (:require [kernel.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
+            [kernel.intent :as intent]))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
@@ -149,8 +147,8 @@
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
-(defintent :move
-  {:sig [db intent]
-   :doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
+(intent/register-intent! :move
+  {:doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
    :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
-   :ops (:ops (lower db intent))})
+   :handler (fn [db intent]
+              (:ops (lower db intent)))})

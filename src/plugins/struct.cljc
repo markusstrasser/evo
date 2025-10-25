@@ -16,9 +16,7 @@
             [kernel.query :as q]
             [plugins.selection :as selection]
             [plugins.editing :as editing]
-            [plugins.permute :as permute])
-  #?(:clj (:require [kernel.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
+            [plugins.permute :as permute]))
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
@@ -50,51 +48,51 @@
 
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
 
-(defintent :delete
-  {:sig [db {:keys [id]}]
-   :doc "Delete node by moving to :trash."
+(intent/register-intent! :delete
+  {:doc "Delete node by moving to :trash."
    :spec [:map [:type [:= :delete]] [:id :string]]
-   :ops (delete-ops db id)})
+   :handler (fn [db {:keys [id]}]
+              (delete-ops db id))})
 
-(defintent :indent
-  {:sig [db {:keys [id]}]
-   :doc "Indent node under previous sibling."
+(intent/register-intent! :indent
+  {:doc "Indent node under previous sibling."
    :spec [:map [:type [:= :indent]] [:id :string]]
-   :ops (indent-ops db id)})
+   :handler (fn [db {:keys [id]}]
+              (indent-ops db id))})
 
-(defintent :outdent
-  {:sig [db {:keys [id]}]
-   :doc "Outdent node to be sibling of parent."
+(intent/register-intent! :outdent
+  {:doc "Outdent node to be sibling of parent."
    :spec [:map [:type [:= :outdent]] [:id :string]]
-   :ops (outdent-ops db id)})
+   :handler (fn [db {:keys [id]}]
+              (outdent-ops db id))})
 
-(defintent :create-and-place
-  {:sig [_db {:keys [id parent after]}]
-   :doc "Create new block and place it under parent."
+(intent/register-intent! :create-and-place
+  {:doc "Create new block and place it under parent."
    :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string] [:after {:optional true} :string]]
-   :ops [{:op :create-node :id id :type :block :props {:text ""}}
-         {:op :place :id id :under parent :at (if after {:after after} :last)}]})
+   :handler (fn [_db {:keys [id parent after]}]
+              [{:op :create-node :id id :type :block :props {:text ""}}
+               {:op :place :id id :under parent :at (if after {:after after} :last)}])})
 
 
 ;; ── Reorder intents ───────────────────────────────────────────────────────────
 
-(defintent :reorder/children
-  {:sig [db {:keys [parent order]}]
-   :doc "Reorder children to explicit target order."
+(intent/register-intent! :reorder/children
+  {:doc "Reorder children to explicit target order."
    :spec [:map [:type [:= :reorder/children]] [:parent :string] [:order [:vector :string]]]
-   :ops (intent/intent->ops db {:type :move
-                                :selection (vec order)
-                                :parent parent
-                                :anchor :first})})
+   :handler (fn [db {:keys [parent order]}]
+              (intent/intent->ops db {:type :move
+                                      :selection (vec order)
+                                      :parent parent
+                                      :anchor :first}))})
 
-(defintent :reorder/move-blocks
-  {:sig [db {:keys [parent ids after]}]
-   :doc "Move contiguous selection after pivot."
+(intent/register-intent! :reorder/move-blocks
+  {:doc "Move contiguous selection after pivot."
    :spec [:map [:type [:= :reorder/move-blocks]] [:parent :string] [:ids [:vector :string]] [:after {:optional true} :string]]
-   :ops (intent/intent->ops db {:type :move
-                                :selection (vec ids)
-                                :parent parent
-                                :anchor (if after {:after after} :first)})})
+   :handler (fn [db {:keys [parent ids after]}]
+              (intent/intent->ops db {:type :move
+                                      :selection (vec ids)
+                                      :parent parent
+                                      :anchor (if after {:after after} :first)}))})
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
@@ -151,45 +149,45 @@
                               :anchor {:after next}})
       [])))
 
-(defintent :delete-selected
-  {:sig [db _]
-   :doc "Delete all selected nodes (or editing block if no selection)."
+(intent/register-intent! :delete-selected
+  {:doc "Delete all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :delete-selected]]]
-   :ops (let [selected (q/selection db)
-              editing-id (q/editing-block-id db)
-              targets (if (seq selected) selected (if editing-id [editing-id] []))
-              ordered (sort-by-doc-order db targets)]
-          (vec (mapcat #(delete-ops db %) ordered)))})
+   :handler (fn [db _]
+              (let [selected (q/selection db)
+                    editing-id (q/editing-block-id db)
+                    targets (if (seq selected) selected (if editing-id [editing-id] []))
+                    ordered (sort-by-doc-order db targets)]
+                (vec (mapcat #(delete-ops db %) ordered))))})
 
-(defintent :indent-selected
-  {:sig [db _]
-   :doc "Indent all selected nodes (or editing block if no selection)."
+(intent/register-intent! :indent-selected
+  {:doc "Indent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :indent-selected]]]
-   :ops (let [selected (q/selection db)
-              editing-id (q/editing-block-id db)
-              targets (if (seq selected) selected (if editing-id [editing-id] []))
-              ordered (sort-by-doc-order db targets)]
-          (vec (mapcat #(indent-ops db %) ordered)))})
+   :handler (fn [db _]
+              (let [selected (q/selection db)
+                    editing-id (q/editing-block-id db)
+                    targets (if (seq selected) selected (if editing-id [editing-id] []))
+                    ordered (sort-by-doc-order db targets)]
+                (vec (mapcat #(indent-ops db %) ordered))))})
 
-(defintent :outdent-selected
-  {:sig [db _]
-   :doc "Outdent all selected nodes (or editing block if no selection)."
+(intent/register-intent! :outdent-selected
+  {:doc "Outdent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :outdent-selected]]]
-   :ops (let [selected (q/selection db)
-              editing-id (q/editing-block-id db)
-              targets (if (seq selected) selected (if editing-id [editing-id] []))
-              ordered (sort-by-doc-order db targets)]
-          (vec (mapcat #(outdent-ops db %) ordered)))})
+   :handler (fn [db _]
+              (let [selected (q/selection db)
+                    editing-id (q/editing-block-id db)
+                    targets (if (seq selected) selected (if editing-id [editing-id] []))
+                    ordered (sort-by-doc-order db targets)]
+                (vec (mapcat #(outdent-ops db %) ordered))))})
 
-(defintent :move-selected-up
-  {:sig [db _]
-   :doc "Move selected nodes up one sibling position."
+(intent/register-intent! :move-selected-up
+  {:doc "Move selected nodes up one sibling position."
    :spec [:map [:type [:= :move-selected-up]]]
-   :ops (move-selected-up-ops db)})
+   :handler (fn [db _]
+              (move-selected-up-ops db))})
 
-(defintent :move-selected-down
-  {:sig [db _]
-   :doc "Move selected nodes down one sibling position."
+(intent/register-intent! :move-selected-down
+  {:doc "Move selected nodes down one sibling position."
    :spec [:map [:type [:= :move-selected-down]]]
-   :ops (move-selected-down-ops db)})
+   :handler (fn [db _]
+              (move-selected-down-ops db))})
 
