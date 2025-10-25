@@ -233,15 +233,18 @@
 (defspec reorder-intent-matches-permutation-algebra
   100
   (prop/for-all [children gen-children-list
-                 target-idx (gen/choose 0 7)]
+                 target-idx (gen/choose 0 7)
+                 ;; Generate a deterministic selection by shuffling and taking a prefix
+                 num-to-take (gen/choose 1 8)
+                 shuffled-children (gen/shuffle children)]
     (let [parent "test-parent"
-          ;; Pick a subset to move (at least 1, at most all)
-          num-to-select (inc (rand-int (count children)))
-          selection (vec (take num-to-select (shuffle children)))
+          ;; Take a deterministic subset
+          selection (vec (take (min num-to-take (count shuffled-children)) shuffled-children))
 
           ;; Build DB with these children
           db (-> (db/empty-db)
-                 (assoc :nodes (zipmap children (repeat {:type :p :props {}})))
+                 (assoc :nodes (assoc (zipmap children (repeat {:type :p :props {}}))
+                                     parent {:type :p :props {}}))
                  (assoc-in [:children-by-parent parent] (vec children))
                  db/derive-indexes)
 
@@ -258,13 +261,13 @@
 
           ;; Method 1: Use intent lowering
           {:keys [ops]} (permute/lower db intent)
-          {:keys [db result-via-ops issues]} (tx/txret db ops)
+          {:keys [db issues]} (tx/txret db ops)
 
           ;; Method 2: Direct permutation application
           planned (permute/planned-positions db intent)
 
           ;; Both should yield same final order
-          actual-children (get-in result-via-ops [:children-by-parent parent])]
+          actual-children (get-in db [:children-by-parent parent])]
 
       (and (empty? issues)
            (= planned actual-children)))))

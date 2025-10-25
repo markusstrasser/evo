@@ -3,7 +3,9 @@
 
    Edit state stored in session/edit node.
    All state changes emit ops for full undo/redo support."
-  (:require [core.intent :as intent]))
+  (:require [core.intent :as intent])
+  #?(:clj (:require [core.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
 
 ;; ── Getters ───────────────────────────────────────────────────────────────────
 
@@ -25,39 +27,49 @@
 
 ;; ── Intent Implementations (Session State Changes) ───────────────────────────
 
-(defmethod intent/intent->ops :enter-edit
-  [_db {:keys [block-id]}]
-  [{:op :update-node :id "session/edit" :props {:block-id block-id}}
-   {:op :update-node :id "session/selection" :props {:focus block-id}}])
+(defintent :enter-edit
+  {:sig [_db {:keys [block-id]}]
+   :doc "Enter edit mode for a block. Sets edit block and focus."
+   :spec [:map [:type [:= :enter-edit]] [:block-id :string]]
+   :ops [{:op :update-node :id "session/edit" :props {:block-id block-id}}
+         {:op :update-node :id "session/selection" :props {:focus block-id}}]})
 
-(defmethod intent/intent->ops :exit-edit
-  [_db _intent]
-  [{:op :update-node :id "session/edit" :props {:block-id nil}}])
+(defintent :exit-edit
+  {:sig [_db _intent]
+   :doc "Exit edit mode. Clears editing block ID."
+   :spec [:map [:type [:= :exit-edit]]]
+   :ops [{:op :update-node :id "session/edit" :props {:block-id nil}}]})
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
-(defmethod intent/intent->ops :update-content
-  [_db {:keys [block-id text]}]
-  [{:op :update-node :id block-id :props {:text text}}])
+(defintent :update-content
+  {:sig [_db {:keys [block-id text]}]
+   :doc "Update block text content."
+   :spec [:map [:type [:= :update-content]] [:block-id :string] [:text :string]]
+   :ops [{:op :update-node :id block-id :props {:text text}}]})
 
-(defmethod intent/intent->ops :merge-with-prev
-  [db {:keys [block-id]}]
-  (let [prev-id (get-in db [:derived :prev-id-of block-id])
-        prev-text (get-block-text db prev-id)
-        curr-text (get-block-text db block-id)
-        merged-text (str prev-text curr-text)]
-    (when prev-id
-      [{:op :update-node :id prev-id :props {:text merged-text}}
-       {:op :place :id block-id :under :trash :at :last}])))
+(defintent :merge-with-prev
+  {:sig [db {:keys [block-id]}]
+   :doc "Merge block with previous sibling, delete current block."
+   :spec [:map [:type [:= :merge-with-prev]] [:block-id :string]]
+   :ops (let [prev-id (get-in db [:derived :prev-id-of block-id])
+              prev-text (get-block-text db prev-id)
+              curr-text (get-block-text db block-id)
+              merged-text (str prev-text curr-text)]
+          (when prev-id
+            [{:op :update-node :id prev-id :props {:text merged-text}}
+             {:op :place :id block-id :under :trash :at :last}]))})
 
-(defmethod intent/intent->ops :split-at-cursor
-  [db {:keys [block-id cursor-pos]}]
-  (let [text (get-block-text db block-id)
-        before (subs text 0 cursor-pos)
-        after (subs text cursor-pos)
-        parent (get-in db [:derived :parent-of block-id])
-        new-id (str "block-" (random-uuid))]
-    (when parent
-      [{:op :update-node :id block-id :props {:text before}}
-       {:op :create-node :id new-id :type :block :props {:text after}}
-       {:op :place :id new-id :under parent :at {:after block-id}}])))
+(defintent :split-at-cursor
+  {:sig [db {:keys [block-id cursor-pos]}]
+   :doc "Split block at cursor position into two blocks."
+   :spec [:map [:type [:= :split-at-cursor]] [:block-id :string] [:cursor-pos :int]]
+   :ops (let [text (get-block-text db block-id)
+              before (subs text 0 cursor-pos)
+              after (subs text cursor-pos)
+              parent (get-in db [:derived :parent-of block-id])
+              new-id (str "block-" (random-uuid))]
+          (when parent
+            [{:op :update-node :id block-id :props {:text before}}
+             {:op :create-node :id new-id :type :block :props {:text after}}
+             {:op :place :id new-id :under parent :at {:after block-id}}]))})
