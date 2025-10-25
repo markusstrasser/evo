@@ -243,18 +243,22 @@ Decision logic:
                 # Write output
                 output_file = tmpdir_path / "result.json"
 
+                # Build tournament CLI args
+                tournament_args = [
+                    "tournament",
+                    "compare",
+                    "--items", str(items_file),
+                    "--prompt", str(prompt_file),
+                    "--judges", "gpt5-codex,gemini25-pro,grok-4",
+                    "--max-rounds", "3",
+                    "--output", str(output_file),
+                ]
+                if verbose:
+                    tournament_args.append("--verbose")
+
                 # Call tournament CLI
                 result = subprocess.run(
-                    [
-                        "tournament",
-                        "compare",
-                        "--items", str(items_file),
-                        "--prompt", str(prompt_file),
-                        "--judges", "gpt5-codex,gemini25-pro,grok-4",
-                        "--max-rounds", "3",
-                        "--output", str(output_file),
-                        "--verbose" if verbose else "",
-                    ],
+                    tournament_args,
                     capture_output=True,
                     text=True,
                     check=True,
