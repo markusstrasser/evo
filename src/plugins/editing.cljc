@@ -1,24 +1,18 @@
 (ns plugins.editing
   "Editing plugin: edit mode state, content operations.
 
-   Edit state stored in session/edit node.
-   All state changes emit ops for full undo/redo support."
-  (:require [kernel.intent :as intent])
+   Edit state stored in :ui (ephemeral, not in history).
+   Content changes emit ops for full undo/redo support."
+  (:require [kernel.intent :as intent]
+            [kernel.constants :as const]
+            [kernel.query :as q])
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
-;; ── Getters ───────────────────────────────────────────────────────────────────
+;; ── Getters (Delegated to kernel.query) ───────────────────────────────────────
 
-(defn editing-block-id
-  "Get currently editing block ID (nil if not editing)."
-  [db]
-  (get-in db [:nodes "session/edit" :props :block-id]))
-
-(defn get-edit-mode
-  "Get current edit mode state."
-  [db]
-  {:editing? (some? (editing-block-id db))
-   :block-id (editing-block-id db)})
+(def editing-block-id q/editing-block-id)
+(def editing? q/editing?)
 
 (defn get-block-text
   "Get text content of a block."
@@ -29,16 +23,15 @@
 
 (defintent :enter-edit
   {:sig [_db {:keys [block-id]}]
-   :doc "Enter edit mode for a block. Sets edit block and focus."
+   :doc "Enter edit mode for a block. Ephemeral - not in undo/redo history."
    :spec [:map [:type [:= :enter-edit]] [:block-id :string]]
-   :ops [{:op :update-node :id "session/edit" :props {:block-id block-id}}
-         {:op :update-node :id "session/selection" :props {:focus block-id}}]})
+   :ops [{:op :update-ui :props {:editing-block-id block-id}}]})
 
 (defintent :exit-edit
   {:sig [_db _intent]
-   :doc "Exit edit mode. Clears editing block ID."
+   :doc "Exit edit mode. Ephemeral - not in undo/redo history."
    :spec [:map [:type [:= :exit-edit]]]
-   :ops [{:op :update-node :id "session/edit" :props {:block-id nil}}]})
+   :ops [{:op :update-ui :props {:editing-block-id nil}}]})
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
@@ -58,7 +51,7 @@
               merged-text (str prev-text curr-text)]
           (when prev-id
             [{:op :update-node :id prev-id :props {:text merged-text}}
-             {:op :place :id block-id :under :trash :at :last}]))})
+             {:op :place :id block-id :under const/root-trash :at :last}]))})
 
 (defintent :split-at-cursor
   {:sig [db {:keys [block-id cursor-pos]}]
