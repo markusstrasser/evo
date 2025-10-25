@@ -154,9 +154,10 @@ Use bullet points over paragraphs where possible.
 """
 
     try:
-        # Use llmx with google provider (correct model format)
+        # Use llmx with google provider - uses default gemini/gemini-2.5-pro
+        # (no need to specify model since 2.5 Pro is the default)
         result = subprocess.run(
-            f'echo {repr(prompt)} | llmx --provider google --model gemini/gemini-2.0-flash-exp',
+            f'echo {repr(prompt)} | llmx --provider google',
             capture_output=True,
             text=True,
             check=True,
@@ -221,10 +222,10 @@ Use bullet points over paragraphs where possible.
 """
 
     try:
-        # Use llmx with openai provider and reasoning-effort=high
-        # GPT-5 models only support temperature=1
+        # Use llmx with openai provider - uses default gpt-5-pro
+        # NOTE: GPT-5 models only support temperature=1 (enforced by OpenAI API)
         result = subprocess.run(
-            f'echo {repr(prompt)} | llmx --provider openai --model gpt-5-codex --reasoning-effort high --temperature 1',
+            f'echo {repr(prompt)} | llmx --provider openai --temperature 1',
             capture_output=True,
             text=True,
             check=True,
@@ -234,7 +235,7 @@ Use bullet points over paragraphs where possible.
         return result.stdout.strip()
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Codex call failed: {e.stderr}") from e
+        raise RuntimeError(f"Codex (GPT-5 Pro) call failed: {e.stderr}") from e
     except FileNotFoundError:
         raise RuntimeError("llmx CLI not found - ensure it's installed (uv tool install ~/Projects/llmx)") from None
 

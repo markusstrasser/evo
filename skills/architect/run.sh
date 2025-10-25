@@ -5,10 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 
-# Source .env for API keys
-if [[ -f "${SCRIPT_DIR}/../../.env" ]]; then
-    source "${SCRIPT_DIR}/../../.env"
-fi
+# NOTE: llmx auto-loads .env files, no need to source manually
 
 # Colors
 RED='\033[0;31m'
@@ -57,6 +54,7 @@ OPTIONS (for review/rank):
 
 OPTIONS (for propose):
     --providers <list>              Comma-separated providers (default: gemini,codex,grok)
+                                    Available: gemini (Gemini 2.5 Pro), codex (GPT-5 Pro), grok (Grok 4)
 
 OPTIONS (for refine):
     --max-rounds <int>              Max refinement rounds (default: 5)
