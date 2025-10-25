@@ -9,13 +9,10 @@
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
-;; ── Getters (Delegated to kernel.query) ───────────────────────────────────────
+;; ── Private Helpers ───────────────────────────────────────────────────────────
 
-(def editing-block-id q/editing-block-id)
-(def editing? q/editing?)
-
-(defn get-block-text
-  "Get text content of a block."
+(defn- get-block-text
+  "Get text content of a block (internal helper)."
   [db block-id]
   (get-in db [:nodes block-id :props :text] ""))
 
@@ -32,6 +29,14 @@
    :doc "Exit edit mode. Ephemeral - not in undo/redo history."
    :spec [:map [:type [:= :exit-edit]]]
    :ops [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}]})
+
+(defintent :update-cursor-state
+  {:sig [db {:keys [block-id first-row? last-row?]}]
+   :doc "Update cursor position state for boundary detection. Ephemeral - not in history."
+   :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
+   :ops (let [current-cursor (get-in db [:nodes const/session-ui-id :props :cursor] {})
+              updated-cursor (assoc current-cursor block-id {:first-row? first-row? :last-row? last-row?})]
+          [{:op :update-node :id const/session-ui-id :props {:cursor updated-cursor}}])})
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
