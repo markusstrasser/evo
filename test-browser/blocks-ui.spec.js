@@ -36,21 +36,24 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
   });
 
   test('should extend selection with Shift+Click', async ({ page }) => {
-    // Click first block
-    await page.locator('.block:has-text("First block")').click();
+    // Click first block to anchor selection
+    await page.locator('.block[data-block-id="a"]').click();
 
-    // Shift+click third block
-    await page.locator('.block:has-text("Third block")').click({ modifiers: ['Shift'] });
+    // Shift+click third block to extend range
+    await page.locator('.block[data-block-id="c"]').click({ modifiers: ['Shift'] });
 
-    // All three should be selected (light blue background)
-    const selectedBlocks = page.locator('.block[style*="background-color: rgb(230, 242, 255)"]');
-    await expect(selectedBlocks).toHaveCount(2); // Second and third (first is focus)
+    // Intermediate block should be selected (range selection)
+    const secondBlock = page.locator('.block[data-block-id="b"]');
+    await expect(secondBlock).toHaveCSS('background-color', 'rgb(230, 242, 255)');
+
+    // Focused block should be the third block
+    const thirdBlock = page.locator('.block[data-block-id="c"]');
+    await expect(thirdBlock).toHaveCSS('background-color', 'rgb(179, 217, 255)');
   });
 
   test('should indent block with Tab', async ({ page }) => {
     // Use nth(3) to get the third top-level block by DOM position
-    const blocks = page.locator('.block');
-    const thirdBlock = blocks.nth(3);  // 0=a, 1=b, 2=d, 3=c
+    const thirdBlock = page.locator('.block[data-block-id="c"]');
 
     await thirdBlock.click();
 
@@ -70,8 +73,7 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
 
   test('should outdent block with Shift+Tab', async ({ page }) => {
     // First, indent a block (use nth(3) to avoid ambiguity)
-    const blocks = page.locator('.block');
-    const thirdBlock = blocks.nth(3);  // 0=a, 1=b, 2=d, 3=c
+    const thirdBlock = page.locator('.block[data-block-id="c"]');
 
     await thirdBlock.click();
     await page.keyboard.press('Tab');
@@ -90,7 +92,7 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
 
   test('should navigate with Alt+ArrowDown/Up', async ({ page }) => {
     // Click first block
-    await page.locator('.block:has-text("First block")').click();
+    await page.locator('.block[data-block-id="a"]').click();
 
     // Press Alt+ArrowDown to select next sibling
     const isMac = process.platform === 'darwin';
@@ -104,7 +106,7 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
 
   test('should extend selection with Shift+ArrowDown', async ({ page }) => {
     // Click first block
-    await page.locator('.block:has-text("First block")').click();
+    await page.locator('.block[data-block-id="a"]').click();
 
     // Press Shift+ArrowDown to extend selection
     await page.keyboard.press('Shift+ArrowDown');
@@ -117,29 +119,33 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
   });
 
   test('should move block up with Cmd/Alt+Shift+ArrowUp', async ({ page }) => {
-    // Click second block
-    await page.locator('.block:has-text("Second block")').click();
+    // Click third block (c) which has no children
+    await page.locator('.block[data-block-id="c"]').click();
+    await page.waitForTimeout(200);
 
-    // Get initial order
-    const initialOrder = await page.locator('.block span').allTextContents();
-    expect(initialOrder[0]).toContain('First block');
-    expect(initialOrder[1]).toContain('Second block');
+    // Get blocks by data-block-id to verify initial order
+    const blocks = await page.locator('.outline > .block').all();
+    const secondId = await blocks[1].getAttribute('data-block-id');
+    const thirdId = await blocks[2].getAttribute('data-block-id');
+    expect(secondId).toBe('b');
+    expect(thirdId).toBe('c');
 
     // Move up with Cmd+Shift+ArrowUp (Mac) or Alt+Shift+ArrowUp (Linux/Windows)
     const isMac = process.platform === 'darwin';
     await page.keyboard.press(isMac ? 'Meta+Shift+ArrowUp' : 'Alt+Shift+ArrowUp');
     await page.waitForTimeout(200);
 
-    // Order should be swapped
-    const newOrder = await page.locator('.block span').allTextContents();
-    expect(newOrder[0]).toContain('Second block');
-    expect(newOrder[1]).toContain('First block');
+    // Order should be swapped - c should now be second, b should be third
+    const newBlocks = await page.locator('.outline > .block').all();
+    const newSecondId = await newBlocks[1].getAttribute('data-block-id');
+    const newThirdId = await newBlocks[2].getAttribute('data-block-id');
+    expect(newSecondId).toBe('c');
+    expect(newThirdId).toBe('b');
   });
 
   test('should undo with Cmd/Ctrl+Z', async ({ page }) => {
     // Make a change (indent third block using nth)
-    const blocks = page.locator('.block');
-    const thirdBlock = blocks.nth(3);  // 0=a, 1=b, 2=d, 3=c
+    const thirdBlock = page.locator('.block[data-block-id="c"]');
 
     await thirdBlock.click();
     await page.keyboard.press('Tab');
@@ -161,7 +167,7 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
 
   test('should delete selected blocks with Backspace', async ({ page }) => {
     // Select multiple blocks
-    await page.locator('.block:has-text("Second block")').click();
+    await page.locator('.block[data-block-id="b"]').click();
     await page.keyboard.press('Shift+ArrowDown');
     await page.waitForTimeout(100);
 
@@ -182,11 +188,11 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
     await page.locator('.block:has-text("First block")').click();
 
     // Check debug panel shows selection
-    const debugPanel = page.locator('.block:has-text("Selection:")');
+    const debugPanel = page.locator('.debug-panel');
     await expect(debugPanel).toBeVisible();
 
     // Should show the selected block ID
-    await expect(page.locator('text=/Selection:.*/')).toBeVisible();
+    await expect(debugPanel).toContainText('Selection: #{"a"}');
   });
 
   test('should show keyboard shortcuts legend', async ({ page }) => {
@@ -195,9 +201,9 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
     await expect(page.locator('h4:has-text("Keyboard Shortcuts")')).toBeVisible();
 
     // Check some key shortcuts are documented
-    await expect(page.locator('.hotkey-item:has-text("Indent")')).toBeVisible();
-    await expect(page.locator('.hotkey-item:has-text("Outdent")')).toBeVisible();
-    await expect(page.locator('.hotkey-item:has-text("Delete selected")')).toBeVisible();
+    await expect(page.locator('.hotkey-item:has-text("Tab - Indent")')).toBeVisible();
+    await expect(page.locator('.hotkey-item:has-text("Shift+Tab - Outdent")')).toBeVisible();
+    await expect(page.locator('.hotkey-item:has-text("Backspace - Delete/merge")')).toBeVisible();
   });
 });
 
