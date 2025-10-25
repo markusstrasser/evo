@@ -12,3 +12,4 @@
 
 ;; Session child node IDs
 (def session-selection-id "session/selection")
+(def session-ui-id "session/ui")
