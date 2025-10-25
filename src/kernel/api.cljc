@@ -95,6 +95,17 @@
            (println "No journal file found at" journal)
            initial-db)))))
 
+(defn ephemeral-op?
+  "Check if an operation is ephemeral (UI-only, should not enter history).
+
+   Ephemeral ops update the session UI node and should not trigger history recording.
+   Examples: cursor state, edit mode, transient UI state.
+
+   Returns true if op is an :update-node on the session UI node."
+  [op]
+  (and (= :update-node (:op op))
+       (= const/session-ui-id (:id op))))
+
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
 
@@ -125,12 +136,8 @@
   ([db intent] (dispatch* db intent nil))
   ([db intent {:keys [history/enabled?] :as _opts}]
    (let [{:keys [ops]} (intent/apply-intent db intent)
-         ui-id const/session-ui-id
-         canonical? (some (fn [op]
-                            (not (and (= :update-node (:op op))
-                                      (= ui-id (:id op)))))
-                          ops)
-         record? (and (not (false? enabled?)) canonical?)
+         record? (and (not (false? enabled?))
+                      (some (complement ephemeral-op?) ops))
          db0 (if record? (H/record db) db)]
      #?(:clj (journal-tx! intent ops))
      (tx/interpret db0 ops))))
