@@ -1,4 +1,4 @@
-(ns lab.anki.fsrs
+(ns anki.fsrs
   "FSRS (Free Spaced Repetition Scheduler) algorithm implementation
    Ported from hashcards: https://github.com/eudoxia0/hashcards
 

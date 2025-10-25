@@ -1,4 +1,4 @@
-(ns lab.app
+(ns app
   "Polyphonic pitch detector demo app"
   (:require [replicant.dom :as r]
             [clojure.walk]

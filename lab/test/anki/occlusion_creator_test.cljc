@@ -1,7 +1,7 @@
-(ns lab.anki.occlusion-creator-test
+(ns test.anki.occlusion-creator-test
   (:require [clojure.test :refer [deftest is testing]]
-            [lab.anki.occlusion-creator :as creator]
-            [lab.anki.core :as core]))
+            [anki.occlusion-creator :as creator]
+            [anki.core :as core]))
 
 (deftest test-initial-state
   (testing "Initial creator state"
