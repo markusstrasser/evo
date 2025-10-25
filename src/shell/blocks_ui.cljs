@@ -13,7 +13,6 @@
             [components.block :as block]
             [plugins.selection :as sel]
             [plugins.struct :as struct]
-            [plugins.navigation :as nav]
             [plugins.editing :as edit]
             [keymap.core :as keymap]
             [keymap.bindings]))  ; Side-effect: registers all bindings
