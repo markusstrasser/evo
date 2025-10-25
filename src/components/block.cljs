@@ -153,7 +153,7 @@
                                          (.removeAllRanges sel)
                                          (.addRange sel range))
                                        (catch js/Error e
-                                         (js/console.error "Cursor error:" e))))
+                                         (js/console.error "Cursor error:" e)))))
             :on {:input (fn [e]
                           (let [new-text (-> e .-target .-textContent)]
                             (on-intent {:type :update-content
