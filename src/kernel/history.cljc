@@ -5,7 +5,8 @@
    History is stored as `:history` namespace at DB root:
    {:history {:past [] :future [] :limit 50}}
 
-   See ADR-015 for architectural rationale.")
+   See ADR-015 for architectural rationale."
+  (:require [kernel.constants :as const]))
 
 (defn get-history
   "Returns the history map from DB, or empty history if none exists."
@@ -33,11 +34,15 @@
   (count (:future (get-history DB))))
 
 (defn- strip-history
-  "Remove :history and :ui from DB (for storing in history stack).
+  "Remove :history and clear session/ui props from DB (for storing in history stack).
 
-   :ui contains ephemeral state (edit mode, cursor) that should not be undoable."
+   session/ui contains ephemeral state (edit mode, cursor) that should not be undoable."
   [DB]
-  (dissoc DB :history :ui))
+  (let [ui-id const/session-ui-id]
+    (-> DB
+        (dissoc :history)
+        ;; Clear ephemeral props but keep the node to preserve invariants
+        (assoc-in [:nodes ui-id :props] {}))))
 
 (defn record
   "Record current DB state to undo stack before making a change.
@@ -63,40 +68,42 @@
    Moves current state to future (for redo).
    Returns updated DB, or nil if no history.
 
-   Preserves :ui (ephemeral state) from current DB."
+   Preserves session/ui props (ephemeral state) from current DB."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)
-        current-ui (:ui DB)]
+        ui-id const/session-ui-id
+        current-ui-props (get-in DB [:nodes ui-id :props])]
     (when (seq past)
       (let [current-snapshot (strip-history DB)
             prev-snapshot (peek past)
             new-past (pop past)
             new-future (conj (vec future) current-snapshot)]
-        (assoc prev-snapshot
-               :ui current-ui  ; Preserve ephemeral UI state
-               :history {:past new-past
-                         :future new-future
-                         :limit limit})))))
+        (-> prev-snapshot
+            (assoc-in [:nodes ui-id :props] current-ui-props)
+            (assoc :history {:past new-past
+                             :future new-future
+                             :limit limit}))))))
 
 (defn redo
   "Restore next DB state from future.
    Moves current state to past (for undo).
    Returns updated DB, or nil if no future.
 
-   Preserves :ui (ephemeral state) from current DB."
+   Preserves session/ui props (ephemeral state) from current DB."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)
-        current-ui (:ui DB)]
+        ui-id const/session-ui-id
+        current-ui-props (get-in DB [:nodes ui-id :props])]
     (when (seq future)
       (let [current-snapshot (strip-history DB)
             next-snapshot (peek future)
             new-future (pop future)
             new-past (conj (vec past) current-snapshot)]
-        (assoc next-snapshot
-               :ui current-ui  ; Preserve ephemeral UI state
-               :history {:past new-past
-                         :future new-future
-                         :limit limit})))))
+        (-> next-snapshot
+            (assoc-in [:nodes ui-id :props] current-ui-props)
+            (assoc :history {:past new-past
+                             :future new-future
+                             :limit limit}))))))
 
 (defn set-limit
   "Set the maximum number of undo steps to keep.

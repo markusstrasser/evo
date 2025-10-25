@@ -124,18 +124,3 @@
   (if (contains? (:nodes db) id)
     (update-in db [:nodes id :props] #(deep-merge % props))
     db))
-
-(defn update-ui
-  "Update ephemeral UI state using recursive merge.
-
-   UI state is never recorded in history (stripped by history/record).
-   Used for edit mode, cursor position, and other transient UI state.
-
-   Args:
-     db - database
-     props - UI properties to merge into :ui map
-
-   Returns:
-     Updated database"
-  [db props]
-  (update db :ui #(deep-merge % props)))
