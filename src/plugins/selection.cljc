@@ -1,21 +1,22 @@
 (ns plugins.selection
-  "Selection state management plugin (ADR-015 pattern).
+  "Selection state management via session nodes.
 
-   Manages the :selection namespace at DB root with focus tracking.
-   Structure: {:selection {:nodes #{id1 id2} :focus id2 :anchor id1}}
+   Selection is stored as a node under :session root.
+   Structure: session/selection node with :props {:nodes #{id1 id2} :focus id2 :anchor id1}
 
-   This supersedes ADR-012's boolean property approach.
+   All selection changes emit ops (:update-node on session/selection).
+   This enables full undo/redo of selection state.
 
-   Implements intent->db multimethod from core.intent for view intents."
+   Implements intent->ops multimethod from core.intent."
   (:require [clojure.set :as set]
             [core.intent :as intent]))
 
 ;; ── Selection state accessors ────────────────────────────────────────────────
 
 (defn- get-selection-state
-  "Returns the selection state map."
+  "Returns the selection state map from session/selection node."
   [DB]
-  (get DB :selection {:nodes #{} :focus nil :anchor nil}))
+  (get-in DB [:nodes "session/selection" :props] {:nodes #{} :focus nil :anchor nil}))
 
 (defn get-selection
   "Returns the set of selected node IDs (possibly empty)."
@@ -196,48 +197,91 @@
       DB)
     DB))
 
-;; ── Intent → Database (ADR-016) ───────────────────────────────────────────────
+;; ── Intent → Ops ──────────────────────────────────────────────────────────────
 
-(defmethod intent/intent->db :select
+(defmethod intent/intent->ops :select
   [DB {:keys [ids]}]
-  (select DB ids))
+  (let [ids-vec (if (coll? ids) (vec ids) [ids])
+        ids-set (set ids-vec)
+        new-focus (last ids-vec)]
+    [{:op :update-node
+      :id "session/selection"
+      :props {:nodes ids-set :focus new-focus :anchor new-focus}}]))
 
-(defmethod intent/intent->db :extend-selection
+(defmethod intent/intent->ops :extend-selection
   [DB {:keys [ids]}]
-  (extend-selection DB ids))
+  (let [state (get-selection-state DB)
+        ids-vec (if (coll? ids) (vec ids) [ids])
+        ids-set (set ids-vec)
+        new-focus (last ids-vec)
+        existing-anchor (:anchor state)
+        range-set (when (and existing-anchor (= 1 (count ids-vec)))
+                    (doc-range DB existing-anchor new-focus))
+        new-anchor (or existing-anchor new-focus)
+        new-nodes (or range-set (set/union (:nodes state) ids-set))]
+    [{:op :update-node
+      :id "session/selection"
+      :props {:nodes new-nodes :focus new-focus :anchor new-anchor}}]))
 
-(defmethod intent/intent->db :deselect
+(defmethod intent/intent->ops :deselect
   [DB {:keys [ids]}]
-  (deselect DB ids))
+  (let [state (get-selection-state DB)
+        ids-set (set (if (coll? ids) ids [ids]))
+        new-nodes (set/difference (:nodes state) ids-set)
+        old-focus (:focus state)
+        new-focus (if (contains? ids-set old-focus)
+                    (first new-nodes)
+                    old-focus)]
+    [{:op :update-node
+      :id "session/selection"
+      :props {:nodes new-nodes :focus new-focus :anchor (:anchor state)}}]))
 
-(defmethod intent/intent->db :clear-selection
-  [DB _]
-  (clear DB))
+(defmethod intent/intent->ops :clear-selection
+  [_DB _]
+  [{:op :update-node
+    :id "session/selection"
+    :props {:nodes #{} :focus nil :anchor nil}}])
 
-(defmethod intent/intent->db :toggle-selection
+(defmethod intent/intent->ops :toggle-selection
   [DB {:keys [id]}]
-  (toggle DB id))
+  (if (selected? DB id)
+    (intent/intent->ops DB {:type :deselect :ids id})
+    (intent/intent->ops DB {:type :extend-selection :ids id})))
 
-(defmethod intent/intent->db :select-next-sibling
+(defmethod intent/intent->ops :select-next-sibling
   [DB _]
-  (select-next-sibling DB))
+  (when-let [current (get-focus DB)]
+    (when-let [next-id (get-in DB [:derived :next-id-of current])]
+      (intent/intent->ops DB {:type :select :ids next-id}))))
 
-(defmethod intent/intent->db :select-prev-sibling
+(defmethod intent/intent->ops :select-prev-sibling
   [DB _]
-  (select-prev-sibling DB))
+  (when-let [current (get-focus DB)]
+    (when-let [prev-id (get-in DB [:derived :prev-id-of current])]
+      (intent/intent->ops DB {:type :select :ids prev-id}))))
 
-(defmethod intent/intent->db :extend-to-next-sibling
+(defmethod intent/intent->ops :extend-to-next-sibling
   [DB _]
-  (extend-to-next-sibling DB))
+  (when-let [current (get-focus DB)]
+    (when-let [next-id (get-in DB [:derived :next-id-of current])]
+      (intent/intent->ops DB {:type :extend-selection :ids next-id}))))
 
-(defmethod intent/intent->db :extend-to-prev-sibling
+(defmethod intent/intent->ops :extend-to-prev-sibling
   [DB _]
-  (extend-to-prev-sibling DB))
+  (when-let [current (get-focus DB)]
+    (when-let [prev-id (get-in DB [:derived :prev-id-of current])]
+      (intent/intent->ops DB {:type :extend-selection :ids prev-id}))))
 
-(defmethod intent/intent->db :select-parent
+(defmethod intent/intent->ops :select-parent
   [DB _]
-  (select-parent DB))
+  (let [selection (get-selection DB)
+        parents (set (keep #(get-in DB [:derived :parent-of %]) selection))]
+    (when (= 1 (count parents))
+      (intent/intent->ops DB {:type :select :ids (first parents)}))))
 
-(defmethod intent/intent->db :select-all-siblings
+(defmethod intent/intent->ops :select-all-siblings
   [DB _]
-  (select-all-siblings DB))
+  (when-let [current (get-focus DB)]
+    (when-let [parent (get-in DB [:derived :parent-of current])]
+      (let [all-siblings (get-in DB [:children-by-parent parent] [])]
+        (intent/intent->ops DB {:type :select :ids all-siblings})))))

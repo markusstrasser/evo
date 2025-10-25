@@ -1,19 +1,19 @@
 (ns core.intent
-  "Intent router with dual multimethods for structural and view intents.
+  "Intent router - all intents compile to core operations.
 
-   Design (ADR-016): Intent Router Pattern
-   - intent->ops: Compiles structural intents to core operations
-   - intent->db: Applies view intents directly to database
-   - apply-intent: Unified entry point with explicit dispatch
+   Design: Unified Intent-to-Ops Pattern
+   - intent->ops: Compiles all intents (structural + session) to core operations
+   - apply-intent: Returns ops for caller to interpret
+   - Session state (selection, edit, cursor) stored as nodes, changed via ops
 
-   This unifies the event handling pipeline while keeping the 3-op kernel pure.
-   Plugins implement one or both multimethods as needed.
+   This unifies the event handling pipeline through the 3-op kernel.
+   All state changes go through validate/derive, enabling full undo/redo.
 
    Example usage:
      ;; Structural intent (compiles to ops)
      (apply-intent db {:type :indent :id \"a\"})
 
-     ;; View intent (direct DB update)
+     ;; Session intent (compiles to ops on session nodes)
      (apply-intent db {:type :select :ids [\"a\" \"b\"]})")
 
 ;; ── Intent → Operations (Structural) ──────────────────────────────────────────
@@ -36,81 +36,32 @@
   [_db _intent]
   nil)  ;; Return nil to signal no ops handler
 
-;; ── Intent → Database (View) ──────────────────────────────────────────────────
-
-(defmulti intent->db
-  "Apply a view intent directly to the database.
-
-   Returns: updated database
-   Dispatch: :type key of intent map
-
-   View intents modify UI state (selection, viewport, collapsed state)
-   without affecting the document tree. They bypass interpret for efficiency.
-
-   Example:
-     (defmethod intent->db :select [db {:keys [ids]}]
-       (assoc db :selection {:nodes (set ids) :focus (last ids)}))"
-  (fn [_db intent] (:type intent)))
-
-(defmethod intent->db :default
-  [_db _intent]
-  nil)  ;; Return nil to signal no db handler
-
 ;; ── Unified Entry Point ───────────────────────────────────────────────────────
 
 (defn apply-intent
-  "Unified intent application with explicit dispatch.
+  "Apply an intent by compiling it to operations.
 
-   Tries intent->ops first (structural), falls back to intent->db (view).
-   Returns: {:db updated-db :ops [operations] :path :ops|:db|:unknown}
+   Returns: {:db unchanged-db :ops [operations]}
 
-   The :path key indicates which route was taken for debugging/logging.
+   The caller is responsible for interpreting the ops through tx/interpret.
+   All intents (structural + session) now go through the ops pipeline.
 
    Example:
-     ;; Structural: returns ops for caller to interpret
      (apply-intent db {:type :indent :id \"a\"})
-     ;=> {:db db :ops [{:op :place ...}] :path :ops}
+     ;=> {:db db :ops [{:op :place ...}]}
 
-     ;; View: returns updated db directly
      (apply-intent db {:type :select :ids [\"a\"]})
-     ;=> {:db updated-db :ops [] :path :db}
-
-     ;; Unknown: returns unchanged
-     (apply-intent db {:type :unknown})
-     ;=> {:db db :ops [] :path :unknown}"
+     ;=> {:db db :ops [{:op :update-node :id \"session/selection\" ...}]}"
   [db intent]
-  (let [ops-result (intent->ops db intent)
-        db-result (intent->db db intent)]
-    (cond
-      ;; Structural path: returns ops vector (or empty vector)
-      (some? ops-result)
-      {:db db :ops (vec ops-result) :path :ops}
-
-      ;; View path: returns updated db
-      (some? db-result)
-      {:db db-result :ops [] :path :db}
-
-      ;; Unknown intent type: both returned nil
-      :else
-      {:db db :ops [] :path :unknown})))
+  (let [ops (intent->ops db intent)]
+    {:db db :ops (vec (or ops []))}))
 
 ;; ── Convenience helpers ───────────────────────────────────────────────────────
 
-(defn has-ops-handler?
+(defn has-handler?
   "Returns true if intent type has an intent->ops implementation."
   [intent-type]
   (some? (get-method intent->ops intent-type)))
-
-(defn has-db-handler?
-  "Returns true if intent type has an intent->db implementation."
-  [intent-type]
-  (some? (get-method intent->db intent-type)))
-
-(defn has-handler?
-  "Returns true if intent type has any handler (ops or db)."
-  [intent-type]
-  (or (has-ops-handler? intent-type)
-      (has-db-handler? intent-type)))
 
 ;; ── Intent Registry ───────────────────────────────────────────────────────────
 
@@ -130,34 +81,26 @@
 
 #?(:clj
    (defmacro defintent
-     "Define an intent with both handlers and metadata in one place.
+     "Define an intent with handler and metadata in one place.
 
       Usage:
         (defintent :select
           {:sig [db {:keys [ids]}]
            :doc \"Set selection; last id is focus.\"
            :spec [:map [:type [:= :select]] [:ids [:vector :string]]]
-           :ops nil
-           :db  (assoc db :selection {:nodes (set ids) :focus (peek ids)})})
+           :ops [{:op :update-node :id \"session/selection\" ...}]})
 
       This expands to:
-        - defmethod for intent->ops (if :ops provided)
-        - defmethod for intent->db (if :db provided)
+        - defmethod for intent->ops
         - registry entry with :doc and :spec"
-     [intent-kw {:keys [sig doc ops db spec]}]
+     [intent-kw {:keys [sig doc ops spec]}]
      (let [[db-sym intent-destructure] sig]
        `(do
           ~(when ops
              `(defmethod intent->ops ~intent-kw
                 [~db-sym ~intent-destructure]
                 ~ops))
-          ~(when db
-             `(defmethod intent->db ~intent-kw
-                [~db-sym ~intent-destructure]
-                ~db))
           (swap! intent-registry assoc ~intent-kw
                  {:doc ~doc
-                  :spec ~spec
-                  :has-ops? ~(boolean ops)
-                  :has-db? ~(boolean db)})
+                  :spec ~spec})
           ~intent-kw))))
