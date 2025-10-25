@@ -1,5 +1,6 @@
 (ns core.ops
-  "Pure operations for the three-op kernel: create-node, place, update-node.")
+  "Pure operations for the three-op kernel: create-node, place, update-node."
+  (:require [core.position :as pos]))
 
 (defn create-node
   "Create a node shell. Idempotent - if node exists, no change.
@@ -16,47 +17,6 @@
   (if (contains? (:nodes db) id)
     db
     (assoc-in db [:nodes id] {:type node-type :props props})))
-
-(defn- find-anchor-index
-  "Find index of target-id in siblings, returning -1 if not found."
-  [siblings target-id]
-  (.indexOf siblings target-id))
-
-(defn- resolve-relative-anchor
-  "Resolve {:before id} or {:after id} to concrete index.
-   Returns append-position if target not found."
-  [siblings anchor-map append-position]
-  (let [[relation target-id] (or (find anchor-map :before)
-                                  (find anchor-map :after))
-        target-idx (find-anchor-index siblings target-id)]
-    (if (neg? target-idx)
-      append-position
-      (cond-> target-idx
-        (= relation :after) inc))))
-
-(defn- resolve-at-position
-  "Resolve :at anchor to concrete index within siblings list.
-
-   Anchor types:
-     - integer: direct index (clamped to [0, count])
-     - :first/:last: start or end position
-     - {:before id}: insert before target (or end if not found)
-     - {:after id}: insert after target (or end if not found)
-
-   Args:
-     siblings - vector of sibling IDs
-     at - anchor specification
-
-   Returns:
-     Concrete index (clamped to valid range)"
-  [siblings at]
-  (let [append-position (count siblings)]
-    (cond
-      (integer? at)     (max 0 (min at append-position))
-      (= at :first)     0
-      (= at :last)      append-position
-      (map? at)         (resolve-relative-anchor siblings at append-position)
-      :else             append-position)))
 
 (defn- remove-child-from-parent
   "Remove child-id from its current parent's children list.
@@ -132,7 +92,7 @@
   [db id under at]
   (let [db-after-remove (remove-from-current-parent db id)
         siblings (get-in db-after-remove [:children-by-parent under] [])
-        target-idx (resolve-at-position siblings at)
+        target-idx (pos/resolve-anchor-in-vec siblings at)
         updated-siblings (insert-child-at-position siblings id target-idx)]
     (assoc-in db-after-remove [:children-by-parent under] updated-siblings)))
 
