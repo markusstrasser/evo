@@ -2,6 +2,7 @@
   "Canonical DB shape, derive function, invariants, and tree utilities for the three-op kernel."
   (:require [medley.core :as m]
             [clojure.set :as set]
+            [kernel.constants :as const]
             [plugins.registry :as plugins])
   #?(:cljs (:require [goog.string :as gstr]
                      [goog.string.format])))
@@ -9,12 +10,12 @@
 (defn empty-db
   "Create an empty database with canonical shape."
   []
-  {:nodes {"session"           {:type :session-root :props {}}
-           "session/selection" {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}
-           "session/edit"      {:type :edit         :props {:block-id nil}}
-           "session/cursor"    {:type :cursor       :props {}}}
-   :children-by-parent {:session ["session/selection" "session/edit" "session/cursor"]}
-   :roots [:doc :trash :session]
+  {:nodes {"session"                  {:type :session-root :props {}}
+           const/session-selection-id {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}}
+   :children-by-parent {const/root-session [const/session-selection-id]}
+   :roots const/roots
+   :ui {:editing-block-id nil
+        :cursor {}}  ; Map of block-id -> {:first-row? bool :last-row? bool}
    :derived {:parent-of {}
              :index-of {}
              :prev-id-of {}
@@ -95,6 +96,30 @@
        :post id->post-idx
        :id-by-pre pre-idx->id})))
 
+(defn- under-doc-root?
+  "Check if a node ID is under the :doc root by walking up parent chain."
+  [parent-of id]
+  (loop [current id]
+    (cond
+      (= current const/root-doc) true
+      (keyword? current) false  ; reached a different root
+      (nil? current) false       ; no parent found
+      :else (recur (get parent-of current)))))
+
+(defn- filter-doc-traversal
+  "Derive doc-only traversal from all-roots traversal by filtering.
+
+   Filters to nodes under :doc root and renumbers them sequentially."
+  [parent-of id-by-pre]
+  (let [;; Get all [idx id] pairs from id-by-pre, already sorted by index (key)
+        all-ids (sort-by first (seq id-by-pre))
+        ;; Filter to only nodes under :doc (walk up parent chain)
+        doc-ids (filter (fn [[_idx id]] (under-doc-root? parent-of id)) all-ids)
+        ;; Renumber filtered IDs sequentially
+        renumbered (map-indexed (fn [new-idx [_old-idx id]] [id new-idx]) doc-ids)]
+    {:doc/pre (into {} renumbered)
+     :doc/id-by-pre (into {} (map (fn [[id idx]] [idx id]) renumbered))}))
+
 (defn derive-indexes
   "Recompute all derived maps from canonical DB state. O(n) operation.
 
@@ -102,17 +127,18 @@
    merges in results from registered plugins."
   [db]
   (let [{:keys [children-by-parent roots]} db
-        ;; Compute traversal over all roots
+        ;; Core derived indexes
+        parent-of (compute-parent-of children-by-parent)
+        ;; Compute single canonical traversal over all roots
         all-roots-traversal (compute-traversal children-by-parent roots)
-        ;; Compute doc-only traversal (for consistent doc-range)
-        doc-only-traversal (compute-traversal children-by-parent [:doc])
+        ;; Derive doc-only indexes by filtering the main traversal
+        doc-indexes (filter-doc-traversal parent-of (:id-by-pre all-roots-traversal))
 
-        core-derived (merge {:parent-of (compute-parent-of children-by-parent)
+        core-derived (merge {:parent-of parent-of
                              :index-of (compute-index-of children-by-parent)}
                             (compute-siblings children-by-parent)
                             all-roots-traversal
-                            {:doc/pre (:pre doc-only-traversal)
-                             :doc/id-by-pre (:id-by-pre doc-only-traversal)})
+                            doc-indexes)
         db-with-core (assoc db :derived core-derived)]
     (assoc db :derived (merge core-derived (plugins/run-all db-with-core)))))
 
@@ -155,7 +181,7 @@
 (defn- validate-parents-exist
   "Check that all parents are either roots or nodes."
   [children-by-parent roots nodes]
-  (let [valid-parents (set/union roots (set (keys nodes)))]
+  (let [valid-parents (set/union (set roots) (set (keys nodes)))]
     (for [parent (keys children-by-parent)
           :when (not (contains? valid-parents parent))]
       (fmt "Parent %s is neither in :roots nor :nodes" parent))))
@@ -192,7 +218,9 @@
 (defn- validate-derived-fresh
   "Check that :derived matches a fresh recomputation."
   [db]
-  (let [recomputed-derived (:derived (derive-indexes (assoc db :derived {})))]
+  (let [db-for-recompute (assoc db :derived {})
+        recomputed-db (derive-indexes db-for-recompute)
+        recomputed-derived (:derived recomputed-db)]
     (when (not= (:derived db) recomputed-derived)
       [":derived is stale - does not match recomputed version"])))
 
@@ -218,6 +246,7 @@
                      (validate-derived-fresh db)]
                     (mapcat identity)
                     (remove nil?)
-                    vec)]
-    {:ok? (empty? errors)
-     :errors errors}))
+                    vec)
+        result {:ok? (empty? errors)
+                :errors errors}]
+    result))
