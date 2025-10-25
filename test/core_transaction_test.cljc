@@ -1,8 +1,8 @@
 (ns core-transaction-test
   "Tests for core.transaction - invariant-based, implementation-agnostic tests"
   (:require [clojure.test :refer [deftest is testing]]
-            [core.db :as db]
-            [core.transaction :as tx]))
+            [kernel.db :as db]
+            [kernel.transaction :as tx]))
 
 (defn create-op [id node-type] {:op :create-node :id id :type node-type :props {}})
 (defn place-op [id under at] {:op :place :id id :under under :at at})

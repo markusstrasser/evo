@@ -1,6 +1,6 @@
 (ns core.position-test
   (:require [clojure.test :refer [deftest is testing]]
-            [core.position :as pos]))
+            [kernel.position :as pos]))
 
 (def sample-db
   {:children-by-parent {"P" ["A" "B" "C" "D"]}})

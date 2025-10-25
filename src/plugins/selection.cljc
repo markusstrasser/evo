@@ -9,10 +9,10 @@
 
    Implements intent->ops multimethod from core.intent."
   (:require [clojure.set :as set]
-            [core.intent :as intent]
-            [core.tree :as tree])
-  #?(:clj (:require [core.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
+            [kernel.intent :as intent]
+            [kernel.tree :as tree])
+  #?(:clj (:require [kernel.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
 ;; ── Selection state accessors ────────────────────────────────────────────────
 

@@ -25,6 +25,16 @@ skills/architect/run.sh decide <run-id> approve <proposal-id> "Best approach"
 
 **Lesson learned:** LLMs need complete context to understand architectural decisions correctly.
 
+**Best prompt (95% success) - Include vision, overview, AND source:**
+```bash
+cat VISION.md \
+    dev/overviews/AUTO-SOURCE-OVERVIEW.md \
+    src/core/*.cljc | \
+  skills/architect/run.sh propose "Review this architecture from first principles. \
+  If the current design is already solid and elegant, say so - we don't want to \
+  change unnecessarily."
+```
+
 **Good prompt (80% success):**
 ```bash
 cat .architect/analysis/proposal.md \
@@ -42,7 +52,16 @@ skills/architect/run.sh propose "Should we add a fourth operation?"
 **Why this matters:**
 - Generic descriptions → misunderstanding
 - Source code context → accurate evaluation
+- Vision/overview docs → understanding project goals and philosophy
+- Explicit "if current is good, say so" → prevents unnecessary spiraling
 - Explicit framing → focused analysis
+
+**Context checklist:**
+- [ ] Project vision/philosophy (VISION.md, CLAUDE.md, etc.)
+- [ ] Architecture overview (AUTO-SOURCE-OVERVIEW.md, etc.)
+- [ ] Relevant source code (use repomix for full context)
+- [ ] Explicit evaluation criteria in prompt
+- [ ] Permission to recommend "keep as-is"
 
 ## Commands
 

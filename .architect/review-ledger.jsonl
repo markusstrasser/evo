@@ -40,3 +40,5 @@
 {"type": "proposals_ranked", "run_id": "a691bc29-fef6-4d31-ad26-a9efdd4ccf82", "winner_id": "a691bc29-fef6-4d31-ad26-a9efdd4ccf82-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-25T06:46:34.026614"}
 {"type": "proposals_ranked", "run_id": "0485627d-315b-4730-90a4-803da6dd59b3", "winner_id": "0485627d-315b-4730-90a4-803da6dd59b3-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-25T06:47:16.291031"}
 {"type": "proposals_ranked", "run_id": "60d90393-e557-4dc1-ba7d-d4004949fc11", "winner_id": "60d90393-e557-4dc1-ba7d-d4004949fc11-gemini", "confidence": 1.0, "valid": true, "timestamp": "2025-10-25T06:47:29.013180"}
+{"type": "proposals_generated", "run_id": "b0b9f506-7416-46e4-a294-2cb356102290", "proposal_count": 2, "timestamp": "2025-10-25T17:41:23.613506"}
+{"type": "proposals_generated", "run_id": "98fb8ecd-c8d9-4629-9f6e-78b015013109", "proposal_count": 2, "timestamp": "2025-10-25T17:42:42.876133"}

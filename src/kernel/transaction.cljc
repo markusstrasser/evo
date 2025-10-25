@@ -1,9 +1,9 @@
-(ns core.transaction
+(ns kernel.transaction
   "Transaction interpreter: normalization, validation, execution pipeline."
-  (:require [core.db :as db]
-            [core.ops :as ops]
-            [core.position :as pos]
-            [core.schema :as schema]
+  (:require [kernel.db :as db]
+            [kernel.ops :as ops]
+            [kernel.position :as pos]
+            [kernel.schema :as schema]
             [medley.core :as m]))
 
 (defn- same-position-after-place?

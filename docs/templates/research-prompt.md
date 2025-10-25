@@ -145,7 +145,7 @@ Each query targets 1/4 of the context budget, gets deeper insights.
 | Repo Size | Strategy | Include Pattern |
 |-----------|----------|-----------------|
 | <10MB | Full repo | `src/**,README.md` |
-| 10-50MB | Core + docs | `src/core/**,src/main/**,README.md` |
+| 10-50MB | Core + docs | `src/kernel/**,src/main/**,README.md` |
 | 50-200MB | Specific dirs | `src/main/clojure/X/**/*.clj` |
 | >200MB | Single files | `src/main/clojure/X/file.clj` |
 

@@ -175,22 +175,22 @@ DEBUG.reload()        // Hard reload
 - `dev/repl/init.cljc` - REPL helpers (go!, connect!, init!, rt!, rq!, component testing)
 - `dev/repl/viz.cljc` - Tree visualization utility
 - `dev/debug.cljs` - Browser/REPL debugging helpers
-- `dev/fixtures.cljc` - Test data generators
+- `test/fixtures.cljc` - Test data generators
 - `skills/diagnostics/data/error-catalog.edn` - Error taxonomy with auto-fixes
 
 ---
 
-## Core Architecture
+## Kernel Architecture
 
 **Database & Operations:**
-- `src/core/db.cljc` - Canonical DB shape, validation, derived indexes, tree utils
-- `src/core/ops.cljc` - Three core operations (create, place, update)
-- `src/core/transaction.cljc` - Transaction pipeline (normalize → validate → apply)
-- `src/core/schema.cljc` - Malli schemas
+- `src/kernel/db.cljc` - Canonical DB shape, validation, derived indexes, tree utils
+- `src/kernel/ops.cljc` - Three kernel operations (create, place, update)
+- `src/kernel/transaction.cljc` - Transaction pipeline (normalize → validate → apply)
+- `src/kernel/schema.cljc` - Malli schemas
 
 **Testing:**
 - `test/core_transaction_test.cljc` - Comprehensive operation tests
-- `dev/fixtures.cljc` - Test data generators
+- `test/fixtures.cljc` - Test data generators
 - Run: `bb test` or `(repl/rt!)`
 
 **Test Execution Strategy:**
@@ -200,7 +200,7 @@ DEBUG.reload()        // Hard reload
 - **157 tests** with 651 assertions, runs in ~1.8 seconds
 - **Property-based tests**: Uses `test.check` for algebra layer (100-200 iterations per property)
 - **Test organization**: Mirrors `/src` structure in `/test`
-- **Fixtures**: Generic fixtures in `/dev/fixtures.cljc`, domain-specific in test files
+- **Fixtures**: Generic fixtures in `/test/fixtures.cljc`, domain-specific in test files
 
 ---
 
