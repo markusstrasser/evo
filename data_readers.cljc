@@ -1,4 +1,4 @@
-{tx                core.transaction/read-tx
- op/create        core.transaction/read-create
- op/place         core.transaction/read-place
- op/update        core.transaction/read-update}
+{tx                kernel.transaction/read-tx
+ op/create        kernel.transaction/read-create
+ op/place         kernel.transaction/read-place
+ op/update        kernel.transaction/read-update}
