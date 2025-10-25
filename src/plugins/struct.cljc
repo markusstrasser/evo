@@ -11,12 +11,12 @@
    never destroyed. This maintains referential integrity and enables undo.
 
    Implements intent->ops multimethod from core.intent for structural intents."
-  (:require [core.intent :as intent]
+  (:require [kernel.intent :as intent]
             [plugins.selection :as selection]
             [plugins.editing :as editing]
             [plugins.permute :as permute])
-  #?(:clj (:require [core.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
+  #?(:clj (:require [kernel.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 

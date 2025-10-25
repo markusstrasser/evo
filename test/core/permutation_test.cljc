@@ -5,7 +5,7 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]
-            [core.permutation :as perm]))
+            [kernel.permutation :as perm]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Generators

@@ -1,6 +1,6 @@
-(ns core.ops
+(ns kernel.ops
   "Pure operations for the three-op kernel: create-node, place, update-node."
-  (:require [core.position :as pos]))
+  (:require [kernel.position :as pos]))
 
 (defn create-node
   "Create a node shell. Idempotent - if node exists, no change.

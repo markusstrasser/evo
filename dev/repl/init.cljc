@@ -45,11 +45,11 @@
   #?(:clj
      (do
        ;; Load core namespaces
-       (require '[core.db :as db])
-       (require '[core.ops :as ops])
-       (require '[core.transaction :as tx])
-       (require '[core.dbg :as dbg])
-       (require '[core.api :as api])
+       (require '[kernel.db :as db])
+       (require '[kernel.ops :as ops])
+       (require '[kernel.transaction :as tx])
+       (require '[kernel.dbg :as dbg])
+       (require '[kernel.api :as api])
        (require '[fixtures :as fix])
 
        ;; Install clojure-plus enhancements
@@ -64,24 +64,24 @@
        ((resolve 'clojure+.test/install!))
 
        ;; Enable journaling by default in dev
-       ((resolve 'core.api/set-journal!) true)
+       ((resolve 'kernel.api/set-journal!) true)
 
        (println "✅ Loaded: core.{db,ops,transaction,dbg,api}, fixtures")
        (println "✅ Installed: clojure+ (hashp, print, error, test)")
        (println "✅ Journaling enabled: .architect/ops.ednlog"))
      :cljs
      (do
-       (require '[core.db :as db])
-       (require '[core.ops :as ops])
-       (require '[core.transaction :as tx])
-       (require '[core.dbg :as dbg])
-       (require '[core.api :as api])
+       (require '[kernel.db :as db])
+       (require '[kernel.ops :as ops])
+       (require '[kernel.transaction :as tx])
+       (require '[kernel.dbg :as dbg])
+       (require '[kernel.api :as api])
        (println "✅ Loaded: core.{db,ops,transaction,dbg,api}"))))
 
 (defn rt!
   "Run tests in specified namespaces. If none provided, runs all tests.
-   Usage: (rt! 'core.permutation-test)
-          (rt! 'core.permutation-test 'struct.reorder-test)"
+   Usage: (rt! 'kernel.permutation-test)
+          (rt! 'kernel.permutation-test 'struct.reorder-test)"
   [& test-nses]
   #?(:clj
      (if (seq test-nses)
@@ -92,7 +92,7 @@
 
 (defn rq!
   "Quick test - run a single test namespace after requiring it.
-   Usage: (rq! 'core.permutation-test)"
+   Usage: (rq! 'kernel.permutation-test)"
   [test-ns]
   #?(:clj
      (do
@@ -110,8 +110,8 @@
   (println "  Namespaces loaded:" (count (all-ns)))
   (println "  Current ns:" *ns*)
   (try
-    (require 'core.db :reload)
-    (let [db-ns (find-ns 'core.db)
+    (require 'kernel.db :reload)
+    (let [db-ns (find-ns 'kernel.db)
           validate-fn (ns-resolve db-ns 'validate)
           empty-db-fn (ns-resolve db-ns 'empty-db)]
       (when (and validate-fn empty-db-fn)
@@ -149,18 +149,18 @@
   [db intent]
   #?(:clj
      (do
-       (require '[core.api :as api])
-       (require '[core.dbg :as dbg])
-       (let [{:keys [db trace]} ((resolve 'core.api/dispatch) db intent)]
+       (require '[kernel.api :as api])
+       (require '[kernel.dbg :as dbg])
+       (let [{:keys [db trace]} ((resolve 'kernel.api/dispatch) db intent)]
          (println "\n━━━ Transaction Trace ━━━")
-         ((resolve 'core.dbg/pp-trace) trace)
+         ((resolve 'kernel.dbg/pp-trace) trace)
          (println "\n━━━ DB Summary ━━━")
-         ((resolve 'core.dbg/pp-db-summary) db)
+         ((resolve 'kernel.dbg/pp-db-summary) db)
          db))
      :cljs
      (do
-       (require '[core.api :as api])
-       (require '[core.dbg :as dbg])
+       (require '[kernel.api :as api])
+       (require '[kernel.dbg :as dbg])
        (let [{:keys [db trace]} (api/dispatch db intent)]
          (println "\n━━━ Transaction Trace ━━━")
          (dbg/pp-trace trace)
@@ -227,12 +227,12 @@
    Usage: (inspect-db!)
           (inspect-db! '[:nodes])  ; Specific path"
   ([]
-   #?(:clj (cljs! '(do (require '[app.blocks-ui :as app])
+   #?(:clj (cljs! '(do (require '[shell.blocks-ui :as app])
                        (js/console.log "DB:" (pr-str @app/!db))
                        @app/!db))
       :cljs nil))
   ([path]
-   #?(:clj (cljs! `(do (require '[app.blocks-ui :as app])
+   #?(:clj (cljs! `(do (require '[shell.blocks-ui :as app])
                        (let [val# (get-in @app/!db ~path)]
                          (js/console.log ~(str "DB " path ":") (pr-str val#))
                          val#)))
@@ -243,7 +243,7 @@
 
    Usage: (send-intent! {:type :select :ids \"a\"})"
   [intent]
-  #?(:clj (cljs! `(do (require '[app.blocks-ui :as app])
+  #?(:clj (cljs! `(do (require '[shell.blocks-ui :as app])
                       (app/handle-intent! ~intent)))
       :cljs nil))
 
@@ -258,13 +258,13 @@
   ([action]
    #?(:clj
       (case action
-        :reset (cljs! '(do (require '[app.blocks-ui :as app]
-                                    '[core.db :as db])
+        :reset (cljs! '(do (require '[shell.blocks-ui :as app]
+                                    '[kernel.db :as db])
                            (reset! app/!db (db/empty-db))
                            @app/!db))
-        :fixture (cljs! '(do (require '[app.blocks-ui :as app]
-                                      '[core.transaction :as tx]
-                                      '[core.db :as db])
+        :fixture (cljs! '(do (require '[shell.blocks-ui :as app]
+                                      '[kernel.transaction :as tx]
+                                      '[kernel.db :as db])
                              (reset! app/!db
                                      (-> (db/empty-db)
                                          (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "First"}}
@@ -292,8 +292,8 @@
   (clj! '(println "Hello from JVM"))
 
   ;; Run tests:
-  (rt! 'core.permutation-test)      ; Run specific test
-  (rq! 'core.permutation-test)      ; Reload and run
+  (rt! 'kernel.permutation-test)      ; Run specific test
+  (rq! 'kernel.permutation-test)      ; Reload and run
   (rt!)                                ; Run all tests
 
   ;; Component testing:

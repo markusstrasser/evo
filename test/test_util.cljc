@@ -1,7 +1,7 @@
 (ns test-util
   "Test utilities and macros for transaction testing."
-  (:require [core.db :as db]
-            [core.transaction :as tx]
+  (:require [kernel.db :as db]
+            [kernel.transaction :as tx]
             #?(:clj [clojure.test :refer [is]]
                :cljs [cljs.test :refer [is]])))
 

@@ -1,8 +1,8 @@
 (ns golden.runner
   "Golden test runner - loads golden test cases and verifies behavior."
   (:require [clojure.test :refer [deftest testing is]]
-            [core.db :as db]
-            [core.transaction :as tx]
+            [kernel.db :as db]
+            [kernel.transaction :as tx]
             [plugins.permute :as permute]
             #?(:clj [clojure.java.io :as io])
             #?(:clj [clojure.edn :as edn])))

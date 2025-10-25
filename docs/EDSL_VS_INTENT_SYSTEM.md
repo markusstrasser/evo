@@ -291,5 +291,5 @@ Hexagonal Architecture couples business logic to implementation:
 
 - **Biotz article**: [Domain Driven Design in Clojure with generalized Hiccup](https://biotz.io/posts/domain-driven-design-in-clojure-with-generalized-hiccup)
 - **Free monad**: Haskell's `FFree` construction for composable effects
-- **Our kernel**: `src/core/interpret.cljc` - flat event sourcing pipeline
+- **Our kernel**: `src/kernel/interpret.cljc` - flat event sourcing pipeline
 - **Event sourcing**: Operations as append-only log (inherently testable)

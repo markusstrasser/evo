@@ -3,10 +3,10 @@
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
    Uses core.position for position resolution and core.permutation for deterministic ordering."
-  (:require [core.position :as pos]
-            [core.intent :as intent])
-  #?(:clj (:require [core.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
+  (:require [kernel.position :as pos]
+            [kernel.intent :as intent])
+  #?(:clj (:require [kernel.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.

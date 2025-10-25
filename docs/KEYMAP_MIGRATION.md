@@ -22,7 +22,7 @@ The central keymap resolver is implemented and ready. This guide documents the m
 
 ## Next Step: UI Layer Integration
 
-### Current Code (src/app/blocks_ui.cljs)
+### Current Code (src/shell/blocks_ui.cljs)
 
 ```clojure
 (defn handle-global-keydown [e]

@@ -7,8 +7,8 @@
    - Lint detection (dangling and circular refs)
    - Ref kind separation (links vs highlights)"
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
-            [core.db :as db]
-            [core.transaction :as tx]
+            [kernel.db :as db]
+            [kernel.transaction :as tx]
             [plugins.refs :as refs]
             [plugins.registry :as reg]))
 

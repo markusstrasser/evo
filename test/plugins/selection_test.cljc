@@ -3,9 +3,9 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
   (:require #?(:clj  [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
-            [core.db :as D]
-            [core.transaction :as tx]
-            [core.intent :as intent]
+            [kernel.db :as D]
+            [kernel.transaction :as tx]
+            [kernel.intent :as intent]
             [plugins.selection :as S]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-(ns core.intent
+(ns kernel.intent
   "Intent router - all intents compile to core operations.
 
    Design: Unified Intent-to-Ops Pattern
@@ -95,8 +95,8 @@
         - registry entry with :doc and :spec"
      [intent-kw {:keys [sig doc ops spec]}]
      (let [[db-sym intent-destructure] sig
-           registry-sym 'core.intent/intent-registry
-           multimethod-sym 'core.intent/intent->ops]
+           registry-sym 'kernel.intent/intent-registry
+           multimethod-sym 'kernel.intent/intent->ops]
        `(do
           ~(when ops
              `(defmethod ~multimethod-sym ~intent-kw

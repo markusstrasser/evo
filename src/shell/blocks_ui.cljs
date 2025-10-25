@@ -1,4 +1,4 @@
-(ns app.blocks-ui
+(ns shell.blocks-ui
   "Blocks UI demo - composition layer only.
 
    Demonstrates proper architecture:
@@ -6,10 +6,10 @@
    - Components use getters and dispatch intents
    - App just composes components and routes intents"
   (:require [replicant.dom :as d]
-            [core.db :as DB]
-            [core.api :as api]
-            [core.transaction :as tx]
-            [core.history :as H]
+            [kernel.db :as DB]
+            [kernel.api :as api]
+            [kernel.transaction :as tx]
+            [kernel.history :as H]
             [components.block :as block]
             [plugins.selection :as sel]
             [plugins.struct :as struct]

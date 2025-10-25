@@ -1,4 +1,4 @@
-(ns core.api
+(ns kernel.api
   "Unified API façade for intent dispatch.
 
    Single entry point for all state changes:
@@ -8,9 +8,9 @@
    - Returns new DB and any validation issues
 
    This is the primary interface for UI, tests, REPL, and agent scripts."
-  (:require [core.intent :as intent]
-            [core.transaction :as tx]
-            [core.history :as H]
+  (:require [kernel.intent :as intent]
+            [kernel.transaction :as tx]
+            [kernel.history :as H]
             [clojure.string :as str])
   #?(:clj (:import [java.io File])))
 

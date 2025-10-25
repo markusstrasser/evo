@@ -3,9 +3,9 @@
 
    Navigation state stored in session nodes.
    All state changes emit ops for full undo/redo support."
-  (:require [core.intent :as intent])
-  #?(:clj (:require [core.intent :refer [defintent]]))
-  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
+  (:require [kernel.intent :as intent])
+  #?(:clj (:require [kernel.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
 ;; ── Getters ───────────────────────────────────────────────────────────────────
 

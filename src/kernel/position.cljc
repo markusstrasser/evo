@@ -1,4 +1,4 @@
-(ns core.position
+(ns kernel.position
   "Anchor algebra for deterministic positioning in sibling lists.
 
    Anchors are the closed set of positioning specifications:

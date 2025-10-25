@@ -1,4 +1,4 @@
-(ns core.tree
+(ns kernel.tree
   "Shared tree traversal and navigation utilities.
 
    Provides consistent accessors for derived indexes and tree operations.
