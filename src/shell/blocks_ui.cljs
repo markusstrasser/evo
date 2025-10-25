@@ -8,6 +8,7 @@
   (:require [replicant.dom :as d]
             [kernel.db :as DB]
             [kernel.api :as api]
+            [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [components.block :as block]
@@ -63,8 +64,8 @@
         key (.-key e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         shift? (.-shiftKey e)
-        focus-id (sel/get-focus db)
-        editing? (edit/editing-block-id db)
+        focus-id (q/focus db)
+        editing? (q/editing-block-id db)
         intent-type (keymap/resolve-intent-type event db)
 
         ;; Printable character check for "start typing to edit" behavior
@@ -141,9 +142,9 @@
             :border-radius    "4px"
             :font-family      "monospace"
             :font-size        "12px"}}
-   [:div [:strong "Selection: "] (pr-str (sel/get-selection db))]
-   [:div [:strong "Focus: "] (pr-str (sel/get-focus db))]
-   [:div [:strong "Editing: "] (pr-str (edit/editing-block-id db))]
+   [:div [:strong "Selection: "] (pr-str (q/selection db))]
+   [:div [:strong "Focus: "] (pr-str (q/focus db))]
+   [:div [:strong "Editing: "] (pr-str (q/editing-block-id db))]
    [:div {:style {:margin-top "10px"}} [:strong "Can undo: "] (str (H/can-undo? db))]
    [:div [:strong "Can redo: "] (str (H/can-redo? db))]])
 

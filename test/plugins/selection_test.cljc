@@ -6,6 +6,7 @@
             [kernel.db :as D]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
+            [kernel.query :as q]
             [plugins.selection :as S]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -73,22 +74,22 @@
   (testing "Select a single node"
     (let [db (build-doc)
           db' (select db "a")]
-      (is (= #{"a"} (S/get-selection db'))
+      (is (= #{"a"} (q/selection db'))
           "Selection should contain single node")
-      (is (S/selected? db' "a")
+      (is (q/selected? db' "a")
           "Node 'a' should be selected")
-      (is (not (S/selected? db' "b"))
+      (is (not (q/selected? db' "b"))
           "Node 'b' should not be selected"))))
 
 (deftest select-multiple-nodes
   (testing "Select multiple nodes at once"
     (let [db (build-doc)
           db' (select db ["a" "c"])]
-      (is (= #{"a" "c"} (S/get-selection db'))
+      (is (= #{"a" "c"} (q/selection db'))
           "Selection should contain both nodes")
-      (is (S/selected? db' "a"))
-      (is (not (S/selected? db' "b")))
-      (is (S/selected? db' "c")))))
+      (is (q/selected? db' "a"))
+      (is (not (q/selected? db' "b")))
+      (is (q/selected? db' "c")))))
 
 (deftest extend-selection-test
   (testing "Extend selection selects range between anchor and focus"
@@ -96,7 +97,7 @@
           db' (-> db
                   (select "a")
                   (extend-selection "c"))]
-      (is (= #{"a" "b" "c"} (S/get-selection db'))
+      (is (= #{"a" "b" "c"} (q/selection db'))
           "Range selection should include intermediate nodes"))))
 
 (deftest deselect-test
@@ -105,7 +106,7 @@
           db' (-> db
                   (select ["a" "b" "c"])
                   (deselect "b"))]
-      (is (= #{"a" "c"} (S/get-selection db'))
+      (is (= #{"a" "c"} (q/selection db'))
           "Node 'b' should be removed from selection"))))
 
 (deftest clear-selection-test
@@ -114,9 +115,9 @@
           db' (-> db
                   (select ["a" "b"])
                   (clear))]
-      (is (= #{} (S/get-selection db'))
+      (is (= #{} (q/selection db'))
           "Selection should be empty")
-      (is (not (S/has-selection? db'))
+      (is (not (q/has-selection? db'))
           "has-selection? should return false"))))
 
 (deftest toggle-selection-test
@@ -126,7 +127,7 @@
                   (toggle "a")    ;; Add a
                   (toggle "b")    ;; Add b
                   (toggle "a"))]  ;; Remove a
-      (is (= #{"b"} (S/get-selection db'))
+      (is (= #{"b"} (q/selection db'))
           "Only 'b' should remain selected"))))
 
 ;; ── Selection navigation tests ────────────────────────────────────────────────
@@ -137,7 +138,7 @@
           db' (-> db
                   (select "a")
                   (select-next-sibling))]
-      (is (= #{"b"} (S/get-selection db'))
+      (is (= #{"b"} (q/selection db'))
           "Selection should move to next sibling 'b'")))
 
   (testing "No-op when no next sibling"
@@ -145,7 +146,7 @@
           db' (-> db
                   (select "c")
                   (select-next-sibling))]
-      (is (= #{"c"} (S/get-selection db'))
+      (is (= #{"c"} (q/selection db'))
           "Selection should stay on 'c' (last child)"))))
 
 (deftest select-prev-sibling-test
@@ -154,7 +155,7 @@
           db' (-> db
                   (select "b")
                   (select-prev-sibling))]
-      (is (= #{"a"} (S/get-selection db'))
+      (is (= #{"a"} (q/selection db'))
           "Selection should move to previous sibling 'a'")))
 
   (testing "No-op when no previous sibling"
@@ -162,7 +163,7 @@
           db' (-> db
                   (select "a")
                   (select-prev-sibling))]
-      (is (= #{"a"} (S/get-selection db'))
+      (is (= #{"a"} (q/selection db'))
           "Selection should stay on 'a' (first child)"))))
 
 (deftest select-parent-test
@@ -171,7 +172,7 @@
           db' (-> db
                   (select "b")
                   (select-parent))]
-      (is (= #{"doc1"} (S/get-selection db'))
+      (is (= #{"doc1"} (q/selection db'))
           "Selection should move to parent 'doc1'")))
 
   (testing "No-op when multiple parents (invalid state)"
@@ -185,7 +186,7 @@
           db' (-> db
                   (select ["a" "d"])  ;; Different parents
                   (select-parent))]
-      (is (= #{"a" "d"} (S/get-selection db'))
+      (is (= #{"a" "d"} (q/selection db'))
           "Selection should remain unchanged when parents differ"))))
 
 (deftest select-all-siblings-test
@@ -194,7 +195,7 @@
           db' (-> db
                   (select "b")
                   (select-all-siblings))]
-      (is (= #{"a" "b" "c"} (S/get-selection db'))
+      (is (= #{"a" "b" "c"} (q/selection db'))
           "All siblings should be selected"))))
 
 ;; ── Selection state queries ───────────────────────────────────────────────────
@@ -202,15 +203,15 @@
 (deftest selection-count-test
   (testing "Selection count"
     (let [db (build-doc)]
-      (is (= 0 (S/selection-count db))
+      (is (= 0 (q/selection-count db))
           "Empty DB has no selection")
-      (is (= 2 (S/selection-count (select db ["a" "c"])))
+      (is (= 2 (q/selection-count (select db ["a" "c"])))
           "Selection count should be 2"))))
 
 (deftest has-selection-test
   (testing "Has selection predicate"
     (let [db (build-doc)]
-      (is (not (S/has-selection? db))
+      (is (not (q/has-selection? db))
           "Empty DB has no selection")
-      (is (S/has-selection? (select db "a"))
+      (is (q/has-selection? (select db "a"))
           "DB with selection returns true"))))
