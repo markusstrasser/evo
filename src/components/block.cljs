@@ -1,131 +1,84 @@
 (ns components.block
   "Block component with Logseq-style editing behavior.
 
-   Uses plugin getters for data and dispatches intents for all state changes.
-   Implements cursor boundary detection for seamless up/down navigation."
+   Pure view + intent dispatch. Cursor boundary detection for arrow navigation."
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [components.mock-text :as mock-text]
+            [keymap.core :as keymap]
             [plugins.editing :as edit]
             [plugins.selection :as sel]))
 
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
-(defn handle-arrow-up [e db block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (mock-text/detect-cursor-row-position target)]
-    (cond
-      ;; Has text selection - collapse to start
-      (mock-text/has-text-selection?)
-      (let [selection (.getSelection js/window)]
-        (.preventDefault e)
-        (.collapseToStart selection))
+(defn- handle-editing-keydown
+  "Minimal editing keydown handler - delegates to keymap resolver.
 
-      ;; At first row - navigate to previous block
-      (:first-row? cursor-pos)
-      (do (.preventDefault e)
-          (on-intent {:type :navigate-up :block-id block-id}))
-
-      ;; Otherwise - let browser handle cursor movement
-      :else nil)))
-
-(defn handle-arrow-down [e db block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (mock-text/detect-cursor-row-position target)]
-    (cond
-      ;; Has text selection - collapse to end
-      (mock-text/has-text-selection?)
-      (let [selection (.getSelection js/window)]
-        (.preventDefault e)
-        (.collapseToEnd selection))
-
-      ;; At last row - navigate to next block
-      (:last-row? cursor-pos)
-      (do (.preventDefault e)
-          (on-intent {:type :navigate-down :block-id block-id}))
-
-      ;; Otherwise - let browser handle cursor movement
-      :else nil)))
-
-(defn handle-enter [e db block-id on-intent]
-  (.preventDefault e)
-  (let [target (.-target e)
-        selection (.getSelection js/window)
-        cursor-pos (.-anchorOffset selection)]
-    ;; TODO: Use split-at-cursor intent for proper implementation
-    ;; For now, just create new block after
-    (let [parent (get-in db [:derived :parent-of block-id])
-          new-id (str "block-" (random-uuid))]
-      (on-intent {:type :create-and-place
-                  :id new-id
-                  :parent parent
-                  :after block-id}))))
-
-(defn handle-escape [e db block-id on-intent]
-  (.preventDefault e)
-  ;; Just exit edit mode - element will unmount, view will mount
-  (on-intent {:type :exit-edit}))
-
-(defn handle-backspace [e db block-id on-intent]
-  (let [target (.-target e)
-        text-content (.-textContent target)
-        selection (.getSelection js/window)
-        is-at-start (and selection (= (.-anchorOffset selection) 0))]
-    (when (or (empty? text-content) is-at-start)
-      (.preventDefault e)
-      (if (empty? text-content)
-        ;; Empty block - delete and navigate to prev
-        (on-intent {:type :delete :id block-id})
-        ;; At start with content - merge with previous
-        (on-intent {:type :merge-with-prev :block-id block-id})))))
-
-(defn handle-keydown [e db block-id on-intent]
-  "Handle keyboard events while editing a block.
-   
-   Global shortcuts (Alt+Arrow, Shift+Arrow, Cmd/Alt+Shift+Arrow, Backspace for deletion)
-   are handled by the global keydown handler when blocks are selected but NOT editing.
-   
-   This handler focuses on editing-specific behavior:
-   - Arrow keys with cursor boundary detection for seamless navigation
-   - Enter to create new blocks
-   - Escape to exit edit mode
-   - Backspace for delete/merge at cursor boundaries (within text)
-   - Tab/Shift+Tab for indent/outdent while editing"
+   Only intercepts arrow keys for cursor boundary navigation.
+   Everything else dispatches intent from keymap resolver."
+  [e db block-id text on-intent]
   (let [key (.-key e)
-        shift? (.-shiftKey e)
-        mod? (or (.-metaKey e) (.-ctrlKey e))
-        alt? (.-altKey e)]
+        target (.-target e)
+        event (keymap/parse-dom-event e)
+        intent (keymap/resolve-event event db)]
+
     (cond
-      ;; Plain arrows (with boundary detection) - navigate between blocks while editing
-      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-up e db block-id on-intent)
+      ;; Arrow up/down - check cursor boundary first
+      (and (= key "ArrowUp") (not (:shift event)) (not (:mod event)) (not (:alt event)))
+      (let [boundary (mock-text/cursor-boundary target text)]
+        (cond
+          (:has-selection? boundary)
+          (let [selection (.getSelection js/window)]
+            (.preventDefault e)
+            (.collapseToStart selection))
 
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-down e db block-id on-intent)
+          (:first-row? boundary)
+          (do (.preventDefault e)
+              (on-intent {:type :navigate-up :block-id block-id}))
 
-      ;; Enter - create new block
-      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (handle-enter e db block-id on-intent)
+          :else nil))
 
-      ;; Escape - exit edit mode
-      (= key "Escape")
-      (handle-escape e db block-id on-intent)
+      (and (= key "ArrowDown") (not (:shift event)) (not (:mod event)) (not (:alt event)))
+      (let [boundary (mock-text/cursor-boundary target text)]
+        (cond
+          (:has-selection? boundary)
+          (let [selection (.getSelection js/window)]
+            (.preventDefault e)
+            (.collapseToEnd selection))
 
-      ;; Backspace - delete/merge at cursor boundary (within text editing)
-      (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
-      (handle-backspace e db block-id on-intent)
+          (:last-row? boundary)
+          (do (.preventDefault e)
+              (on-intent {:type :navigate-down :block-id block-id}))
 
-      ;; Tab - indent while editing (also handled globally for selected non-editing blocks)
-      (and (= key "Tab") (not shift?))
+          :else nil))
+
+      ;; Enter - create new block (special case: needs parent lookup)
+      (and (= key "Enter") (not (:shift event)) (not (:mod event)) (not (:alt event)))
+      (let [parent (get-in db [:derived :parent-of block-id])
+            new-id (str "block-" (random-uuid))]
+        (.preventDefault e)
+        (on-intent {:type :create-and-place
+                    :id new-id
+                    :parent parent
+                    :after block-id}))
+
+      ;; Backspace - delete/merge at cursor boundary
+      (and (= key "Backspace") (not (:shift event)) (not (:mod event)) (not (:alt event)))
+      (let [text-content (.-textContent target)
+            selection (.getSelection js/window)
+            is-at-start (and selection (= (.-anchorOffset selection) 0))]
+        (when (or (empty? text-content) is-at-start)
+          (.preventDefault e)
+          (if (empty? text-content)
+            (on-intent {:type :delete :id block-id})
+            (on-intent {:type :merge-with-prev :block-id block-id}))))
+
+      ;; All other keys - use keymap resolver
+      intent
       (do (.preventDefault e)
-          (on-intent {:type :indent-selected}))
+          (on-intent intent))
 
-      ;; Shift+Tab - outdent while editing (also handled globally for selected non-editing blocks)
-      (and (= key "Tab") shift?)
-      (do (.preventDefault e)
-          (on-intent {:type :outdent-selected}))
-
-      ;; Everything else - let browser or global handler handle
+      ;; No binding - let browser handle
       :else nil)))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
@@ -201,11 +154,8 @@
                                          (.addRange sel range))
                                        (catch js/Error e
                                          (js/console.error "Cursor error:" e))))
-
-                                   (mock-text/update-mock-text! text))
             :on {:input (fn [e]
                           (let [new-text (-> e .-target .-textContent)]
-                            (mock-text/update-mock-text! new-text)
                             (on-intent {:type :update-content
                                         :block-id block-id
                                         :text new-text})))
@@ -216,7 +166,7 @@
                  :keydown (fn [e]
                             (when (= (.-key e) "Escape")
                               (reset! exiting-edit? true))
-                            (handle-keydown e db block-id on-intent))}}]
+                            (handle-editing-keydown e db block-id text on-intent))}}]
           [:span.content-view
            {:style {:min-width "1px"
                     :display "inline-block"

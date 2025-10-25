@@ -15,8 +15,7 @@
             [plugins.selection :as sel]
             [plugins.struct :as struct]
             [plugins.editing :as edit]
-            [keymap.core :as keymap]
-            [keymap.bindings :as bindings]))
+            [keymap.core :as keymap]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -58,7 +57,7 @@
   "Global keyboard shortcuts via central keymap resolver.
 
    Single source of truth: keymap/bindings.cljc registers all bindings.
-   This function just resolves key event → intent type → dispatch."
+   This function resolves key event → intent map → dispatch."
   (let [event (keymap/parse-dom-event e)
         db @!db
         key (.-key e)
@@ -66,7 +65,7 @@
         shift? (.-shiftKey e)
         focus-id (q/focus db)
         editing? (q/editing-block-id db)
-        intent-type (keymap/resolve-intent-type event db)
+        intent (keymap/resolve-event event db)
 
         ;; Printable character check for "start typing to edit" behavior
         printable? (and (= 1 (.-length key))
@@ -76,9 +75,9 @@
 
     (cond
       ;; Keymap-resolved intent
-      intent-type
+      intent
       (do (.preventDefault e)
-          (case intent-type
+          (case (:type intent)
             ;; Special handling: Enter creates block and enters edit mode
             :create-new-block-after-focus
             (let [parent (get-in db [:derived :parent-of focus-id])
@@ -91,8 +90,8 @@
                 #(handle-intent {:type :enter-edit :block-id new-id})
                 0))
 
-            ;; Default: direct intent dispatch
-            (handle-intent {:type intent-type})))
+            ;; Default: dispatch resolved intent directly
+            (handle-intent intent)))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
@@ -210,9 +209,6 @@
 
 (defn main []
   (js/console.log "Blocks UI starting with proper architecture...")
-
-  ;; Initialize keyboard bindings (explicit, not side-effect)
-  (bindings/reload!)
 
   ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
   (d/set-dispatch!

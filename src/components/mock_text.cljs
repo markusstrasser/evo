@@ -1,13 +1,11 @@
 (ns components.mock-text
-  "Mock-text cursor row detection (Logseq technique).
+  "Mock-text cursor boundary detection (Logseq technique).
 
-   Uses a hidden DOM element to mirror contenteditable text and detect
-   cursor position relative to text rows. Enables seamless up/down navigation
-   at block boundaries.")
+   Single utility: detect if cursor is at first/last row of contenteditable.
+   Uses hidden DOM element to mirror text and calculate row positions.")
 
-(defn update-mock-text!
-  "Update hidden mock-text element with current contenteditable content.
-   This enables cursor row position detection (Logseq technique)."
+(defn- update-mock-text!
+  "Update hidden mock-text element with current contenteditable content."
   [text]
   (when-let [mock-elem (js/document.getElementById "mock-text")]
     (let [content (str text "0")
@@ -47,20 +45,35 @@
                     sort)]
       tops)))
 
-(defn detect-cursor-row-position
-  "Detect if cursor is on first/last row of contenteditable.
-   Returns {:first-row? bool :last-row? bool}"
-  [elem]
-  (when-let [cursor-rect (get-caret-rect elem)]
-    (let [tops (get-mock-text-tops)
-          cursor-top (.-top cursor-rect)]
-      {:first-row? (and (seq tops) (= (first tops) cursor-top))
-       :last-row? (and (seq tops) (= (last tops) cursor-top))})))
+(defn cursor-boundary
+  "Single cursor boundary detection utility.
 
-(defn has-text-selection?
-  "Check if user has selected text within contenteditable."
-  []
-  (let [selection (.getSelection js/window)]
-    (and selection
-         (not (.-isCollapsed selection))
-         (> (.-rangeCount selection) 0))))
+   Args:
+   - elem: contenteditable DOM element
+   - text: current text content (for mock-text update)
+
+   Returns:
+   - {:first-row? bool :last-row? bool :has-selection? bool}
+   - nil if cursor position cannot be determined
+
+   Usage:
+     (let [boundary (cursor-boundary elem text)]
+       (when (:first-row? boundary)
+         ;; Navigate to previous block
+         ))"
+  [elem text]
+  (update-mock-text! text)
+  (let [selection (.getSelection js/window)
+        has-selection? (and selection
+                            (not (.-isCollapsed selection))
+                            (> (.-rangeCount selection) 0))]
+    (if-let [cursor-rect (get-caret-rect elem)]
+      (let [tops (get-mock-text-tops)
+            cursor-top (.-top cursor-rect)]
+        {:first-row? (and (seq tops) (= (first tops) cursor-top))
+         :last-row? (and (seq tops) (= (last tops) cursor-top))
+         :has-selection? has-selection?})
+      ;; Cannot determine cursor position
+      {:first-row? false
+       :last-row? false
+       :has-selection? has-selection?})))
