@@ -1,8 +1,8 @@
-(ns core-interpret-test
-  "Tests for core.interpret - invariant-based, implementation-agnostic tests"
+(ns core-transaction-test
+  "Tests for core.transaction - invariant-based, implementation-agnostic tests"
   (:require [clojure.test :refer [deftest is testing]]
             [core.db :as db]
-            [core.interpret :as interp]))
+            [core.transaction :as tx]))
 
 (defn create-op [id node-type] {:op :create-node :id id :type node-type :props {}})
 (defn place-op [id under at] {:op :place :id id :under under :at at})
@@ -12,7 +12,7 @@
   "Apply ops and return final db. Fails test if validation issues occur."
   ([ops] (apply-ops (db/empty-db) ops))
   ([db ops]
-   (let [result (interp/interpret db ops)]
+   (let [result (tx/interpret db ops)]
      (when (seq (:issues result))
        (is false (str "Unexpected validation issues: " (:issues result))))
      (:db result))))
@@ -21,7 +21,7 @@
   "Apply ops expecting validation failure. Returns issues vector."
   ([ops] (apply-ops-expect-failure (db/empty-db) ops))
   ([db ops]
-   (let [result (interp/interpret db ops)]
+   (let [result (tx/interpret db ops)]
      (is (seq (:issues result)) "Expected validation issues")
      (:issues result))))
 
@@ -183,9 +183,9 @@
 (deftest test-invariant-transactional-failure
   (testing "failed operation halts pipeline - no partial application"
     (let [db (apply-ops [(create-op "a" :div)])
-          result (interp/interpret db [(update-op "a" {:x 1})
-                                       (place-op "missing" :doc :first)
-                                       (update-op "a" {:y 2})])]
+          result (tx/interpret db [(update-op "a" {:x 1})
+                                   (place-op "missing" :doc :first)
+                                   (update-op "a" {:y 2})])]
       (is (seq (:issues result)))
       (is (= {:x 1} (node-props (:db result) "a")) "Only op before failure applied"))))
 
