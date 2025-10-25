@@ -3,7 +3,9 @@
 
    Navigation state stored in session nodes.
    All state changes emit ops for full undo/redo support."
-  (:require [core.intent :as intent]))
+  (:require [core.intent :as intent])
+  #?(:clj (:require [core.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
 
 ;; ── Getters ───────────────────────────────────────────────────────────────────
 
@@ -36,20 +38,26 @@
 
 ;; ── Intent Implementations (Session State Changes) ───────────────────────────
 
-(defmethod intent/intent->ops :navigate-up
-  [db {:keys [block-id]}]
-  (when-let [prev-id (get-prev-block db (or block-id (get-in db [:nodes "session/selection" :props :focus])))]
-    [{:op :update-node :id "session/selection" :props {:focus prev-id}}
-     {:op :update-node :id "session/edit" :props {:block-id prev-id}}]))
+(defintent :navigate-up
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to previous visible block. Updates focus and edit block."
+   :spec [:map [:type [:= :navigate-up]] [:block-id {:optional true} :string]]
+   :ops (when-let [prev-id (get-prev-block db (or block-id (get-in db [:nodes "session/selection" :props :focus])))]
+          [{:op :update-node :id "session/selection" :props {:focus prev-id}}
+           {:op :update-node :id "session/edit" :props {:block-id prev-id}}])})
 
-(defmethod intent/intent->ops :navigate-down
-  [db {:keys [block-id]}]
-  (when-let [next-id (get-next-block db (or block-id (get-in db [:nodes "session/selection" :props :focus])))]
-    [{:op :update-node :id "session/selection" :props {:focus next-id}}
-     {:op :update-node :id "session/edit" :props {:block-id next-id}}]))
+(defintent :navigate-down
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to next visible block. Updates focus and edit block."
+   :spec [:map [:type [:= :navigate-down]] [:block-id {:optional true} :string]]
+   :ops (when-let [next-id (get-next-block db (or block-id (get-in db [:nodes "session/selection" :props :focus])))]
+          [{:op :update-node :id "session/selection" :props {:focus next-id}}
+           {:op :update-node :id "session/edit" :props {:block-id next-id}}])})
 
-(defmethod intent/intent->ops :update-cursor-state
-  [db {:keys [block-id first-row? last-row?]}]
-  (let [current-cursor (get-in db [:nodes "session/cursor" :props] {})
-        updated-cursor (assoc current-cursor block-id {:first-row? first-row? :last-row? last-row?})]
-    [{:op :update-node :id "session/cursor" :props updated-cursor}]))
+(defintent :update-cursor-state
+  {:sig [db {:keys [block-id first-row? last-row?]}]
+   :doc "Update cursor position state for boundary detection."
+   :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
+   :ops (let [current-cursor (get-in db [:nodes "session/cursor" :props] {})
+              updated-cursor (assoc current-cursor block-id {:first-row? first-row? :last-row? last-row?})]
+          [{:op :update-node :id "session/cursor" :props updated-cursor}])})

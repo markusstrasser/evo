@@ -11,30 +11,30 @@
    never destroyed. This maintains referential integrity and enables undo.
 
    Implements intent->ops multimethod from core.intent for structural intents."
-  (:require [core.permutation :as perm]
-            [core.intent :as intent]
-            [plugins.siblings-order :as so]
+  (:require [core.intent :as intent]
             [plugins.selection :as selection]
             [plugins.editing :as editing]
-            [plugins.permute :as permute]))
+            [plugins.permute :as permute])
+  #?(:clj (:require [core.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 
 (defn- parent-of
   "Returns the parent ID of the given node ID."
-  [DB id]
-  (get-in DB [:derived :parent-of id]))
+  [db id]
+  (get-in db [:derived :parent-of id]))
 
 (defn- prev-sibling
   "Returns the previous sibling ID of the given node ID."
-  [DB id]
-  (get-in DB [:derived :prev-id-of id]))
+  [db id]
+  (get-in db [:derived :prev-id-of id]))
 
 (defn- grandparent-of
   "Returns the grandparent ID of the given node ID."
-  [DB id]
-  (when-let [p (parent-of DB id)]
-    (parent-of DB p)))
+  [db id]
+  (when-let [p (parent-of db id)]
+    (parent-of db p)))
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
@@ -46,8 +46,8 @@
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
    under its previous sibling."
-  [DB id]
-  (if-let [sib (prev-sibling DB id)]
+  [db id]
+  (if-let [sib (prev-sibling db id)]
     [{:op :place :id id :under sib :at :last}]
     []))
 
@@ -55,10 +55,10 @@
   "Compiles an outdent intent into a :place operation that moves the node
    to be a sibling of its parent (under its grandparent, after its parent).
    Prevents outdenting if grandparent is a root container (already at top level)."
-  [DB id]
-  (let [p (parent-of DB id)
-        gp (grandparent-of DB id)
-        roots (:roots DB #{:doc :trash})]
+  [db id]
+  (let [p (parent-of db id)
+        gp (grandparent-of db id)
+        roots (set (:roots db [:doc :trash]))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
       [{:op :place :id id :under gp :at {:after p}}]
@@ -66,157 +66,151 @@
 
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
 
-(defmethod intent/intent->ops :delete
-  [DB {:keys [id]}]
-  (delete-ops DB id))
+(defintent :delete
+  {:sig [db {:keys [id]}]
+   :doc "Delete node by moving to :trash."
+   :spec [:map [:type [:= :delete]] [:id :string]]
+   :ops (delete-ops db id)})
 
-(defmethod intent/intent->ops :indent
-  [DB {:keys [id]}]
-  (indent-ops DB id))
+(defintent :indent
+  {:sig [db {:keys [id]}]
+   :doc "Indent node under previous sibling."
+   :spec [:map [:type [:= :indent]] [:id :string]]
+   :ops (indent-ops db id)})
 
-(defmethod intent/intent->ops :outdent
-  [DB {:keys [id]}]
-  (outdent-ops DB id))
+(defintent :outdent
+  {:sig [db {:keys [id]}]
+   :doc "Outdent node to be sibling of parent."
+   :spec [:map [:type [:= :outdent]] [:id :string]]
+   :ops (outdent-ops db id)})
 
-(defmethod intent/intent->ops :create-and-place
-  [_DB {:keys [id parent after]}]
-  [{:op :create-node :id id :type :block :props {:text ""}}
-   {:op :place :id id :under parent :at (if after {:after after} :last)}])
+(defintent :create-and-place
+  {:sig [_db {:keys [id parent after]}]
+   :doc "Create new block and place it under parent."
+   :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string] [:after {:optional true} :string]]
+   :ops [{:op :create-node :id id :type :block :props {:text ""}}
+         {:op :place :id id :under parent :at (if after {:after after} :last)}]})
 
-(defmethod intent/intent->ops :delete-block
-  [DB {:keys [block-id]}]
-  (delete-ops DB block-id))
+(defintent :delete-block
+  {:sig [db {:keys [block-id]}]
+   :doc "Delete block by ID (alias for :delete)."
+   :spec [:map [:type [:= :delete-block]] [:block-id :string]]
+   :ops (delete-ops db block-id)})
 
 ;; ── Reorder intents ───────────────────────────────────────────────────────────
 
-(defn- realize-permutation->places
-  "Convert a permutation into a sequence of :place operations.
+(defintent :reorder/children
+  {:sig [db {:keys [parent order]}]
+   :doc "Reorder children to explicit target order."
+   :spec [:map [:type [:= :reorder/children]] [:parent :string] [:order [:vector :string]]]
+   :ops (intent/intent->ops db {:type :reorder
+                                :selection (vec order)
+                                :parent parent
+                                :anchor :first})})
 
-   Strategy: Emit places in destination order with stable {:after prev} anchors.
-   This ensures children end up in the target order after all places are applied."
-  [DB parent p]
-  (let [src (vec (get-in DB [:children-by-parent parent] []))
-        dst (perm/arrange src p)]
-    (vec
-     (map-indexed
-      (fn [i id]
-        {:op :place
-         :id id
-         :under parent
-         :at (if (zero? i)
-               :first
-               {:after (nth dst (dec i))})})
-      dst))))
-
-(defmethod intent/intent->ops :reorder/children
-  [DB {:keys [parent order]}]
-  ;; Reorder children to an explicit target order - route through permute
-  ;; Intent: {:type :reorder/children, :parent P, :order [id1 id2 ...]}
-  (intent/intent->ops DB {:type :reorder
-                          :selection (vec order)
-                          :parent parent
-                          :anchor :first}))
-
-(defmethod intent/intent->ops :reorder/move-blocks
-  [DB {:keys [parent ids after]}]
-  ;; Move contiguous selection after pivot - route through permute
-  ;; Intent: {:type :reorder/move-blocks, :parent P, :ids [...], :after pivot}
-  (intent/intent->ops DB {:type :reorder
-                          :selection (vec ids)
-                          :parent parent
-                          :anchor (if after {:after after} :first)}))
+(defintent :reorder/move-blocks
+  {:sig [db {:keys [parent ids after]}]
+   :doc "Move contiguous selection after pivot."
+   :spec [:map [:type [:= :reorder/move-blocks]] [:parent :string] [:ids [:vector :string]] [:after {:optional true} :string]]
+   :ops (intent/intent->ops db {:type :reorder
+                                :selection (vec ids)
+                                :parent parent
+                                :anchor (if after {:after after} :first)})})
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
 (defn- sort-by-doc-order
   "Sort node IDs by document order (pre-order traversal).
    Ensures operations are applied top-to-bottom, left-to-right."
-  [DB ids]
-  (sort-by #(get-in DB [:derived :pre %] ##Inf) ids))
+  [db ids]
+  (sort-by #(get-in db [:derived :pre %] ##Inf) ids))
 
 (defn- active-targets
   "Return selected node IDs or the currently editing block (vector, doc-ordered)."
-  [DB]
-  (let [selected (selection/get-selected-nodes DB)
-        editing-id (editing/editing-block-id DB)
+  [db]
+  (let [selected (selection/get-selected-nodes db)
+        editing-id (editing/editing-block-id db)
         targets (cond
                   (seq selected) selected
                   editing-id [editing-id]
                   :else [])]
-    (vec (sort-by-doc-order DB targets))))
+    (vec (sort-by-doc-order db targets))))
 
 (defn- same-parent?
   "Check that all ids share the same parent."
-  [DB ids]
+  [db ids]
   (when (seq ids)
-    (let [parent (parent-of DB (first ids))]
+    (let [parent (parent-of db (first ids))]
       (and parent
-           (every? #(= parent (parent-of DB %)) (rest ids))
+           (every? #(= parent (parent-of db %)) (rest ids))
            parent))))
 
 (defn- move-selected-up-ops
-  [DB]
-  (let [targets (active-targets DB)
+  [db]
+  (let [targets (active-targets db)
         first-id (first targets)
-        parent (same-parent? DB targets)
-        prev (when first-id (prev-sibling DB first-id))
-        before-prev (when prev (prev-sibling DB prev))]
+        parent (same-parent? db targets)
+        prev (when first-id (prev-sibling db first-id))
+        before-prev (when prev (prev-sibling db prev))]
     (if (and parent prev)
-      (intent/intent->ops DB {:type :reorder
+      (intent/intent->ops db {:type :reorder
                               :selection targets
                               :parent parent
                               :anchor (if before-prev {:after before-prev} :first)})
       [])))
 
 (defn- move-selected-down-ops
-  [DB]
-  (let [targets (active-targets DB)
+  [db]
+  (let [targets (active-targets db)
         last-id (last targets)
-        parent (same-parent? DB targets)
-        next (when last-id (get-in DB [:derived :next-id-of last-id]))]
+        parent (same-parent? db targets)
+        next (when last-id (get-in db [:derived :next-id-of last-id]))]
     (if (and parent next)
-      (intent/intent->ops DB {:type :reorder
+      (intent/intent->ops db {:type :reorder
                               :selection targets
                               :parent parent
                               :anchor {:after next}})
       [])))
 
-(defmethod intent/intent->ops :delete-selected
-  [DB _]
-  ;; Delete all currently selected nodes in document order
-  ;; If nothing selected, delete the currently editing block
-  (let [selected (selection/get-selected-nodes DB)
-        editing-id (editing/editing-block-id DB)
-        targets (if (seq selected) selected (if editing-id [editing-id] []))
-        ordered (sort-by-doc-order DB targets)]
-    (vec (mapcat #(delete-ops DB %) ordered))))
+(defintent :delete-selected
+  {:sig [db _]
+   :doc "Delete all selected nodes (or editing block if no selection)."
+   :spec [:map [:type [:= :delete-selected]]]
+   :ops (let [selected (selection/get-selected-nodes db)
+              editing-id (editing/editing-block-id db)
+              targets (if (seq selected) selected (if editing-id [editing-id] []))
+              ordered (sort-by-doc-order db targets)]
+          (vec (mapcat #(delete-ops db %) ordered)))})
 
-(defmethod intent/intent->ops :indent-selected
-  [DB _]
-  ;; Indent all currently selected nodes in document order
-  ;; If nothing selected, indent the currently editing block
-  ;; Processing top-to-bottom ensures correct parent-child relationships
-  (let [selected (selection/get-selected-nodes DB)
-        editing-id (editing/editing-block-id DB)
-        targets (if (seq selected) selected (if editing-id [editing-id] []))
-        ordered (sort-by-doc-order DB targets)]
-    (vec (mapcat #(indent-ops DB %) ordered))))
+(defintent :indent-selected
+  {:sig [db _]
+   :doc "Indent all selected nodes (or editing block if no selection)."
+   :spec [:map [:type [:= :indent-selected]]]
+   :ops (let [selected (selection/get-selected-nodes db)
+              editing-id (editing/editing-block-id db)
+              targets (if (seq selected) selected (if editing-id [editing-id] []))
+              ordered (sort-by-doc-order db targets)]
+          (vec (mapcat #(indent-ops db %) ordered)))})
 
-(defmethod intent/intent->ops :outdent-selected
-  [DB _]
-  ;; Outdent all currently selected nodes in document order
-  ;; If nothing selected, outdent the currently editing block
-  ;; Processing top-to-bottom ensures correct parent-child relationships
-  (let [selected (selection/get-selected-nodes DB)
-        editing-id (editing/editing-block-id DB)
-        targets (if (seq selected) selected (if editing-id [editing-id] []))
-        ordered (sort-by-doc-order DB targets)]
-    (vec (mapcat #(outdent-ops DB %) ordered))))
+(defintent :outdent-selected
+  {:sig [db _]
+   :doc "Outdent all selected nodes (or editing block if no selection)."
+   :spec [:map [:type [:= :outdent-selected]]]
+   :ops (let [selected (selection/get-selected-nodes db)
+              editing-id (editing/editing-block-id db)
+              targets (if (seq selected) selected (if editing-id [editing-id] []))
+              ordered (sort-by-doc-order db targets)]
+          (vec (mapcat #(outdent-ops db %) ordered)))})
 
-(defmethod intent/intent->ops :move-selected-up
-  [DB _]
-  (move-selected-up-ops DB))
+(defintent :move-selected-up
+  {:sig [db _]
+   :doc "Move selected nodes up one sibling position."
+   :spec [:map [:type [:= :move-selected-up]]]
+   :ops (move-selected-up-ops db)})
 
-(defmethod intent/intent->ops :move-selected-down
-  [DB _]
-  (move-selected-down-ops DB))
+(defintent :move-selected-down
+  {:sig [db _]
+   :doc "Move selected nodes down one sibling position."
+   :spec [:map [:type [:= :move-selected-down]]]
+   :ops (move-selected-down-ops db)})
+

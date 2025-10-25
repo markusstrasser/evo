@@ -4,7 +4,9 @@
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
    Uses core.position for position resolution and core.permutation for deterministic ordering."
   (:require [core.position :as pos]
-            [core.intent :as intent]))
+            [core.intent :as intent])
+  #?(:clj (:require [core.intent :refer [defintent]]))
+  #?(:cljs (:require-macros [core.intent :refer [defintent]])))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
@@ -121,7 +123,7 @@
    - Anchor is valid (if it can be pre-validated)"
   [db {:keys [selection parent] :as intent}]
   (let [nodes (:nodes db)
-        roots (:roots db)]
+        roots (set (:roots db))]
     (cond
       ;; Check all selected nodes exist
       (not-every? #(contains? nodes %) selection)
@@ -177,10 +179,14 @@
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
-(defmethod intent/intent->ops :move
-  [db intent]
-  (:ops (lower db (assoc intent :intent :move))))
+(defintent :move
+  {:sig [db intent]
+   :doc "Move selection to target parent at anchor position."
+   :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
+   :ops (:ops (lower db (assoc intent :intent :move)))})
 
-(defmethod intent/intent->ops :reorder
-  [db intent]
-  (:ops (lower db (assoc intent :intent :reorder))))
+(defintent :reorder
+  {:sig [db intent]
+   :doc "Reorder selection within same parent to anchor position."
+   :spec [:map [:type [:= :reorder]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
+   :ops (:ops (lower db (assoc intent :intent :reorder)))})
