@@ -9,7 +9,8 @@
 
    Implements intent->ops multimethod from core.intent."
   (:require [clojure.set :as set]
-            [core.intent :as intent]))
+            [core.intent :as intent]
+            [core.tree :as tree]))
 
 ;; ── Selection state accessors ────────────────────────────────────────────────
 
@@ -66,23 +67,6 @@
                           :focus new-focus
                           :anchor new-focus})))
 
-(defn- doc-range
-  "Return the set of node IDs between a and b (inclusive) in document order.
-   Falls back to nil if either node is missing traversal metadata."
-  [DB a b]
-  (let [pre (get-in DB [:derived :pre])
-        id-by-pre (get-in DB [:derived :id-by-pre])]
-    (when (and (contains? pre a)
-               (contains? pre b))
-      (let [a-idx (get pre a)
-            b-idx (get pre b)
-            [start end] (if (<= a-idx b-idx)
-                          [a-idx b-idx]
-                          [b-idx a-idx])]
-        (->> (range start (inc end))
-             (map id-by-pre)
-             (remove nil?)
-             set)))))
 
 (defn extend-selection
   "Add node ID(s) to the current selection.
@@ -95,7 +79,7 @@
         new-focus (last ids-vec)
         existing-anchor (:anchor state)
         range-set (when (and existing-anchor (= 1 (count ids-vec)))
-                    (doc-range DB existing-anchor new-focus))
+                    (tree/doc-range DB existing-anchor new-focus))
         new-anchor (or existing-anchor new-focus)
         new-nodes (or range-set (set/union (:nodes state) ids-set))]
     (assoc DB :selection {:nodes new-nodes
@@ -138,7 +122,7 @@
    Clears selection and selects next sibling if it exists."
   [DB]
   (if-let [current (get-focus DB)]
-    (if-let [next-id (get-in DB [:derived :next-id-of current])]
+    (if-let [next-id (tree/next-sibling DB current)]
       (select DB next-id)
       DB)  ;; No next sibling, keep current selection
     DB))  ;; No focus, nothing to do
@@ -149,7 +133,7 @@
    Clears selection and selects previous sibling if it exists."
   [DB]
   (if-let [current (get-focus DB)]
-    (if-let [prev-id (get-in DB [:derived :prev-id-of current])]
+    (if-let [prev-id (tree/prev-sibling DB current)]
       (select DB prev-id)
       DB)  ;; No prev sibling, keep current selection
     DB))  ;; No focus, nothing to do
@@ -159,7 +143,7 @@
    Like Shift+Down in most editors."
   [DB]
   (if-let [current (get-focus DB)]
-    (if-let [next-id (get-in DB [:derived :next-id-of current])]
+    (if-let [next-id (tree/next-sibling DB current)]
       (extend-selection DB next-id)
       DB)
     DB))
@@ -169,7 +153,7 @@
    Like Shift+Up in most editors."
   [DB]
   (if-let [current (get-focus DB)]
-    (if-let [prev-id (get-in DB [:derived :prev-id-of current])]
+    (if-let [prev-id (tree/prev-sibling DB current)]
       (extend-selection DB prev-id)
       DB)
     DB))
@@ -180,7 +164,7 @@
    Otherwise does nothing (invalid state - nodes from different branches)."
   [DB]
   (let [selection (get-selection DB)
-        parents (set (keep #(get-in DB [:derived :parent-of %]) selection))]
+        parents (set (keep #(tree/parent-of DB %) selection))]
     (cond
       (= 1 (count parents)) (select DB (first parents))
       (> (count parents) 1) DB  ;; Multiple parents, invalid - keep selection
@@ -191,8 +175,8 @@
    Extends selection to include all children of the same parent."
   [DB]
   (if-let [current (get-focus DB)]
-    (if-let [parent (get-in DB [:derived :parent-of current])]
-      (let [all-siblings (get-in DB [:children-by-parent parent] [])]
+    (if-let [parent (tree/parent-of DB current)]
+      (let [all-siblings (tree/children DB parent)]
         (select DB all-siblings))
       DB)
     DB))
@@ -216,7 +200,7 @@
         new-focus (last ids-vec)
         existing-anchor (:anchor state)
         range-set (when (and existing-anchor (= 1 (count ids-vec)))
-                    (doc-range DB existing-anchor new-focus))
+                    (tree/doc-range DB existing-anchor new-focus))
         new-anchor (or existing-anchor new-focus)
         new-nodes (or range-set (set/union (:nodes state) ids-set))]
     [{:op :update-node
@@ -251,37 +235,37 @@
 (defmethod intent/intent->ops :select-next-sibling
   [DB _]
   (when-let [current (get-focus DB)]
-    (when-let [next-id (get-in DB [:derived :next-id-of current])]
+    (when-let [next-id (tree/next-sibling DB current)]
       (intent/intent->ops DB {:type :select :ids next-id}))))
 
 (defmethod intent/intent->ops :select-prev-sibling
   [DB _]
   (when-let [current (get-focus DB)]
-    (when-let [prev-id (get-in DB [:derived :prev-id-of current])]
+    (when-let [prev-id (tree/prev-sibling DB current)]
       (intent/intent->ops DB {:type :select :ids prev-id}))))
 
 (defmethod intent/intent->ops :extend-to-next-sibling
   [DB _]
   (when-let [current (get-focus DB)]
-    (when-let [next-id (get-in DB [:derived :next-id-of current])]
+    (when-let [next-id (tree/next-sibling DB current)]
       (intent/intent->ops DB {:type :extend-selection :ids next-id}))))
 
 (defmethod intent/intent->ops :extend-to-prev-sibling
   [DB _]
   (when-let [current (get-focus DB)]
-    (when-let [prev-id (get-in DB [:derived :prev-id-of current])]
+    (when-let [prev-id (tree/prev-sibling DB current)]
       (intent/intent->ops DB {:type :extend-selection :ids prev-id}))))
 
 (defmethod intent/intent->ops :select-parent
   [DB _]
   (let [selection (get-selection DB)
-        parents (set (keep #(get-in DB [:derived :parent-of %]) selection))]
+        parents (set (keep #(tree/parent-of DB %) selection))]
     (when (= 1 (count parents))
       (intent/intent->ops DB {:type :select :ids (first parents)}))))
 
 (defmethod intent/intent->ops :select-all-siblings
   [DB _]
   (when-let [current (get-focus DB)]
-    (when-let [parent (get-in DB [:derived :parent-of current])]
-      (let [all-siblings (get-in DB [:children-by-parent parent] [])]
+    (when-let [parent (tree/parent-of DB current)]
+      (let [all-siblings (tree/children DB parent)]
         (intent/intent->ops DB {:type :select :ids all-siblings})))))
