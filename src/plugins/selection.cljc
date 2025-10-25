@@ -162,3 +162,19 @@
           (when-let [parent (tree/parent-of db current)]
             (let [all-siblings (tree/children db parent)]
               (intent/intent->ops db {:type :select :ids all-siblings}))))})
+
+;; ── Navigation Intents ────────────────────────────────────────────────────────
+
+(defintent :navigate-up
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to previous visible block. Updates selection focus only."
+   :spec [:map [:type [:= :navigate-up]] [:block-id {:optional true} :string]]
+   :ops (when-let [prev-id (tree/prev-sibling db (or block-id (tree/focus db)))]
+          [{:op :update-node :id const/session-selection-id :props {:focus prev-id}}])})
+
+(defintent :navigate-down
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to next visible block. Updates selection focus only."
+   :spec [:map [:type [:= :navigate-down]] [:block-id {:optional true} :string]]
+   :ops (when-let [next-id (tree/next-sibling db (or block-id (tree/focus db)))]
+          [{:op :update-node :id const/session-selection-id :props {:focus next-id}}])})
