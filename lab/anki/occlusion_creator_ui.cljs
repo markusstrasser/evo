@@ -1,6 +1,6 @@
-(ns lab.anki.occlusion-creator-ui
+(ns anki.occlusion-creator-ui
   "UI components for image occlusion creator"
-  (:require [lab.anki.occlusion-creator :as creator]))
+  (:require [anki.occlusion-creator :as creator]))
 
 (defn draw-canvas!
   "Draw image and rectangles on canvas"

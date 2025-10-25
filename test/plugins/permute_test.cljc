@@ -2,7 +2,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [plugins.permute :as permute]
             [core.db :as db]
-            [core.interpret :as interp]))
+            [core.transaction :as tx]))
 
 (defn make-test-db
   "Create a test DB with a tree structure for testing."
@@ -90,7 +90,7 @@
                   :parent "P"
                   :anchor {:after "A"}}
           {:keys [ops]} (permute/lower db intent)
-          {:keys [db issues]} (interp/interpret db ops)]
+          {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues) "All ops should execute successfully")
       (is (= ["A" "B" "D" "C"]
              (get-in db [:children-by-parent "P"]))
@@ -108,7 +108,7 @@
       (is (= 2 (count ops)))
 
       ;; Execute and verify
-      (let [{:keys [db issues]} (interp/interpret db ops)]
+      (let [{:keys [db issues]} (tx/txret db ops)]
         (is (empty? issues))
         (is (= ["X" "B" "C"] (get-in db [:children-by-parent "Q"]))
             "B and C should be in Q")
@@ -161,11 +161,11 @@
                   :parent "P"
                   :anchor {:after "A"}}
           {:keys [ops]} (permute/lower db intent)
-          result1 (interp/interpret db ops)
+          result1 (tx/txret db ops)
           db1 (:db result1)
           ;; Apply again
           {:keys [ops]} (permute/lower db1 intent)
-          result2 (interp/interpret db1 ops)
+          result2 (tx/txret db1 ops)
           db2 (:db result2)]
       (is (empty? (:issues result1)))
       (is (empty? (:issues result2)))
@@ -182,7 +182,7 @@
                   :parent "P"
                   :anchor :at-start}
           {:keys [ops]} (permute/lower db intent)
-          {:keys [db issues]} (interp/interpret db ops)]
+          {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
       (is (= ["B" "D" "A" "C"]
              (get-in db [:children-by-parent "P"]))
@@ -207,7 +207,7 @@
                   :parent "P"
                   :anchor :at-start}
           {:keys [ops]} (permute/lower db intent)
-          {:keys [db issues]} (interp/interpret db ops)]
+          {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
       (is (= ["D" "A" "B" "C"]
              (get-in db [:children-by-parent "P"]))))))

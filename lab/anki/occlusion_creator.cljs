@@ -1,4 +1,4 @@
-(ns lab.anki.occlusion-creator
+(ns anki.occlusion-creator
   "Image occlusion card creator - upload image and draw rectangles")
 
 ;; State for the occlusion creator

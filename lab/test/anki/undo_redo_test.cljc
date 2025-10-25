@@ -1,6 +1,6 @@
-(ns lab.anki.undo-redo-test
+(ns test.anki.undo-redo-test
   (:require [clojure.test :refer [deftest testing is]]
-            [lab.anki.core :as core]))
+            [anki.core :as core]))
 
 (deftest undo-stack-only-contains-reviews
   (testing "Card creation is not undoable"

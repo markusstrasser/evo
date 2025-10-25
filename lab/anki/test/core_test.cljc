@@ -1,6 +1,6 @@
-(ns lab.anki.test.core-test
+(ns anki.test.core-test
   (:require [clojure.test :refer [deftest is testing]]
-            [lab.anki.core :as core]))
+            [anki.core :as core]))
 
 (deftest parse-card-test
   (testing "QA card parsing"

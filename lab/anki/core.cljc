@@ -1,9 +1,9 @@
-(ns lab.anki.core
+(ns anki.core
   "Core Anki clone data structures and operations"
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
             [medley.core :as m]
-            [lab.anki.fsrs :as fsrs]
+            [anki.fsrs :as fsrs]
             [core.time :as time])) ;; New import
 
 ;; Card parsing
