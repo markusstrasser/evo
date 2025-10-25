@@ -11,51 +11,23 @@
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
             [kernel.constants :as const]
-            [kernel.tree :as tree])
+            [kernel.query :as tree])
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
-;; ── Selection state accessors ────────────────────────────────────────────────
+;; ── Selection state accessors (forwarded to kernel.query) ─────────────────────
 
-(defn- get-selection-state
-  "Returns the selection state map from session/selection node."
-  [db]
-  (get-in db [:nodes const/session-selection-id :props] {:nodes #{} :focus nil :anchor nil}))
+;; Forward to kernel.query for single source of truth
+(def get-selection tree/selection)
+(def get-focus tree/focus)
+(def get-anchor tree/anchor)
+(def selected? tree/selected?)
+(def selection-count tree/selection-count)
+(def has-selection? tree/has-selection?)
+(def get-selected-nodes tree/selection)  ; alias
 
-(defn get-selection
-  "Returns the set of selected node IDs (possibly empty)."
-  [db]
-  (:nodes (get-selection-state db) #{}))
-
-(defn get-focus
-  "Returns the focused node ID (the 'current' node for navigation), or nil."
-  [db]
-  (:focus (get-selection-state db)))
-
-(defn get-anchor
-  "Returns the anchor node ID (starting point for range selection), or nil."
-  [db]
-  (:anchor (get-selection-state db)))
-
-(defn selected?
-  "Returns true if the given node ID is in the selection."
-  [db id]
-  (contains? (get-selection db) id))
-
-(defn selection-count
-  "Returns the number of selected nodes."
-  [db]
-  (count (get-selection db)))
-
-(defn has-selection?
-  "Returns true if any nodes are selected."
-  [db]
-  (pos? (selection-count db)))
-
-(defn get-selected-nodes
-  "Returns set of currently selected node IDs (alias for get-selection)."
-  [db]
-  (get-selection db))
+;; Private helper for internal use
+(defn- get-selection-state [db] (tree/selection-state db))
 
 ;; ── Pure Selection Property Calculators ──────────────────────────────────────
 
