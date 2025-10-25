@@ -22,7 +22,8 @@
    [:= :first] ; first position
    [:= :last] ; last position
    [:map [:before Id]] ; before specific sibling
-   [:map [:after Id]]]) ; after specific sibling
+   [:map [:after Id]] ; after specific sibling
+   [:map [:at-index :int]]]) ; explicit index position
 
 ;; Database schemas
 (def Node
