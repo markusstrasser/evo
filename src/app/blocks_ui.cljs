@@ -7,14 +7,16 @@
    - App just composes components and routes intents"
   (:require [replicant.dom :as d]
             [core.db :as DB]
-            [core.intent :as intent]
+            [core.api :as api]
             [core.transaction :as tx]
             [core.history :as H]
             [components.block :as block]
             [plugins.selection :as sel]
             [plugins.struct :as struct]
             [plugins.navigation :as nav]
-            [plugins.editing :as edit]))
+            [plugins.editing :as edit]
+            [keymap.core :as keymap]
+            [keymap.bindings]))  ; Side-effect: registers all bindings
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -35,134 +37,68 @@
                :db
                (H/record))))                                ;; Record initial state for undo
 
-;; ── Intent dispatcher (routes to kernel or plugins) ──────────────────────────
-
-(defn interpret!
-  "Interpret ops through kernel, update DB, record history."
-  [ops]
-  (js/console.log "Interpreting ops:" (pr-str ops))
-  (swap! !db (fn [db]
-               (if (seq ops)
-                 (let [db-recorded (H/record db)
-                       result (tx/interpret db-recorded ops)]
-                   (if (empty? (:issues result))
-                     (:db result)
-                     (do
-                       (js/console.error "Interpret issues:" (pr-str (:issues result)))
-                       db)))
-                 db))))
+;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
 (defn handle-intent
-  "Single intent dispatcher - routes via multimethods.
+  "Single intent dispatcher - uses unified API façade.
 
    This is the ONLY place intents are dispatched.
    Components just call (on-intent {:type ...})."
   [intent-map]
   (js/console.log "Intent:" (pr-str intent-map))
-  (let [db-before @!db
-        {:keys [db ops path]} (intent/apply-intent db-before intent-map)]
-    (case path
-      :ops (interpret! ops)                                 ;; Structural: interpret through kernel
-      :db (swap! !db (constantly db))                       ;; View: direct DB update
-      :unknown (js/console.warn "Unknown intent type:" (:type intent-map)))))
+  (swap! !db (fn [db]
+               (let [{:keys [db issues]} (api/dispatch db intent-map)]
+                 (when (seq issues)
+                   (js/console.error "Intent validation failed:" (pr-str issues)))
+                 db))))
 
-;; ── Global keyboard shortcuts ─────────────────────────────────────────────────
+;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
 
 (defn handle-global-keydown [e]
-  "Global keyboard shortcuts - works on selected blocks and global commands."
-  (let [key (.-key e)
+  "Global keyboard shortcuts via central keymap resolver.
+
+   Single source of truth: keymap/bindings.cljc registers all bindings.
+   This function just resolves key event → intent type → dispatch."
+  (let [event (keymap/parse-dom-event e)
+        db @!db
+        key (.-key e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         shift? (.-shiftKey e)
-        alt? (.-altKey e)
-        db @!db
         focus-id (sel/get-focus db)
-        has-selection? (sel/has-selection? db)
         editing? (edit/editing-block-id db)
-        ;; Printable character check: single character, not a special key
+        intent-type (keymap/resolve-intent-type event db)
+
+        ;; Printable character check for "start typing to edit" behavior
         printable? (and (= 1 (.-length key))
-                        (not mod?)
-                        (not alt?)
+                        (not (:mod event))
+                        (not (:alt event))
                         (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
+
     (cond
-      ;; Enter - Create new block after focused block and enter edit mode (only when NOT already editing)
-      (and (= key "Enter") (not shift?) (not mod?) (not alt?) focus-id (not editing?))
+      ;; Keymap-resolved intent
+      intent-type
       (do (.preventDefault e)
-          (let [parent (get-in db [:derived :parent-of focus-id])
-                new-id (str "block-" (random-uuid))]
-            (handle-intent {:type   :create-and-place
-                            :id     new-id
-                            :parent parent
-                            :after  focus-id})
-            ;; Defer enter-edit to next tick to ensure create completes
-            (js/setTimeout
-              #(handle-intent {:type :enter-edit :block-id new-id})
-              0)))
+          (case intent-type
+            ;; Special handling: Enter creates block and enters edit mode
+            :create-new-block-after-focus
+            (let [parent (get-in db [:derived :parent-of focus-id])
+                  new-id (str "block-" (random-uuid))]
+              (handle-intent {:type :create-and-place
+                              :id new-id
+                              :parent parent
+                              :after focus-id})
+              (js/setTimeout
+                #(handle-intent {:type :enter-edit :block-id new-id})
+                0))
 
-      ;; ArrowDown - Navigate to next sibling (plain, only when NOT editing)
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?) focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :select-next-sibling}))
+            ;; Default: direct intent dispatch
+            (handle-intent {:type intent-type})))
 
-      ;; ArrowUp - Navigate to previous sibling (plain, only when NOT editing)
-      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?) focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :select-prev-sibling}))
-
-      ;; Tab - Indent selected blocks (only when NOT editing)
-      (and (= key "Tab") (not shift?) (not mod?) (not alt?) has-selection? (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :indent-selected}))
-
-      ;; Shift+Tab - Outdent selected blocks (only when NOT editing)
-      (and (= key "Tab") shift? (not mod?) (not alt?) has-selection? (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :outdent-selected}))
-
-      ;; Alt+ArrowDown - Navigate to next sibling with Alt modifier (only when NOT editing)
-      (and (= key "ArrowDown") (not shift?) (not mod?) alt? focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :select-next-sibling}))
-
-      ;; Alt+ArrowUp - Navigate to previous sibling with Alt modifier (only when NOT editing)
-      (and (= key "ArrowUp") (not shift?) (not mod?) alt? focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :select-prev-sibling}))
-
-      ;; Shift+ArrowDown - Extend selection to next sibling (only when NOT editing)
-      (and (= key "ArrowDown") shift? (not mod?) (not alt?) focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :extend-to-next-sibling}))
-
-      ;; Shift+ArrowUp - Extend selection to previous sibling (only when NOT editing)
-      (and (= key "ArrowUp") shift? (not mod?) (not alt?) focus-id (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :extend-to-prev-sibling}))
-
-      ;; Cmd/Alt+Shift+ArrowUp - Move selected blocks up (works in both edit and non-edit mode)
-      (and (= key "ArrowUp") shift? (or mod? alt?) has-selection?)
-      (do (.preventDefault e)
-          (handle-intent {:type :move-selected-up}))
-
-      ;; Cmd/Alt+Shift+ArrowDown - Move selected blocks down (works in both edit and non-edit mode)
-      (and (= key "ArrowDown") shift? (or mod? alt?) has-selection?)
-      (do (.preventDefault e)
-          (handle-intent {:type :move-selected-down}))
-
-      ;; Backspace - Delete selected blocks (only if not editing)
-      (and (= key "Backspace") (not mod?) (not shift?) (not alt?)
-           has-selection?
-           (not editing?))
-      (do (.preventDefault e)
-          (handle-intent {:type :delete-selected}))
-
-      ;; Printable character - Enter edit mode and let character through
-      ;; This enables Logseq-style "start typing to edit" behavior
+      ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
-      (do
-        ;; Don't prevent default - let the character propagate to contenteditable
-        (handle-intent {:type :enter-edit :block-id focus-id}))
+      (handle-intent {:type :enter-edit :block-id focus-id})
 
-      ;; Undo/Redo
+      ;; Undo/Redo (not in keymap yet - direct handling)
       (and mod? shift? (= key "z"))
       (do (.preventDefault e)
           (swap! !db (fn [db] (or (H/redo db) db))))
