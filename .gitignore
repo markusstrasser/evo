@@ -63,6 +63,7 @@ logs/
 .architect/reports/
 .architect/results/
 .architect/archive/
+.architect/ops.ednlog
 
 # Keep valuable records
 !.architect/adr/
