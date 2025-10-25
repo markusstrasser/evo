@@ -2,6 +2,8 @@
             clojure.test.check.clojure-test/defspec [clojure.test/deftest]
             promesa.core/let                         [clojure.core/let]}
 
+ :hooks {:analyze-call {kernel.intent/defintent hooks.defintent/defintent}}
+
  :linters {:syntax                       {:level :off}
            :unresolved-namespace         {:level :error}
            :unresolved-symbol            {:level :error}
