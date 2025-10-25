@@ -12,6 +12,7 @@
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [kernel.db :as db]
+            [kernel.constants :as const]
             [clojure.string :as str])
   #?(:clj (:import [java.io File])))
 
@@ -102,6 +103,8 @@
    Args:
    - db: Current database
    - intent: Intent map (e.g., {:type :select :ids \"a\"})
+   - opts: Optional map with:
+     - :history/enabled? - Set to false to disable history recording (default: true)
 
    Returns:
    - {:db new-db :issues [] :trace [...]} - Full result with trace
@@ -110,17 +113,27 @@
      (dispatch* db {:type :select :ids \"a\"})
      ;=> {:db db' :issues [] :trace [{:tx-id ... :ops [...]}]}
 
+     (dispatch* db {:type :select :ids \"a\"} {:history/enabled? false})
+     ;=> {:db db' :issues [] :trace [...]} (no history recorded)
+
    Use in REPL/agents for debugging:
      (let [{:keys [db issues trace]} (api/dispatch* db intent)]
        (when (seq issues)
          (println \"Issues:\" issues))
        (println \"Trace:\" trace)
        db)"
-  [db intent]
-  (let [{:keys [ops]} (intent/apply-intent db intent)
-        db-recorded (H/record db)]
-    #?(:clj (journal-tx! intent ops))
-    (tx/interpret db-recorded ops)))
+  ([db intent] (dispatch* db intent nil))
+  ([db intent {:keys [history/enabled?] :as _opts}]
+   (let [{:keys [ops]} (intent/apply-intent db intent)
+         ui-id const/session-ui-id
+         canonical? (some (fn [op]
+                            (not (and (= :update-node (:op op))
+                                      (= ui-id (:id op)))))
+                          ops)
+         record? (and (not (false? enabled?)) canonical?)
+         db0 (if record? (H/record db) db)]
+     #?(:clj (journal-tx! intent ops))
+     (tx/interpret db0 ops))))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
