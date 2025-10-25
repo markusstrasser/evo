@@ -1,4 +1,4 @@
-(ns kernel.permutation
+(ns utils.permutation-math
   "Pure permutation algebra for sibling reordering.
 
   Permutations are represented as maps {index → index} with fixed points elided.

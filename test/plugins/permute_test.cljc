@@ -4,7 +4,7 @@
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]
             [plugins.permute :as permute]
-            [kernel.permutation :as perm]
+            [utils.permutation-math :as perm]
             [kernel.db :as db]
             [kernel.transaction :as tx]))
 
