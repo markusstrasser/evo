@@ -1,7 +1,8 @@
 (ns kernel.dbg
   "Debug utilities for transaction tracing and DB inspection.
 
-   Provides human-readable trace output for development and agent debugging.")
+   Provides human-readable trace output for development and agent debugging."
+  (:require [kernel.constants :as const]))
 
 (defn- format-op
   "Format a single operation as a concise string."
@@ -93,16 +94,16 @@
      (println (dbg/pp-db-summary db))"
   [db]
   (let [{:keys [nodes children-by-parent roots derived]} db
-        doc-nodes (filter (fn [[id _]] (= :doc (get-in db [:derived :parent-of id])))
+        doc-nodes (filter (fn [[id _]] (= const/root-doc (get-in db [:derived :parent-of id])))
                          nodes)
-        session-nodes (filter (fn [[id _]] (= :session (get-in db [:derived :parent-of id])))
+        session-nodes (filter (fn [[id _]] (= const/root-session (get-in db [:derived :parent-of id])))
                              nodes)]
     (str
      "──── DB SUMMARY ────\n"
      "Nodes: " (count nodes) " total\n"
-     "  :doc children: " (count (get children-by-parent :doc [])) "\n"
-     "  :trash children: " (count (get children-by-parent :trash [])) "\n"
-     "  :session children: " (count (get children-by-parent :session [])) "\n"
+     "  :doc children: " (count (get children-by-parent const/root-doc [])) "\n"
+     "  :trash children: " (count (get children-by-parent const/root-trash [])) "\n"
+     "  :session children: " (count (get children-by-parent const/root-session [])) "\n"
      "\n"
      "Derived indexes:\n"
      "  parent-of: " (count (:parent-of derived)) " entries\n"
@@ -111,11 +112,14 @@
      "  next-id-of: " (count (:next-id-of derived)) " entries\n"
      "\n"
      "Selection:\n"
-     "  nodes: " (get-in db [:nodes "session/selection" :props :nodes] #{}) "\n"
-     "  focus: " (get-in db [:nodes "session/selection" :props :focus]) "\n"
+     "  nodes: " (get-in db [:nodes const/session-selection-id :props :nodes] #{}) "\n"
+     "  focus: " (get-in db [:nodes const/session-selection-id :props :focus]) "\n"
      "\n"
-     "Edit:\n"
-     "  block-id: " (get-in db [:nodes "session/edit" :props :block-id]) "\n")))
+     "Edit (ephemeral):\n"
+     "  editing-block-id: " (get-in db [:ui :editing-block-id]) "\n"
+     "\n"
+     "Cursor (ephemeral):\n"
+     "  " (pr-str (get-in db [:ui :cursor])) "\n")))
 
 (defn inspect-node
   "Pretty-print a single node with all its properties and relationships.
