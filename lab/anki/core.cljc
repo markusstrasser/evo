@@ -4,7 +4,7 @@
             [clojure.edn :as edn]
             [medley.core :as m]
             [anki.fsrs :as fsrs]
-            [core.time :as time])) ;; New import
+            [kernel.time :as time])) ;; New import
 
 ;; Card parsing
 

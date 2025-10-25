@@ -1,4 +1,4 @@
-(ns core.dbg
+(ns kernel.dbg
   "Debug utilities for transaction tracing and DB inspection.
 
    Provides human-readable trace output for development and agent debugging.")

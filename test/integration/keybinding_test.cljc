@@ -4,10 +4,10 @@
    Tests verify: key sequence → intent dispatch → final state.
    Agent-friendly: minimal setup, clear assertions, red/green feedback."
   (:require [clojure.test :refer [deftest is testing]]
-            [core.db :as db]
-            [core.ops :as ops]
-            [core.transaction :as tx]
-            [core.api :as api]
+            [kernel.db :as db]
+            [kernel.ops :as ops]
+            [kernel.transaction :as tx]
+            [kernel.api :as api]
             [plugins.selection :as sel]
             [plugins.editing :as edit]))
 

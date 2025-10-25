@@ -55,8 +55,8 @@
 (comment
  ;; Test with fixtures
  (require '[fixtures :as f])
- (require '[core.db :as db])
- (require '[core.transaction :as tx])
+ (require '[kernel.db :as db])
+ (require '[kernel.transaction :as tx])
 
  ;; Simple tree
  (show-tree (:db f/simple-tree))

@@ -4,9 +4,9 @@
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]
             [plugins.permute :as permute]
-            [core.permutation :as perm]
-            [core.db :as db]
-            [core.transaction :as tx]))
+            [kernel.permutation :as perm]
+            [kernel.db :as db]
+            [kernel.transaction :as tx]))
 
 (defn make-test-db
   "Create a test DB with a tree structure for testing."

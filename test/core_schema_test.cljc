@@ -1,8 +1,8 @@
 (ns core-schema-test
   (:require [clojure.test :refer [deftest is testing]]
-            [core.schema :as schema]
-            [core.db :as db]
-            [core.ops :as ops]))
+            [kernel.schema :as schema]
+            [kernel.db :as db]
+            [kernel.ops :as ops]))
 
 (deftest function-schema-guards-test
   (testing "create-node operation validates output"

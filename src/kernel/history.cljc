@@ -1,4 +1,4 @@
-(ns core.history
+(ns kernel.history
   "Undo/redo infrastructure for event-sourced DB.
 
    Operates on complete DB snapshots (including :nodes, :derived, :selection, :ui).

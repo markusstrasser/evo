@@ -1,4 +1,4 @@
-(ns core.schema
+(ns kernel.schema
   "Malli schemas for the three-op kernel contracts."
   (:require [malli.core :as m]))
 

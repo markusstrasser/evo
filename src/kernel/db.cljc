@@ -1,4 +1,4 @@
-(ns core.db
+(ns kernel.db
   "Canonical DB shape, derive function, invariants, and tree utilities for the three-op kernel."
   (:require [medley.core :as m]
             [clojure.set :as set]
