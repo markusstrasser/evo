@@ -8,6 +8,7 @@
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [core.db :as db]
             [core.transaction :as tx]
+            [core.intent :as intent]
             [plugins.selection :as sel]
             [plugins.refs :as refs]
             [plugins.registry :as reg]))
@@ -47,8 +48,8 @@
   (testing "Selection persists when node is moved within :doc tree"
     (let [db0 (create-base-db)
 
-          ;; Select node 'a' (direct DB update, not ops)
-          db1 (sel/select db0 "a")
+          ;; Select node 'a' (via intent->ops)
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids "a"}))
 
           ;; Move 'a' to different position (still under :doc)
           db2 (interpret-ops db1 [{:op :place :id "a" :under :doc :at 1}])]
@@ -61,8 +62,8 @@
   (testing "Selection is cleared when node moved to :trash"
     (let [db0 (create-base-db)
 
-          ;; Select node 'a' (direct DB update)
-          db1 (sel/select db0 "a")
+          ;; Select node 'a' (via intent->ops)
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids "a"}))
 
           ;; Move 'a' to trash
           db2 (interpret-ops db1 [{:op :place :id "a" :under :trash :at :last}])]
@@ -77,14 +78,18 @@
   (testing "Multiple deselect ops are order-independent"
     (let [db0 (create-base-db)
 
-          ;; Select all three (direct DB updates)
-          db1 (sel/select db0 ["a" "b" "c"])
+          ;; Select all three (via intent->ops)
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids ["a" "b" "c"]}))
 
           ;; Deselect in one order
-          db2a (-> db1 (sel/deselect "a") (sel/deselect "b"))
+          db2a (-> db1
+                   (interpret-ops (intent/intent->ops db1 {:type :deselect :ids "a"}))
+                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :deselect :ids "b"}))))
 
           ;; Deselect in different order
-          db2b (-> db1 (sel/deselect "b") (sel/deselect "a"))]
+          db2b (-> db1
+                   (interpret-ops (intent/intent->ops db1 {:type :deselect :ids "b"}))
+                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :deselect :ids "a"}))))]
 
       (is (= (sel/get-selected-nodes db2a)
              (sel/get-selected-nodes db2b))
@@ -172,13 +177,13 @@
   (testing "Selection and refs are independent - don't affect each other"
     (let [db0 (create-base-db)
 
-          ;; Select node (direct DB update) and add ref (via interpret)
+          ;; Select node (via intent->ops) and add ref (via interpret)
           db1 (-> db0
-                  (sel/select "a")
+                  (interpret-ops (intent/intent->ops db0 {:type :select :ids "a"}))
                   (interpret-ops [(refs/add-link-op db0 "a" "b")]))
 
-          ;; Clear selection (direct DB update)
-          db2 (sel/clear db1)]
+          ;; Clear selection (via intent->ops)
+          db2 (interpret-ops db1 (intent/intent->ops db1 {:type :clear-selection}))]
 
       ;; Refs should persist after clearing selection
       (is (= #{"b"} (get-in db2 [:derived :ref/outgoing "a"]))

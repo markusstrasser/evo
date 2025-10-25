@@ -65,7 +65,7 @@
 
 ;; ── Intent Registry ───────────────────────────────────────────────────────────
 
-(defonce ^:private intent-registry (atom {}))
+(defonce intent-registry (atom {}))
 
 (defn get-intent-meta
   "Get metadata for an intent type (doc, spec, etc.)."
@@ -94,13 +94,15 @@
         - defmethod for intent->ops
         - registry entry with :doc and :spec"
      [intent-kw {:keys [sig doc ops spec]}]
-     (let [[db-sym intent-destructure] sig]
+     (let [[db-sym intent-destructure] sig
+           registry-sym 'core.intent/intent-registry
+           multimethod-sym 'core.intent/intent->ops]
        `(do
           ~(when ops
-             `(defmethod intent->ops ~intent-kw
+             `(defmethod ~multimethod-sym ~intent-kw
                 [~db-sym ~intent-destructure]
                 ~ops))
-          (swap! intent-registry assoc ~intent-kw
+          (swap! ~registry-sym assoc ~intent-kw
                  {:doc ~doc
                   :spec ~spec})
           ~intent-kw))))
