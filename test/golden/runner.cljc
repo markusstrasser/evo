@@ -2,8 +2,8 @@
   "Golden test runner - loads golden test cases and verifies behavior."
   (:require [clojure.test :refer [deftest testing is]]
             [core.db :as db]
-            [core.interpret :as interp]
-            [plugins.permute.core :as permute]
+            [core.transaction :as tx]
+            [plugins.permute :as permute]
             #?(:clj [clojure.java.io :as io])
             #?(:clj [clojure.edn :as edn])))
 
@@ -34,7 +34,7 @@
                              :issues issues})))
 
         ;; Execute ops
-        {:keys [db issues trace]} (interp/interpret db-with-derived ops)
+        {:keys [db issues trace]} (tx/interpret db-with-derived ops)
 
         ;; If execution failed, return issues
         _  (when (seq issues)

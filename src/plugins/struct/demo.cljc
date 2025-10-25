@@ -3,7 +3,7 @@
    Shows intent → ops → final tree state."
   (:require [core.db :as D]
             [core.intent :as intent]
-            [core.interpret :as I]
+            [core.transaction :as tx]
             [plugins.struct.core :as S]))
 
 (defn demo-struct
@@ -25,7 +25,7 @@
   []
   (let [;; Build initial structure
         DB0 (D/empty-db)
-        {:keys [db]} (I/interpret DB0
+        {:keys [db]} (tx/interpret DB0
                                   [{:op :create-node :id "doc1" :type :doc :props {}}
                                    {:op :place :id "doc1" :under :doc :at :last}
                                    {:op :create-node :id "a" :type :p :props {}}
@@ -41,7 +41,7 @@
         ;; Apply intents sequentially, chaining DB state through each step
         result (reduce (fn [{:keys [all-ops current-db]} intent]
                          (let [{intent-ops :ops} (intent/apply-intent current-db intent)
-                               {:keys [db]} (I/interpret current-db intent-ops)]
+                               {:keys [db]} (tx/interpret current-db intent-ops)]
                            {:all-ops (into all-ops intent-ops)
                             :current-db db}))
                        {:all-ops [] :current-db db}

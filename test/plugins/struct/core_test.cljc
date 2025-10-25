@@ -6,7 +6,7 @@
                :cljs [cljs.test :refer [deftest is testing]])
             [core.db :as D]
             [core.intent :as intent]
-            [core.interpret :as I]
+            [core.transaction :as tx]
             [plugins.struct.core :as S]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@
   "Creates a test DB with structure: doc1 -> [a, b]"
   []
   (let [DB0 (D/empty-db)
-        {:keys [db issues]} (I/interpret DB0
+        {:keys [db issues]} (tx/interpret DB0
                               [{:op :create-node :id "doc1" :type :doc :props {}}
                                {:op :place :id "doc1" :under :doc :at :last}
                                {:op :create-node :id "a" :type :p :props {}}
@@ -31,7 +31,7 @@
   (testing "Delete intent compiles to :place under :trash"
     (let [db (build-doc)
           {:keys [ops]} (intent/apply-intent db {:type :delete :id "a"})
-          res (I/interpret db ops)]
+          res (tx/interpret db ops)]
       (is (empty? (:issues res))
           "Delete operation should not generate issues")
       (is (= ["b"] (get-in res [:db :children-by-parent "doc1"]))
@@ -44,11 +44,11 @@
     (let [db (build-doc)
           ;; Indent b under a: doc1 -> [a -> [b]]
           {:keys [ops]} (intent/apply-intent db {:type :indent :id "b"})
-          r1   (I/interpret db ops)
+          r1   (tx/interpret db ops)
           db1  (:db r1)
           ;; Outdent b back to doc1: doc1 -> [a, b]
           {:keys [ops]} (intent/apply-intent db1 {:type :outdent :id "b"})
-          r2   (I/interpret db1 ops)]
+          r2   (tx/interpret db1 ops)]
       (is (empty? (:issues r1))
           "Indent operation should not generate issues")
       (is (empty? (:issues r2))
