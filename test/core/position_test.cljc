@@ -56,54 +56,12 @@
                          #"unknown sibling"
                          (pos/->index sample-db "P" {:after "X"})))))
 
-(deftest test-at-index-anchor
-  (testing "{:at-index i} resolves to i"
-    (is (= {:idx 2 :normalized-anchor {:at-index 2}}
-           (pos/->index sample-db "P" {:at-index 2}))))
-
-  (testing "{:at-index 0} at start"
-    (is (= {:idx 0 :normalized-anchor {:at-index 0}}
-           (pos/->index sample-db "P" {:at-index 0}))))
-
-  (testing "{:at-index n} at end"
-    (is (= {:idx 4 :normalized-anchor {:at-index 4}}
-           (pos/->index sample-db "P" {:at-index 4}))))
-
-  (testing "{:at-index i} throws on negative"
-    (is (thrown-with-msg? #?(:clj Exception :cljs js/Error)
-                         #"out of bounds"
-                         (pos/->index sample-db "P" {:at-index -1}))))
-
-  (testing "{:at-index i} throws on > n"
-    (is (thrown-with-msg? #?(:clj Exception :cljs js/Error)
-                         #"out of bounds"
-                         (pos/->index sample-db "P" {:at-index 5})))))
-
-(deftest test-integer-anchor
-  (testing "integer anchor resolves as :at-index"
-    (is (= {:idx 2 :normalized-anchor {:at-index 2}}
-           (pos/->index sample-db "P" 2))))
-
-  (testing "integer 0 resolves to start"
-    (is (= {:idx 0 :normalized-anchor {:at-index 0}}
-           (pos/->index sample-db "P" 0))))
-
-  (testing "integer throws on OOB"
-    (is (thrown-with-msg? #?(:clj Exception :cljs js/Error)
-                         #"out of bounds"
-                         (pos/->index sample-db "P" 5)))))
 
 (deftest test-error-reasons
   (testing "Errors include machine-parsable :reason"
     (is (= ::pos/missing-target
            (try
              (pos/->index sample-db "P" {:before "X"})
-             (catch #?(:clj Exception :cljs js/Error) e
-               (:reason (ex-data e))))))
-
-    (is (= ::pos/oob
-           (try
-             (pos/->index sample-db "P" {:at-index 10})
              (catch #?(:clj Exception :cljs js/Error) e
                (:reason (ex-data e))))))
 
