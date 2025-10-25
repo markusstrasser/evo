@@ -1,12 +1,15 @@
 (ns kernel.history
   "Undo/redo infrastructure for event-sourced DB.
 
-   Operates on complete DB snapshots (including :nodes, :derived, :selection, :ui).
+   Snapshots store canonical state only (no :derived).
+   Derived indexes are recomputed after undo/redo.
+
    History is stored as `:history` namespace at DB root:
    {:history {:past [] :future [] :limit 50}}
 
    See ADR-015 for architectural rationale."
-  (:require [kernel.constants :as const]))
+  (:require [kernel.constants :as const]
+            [kernel.db :as db]))
 
 (defn get-history
   "Returns the history map from DB, or empty history if none exists."
@@ -34,13 +37,16 @@
   (count (:future (get-history DB))))
 
 (defn- strip-history
-  "Remove :history and clear session/ui props from DB (for storing in history stack).
+  "Remove :history, :derived, and session/ui props from DB (for storing in history stack).
 
+   Snapshots store canonical state only. :derived will be recomputed after undo/redo.
    session/ui contains ephemeral state (edit mode, cursor) that should not be undoable."
   [DB]
   (let [ui-id const/session-ui-id]
     (-> DB
         (dissoc :history)
+        ;; Remove derived indexes (will be recomputed)
+        (assoc :derived {})
         ;; Clear ephemeral props but keep the node to preserve invariants
         (assoc-in [:nodes ui-id :props] {}))))
 
@@ -68,7 +74,8 @@
    Moves current state to future (for redo).
    Returns updated DB, or nil if no history.
 
-   Preserves session/ui props (ephemeral state) from current DB."
+   Preserves session/ui props (ephemeral state) from current DB.
+   Recomputes :derived indexes from canonical state."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)
         ui-id const/session-ui-id
@@ -79,7 +86,11 @@
             new-past (pop past)
             new-future (conj (vec future) current-snapshot)]
         (-> prev-snapshot
+            ;; Restore ephemeral UI state
             (assoc-in [:nodes ui-id :props] current-ui-props)
+            ;; Recompute derived indexes
+            db/derive-indexes
+            ;; Restore history
             (assoc :history {:past new-past
                              :future new-future
                              :limit limit}))))))
@@ -89,7 +100,8 @@
    Moves current state to past (for undo).
    Returns updated DB, or nil if no future.
 
-   Preserves session/ui props (ephemeral state) from current DB."
+   Preserves session/ui props (ephemeral state) from current DB.
+   Recomputes :derived indexes from canonical state."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)
         ui-id const/session-ui-id
@@ -100,7 +112,11 @@
             new-future (pop future)
             new-past (conj (vec past) current-snapshot)]
         (-> next-snapshot
+            ;; Restore ephemeral UI state
             (assoc-in [:nodes ui-id :props] current-ui-props)
+            ;; Recompute derived indexes
+            db/derive-indexes
+            ;; Restore history
             (assoc :history {:past new-past
                              :future new-future
                              :limit limit}))))))
