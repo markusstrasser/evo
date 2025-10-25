@@ -82,7 +82,7 @@
   {:sig [db {:keys [parent order]}]
    :doc "Reorder children to explicit target order."
    :spec [:map [:type [:= :reorder/children]] [:parent :string] [:order [:vector :string]]]
-   :ops (intent/intent->ops db {:type :reorder
+   :ops (intent/intent->ops db {:type :move
                                 :selection (vec order)
                                 :parent parent
                                 :anchor :first})})
@@ -91,7 +91,7 @@
   {:sig [db {:keys [parent ids after]}]
    :doc "Move contiguous selection after pivot."
    :spec [:map [:type [:= :reorder/move-blocks]] [:parent :string] [:ids [:vector :string]] [:after {:optional true} :string]]
-   :ops (intent/intent->ops db {:type :reorder
+   :ops (intent/intent->ops db {:type :move
                                 :selection (vec ids)
                                 :parent parent
                                 :anchor (if after {:after after} :first)})})
@@ -132,7 +132,7 @@
         prev (when first-id (q/prev-sibling db first-id))
         before-prev (when prev (q/prev-sibling db prev))]
     (if (and parent prev)
-      (intent/intent->ops db {:type :reorder
+      (intent/intent->ops db {:type :move
                               :selection targets
                               :parent parent
                               :anchor (if before-prev {:after before-prev} :first)})
@@ -145,7 +145,7 @@
         parent (same-parent? db targets)
         next (when last-id (get-in db [:derived :next-id-of last-id]))]
     (if (and parent next)
-      (intent/intent->ops db {:type :reorder
+      (intent/intent->ops db {:type :move
                               :selection targets
                               :parent parent
                               :anchor {:after next}})
