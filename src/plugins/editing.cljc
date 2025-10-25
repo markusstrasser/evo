@@ -9,13 +9,10 @@
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
-;; ── Getters (Delegated to kernel.query) ───────────────────────────────────────
+;; ── Private Helpers ───────────────────────────────────────────────────────────
 
-(def editing-block-id q/editing-block-id)
-(def editing? q/editing?)
-
-(defn get-block-text
-  "Get text content of a block."
+(defn- get-block-text
+  "Get text content of a block (internal helper)."
   [db block-id]
   (get-in db [:nodes block-id :props :text] ""))
 
