@@ -3,7 +3,8 @@
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
    Uses core.position for position resolution and core.permutation for deterministic ordering."
-  (:require [core.position :as pos]))
+  (:require [core.position :as pos]
+            [core.intent :as intent]))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
@@ -173,3 +174,13 @@
                                {:intent intent
                                 :expected #{:reorder :move}})))]
       {:ops ops})))
+
+;; ── Intent Handlers ───────────────────────────────────────────────────────────
+
+(defmethod intent/intent->ops :move
+  [db intent]
+  (:ops (lower db (assoc intent :intent :move))))
+
+(defmethod intent/intent->ops :reorder
+  [db intent]
+  (:ops (lower db (assoc intent :intent :reorder))))
