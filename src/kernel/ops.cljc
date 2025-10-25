@@ -1,5 +1,16 @@
 (ns kernel.ops
-  "Pure operations for the three-op kernel: create-node, place, update-node."
+  "Pure operations for the three-op kernel: create-node, place, update-node.
+
+   READER GUIDE:
+   ─────────────
+   This is the kernel's operation layer. Three operations, nothing more:
+   1. create-node - Add a node shell to :nodes (idempotent)
+   2. place - Position node under parent at anchor (remove from old parent first)
+   3. update-node - Merge props into existing node
+
+   ONE LAW: All operations are pure functions (DB → DB). No side effects, no validation.
+   Validation happens in transaction layer, derivation happens in derive-indexes.
+   These ops just transform canonical state."
   (:require [kernel.position :as pos]))
 
 (defn create-node

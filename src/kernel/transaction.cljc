@@ -1,5 +1,17 @@
 (ns kernel.transaction
-  "Transaction interpreter: normalization, validation, execution pipeline."
+  "Transaction interpreter: normalization, validation, execution pipeline.
+
+   READER GUIDE:
+   ─────────────
+   This is the transaction pipeline. It turns operation lists into state changes.
+   Flow: normalize → validate → apply → derive (optional)
+   - normalize: Filter no-ops, resolve references
+   - validate: Check schema, invariants (cycles, missing refs)
+   - apply: Execute ops via kernel.ops
+   - derive: Recompute derived indexes (unless :tx/skip-derived? true)
+
+   ONE LAW: The pipeline is a pure transformation (DB, ops) → {:db :issues :trace}.
+   Issues block execution (return old DB). No issues means ops executed successfully."
   (:require [kernel.db :as db]
             [kernel.ops :as ops]
             [kernel.position :as pos]

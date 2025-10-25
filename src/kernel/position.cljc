@@ -1,17 +1,18 @@
 (ns kernel.position
   "Anchor algebra for deterministic positioning in sibling lists.
 
-   Anchors are the closed set of positioning specifications:
-   - :first - beginning of sibling list (matches op schema)
-   - :last - end of sibling list (matches op schema)
-   - {:before id} - before the specified sibling
-   - {:after id} - after the specified sibling
-   - {:at-index i} - at the specified index
+   READER GUIDE:
+   ─────────────
+   This is the anchor resolution layer. It defines how positions are specified and resolved.
+   Anchors: :first, :last, {:before id}, {:after id}, {:at-index i}
+   Core function: resolve-insert-index - turns anchor + siblings → target index
+   - Handles :drop-id parameter for 'remove before place' semantics
+   - Throws ex-info on invalid anchors (missing refs, out of bounds)
 
-   Note: For compatibility, :at-start and :at-end are aliases for :first and :last.
+   ONE LAW: Anchor resolution is deterministic and total. Same anchor + siblings = same index.
+   Invalid anchors throw with machine-parsable :reason keys for intent validation.
 
-   All anchor resolution is explicit and total - invalid anchors throw
-   ex-info with machine-parsable :reason keys.")
+   Legacy note: :at-start/:at-end are aliases for :first/:last (compatibility)")
 
 (defn canon
   "Canonicalize anchor to standard form.

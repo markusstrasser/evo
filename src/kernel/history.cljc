@@ -1,11 +1,16 @@
 (ns kernel.history
   "Undo/redo infrastructure for event-sourced DB.
 
-   Snapshots store canonical state only (no :derived).
-   Derived indexes are recomputed after undo/redo.
+   READER GUIDE:
+   ─────────────
+   This is the undo/redo stack. It manages historical DB snapshots.
+   Stack stored at DB root: {:history {:past [...] :future [...] :limit 50}}
+   - record: snapshot current DB → push to :past, clear :future
+   - undo: pop :past → restore snapshot, push current to :future
+   - redo: pop :future → restore snapshot, push current to :past
 
-   History is stored as `:history` namespace at DB root:
-   {:history {:past [] :future [] :limit 50}}
+   ONE LAW: Snapshots store canonical-only state (no :derived, empty session/ui props).
+   Derived indexes recomputed via db/derive-indexes on undo/redo. Ephemeral UI preserved.
 
    See ADR-015 for architectural rationale."
   (:require [kernel.constants :as const]

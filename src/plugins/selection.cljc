@@ -1,13 +1,17 @@
 (ns plugins.selection
   "Selection state management via session nodes.
 
-   Selection is stored as a node under :session root.
-   Structure: session/selection node with :props {:nodes #{id1 id2} :focus id2 :anchor id1}
+   READER GUIDE:
+   ─────────────
+   This is the unified selection reducer. One intent (:selection) with modes.
+   Modes: :replace, :extend, :deselect, :toggle, :clear, :next, :prev, :parent, :all-siblings
+   Selection stored in session/selection node {:nodes #{...} :focus id :anchor id}
+   All changes emit :update-node ops → enables undo/redo of selection.
 
-   All selection changes emit ops (:update-node on session/selection).
-   This enables full undo/redo of selection state.
+   ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props.
+   Legacy intents (:select, :extend-selection, etc.) forward to :selection for backwards compat.
 
-   Implements intent->ops multimethod from core.intent."
+   Special behavior: :extend with single ID triggers range selection (doc-range from anchor to new-focus)"
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
             [kernel.constants :as const]
