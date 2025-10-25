@@ -96,9 +96,61 @@ Filesystem-based workflows with progressive disclosure (L1: metadata, L2: instru
 ;; Tests:
 (repl/rt!)                      ; Run all tests
 (repl/rq! 'core.interpret-test) ; Reload and run specific test
+
+;; Component testing (browser):
+(repl/sample-db! :fixture)                    ; Load test data in browser
+(repl/inspect-db! [:nodes])                   ; Inspect DB path
+(repl/send-intent! {:type :select :ids "a"})  ; Test intent dispatch
+(repl/test-component! 'components.block/Block ; Test component rendering
+                      {:db (repl/sample-db!)
+                       :block-id "a"
+                       :depth 0
+                       :on-intent identity})
 ```
 
-**Location:** `dev/repl/init.clj`
+**Location:** `dev/repl/init.cljc`
+
+### Clojure+ Enhancements
+
+The project uses [clojure-plus](https://github.com/tonsky/clojure-plus) for improved REPL development experience. These enhancements are automatically installed when you run `(repl/go!)` or `(repl/init!)`.
+
+**Available features:**
+
+1. **#p Debug Macro** (clojure+.hashp)
+   - Inline debugging better than println
+   - Returns value, so works in -> and ->> pipelines
+   - Prints location and form automatically
+   ```clojure
+   (let [x 5
+         y #p (+ x 2)]  ; prints: #p (+ x 2) [repl:1] 7
+     (* x y))
+   ```
+
+2. **Better Printing** (clojure+.print)
+   - Atoms, refs, volatiles: `#atom 123` instead of `#object[...]`
+   - Arrays: `#ints [1 2 3]` instead of `#object["[I" ...]`
+   - Files, paths: `#file "/"` instead of `#object[java.io.File ...]`
+   - See all supported types in [clojure-plus README](https://github.com/tonsky/clojure-plus#clojureprint)
+
+3. **Improved Errors** (clojure+.error)
+   - Clojure-aware stack traces: `clojure.core/eval` instead of `core$eval invokeStatic`
+   - Reversed traces (most relevant first)
+   - Colored output
+   - Cleaner ExceptionInfo formatting
+
+4. **Better Test Output** (clojure+.test)
+   - Structured test context display
+   - Clearer expected/actual comparison
+   - Captured output for failed tests only
+   - Time reporting per namespace
+
+**Manual control:**
+```clojure
+;; Uninstall if needed
+(clojure+.error/uninstall!)
+(clojure+.print/uninstall!)
+(clojure+.test/uninstall!)
+```
 
 ### Browser DEBUG Helpers
 
@@ -121,10 +173,11 @@ DEBUG.reload()        // Hard reload
 
 ### Key Files
 
-- `dev/repl/init.clj` - REPL helpers (go!, connect!, init!, rt!, rq!)
+- `dev/repl/init.cljc` - REPL helpers (go!, connect!, init!, rt!, rq!, component testing)
 - `dev/debug.cljs` - Browser/REPL debugging helpers
-- `dev/health.clj` - Environment diagnostics
-- `dev/error-catalog.edn` - Error taxonomy with auto-fixes
+- `dev/viz.clj` - Tree visualization utility
+- `dev/fixtures.cljc` - Test data generators
+- `skills/diagnostics/data/error-catalog.edn` - Error taxonomy with auto-fixes
 
 ---
 
@@ -241,5 +294,5 @@ Metadata: `docs/research/sources/repos.edn`
 
 - AGENTS.md is a symlink to CLAUDE.md - edit CLAUDE.md only
 - Use `bat`, `rg`, targeted file reads for token efficiency
-- Check `dev/error-catalog.edn` for self-diagnosis patterns
+- Check `skills/diagnostics/data/error-catalog.edn` for self-diagnosis patterns
 We track work in Beads instead of Markdown. Run `bd quickstart` to see how.
