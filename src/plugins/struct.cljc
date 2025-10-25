@@ -107,8 +107,8 @@
 (defn- active-targets
   "Return selected node IDs or the currently editing block (vector, doc-ordered)."
   [db]
-  (let [selected (selection/get-selected-nodes db)
-        editing-id (editing/editing-block-id db)
+  (let [selected (q/selection db)
+        editing-id (q/editing-block-id db)
         targets (cond
                   (seq selected) selected
                   editing-id [editing-id]
@@ -155,8 +155,8 @@
   {:sig [db _]
    :doc "Delete all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :delete-selected]]]
-   :ops (let [selected (selection/get-selected-nodes db)
-              editing-id (editing/editing-block-id db)
+   :ops (let [selected (q/selection db)
+              editing-id (q/editing-block-id db)
               targets (if (seq selected) selected (if editing-id [editing-id] []))
               ordered (sort-by-doc-order db targets)]
           (vec (mapcat #(delete-ops db %) ordered)))})
@@ -165,8 +165,8 @@
   {:sig [db _]
    :doc "Indent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :indent-selected]]]
-   :ops (let [selected (selection/get-selected-nodes db)
-              editing-id (editing/editing-block-id db)
+   :ops (let [selected (q/selection db)
+              editing-id (q/editing-block-id db)
               targets (if (seq selected) selected (if editing-id [editing-id] []))
               ordered (sort-by-doc-order db targets)]
           (vec (mapcat #(indent-ops db %) ordered)))})
@@ -175,8 +175,8 @@
   {:sig [db _]
    :doc "Outdent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :outdent-selected]]]
-   :ops (let [selected (selection/get-selected-nodes db)
-              editing-id (editing/editing-block-id db)
+   :ops (let [selected (q/selection db)
+              editing-id (q/editing-block-id db)
               targets (if (seq selected) selected (if editing-id [editing-id] []))
               ordered (sort-by-doc-order db targets)]
           (vec (mapcat #(outdent-ops db %) ordered)))})
