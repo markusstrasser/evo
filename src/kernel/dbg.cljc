@@ -2,7 +2,8 @@
   "Debug utilities for transaction tracing and DB inspection.
 
    Provides human-readable trace output for development and agent debugging."
-  (:require [kernel.constants :as const]))
+  (:require [kernel.constants :as const]
+            [clojure.string]))
 
 (defn- format-op
   "Format a single operation as a concise string."

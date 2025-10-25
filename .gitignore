@@ -27,7 +27,9 @@ legacy_deprecated
 /target
 /checkouts
 /src/gen
-.clj-kondo
+.clj-kondo/*
+!.clj-kondo/config.edn
+!.clj-kondo/hooks/
 .archived
 .pnpm-store
 .cpcache
