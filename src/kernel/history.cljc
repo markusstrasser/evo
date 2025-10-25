@@ -33,9 +33,11 @@
   (count (:future (get-history DB))))
 
 (defn- strip-history
-  "Remove :history namespace from DB (for storing in history stack)."
+  "Remove :history and :ui from DB (for storing in history stack).
+
+   :ui contains ephemeral state (edit mode, cursor) that should not be undoable."
   [DB]
-  (dissoc DB :history))
+  (dissoc DB :history :ui))
 
 (defn record
   "Record current DB state to undo stack before making a change.
@@ -59,34 +61,42 @@
 (defn undo
   "Restore previous DB state from history.
    Moves current state to future (for redo).
-   Returns updated DB, or nil if no history."
+   Returns updated DB, or nil if no history.
+
+   Preserves :ui (ephemeral state) from current DB."
   [DB]
-  (let [{:keys [past future limit]} (get-history DB)]
+  (let [{:keys [past future limit]} (get-history DB)
+        current-ui (:ui DB)]
     (when (seq past)
       (let [current-snapshot (strip-history DB)
             prev-snapshot (peek past)
             new-past (pop past)
             new-future (conj (vec future) current-snapshot)]
-        (assoc prev-snapshot :history
-               {:past new-past
-                :future new-future
-                :limit limit})))))
+        (assoc prev-snapshot
+               :ui current-ui  ; Preserve ephemeral UI state
+               :history {:past new-past
+                         :future new-future
+                         :limit limit})))))
 
 (defn redo
   "Restore next DB state from future.
    Moves current state to past (for undo).
-   Returns updated DB, or nil if no future."
+   Returns updated DB, or nil if no future.
+
+   Preserves :ui (ephemeral state) from current DB."
   [DB]
-  (let [{:keys [past future limit]} (get-history DB)]
+  (let [{:keys [past future limit]} (get-history DB)
+        current-ui (:ui DB)]
     (when (seq future)
       (let [current-snapshot (strip-history DB)
             next-snapshot (peek future)
             new-future (pop future)
             new-past (conj (vec past) current-snapshot)]
-        (assoc next-snapshot :history
-               {:past new-past
-                :future new-future
-                :limit limit})))))
+        (assoc next-snapshot
+               :ui current-ui  ; Preserve ephemeral UI state
+               :history {:past new-past
+                         :future new-future
+                         :limit limit})))))
 
 (defn set-limit
   "Set the maximum number of undo steps to keep.
