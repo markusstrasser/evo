@@ -12,21 +12,22 @@ from .logger import logger
 console = Console()
 
 # Provider configurations
+# Updated 2025-10-24: All defaults set to most powerful models
 PROVIDER_CONFIGS = {
     "google": {
-        "model": "gemini/gemini-2.5-pro",
+        "model": "gemini/gemini-2.5-pro",  # Latest as of Oct 2025
         "env_var": "GEMINI_API_KEY or GOOGLE_API_KEY",
     },
     "openai": {
-        "model": "gpt-4o",
+        "model": "gpt-5-pro",  # Latest as of Oct 2025 (requires temp=1)
         "env_var": "OPENAI_API_KEY",
     },
     "anthropic": {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-5-20250929",  # Latest as of Oct 2025 (Claude 4.5)
         "env_var": "ANTHROPIC_API_KEY",
     },
     "xai": {
-        "model": "xai/grok-4-latest",
+        "model": "xai/grok-4-latest",  # Latest as of Oct 2025 (Grok 4)
         "env_var": "XAI_API_KEY or GROK_API_KEY",
     },
     "deepseek": {
