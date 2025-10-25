@@ -1,4 +1,4 @@
-(ns core.interpret
+(ns core.transaction
   "Transaction interpreter: normalization, validation, execution pipeline."
   (:require [core.db :as db]
             [core.ops :as ops]
@@ -22,18 +22,18 @@
    - Falls back to fallback-idx for invalid anchors"
   [siblings at fallback-idx]
   (cond
-    (= at :first)  0
-    (= at :last)   (count siblings)
-    (integer? at)  at
+    (= at :first) 0
+    (= at :last) (count siblings)
+    (integer? at) at
 
     (map? at)
     (let [{:keys [before after]} at]
       (cond
         before (let [idx (find-index siblings before)]
                  (if (neg? idx) fallback-idx idx))
-        after  (let [idx (find-index siblings after)]
-                 (if (neg? idx) fallback-idx (inc idx)))
-        :else  fallback-idx))
+        after (let [idx (find-index siblings after)]
+                (if (neg? idx) fallback-idx (inc idx)))
+        :else fallback-idx))
 
     :else fallback-idx))
 
@@ -227,7 +227,7 @@
   [db {:keys [op id props under at] node-type :type}]
   (case op
     :create-node (ops/create-node db id node-type props)
-    :place       (ops/place db id under at)
+    :place (ops/place db id under at)
     :update-node (ops/update-node db id props)))
 
 (defn- validate-ops
@@ -273,9 +273,9 @@
   ([db txs opts]
    (let [{:keys [tx-id seed notes]} opts
          tx-id (or tx-id #?(:clj (System/currentTimeMillis)
-                           :cljs (.now js/Date)))
+                            :cljs (.now js/Date)))
          seed (or seed #?(:clj (System/currentTimeMillis)
-                         :cljs (.now js/Date)))
+                          :cljs (.now js/Date)))
          normalized-ops (normalize-ops db txs)
          [final-db issues] (validate-ops db normalized-ops)
          derived-db (db/derive-indexes final-db)
