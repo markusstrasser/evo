@@ -1,8 +1,8 @@
 (ns plugins.editing
   "Editing plugin: edit mode state, content operations.
 
-   Provides getters for edit state and implements intent multimethods
-   for both view changes (enter/exit edit) and structural changes (content updates)."
+   Edit state stored in session/edit node.
+   All state changes emit ops for full undo/redo support."
   (:require [core.intent :as intent]))
 
 ;; ── Getters ───────────────────────────────────────────────────────────────────
@@ -10,7 +10,7 @@
 (defn editing-block-id
   "Get currently editing block ID (nil if not editing)."
   [db]
-  (get-in db [:view :editing]))
+  (get-in db [:nodes "session/edit" :props :block-id]))
 
 (defn get-edit-mode
   "Get current edit mode state."
@@ -23,17 +23,16 @@
   [db block-id]
   (get-in db [:nodes block-id :props :text] ""))
 
-;; ── Intent Implementations (View Changes) ────────────────────────────────────
+;; ── Intent Implementations (Session State Changes) ───────────────────────────
 
-(defmethod intent/intent->db :enter-edit
-  [db {:keys [block-id]}]
-  (-> db
-      (assoc-in [:view :editing] block-id)
-      (assoc-in [:view :focus] block-id)))
+(defmethod intent/intent->ops :enter-edit
+  [_db {:keys [block-id]}]
+  [{:op :update-node :id "session/edit" :props {:block-id block-id}}
+   {:op :update-node :id "session/selection" :props {:focus block-id}}])
 
-(defmethod intent/intent->db :exit-edit
-  [db _intent]
-  (update db :view dissoc :editing))
+(defmethod intent/intent->ops :exit-edit
+  [_db _intent]
+  [{:op :update-node :id "session/edit" :props {:block-id nil}}])
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
