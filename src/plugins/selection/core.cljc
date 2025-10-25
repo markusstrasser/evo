@@ -65,17 +65,39 @@
                           :focus new-focus
                           :anchor new-focus})))
 
+(defn- doc-range
+  "Return the set of node IDs between a and b (inclusive) in document order.
+   Falls back to nil if either node is missing traversal metadata."
+  [DB a b]
+  (let [pre (get-in DB [:derived :pre])
+        id-by-pre (get-in DB [:derived :id-by-pre])]
+    (when (and (contains? pre a)
+               (contains? pre b))
+      (let [a-idx (get pre a)
+            b-idx (get pre b)
+            [start end] (if (<= a-idx b-idx)
+                          [a-idx b-idx]
+                          [b-idx a-idx])]
+        (->> (range start (inc end))
+             (map id-by-pre)
+             (remove nil?)
+             set)))))
+
 (defn extend-selection
   "Add node ID(s) to the current selection.
-   Updates focus to the last added ID, keeps existing anchor."
+   Supports range selection (Shift+Click) by selecting all nodes between the
+   anchor and the newly focused node."
   [DB ids]
   (let [state (get-selection-state DB)
         ids-vec (if (coll? ids) (vec ids) [ids])
         ids-set (set ids-vec)
         new-focus (last ids-vec)
         existing-anchor (:anchor state)
-        new-anchor (or existing-anchor new-focus)]
-    (assoc DB :selection {:nodes (set/union (:nodes state) ids-set)
+        range-set (when (and existing-anchor (= 1 (count ids-vec)))
+                    (doc-range DB existing-anchor new-focus))
+        new-anchor (or existing-anchor new-focus)
+        new-nodes (or range-set (set/union (:nodes state) ids-set))]
+    (assoc DB :selection {:nodes new-nodes
                           :focus new-focus
                           :anchor new-anchor})))
 
