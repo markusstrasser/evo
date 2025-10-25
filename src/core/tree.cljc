@@ -31,11 +31,11 @@
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
 
-   Uses pre-order traversal indexes. Returns nil if either node lacks
-   traversal metadata (e.g., not in tree)."
+   Uses doc-only pre-order traversal indexes (excludes session/trash nodes).
+   Returns nil if either node lacks traversal metadata (e.g., not in tree)."
   [db a b]
-  (let [pre (get-in db [:derived :pre])
-        id-by-pre (get-in db [:derived :id-by-pre])]
+  (let [pre (get-in db [:derived :doc/pre])
+        id-by-pre (get-in db [:derived :doc/id-by-pre])]
     (when (and (contains? pre a) (contains? pre b))
       (let [a-idx (get pre a)
             b-idx (get pre b)
@@ -51,3 +51,17 @@
   "Get ordered vector of child IDs for a parent, or empty vector if none."
   [db parent]
   (get-in db [:children-by-parent parent] []))
+
+(defn descendants-of
+  "Return all descendant node IDs of the given parent (recursive).
+
+   Does not include the parent itself, only its descendants.
+   Returns empty vector if parent has no children."
+  [db parent]
+  (let [children-by-parent (:children-by-parent db)]
+    (letfn [(collect [node-id]
+              (let [children (get children-by-parent node-id [])]
+                (if (seq children)
+                  (concat children (mapcat collect children))
+                  [])))]
+      (vec (collect parent)))))
