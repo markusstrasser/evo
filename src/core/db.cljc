@@ -14,14 +14,16 @@
            "session/edit"      {:type :edit         :props {:block-id nil}}
            "session/cursor"    {:type :cursor       :props {}}}
    :children-by-parent {:session ["session/selection" "session/edit" "session/cursor"]}
-   :roots #{:doc :trash :session}
+   :roots [:doc :trash :session]
    :derived {:parent-of {}
              :index-of {}
              :prev-id-of {}
              :next-id-of {}
              :pre {}
              :post {}
-             :id-by-pre {}}})
+             :id-by-pre {}
+             :doc/pre {}
+             :doc/id-by-pre {}}})
 
 (defn- compute-parent-of
   "Compute :parent-of map from :children-by-parent."
@@ -100,30 +102,19 @@
    merges in results from registered plugins."
   [db]
   (let [{:keys [children-by-parent roots]} db
+        ;; Compute traversal over all roots
+        all-roots-traversal (compute-traversal children-by-parent roots)
+        ;; Compute doc-only traversal (for consistent doc-range)
+        doc-only-traversal (compute-traversal children-by-parent [:doc])
+
         core-derived (merge {:parent-of (compute-parent-of children-by-parent)
                              :index-of (compute-index-of children-by-parent)}
                             (compute-siblings children-by-parent)
-                            (compute-traversal children-by-parent roots))
+                            all-roots-traversal
+                            {:doc/pre (:pre doc-only-traversal)
+                             :doc/id-by-pre (:id-by-pre doc-only-traversal)})
         db-with-core (assoc db :derived core-derived)]
     (assoc db :derived (merge core-derived (plugins/run-all db-with-core)))))
-
-;; =============================================================================
-;; Tree Traversal Utilities
-;; =============================================================================
-
-(defn descendants-of
-  "Return all descendant node IDs of the given parent (recursive).
-
-   Does not include the parent itself, only its descendants.
-   Returns empty vector if parent has no children."
-  [db parent]
-  (let [children-by-parent (:children-by-parent db)]
-    (letfn [(collect [node-id]
-              (let [children (get children-by-parent node-id [])]
-                (if (seq children)
-                  (concat children (mapcat collect children))
-                  [])))]
-      (vec (collect parent)))))
 
 ;; =============================================================================
 ;; Validation Helpers
@@ -173,14 +164,15 @@
   "Check if id has a cycle by walking up the parent chain.
    Returns true if cycle detected, false otherwise."
   [id parent-of roots]
-  (loop [current id
-         visited #{}]
-    (cond
-      (contains? visited current) true
-      (contains? roots current) false
-      :else (if-some [parent (get parent-of current)]
-              (recur parent (conj visited current))
-              false))))
+  (let [roots-set (set roots)]
+    (loop [current id
+           visited #{}]
+      (cond
+        (contains? visited current) true
+        (contains? roots-set current) false
+        :else (if-some [parent (get parent-of current)]
+                (recur parent (conj visited current))
+                false)))))
 
 (defn- validate-no-cycles
   "Check that no node is part of a cycle."
