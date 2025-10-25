@@ -68,18 +68,6 @@
    []
    ops))
 
-(defn- canon-at
-  "Canonicalize anchor values to standard forms.
-   :at-start → :first
-   :at-end → :last
-   integer → {:at-index n}"
-  [a]
-  (cond
-    (= a :at-start) :first
-    (= a :at-end) :last
-    (int? a) {:at-index a}
-    :else a))
-
 (defn- normalize-ops
   "Normalize operations:
    - Canonicalize :at anchors (:at-start → :first, :at-end → :last, int → {:at-index n})
@@ -87,7 +75,7 @@
    - Merge adjacent update-node on same id"
   [db ops]
   (->> ops
-       (map #(if (= (:op %) :place) (update % :at canon-at) %))
+       (map #(if (= (:op %) :place) (update % :at pos/canon) %))
        (remove-noop-places db)
        merge-adjacent-updates))
 
@@ -121,7 +109,7 @@
    during multi-op validation."
   [db potential-ancestor potential-descendant]
   (let [parent-of (parent-of-from (:children-by-parent db))
-        roots (:roots db)]
+        roots (set (:roots db))]
     (loop [current potential-descendant]
       (cond
         (nil? current) false
@@ -142,7 +130,7 @@
 (defn- valid-parent?
   "Check if parent is valid (either a root or an existing node)."
   [db parent]
-  (or (contains? (:roots db) parent)
+  (or (some #{parent} (:roots db))
       (contains? (:nodes db) parent)))
 
 (defn- validate-anchor
@@ -264,7 +252,7 @@
 (defn interpret
   "Interpret a transaction sequence.
 
-   Pipeline: normalize → validate → apply → derive → trace
+   Pipeline: normalize → validate → apply → [derive] → trace
 
    Args:
      db - starting database
@@ -273,6 +261,7 @@
      :tx-id - transaction ID for trace (default: system time)
      :seed - random seed for deterministic testing (default: system time)
      :notes - human-readable notes for this transaction
+     :tx/skip-derived? - skip derive-indexes (for benchmarking, default: false)
 
    Returns:
      {:db final-db :issues [...] :trace [...]}
@@ -281,14 +270,16 @@
    [{:tx-id <id> :seed <seed> :ops [<ops>] :notes \"...\" :num-applied <n>} ...]"
   ([db txs] (interpret db txs nil))
   ([db txs opts]
-   (let [{:keys [tx-id seed notes]} opts
+   (let [{:keys [tx-id seed notes tx/skip-derived?]} opts
          tx-id (or tx-id #?(:clj (System/currentTimeMillis)
                             :cljs (.now js/Date)))
          seed (or seed #?(:clj (System/currentTimeMillis)
                           :cljs (.now js/Date)))
          normalized-ops (normalize-ops db txs)
          [final-db issues] (validate-ops db normalized-ops)
-         derived-db (db/derive-indexes final-db)
+         derived-db (if skip-derived?
+                      final-db
+                      (db/derive-indexes final-db))
 
          ;; Deterministic trace with all context
          num-applied (- (count normalized-ops) (count issues))
