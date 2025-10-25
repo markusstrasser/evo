@@ -15,7 +15,8 @@
             [core.intent :as intent]
             [plugins.siblings-order :as so]
             [plugins.selection :as selection]
-            [plugins.editing :as editing]))
+            [plugins.editing :as editing]
+            [plugins.permute :as permute]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 
@@ -109,26 +110,21 @@
 
 (defmethod intent/intent->ops :reorder/children
   [DB {:keys [parent order]}]
-  ;; Reorder children to an explicit target order.
+  ;; Reorder children to an explicit target order - route through permute
   ;; Intent: {:type :reorder/children, :parent P, :order [id1 id2 ...]}
-  (let [p (so/target-permutation DB parent (vec order))]
-    (realize-permutation->places DB parent p)))
-
-(defn- splice-after
-  "Remove ids from items and re-insert after pivot (or at start if pivot is nil)."
-  [items ids after]
-  (let [items' (vec (remove (set ids) items))
-        i (if after (inc (.indexOf items' after)) 0)]
-    (vec (concat (subvec items' 0 i) ids (subvec items' i)))))
+  (intent/intent->ops DB {:type :reorder
+                          :selection (vec order)
+                          :parent parent
+                          :anchor :first}))
 
 (defmethod intent/intent->ops :reorder/move-blocks
   [DB {:keys [parent ids after]}]
-  ;; Move contiguous selection after pivot.
+  ;; Move contiguous selection after pivot - route through permute
   ;; Intent: {:type :reorder/move-blocks, :parent P, :ids [...], :after pivot}
-  (let [src (vec (get-in DB [:children-by-parent parent] []))
-        dst (splice-after src ids after)
-        p (perm/from-to src dst)]
-    (realize-permutation->places DB parent p)))
+  (intent/intent->ops DB {:type :reorder
+                          :selection (vec ids)
+                          :parent parent
+                          :anchor (if after {:after after} :first)}))
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
@@ -166,10 +162,10 @@
         prev (when first-id (prev-sibling DB first-id))
         before-prev (when prev (prev-sibling DB prev))]
     (if (and parent prev)
-      (let [siblings (vec (get-in DB [:children-by-parent parent] []))
-            dst (splice-after siblings targets before-prev)
-            p (perm/from-to siblings dst)]
-        (vec (realize-permutation->places DB parent p)))
+      (intent/intent->ops DB {:type :reorder
+                              :selection targets
+                              :parent parent
+                              :anchor (if before-prev {:after before-prev} :first)})
       [])))
 
 (defn- move-selected-down-ops
@@ -179,10 +175,10 @@
         parent (same-parent? DB targets)
         next (when last-id (get-in DB [:derived :next-id-of last-id]))]
     (if (and parent next)
-      (let [siblings (vec (get-in DB [:children-by-parent parent] []))
-            dst (splice-after siblings targets next)
-            p (perm/from-to siblings dst)]
-        (vec (realize-permutation->places DB parent p)))
+      (intent/intent->ops DB {:type :reorder
+                              :selection targets
+                              :parent parent
+                              :anchor {:after next}})
       [])))
 
 (defmethod intent/intent->ops :delete-selected
