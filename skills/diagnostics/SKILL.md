@@ -124,7 +124,7 @@ Use before:
 ./run.sh diagnose --interactive
 ```
 
-Uses `dev/error-catalog.edn` to:
+Uses `skills/diagnostics/data/error-catalog.edn` to:
 - Match error patterns
 - Suggest fixes
 - Provide auto-fix commands
@@ -174,7 +174,7 @@ The skill wraps existing npm commands:
 
 ## Error Catalog
 
-Maintains `dev/error-catalog.edn` with common errors and fixes:
+Maintains `skills/diagnostics/data/error-catalog.edn` with common errors and fixes:
 
 ### Common Errors
 
@@ -317,7 +317,7 @@ npm run lint || exit 1
 - Clear on error: disabled by default
 
 **Error diagnosis:**
-- Uses `dev/error-catalog.edn`
+- Uses `skills/diagnostics/data/error-catalog.edn`
 - Verbose output: disabled
 - Suggest fixes: enabled
 
@@ -362,7 +362,7 @@ npm run lint || exit 1
 
 - `run.sh` - Main CLI wrapper
 - `dev/health.clj` - Clojure health check functions
-- `dev/error-catalog.edn` - Error pattern database
+- `skills/diagnostics/data/error-catalog.edn` - Error pattern database
 - `dev/bin/health-check.sh` - Standalone health check
 - `dev/bin/preflight.sh` - Preflight validation script
 

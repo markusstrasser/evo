@@ -303,7 +303,7 @@ Build error catalog from session history:
 
 ```bash
 # Extract all errors and resolutions
-./run.sh analyze <session-id> --type errors >> dev/error-catalog.edn
+./run.sh analyze <session-id> --type errors >> skills/diagnostics/data/error-catalog.edn
 ```
 
 ### With architect
