@@ -4,7 +4,10 @@
   Permutations are represented as maps {index → index} with fixed points elided.
   This provides invertibility, composition, and law-checkable behavior.
 
-  Inspired by Electric/Hyperfiddle's incseq/permutation, but independent implementation.")
+  Inspired by Electric/Hyperfiddle's incseq/permutation, but independent implementation.
+
+  INTERNAL: API surface is the plugins.permute intents. Do not depend on this
+  namespace elsewhere.")
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Core Data & Constants
