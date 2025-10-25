@@ -47,14 +47,6 @@
 
     (vec (concat head selection tail))))
 
-(defn- normalize-anchor-for-ops
-  "Convert intent-level anchors to op-level anchors.
-   Ensures :at-start/:at-end are converted to :first/:last for op consistency."
-  [anchor]
-  (case anchor
-    :at-start :first
-    :at-end :last
-    anchor))
 
 (defn lower-reorder
   "Lower a :move intent to a minimal sequence of :place operations.
@@ -89,7 +81,7 @@
                                 {:op :place
                                  :id id
                                  :under parent
-                                 :at (normalize-anchor-for-ops anchor)}))))
+                                 :at anchor}))))
                     []
                     selection)]
     ops))
