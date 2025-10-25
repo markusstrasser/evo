@@ -136,7 +136,7 @@
       (.preventDefault e)
       (if (empty? text-content)
         ;; Empty block - delete and navigate to prev
-        (on-intent {:type :delete-block :block-id block-id})
+        (on-intent {:type :delete :id block-id})
         ;; At start with content - merge with previous
         (on-intent {:type :merge-with-prev :block-id block-id})))))
 

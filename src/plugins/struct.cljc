@@ -92,11 +92,6 @@
    :ops [{:op :create-node :id id :type :block :props {:text ""}}
          {:op :place :id id :under parent :at (if after {:after after} :last)}]})
 
-(defintent :delete-block
-  {:sig [db {:keys [block-id]}]
-   :doc "Delete block by ID (alias for :delete)."
-   :spec [:map [:type [:= :delete-block]] [:block-id :string]]
-   :ops (delete-ops db block-id)})
 
 ;; ── Reorder intents ───────────────────────────────────────────────────────────
 
