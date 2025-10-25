@@ -17,10 +17,10 @@
 
 ```bash
 # Quality gates
-bb lint check test check-deps-sync fix-cache
+bb lint check test check-deps-sync
 
-# Skills
-bb health preflight env-debug research
+# Cache & index
+bb clean index
 
 # Development
 bb dev repl-health docs-overview install-hooks help
@@ -32,21 +32,21 @@ The `ck` tool provides semantic, lexical, and hybrid code search with embeddings
 
 ```bash
 # Rebuild embeddings index (do this regularly)
-bb rebuild-index
+bb index
 
-# Clean orphaned index files
-bb clean-index
+# Clean caches + orphaned index files
+bb clean
 
 # Semantic search in code
 ck --sem "event sourcing patterns" src/
 
 # Search session history
-bb sessions search --hybrid "kernel IR architecture" --limit 5
+skills/session-memory/run.sh search --hybrid "kernel IR architecture" --limit 5
 ```
 
 **Index management:**
 - **`.ck/` directories** - Gitignored embeddings cache (auto-generated)
-- **Rebuild regularly** - Run `bb rebuild-index` after major refactors or weekly
+- **Rebuild regularly** - Run `bb index` after major refactors or weekly
 - **First search is slow** - Builds index automatically, subsequent searches are instant
 - **Session search** - Uses ck to find conceptually similar conversations
 
@@ -72,10 +72,9 @@ Filesystem-based workflows with progressive disclosure (L1: metadata, L2: instru
 
 | Skill | Path | Quick Start | Full Docs |
 |-------|------|-------------|-----------|
-| **Code Research** | `skills/research/` | `bb research list` | [SKILL.md](skills/research/SKILL.md) |
-| **Diagnostics** | `skills/diagnostics/` | `bb health` | [SKILL.md](skills/diagnostics/SKILL.md) |
-| **REPL Debug** | `skills/repl-debug/` | `skills/repl-debug/run.sh guide` | [SKILL.md](skills/repl-debug/SKILL.md) |
-| **Visual Validation** | `skills/visual/` | `skills/visual/run.sh analyze ref.png` | [SKILL.md](skills/visual/SKILL.md) |
+| **Code Research** | `skills/code-research/` | `skills/code-research/run.sh list` | [SKILL.md](skills/code-research/SKILL.md) |
+| **Diagnostics** | `skills/diagnostics/` | `skills/diagnostics/run.sh health` | [SKILL.md](skills/diagnostics/SKILL.md) |
+| **Session Memory** | `skills/session-memory/` | `skills/session-memory/run.sh search` | [SKILL.md](skills/session-memory/SKILL.md) |
 | **Architect** | `skills/architect/` | `skills/architect/run.sh propose` | [SKILL.md](skills/architect/SKILL.md) |
 | **Computer Use** | `skills/computer-use/` | `skills/computer-use/run.sh start` | [SKILL.md](skills/computer-use/SKILL.md) |
 
@@ -174,8 +173,8 @@ DEBUG.reload()        // Hard reload
 ### Key Files
 
 - `dev/repl/init.cljc` - REPL helpers (go!, connect!, init!, rt!, rq!, component testing)
+- `dev/repl/viz.cljc` - Tree visualization utility
 - `dev/debug.cljs` - Browser/REPL debugging helpers
-- `dev/viz.clj` - Tree visualization utility
 - `dev/fixtures.cljc` - Test data generators
 - `skills/diagnostics/data/error-catalog.edn` - Error taxonomy with auto-fixes
 
