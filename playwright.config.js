@@ -1,6 +1,11 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 
+const headless =
+  process.env.PLAYWRIGHT_HEADLESS
+    ? process.env.PLAYWRIGHT_HEADLESS !== 'false'
+    : !!process.env.CI;
+
 export default defineConfig({
   testDir: './test-browser',
   testMatch: '**/*.spec.js',
@@ -11,7 +16,7 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://localhost:8080',
-    headless: false, // Show browser for debugging
+    headless, // Default headless in CI; override with PLAYWRIGHT_HEADLESS env var
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
