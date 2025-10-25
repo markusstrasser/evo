@@ -48,6 +48,8 @@
        (require '[core.db :as db])
        (require '[core.ops :as ops])
        (require '[core.transaction :as tx])
+       (require '[core.dbg :as dbg])
+       (require '[core.api :as api])
        (require '[fixtures :as fix])
 
        ;; Install clojure-plus enhancements
@@ -61,14 +63,20 @@
        ((resolve 'clojure+.error/install!) {:reverse? true :color? true})
        ((resolve 'clojure+.test/install!))
 
-       (println "✅ Loaded: core.{db,ops,transaction}, fixtures")
-       (println "✅ Installed: clojure+ (hashp, print, error, test)"))
+       ;; Enable journaling by default in dev
+       ((resolve 'core.api/set-journal!) true)
+
+       (println "✅ Loaded: core.{db,ops,transaction,dbg,api}, fixtures")
+       (println "✅ Installed: clojure+ (hashp, print, error, test)")
+       (println "✅ Journaling enabled: .architect/ops.ednlog"))
      :cljs
      (do
        (require '[core.db :as db])
        (require '[core.ops :as ops])
        (require '[core.transaction :as tx])
-       (println "✅ Loaded: core.{db,ops,transaction}"))))
+       (require '[core.dbg :as dbg])
+       (require '[core.api :as api])
+       (println "✅ Loaded: core.{db,ops,transaction,dbg,api}"))))
 
 (defn rt!
   "Run tests in specified namespaces. If none provided, runs all tests.
@@ -125,6 +133,40 @@
        (println "\n✅ REPL ready - use (rt!) to run tests"))
      :cljs
      (println "⚠️ go! is a JVM-only function. Use from Clojure REPL.")))
+
+;; Pretty-traced dispatch for dev/learning
+
+(defn dispatch!
+  "Dispatch intent with pretty-printed trace and DB summary for learning/debugging.
+
+   Usage:
+     (dispatch! db {:type :select :ids \"a\"})
+
+   Shows:
+   - Transaction trace (operations applied)
+   - DB summary (node count, tree structure)
+   - Returns: new db state"
+  [db intent]
+  #?(:clj
+     (do
+       (require '[core.api :as api])
+       (require '[core.dbg :as dbg])
+       (let [{:keys [db trace]} ((resolve 'core.api/dispatch) db intent)]
+         (println "\n━━━ Transaction Trace ━━━")
+         ((resolve 'core.dbg/pp-trace) trace)
+         (println "\n━━━ DB Summary ━━━")
+         ((resolve 'core.dbg/pp-db-summary) db)
+         db))
+     :cljs
+     (do
+       (require '[core.api :as api])
+       (require '[core.dbg :as dbg])
+       (let [{:keys [db trace]} (api/dispatch db intent)]
+         (println "\n━━━ Transaction Trace ━━━")
+         (dbg/pp-trace trace)
+         (println "\n━━━ DB Summary ━━━")
+         (dbg/pp-db-summary db)
+         db))))
 
 ;; Session persistence (optional, less commonly used)
 
