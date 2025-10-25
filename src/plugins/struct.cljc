@@ -13,29 +13,12 @@
    Implements intent->ops multimethod from core.intent for structural intents."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
+            [kernel.query :as q]
             [plugins.selection :as selection]
             [plugins.editing :as editing]
             [plugins.permute :as permute])
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
-
-;; ── Derived index accessors ──────────────────────────────────────────────────
-
-(defn- parent-of
-  "Returns the parent ID of the given node ID."
-  [db id]
-  (get-in db [:derived :parent-of id]))
-
-(defn- prev-sibling
-  "Returns the previous sibling ID of the given node ID."
-  [db id]
-  (get-in db [:derived :prev-id-of id]))
-
-(defn- grandparent-of
-  "Returns the grandparent ID of the given node ID."
-  [db id]
-  (when-let [p (parent-of db id)]
-    (parent-of db p)))
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
@@ -48,7 +31,7 @@
   "Compiles an indent intent into a :place operation that moves the node
    under its previous sibling."
   [db id]
-  (if-let [sib (prev-sibling db id)]
+  (if-let [sib (q/prev-sibling db id)]
     [{:op :place :id id :under sib :at :last}]
     []))
 
@@ -57,8 +40,8 @@
    to be a sibling of its parent (under its grandparent, after its parent).
    Prevents outdenting if grandparent is a root container (already at top level)."
   [db id]
-  (let [p (parent-of db id)
-        gp (grandparent-of db id)
+  (let [p (q/parent-of db id)
+        gp (when p (q/parent-of db p))
         roots (set (:roots db const/roots))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
@@ -136,9 +119,9 @@
   "Check that all ids share the same parent."
   [db ids]
   (when (seq ids)
-    (let [parent (parent-of db (first ids))]
+    (let [parent (q/parent-of db (first ids))]
       (and parent
-           (every? #(= parent (parent-of db %)) (rest ids))
+           (every? #(= parent (q/parent-of db %)) (rest ids))
            parent))))
 
 (defn- move-selected-up-ops
@@ -146,8 +129,8 @@
   (let [targets (active-targets db)
         first-id (first targets)
         parent (same-parent? db targets)
-        prev (when first-id (prev-sibling db first-id))
-        before-prev (when prev (prev-sibling db prev))]
+        prev (when first-id (q/prev-sibling db first-id))
+        before-prev (when prev (q/prev-sibling db prev))]
     (if (and parent prev)
       (intent/intent->ops db {:type :reorder
                               :selection targets
