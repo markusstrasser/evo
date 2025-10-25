@@ -281,3 +281,43 @@
   "Return Malli schemas for operations."
   []
   (schema/describe-ops))
+
+;; ── Tagged Literal Readers ───────────────────────────────────────────────────
+
+(defn read-create
+  "Tagged literal reader for #op/create. Validates at read time."
+  [m]
+  (let [op (assoc m :op :create-node)]
+    (when-not (schema/valid-op? op)
+      (throw (ex-info "Invalid #op/create at read time"
+                      {:reason ::invalid-create-op
+                       :op op
+                       :errors (schema/explain-op op)})))
+    op))
+
+(defn read-place
+  "Tagged literal reader for #op/place. Validates at read time."
+  [m]
+  (let [op (assoc m :op :place)]
+    (when-not (schema/valid-op? op)
+      (throw (ex-info "Invalid #op/place at read time"
+                      {:reason ::invalid-place-op
+                       :op op
+                       :errors (schema/explain-op op)})))
+    op))
+
+(defn read-update
+  "Tagged literal reader for #op/update. Validates at read time."
+  [m]
+  (let [op (assoc m :op :update-node)]
+    (when-not (schema/valid-op? op)
+      (throw (ex-info "Invalid #op/update at read time"
+                      {:reason ::invalid-update-op
+                       :op op
+                       :errors (schema/explain-op op)})))
+    op))
+
+(defn read-tx
+  "Tagged literal reader for #tx. Just wraps in a vector."
+  [xs]
+  (vec xs))

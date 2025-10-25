@@ -1,4 +1,4 @@
-(ns algebra.permutation
+(ns core.permutation
   "Pure permutation algebra for sibling reordering.
 
   Permutations are represented as maps {index → index} with fixed points elided.
