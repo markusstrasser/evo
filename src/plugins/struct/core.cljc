@@ -53,13 +53,13 @@
 (defn outdent-ops
   "Compiles an outdent intent into a :place operation that moves the node
    to be a sibling of its parent (under its grandparent, after its parent).
-   Prevents outdenting if parent is a root container (already at top level)."
+   Prevents outdenting if grandparent is a root container (already at top level)."
   [DB id]
-  (let [p  (parent-of DB id)
+  (let [p (parent-of DB id)
         gp (grandparent-of DB id)
         roots (:roots DB #{:doc :trash})]
-    ;; Can outdent if: has parent, has grandparent, parent is NOT a root
-    (if (and p gp (not (contains? roots p)))
+    ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
+    (if (and p gp (not (contains? roots gp)))
       [{:op :place :id id :under gp :at {:after p}}]
       [])))
 
@@ -118,7 +118,7 @@
   "Remove ids from items and re-insert after pivot (or at start if pivot is nil)."
   [items ids after]
   (let [items' (vec (remove (set ids) items))
-        i      (if after (inc (.indexOf items' after)) 0)]
+        i (if after (inc (.indexOf items' after)) 0)]
     (vec (concat (subvec items' 0 i) ids (subvec items' i)))))
 
 (defmethod intent/intent->ops :reorder/move-blocks
@@ -127,7 +127,7 @@
   ;; Intent: {:type :reorder/move-blocks, :parent P, :ids [...], :after pivot}
   (let [src (vec (get-in DB [:children-by-parent parent] []))
         dst (splice-after src ids after)
-        p   (perm/from-to src dst)]
+        p (perm/from-to src dst)]
     (realize-permutation->places DB parent p)))
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
@@ -137,6 +137,53 @@
    Ensures operations are applied top-to-bottom, left-to-right."
   [DB ids]
   (sort-by #(get-in DB [:derived :pre %] ##Inf) ids))
+
+(defn- active-targets
+  "Return selected node IDs or the currently editing block (vector, doc-ordered)."
+  [DB]
+  (let [selected (selection/get-selected-nodes DB)
+        editing-id (editing/editing-block-id DB)
+        targets (cond
+                  (seq selected) selected
+                  editing-id [editing-id]
+                  :else [])]
+    (vec (sort-by-doc-order DB targets))))
+
+(defn- same-parent?
+  "Check that all ids share the same parent."
+  [DB ids]
+  (when (seq ids)
+    (let [parent (parent-of DB (first ids))]
+      (and parent
+           (every? #(= parent (parent-of DB %)) (rest ids))
+           parent))))
+
+(defn- move-selected-up-ops
+  [DB]
+  (let [targets (active-targets DB)
+        first-id (first targets)
+        parent (same-parent? DB targets)
+        prev (when first-id (prev-sibling DB first-id))
+        before-prev (when prev (prev-sibling DB prev))]
+    (if (and parent prev)
+      (let [siblings (vec (get-in DB [:children-by-parent parent] []))
+            dst (splice-after siblings targets before-prev)
+            p (perm/from-to siblings dst)]
+        (vec (realize-permutation->places DB parent p)))
+      [])))
+
+(defn- move-selected-down-ops
+  [DB]
+  (let [targets (active-targets DB)
+        last-id (last targets)
+        parent (same-parent? DB targets)
+        next (when last-id (get-in DB [:derived :next-id-of last-id]))]
+    (if (and parent next)
+      (let [siblings (vec (get-in DB [:children-by-parent parent] []))
+            dst (splice-after siblings targets next)
+            p (perm/from-to siblings dst)]
+        (vec (realize-permutation->places DB parent p)))
+      [])))
 
 (defmethod intent/intent->ops :delete-selected
   [DB _]
@@ -170,3 +217,10 @@
         ordered (sort-by-doc-order DB targets)]
     (vec (mapcat #(outdent-ops DB %) ordered))))
 
+(defmethod intent/intent->ops :move-selected-up
+  [DB _]
+  (move-selected-up-ops DB))
+
+(defmethod intent/intent->ops :move-selected-down
+  [DB _]
+  (move-selected-down-ops DB))
