@@ -8,20 +8,20 @@
   (:require [replicant.dom :as d]
             [core.db :as DB]
             [core.intent :as intent]
-            [core.interpret :as I]
+            [core.transaction :as tx]
             [core.history :as H]
             [components.block :as block]
-            [plugins.selection.core :as sel]
+            [plugins.selection :as sel]
             [plugins.struct.core :as struct]
-            [plugins.navigation.core :as nav]
-            [plugins.editing.core :as edit]))
+            [plugins.navigation :as nav]
+            [plugins.editing :as edit]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
 (defonce !db
   (atom (-> (DB/empty-db)
             ;; Create sample outline structure
-            (I/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
+            (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
                           {:op :place :id "page" :under :doc :at :last}
                           {:op :create-node :id "a" :type :block :props {:text "First block"}}
                           {:op :place :id "a" :under "page" :at :last}
@@ -43,7 +43,7 @@
   (swap! !db (fn [db]
                (if (seq ops)
                  (let [db-recorded (H/record db)
-                       result (I/interpret db-recorded ops)]
+                       result (tx/interpret db-recorded ops)]
                    (if (empty? (:issues result))
                      (:db result)
                      (do

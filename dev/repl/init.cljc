@@ -47,7 +47,7 @@
        ;; Load core namespaces
        (require '[core.db :as db])
        (require '[core.ops :as ops])
-       (require '[core.interpret :as interpret])
+       (require '[core.transaction :as tx])
        (require '[fixtures :as fix])
 
        ;; Install clojure-plus enhancements
@@ -61,14 +61,14 @@
        ((resolve 'clojure+.error/install!) {:reverse? true :color? true})
        ((resolve 'clojure+.test/install!))
 
-       (println "✅ Loaded: core.{db,ops,interpret}, fixtures")
+       (println "✅ Loaded: core.{db,ops,transaction}, fixtures")
        (println "✅ Installed: clojure+ (hashp, print, error, test)"))
      :cljs
      (do
        (require '[core.db :as db])
        (require '[core.ops :as ops])
-       (require '[core.interpret :as interpret])
-       (println "✅ Loaded: core.{db,ops,interpret}"))))
+       (require '[core.transaction :as tx])
+       (println "✅ Loaded: core.{db,ops,transaction}"))))
 
 (defn rt!
   "Run tests in specified namespaces. If none provided, runs all tests.
@@ -221,11 +221,11 @@
                            (reset! app/!db (db/empty-db))
                            @app/!db))
         :fixture (cljs! '(do (require '[app.blocks-ui :as app]
-                                      '[core.interpret :as I]
+                                      '[core.transaction :as tx]
                                       '[core.db :as db])
                              (reset! app/!db
                                      (-> (db/empty-db)
-                                         (I/interpret [{:op :create-node :id "a" :type :block :props {:text "First"}}
+                                         (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "First"}}
                                                        {:op :create-node :id "b" :type :block :props {:text "Second"}}
                                                        {:op :create-node :id "c" :type :block :props {:text "Third"}}
                                                        {:op :place :id "a" :under :doc :at :last}
