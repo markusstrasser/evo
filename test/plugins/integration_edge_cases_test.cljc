@@ -7,9 +7,9 @@
    - Combined selection + refs scenarios"
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [core.db :as db]
-            [core.interpret :as interp]
-            [plugins.selection.core :as sel]
-            [plugins.refs.core :as refs]
+            [core.transaction :as tx]
+            [plugins.selection :as sel]
+            [plugins.refs :as refs]
             [plugins.registry :as reg]))
 
 ;; =============================================================================
@@ -25,7 +25,7 @@
 (defn interpret-ops
   "Helper to interpret ops and return resulting db."
   [db ops]
-  (:db (interp/interpret db ops)))
+  (:db (tx/interpret db ops)))
 
 (defn create-base-db
   "Create a base db with doc nodes."

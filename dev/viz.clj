@@ -56,7 +56,7 @@
  ;; Test with fixtures
  (require '[fixtures :as f])
  (require '[core.db :as db])
- (require '[core.interpret :as i])
+ (require '[core.transaction :as tx])
 
  ;; Simple tree
  (show-tree (:db f/simple-tree))
@@ -73,7 +73,7 @@
   (show-tree db (first ids)))
 
  ;; With kernel operations
- (let [result (i/interpret (db/empty-db)
+ (let [result (tx/interpret (db/empty-db)
                            [{:op :create-node :id "a" :type :div :props {}}
                             {:op :create-node :id "b" :type :span :props {}}
                             {:op :create-node :id "c" :type :p :props {}}
