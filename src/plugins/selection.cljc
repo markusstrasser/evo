@@ -15,17 +15,6 @@
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
 
-;; ── Selection state accessors (forwarded to kernel.query) ─────────────────────
-
-;; Forward to kernel.query for single source of truth
-(def get-selection tree/selection)
-(def get-focus tree/focus)
-(def get-anchor tree/anchor)
-(def selected? tree/selected?)
-(def selection-count tree/selection-count)
-(def has-selection? tree/has-selection?)
-(def get-selected-nodes tree/selection)  ; alias
-
 ;; Private helper for internal use
 (defn- get-selection-state [db] (tree/selection-state db))
 
@@ -109,7 +98,7 @@
   {:sig [db {:keys [id]}]
    :doc "Toggle selection of node (add if not selected, remove if selected)."
    :spec [:map [:type [:= :toggle-selection]] [:id :string]]
-   :ops (if (selected? db id)
+   :ops (if (tree/selected? db id)
           (intent/intent->ops db {:type :deselect :ids id})
           (intent/intent->ops db {:type :extend-selection :ids id}))})
 
@@ -117,7 +106,7 @@
   {:sig [db _]
    :doc "Select next sibling of focused node."
    :spec [:map [:type [:= :select-next-sibling]]]
-   :ops (when-let [current (get-focus db)]
+   :ops (when-let [current (tree/focus db)]
           (when-let [next-id (tree/next-sibling db current)]
             (intent/intent->ops db {:type :select :ids next-id})))})
 
@@ -125,7 +114,7 @@
   {:sig [db _]
    :doc "Select previous sibling of focused node."
    :spec [:map [:type [:= :select-prev-sibling]]]
-   :ops (when-let [current (get-focus db)]
+   :ops (when-let [current (tree/focus db)]
           (when-let [prev-id (tree/prev-sibling db current)]
             (intent/intent->ops db {:type :select :ids prev-id})))})
 
@@ -133,7 +122,7 @@
   {:sig [db _]
    :doc "Extend selection to include next sibling."
    :spec [:map [:type [:= :extend-to-next-sibling]]]
-   :ops (when-let [current (get-focus db)]
+   :ops (when-let [current (tree/focus db)]
           (when-let [next-id (tree/next-sibling db current)]
             (intent/intent->ops db {:type :extend-selection :ids next-id})))})
 
@@ -141,7 +130,7 @@
   {:sig [db _]
    :doc "Extend selection to include previous sibling."
    :spec [:map [:type [:= :extend-to-prev-sibling]]]
-   :ops (when-let [current (get-focus db)]
+   :ops (when-let [current (tree/focus db)]
           (when-let [prev-id (tree/prev-sibling db current)]
             (intent/intent->ops db {:type :extend-selection :ids prev-id})))})
 
@@ -149,7 +138,7 @@
   {:sig [db _]
    :doc "Select parent of selected node(s)."
    :spec [:map [:type [:= :select-parent]]]
-   :ops (let [selection (get-selection db)
+   :ops (let [selection (tree/selection db)
               parents (set (keep #(tree/parent-of db %) selection))]
           (when (= 1 (count parents))
             (intent/intent->ops db {:type :select :ids (first parents)})))})
@@ -158,7 +147,23 @@
   {:sig [db _]
    :doc "Select all siblings of focused node."
    :spec [:map [:type [:= :select-all-siblings]]]
-   :ops (when-let [current (get-focus db)]
+   :ops (when-let [current (tree/focus db)]
           (when-let [parent (tree/parent-of db current)]
             (let [all-siblings (tree/children db parent)]
               (intent/intent->ops db {:type :select :ids all-siblings}))))})
+
+;; ── Navigation Intents ────────────────────────────────────────────────────────
+
+(defintent :navigate-up
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to previous visible block. Updates selection focus only."
+   :spec [:map [:type [:= :navigate-up]] [:block-id {:optional true} :string]]
+   :ops (when-let [prev-id (tree/prev-sibling db (or block-id (tree/focus db)))]
+          [{:op :update-node :id const/session-selection-id :props {:focus prev-id}}])})
+
+(defintent :navigate-down
+  {:sig [db {:keys [block-id]}]
+   :doc "Navigate to next visible block. Updates selection focus only."
+   :spec [:map [:type [:= :navigate-down]] [:block-id {:optional true} :string]]
+   :ops (when-let [next-id (tree/next-sibling db (or block-id (tree/focus db)))]
+          [{:op :update-node :id const/session-selection-id :props {:focus next-id}}])})
