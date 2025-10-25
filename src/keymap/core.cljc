@@ -8,7 +8,8 @@
    - One declarative table, zero divergence
    - Context-aware (editing vs non-editing mode)
    - Hot-reloadable
-   - Extensible via plugin registration")
+   - Extensible via plugin registration"
+  (:require [kernel.query :as q]))
 
 ;; ── Keymap Registry ───────────────────────────────────────────────────────────
 
@@ -76,8 +77,7 @@
 (defn- resolve-context
   "Determine current input context from app state."
   [db]
-  (let [editing? (some? (get-in db [:nodes "session/edit" :props :block-id]))]
-    (if editing? :editing :non-editing)))
+  (if (q/editing? db) :editing :non-editing))
 
 ;; ── Resolver ──────────────────────────────────────────────────────────────────
 
