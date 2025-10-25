@@ -65,6 +65,7 @@
    [:nodes [:map-of Id Node]]
    [:children-by-parent [:map-of Parent [:vector Id]]]
    [:roots [:vector :keyword]]
+   [:ui :map]  ; Ephemeral UI state (not in history)
    [:derived Derived]])
 
 ;; Operation schemas
@@ -91,9 +92,15 @@
    [:id Id]
    [:props :map]])
 
+(def Op-UpdateUi
+  "Update UI state operation - merges ephemeral UI properties (not in history)"
+  [:map
+   [:op [:= :update-ui]]
+   [:props :map]])
+
 (def Op
   "Any valid operation"
-  [:or Op-Create Op-Place Op-Update])
+  [:or Op-Create Op-Place Op-Update Op-UpdateUi])
 
 (def Transaction
   "Collection of operations"
@@ -126,6 +133,7 @@
   {:Op-Create (m/validator Op-Create)
    :Op-Place (m/validator Op-Place)
    :Op-Update (m/validator Op-Update)
+   :Op-UpdateUi (m/validator Op-UpdateUi)
    :Op (m/validator Op)
    :Transaction (m/validator Transaction)
    :Db (m/validator Db)
