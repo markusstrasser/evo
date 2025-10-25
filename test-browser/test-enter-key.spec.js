@@ -31,7 +31,7 @@ test('Up/Down arrows navigate blocks', async ({ page }) => {
   // Click first block
   const blocks = page.locator('.block');
   await blocks.nth(0).click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(300);
 
   // Check first block is focused (blue background)
   let focused = await blocks.nth(0).evaluate(el =>
@@ -67,18 +67,55 @@ test('Text editing works in contentEditable', async ({ page }) => {
   await page.goto('http://localhost:8080/blocks.html');
   await page.waitForSelector('.app');
 
-  // Click first block's text span
-  const firstBlockText = page.locator('.block').first().locator('span[contenteditable]');
-  await firstBlockText.click();
-  await page.waitForTimeout(200);
+  // Click first block's content-view to select, then click again to enter edit mode
+  const firstBlock = page.locator('.block').first();
+  await firstBlock.locator('.content-view').click();
+  await page.waitForTimeout(100);
+  // Second click to enter edit mode (first click selects, second click edits)
+  await firstBlock.locator('.content-view').click();
+  await page.waitForTimeout(300);
 
-  // Clear and type new text
-  await page.keyboard.press('Meta+A'); // Select all
+  // Now contenteditable should be visible
+  const editableSpan = firstBlock.locator('span[contenteditable]');
+  await expect(editableSpan).toBeVisible();
+
+  // Click to focus and select all
+  await editableSpan.click();
+  await page.keyboard.press('Meta+A');
+
+  // Type new text to replace
   await page.keyboard.type('Hello World');
   await page.waitForTimeout(300);
 
-  // Verify text changed
-  const text = await firstBlockText.textContent();
+  // Check contenteditable has the text
+  const text = await editableSpan.textContent();
   console.log(`Text after typing: ${text}`);
   expect(text).toBe('Hello World');
+});
+
+test('Enter key creates block with immediate typing ability (no click required)', async ({ page }) => {
+  await page.goto('http://localhost:8080/blocks.html');
+  await page.waitForSelector('.app');
+
+  // Click first block to select it
+  await page.locator('.block').first().click();
+  await page.waitForTimeout(200);
+
+  // Press Enter to create new block
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+
+  // Verify we can type immediately without clicking
+  // This tests the regression: contenteditable should have focus automatically
+  await page.keyboard.type('Test');
+  await page.waitForTimeout(200);
+
+  // Find the contenteditable element and verify it has the typed text
+  const editableSpan = page.locator('span[contenteditable]');
+  await expect(editableSpan).toBeVisible();
+  const text = await editableSpan.textContent();
+  console.log(`Text after Enter+Type: ${text}`);
+
+  // If focus worked, the text should be there
+  expect(text).toBe('Test');
 });
