@@ -1,55 +1,68 @@
 (ns keymap.core
-  "Central keyboard shortcut resolver.
+  "Central keyboard shortcut resolver with declarative bindings table.
 
-   Single source of truth for all key bindings. Plugins register bindings
-   via `register!`, resolver handles dispatch.
+   Single file, zero divergence. Bindings defined as data, resolver maps events to full intent maps.
 
    Design:
-   - One declarative table, zero divergence
+   - Declarative bindings table (visible on one screen)
    - Context-aware (editing vs non-editing mode)
-   - Hot-reloadable
-   - Extensible via plugin registration"
+   - Returns full intent maps (not just types)
+   - Simple 30-line resolver"
   (:require [kernel.query :as q]))
 
-;; ── Keymap Registry ───────────────────────────────────────────────────────────
+;; ── Bindings Table (Single Source of Truth) ──────────────────────────────────
 
-(defonce !keymap-registry
-  (atom {}))
+(def bindings
+  "Declarative keyboard bindings.
 
-(defn register!
-  "Register key bindings for a context.
+   Format: context -> [[key-spec intent-map] ...]
+
+   Key spec: {:key \"Enter\" :shift true :mod true :alt true}
+   Intent map: Full intent (e.g., {:type :selection :mode :next})
+
+   Contexts:
+   - :non-editing - Block selection/navigation (not editing text)
+   - :editing - Text editing mode
+   - :global - Active in all contexts (checked last)"
+  {:non-editing [[{:key "ArrowDown"} {:type :selection :mode :next}]
+                 [{:key "ArrowUp"} {:type :selection :mode :prev}]
+                 [{:key "Tab"} {:type :indent-selected}]
+                 [{:key "Tab" :shift true} {:type :outdent-selected}]
+                 [{:key "Backspace"} {:type :delete-selected}]
+                 [{:key "Enter"} {:type :create-new-block-after-focus}]]
+
+   :editing [[{:key "Escape"} {:type :exit-edit}]
+             [{:key "Backspace" :mod true} {:type :merge-with-prev}]]
+
+   :global [[{:key "ArrowUp" :shift true :mod true} {:type :move-selected-up}]
+            [{:key "ArrowDown" :shift true :mod true} {:type :move-selected-down}]]})
+
+;; ── Event Parsing ─────────────────────────────────────────────────────────────
+
+(defn parse-dom-event
+  "Parse DOM KeyboardEvent to normalized event map.
 
    Args:
-     context - :global, :editing, :non-editing
-     bindings - Vector of [key-spec intent-type] pairs
+     e - DOM KeyboardEvent
 
-   Key spec format:
-     {:key \"Enter\"} - plain key
-     {:key \"ArrowDown\" :shift true} - with modifiers
-     {:key \"Tab\" :mod true} - cmd/ctrl
-     {:key \"Backspace\" :mod true :shift true} - multiple modifiers
+   Returns:
+     {:key \"Enter\" :mod true :shift false :alt false}"
+  [e]
+  {:key #?(:clj nil :cljs (.-key e))
+   :mod #?(:clj false :cljs (or (.-metaKey e) (.-ctrlKey e)))
+   :shift #?(:clj false :cljs (.-shiftKey e))
+   :alt #?(:clj false :cljs (.-altKey e))})
 
-   Example:
-     (register! :non-editing
-       [[{:key \"Enter\"} :create-new-block-after-focus]
-        [{:key \"ArrowDown\"} :select-next-sibling]
-        [{:key \"Tab\" :shift true} :outdent-selected]])"
-  [context bindings]
-  (swap! !keymap-registry update context
-         (fn [existing]
-           (into (or existing []) bindings))))
+;; ── Context Resolution ────────────────────────────────────────────────────────
 
-(defn clear-bindings!
-  "Clear all bindings for a context (useful for hot reload)."
-  [context]
-  (swap! !keymap-registry dissoc context))
+(defn- resolve-context
+  "Determine current input context from app state.
 
-(defn reset-all!
-  "Reset entire keymap registry (useful for tests)."
-  []
-  (reset! !keymap-registry {}))
+   Returns :editing or :non-editing"
+  [db]
+  (if (q/editing? db) :editing :non-editing))
 
-;; ── Key Matching ──────────────────────────────────────────────────────────────
+;; ── Resolver (30 lines) ──────────────────────────────────────────────────────
 
 (defn- modifier-match?
   "Check if event modifiers match key-spec modifiers."
@@ -65,31 +78,24 @@
        (modifier-match? event key-spec)))
 
 (defn- find-binding
-  "Find matching binding in context bindings."
-  [bindings event]
-  (some (fn [[key-spec intent-type]]
+  "Find matching binding in context bindings.
+
+   Returns full intent map if found, nil otherwise."
+  [bindings-vec event]
+  (some (fn [[key-spec intent-map]]
           (when (key-matches? event key-spec)
-            intent-type))
-        bindings))
+            intent-map))
+        bindings-vec))
 
-;; ── Context Resolution ────────────────────────────────────────────────────────
-
-(defn- resolve-context
-  "Determine current input context from app state."
-  [db]
-  (if (q/editing? db) :editing :non-editing))
-
-;; ── Resolver ──────────────────────────────────────────────────────────────────
-
-(defn resolve-intent-type
-  "Resolve keyboard event to intent type based on current context.
+(defn resolve-event
+  "Resolve keyboard event to full intent map based on current context.
 
    Args:
      event - Event map with :key, :mod, :shift, :alt
      db - Current database (for context detection)
 
    Returns:
-     - intent-type keyword if binding found
+     - Full intent map if binding found (e.g., {:type :selection :mode :next})
      - nil if no binding matches
 
    Priority order:
@@ -97,24 +103,25 @@
      2. Global bindings (:global)"
   [event db]
   (let [context (resolve-context db)
-        registry @!keymap-registry
-        context-bindings (get registry context)
-        global-bindings (get registry :global)]
+        context-bindings (get bindings context)
+        global-bindings (get bindings :global)]
     (or (find-binding context-bindings event)
         (find-binding global-bindings event))))
 
-;; ── Event Parsing ─────────────────────────────────────────────────────────────
+;; ── Legacy Compatibility ──────────────────────────────────────────────────────
 
-(defn parse-dom-event
-  "Parse DOM KeyboardEvent to event map.
+(defn resolve-intent-type
+  "DEPRECATED: Use resolve-event instead (returns full intent map).
+
+   Resolve keyboard event to intent type only (for backwards compatibility).
 
    Args:
-     e - DOM KeyboardEvent
+     event - Event map
+     db - Current database
 
    Returns:
-     {:key \"Enter\" :mod true :shift false :alt false}"
-  [e]
-  {:key #?(:clj nil :cljs (.-key e))
-   :mod #?(:clj false :cljs (or (.-metaKey e) (.-ctrlKey e)))
-   :shift #?(:clj false :cljs (.-shiftKey e))
-   :alt #?(:clj false :cljs (.-altKey e))})
+     - intent-type keyword if binding found
+     - nil if no binding matches"
+  [event db]
+  (when-let [intent-map (resolve-event event db)]
+    (:type intent-map)))
