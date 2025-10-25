@@ -90,10 +90,15 @@
    Returns:
      Updated database"
   [db id under at]
-  (let [db-after-remove (remove-from-current-parent db id)
-        siblings (get-in db-after-remove [:children-by-parent under] [])
-        target-idx (pos/resolve-anchor-in-vec siblings at)
-        updated-siblings (insert-child-at-position siblings id target-idx)]
+  (let [siblings-before (get-in db [:children-by-parent under] [])
+        ;; Resolve anchor in simulated state (with id removed)
+        target-idx (pos/resolve-insert-index siblings-before at {:drop-id id})
+        ;; Actually remove from current parent
+        db-after-remove (remove-from-current-parent db id)
+        ;; Get siblings after removal (should match simulated state)
+        siblings-after (get-in db-after-remove [:children-by-parent under] [])
+        ;; Insert at resolved index
+        updated-siblings (insert-child-at-position siblings-after id target-idx)]
     (assoc-in db-after-remove [:children-by-parent under] updated-siblings)))
 
 (defn deep-merge
