@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# llmx-safe: Wrapper for llmx that validates model versions
+#
+# Ensures only latest models (as of Oct 2025) are used.
+# Errors on deprecated/outdated models.
+
+set -euo pipefail
+
+# Latest models (Oct 2025) - KEEP THIS UPDATED
+LATEST_MODELS=(
+    "gpt-5"
+    "gpt-5-pro"
+    "claude-sonnet-4-5"
+    "claude-haiku-4-5"
+    "gemini-2.5-pro"
+    "grok-4"
+    "grok-4-fast-reasoning"
+    "grok-4-fast-non-reasoning"
+)
+
+# Deprecated models that should error
+DEPRECATED_MODELS=(
+    "gpt-4o"
+    "gpt-4-turbo"
+    "gpt-4"
+    "gpt-5-codex"
+    "claude-3.7-sonnet"
+    "claude-3.5-sonnet"
+    "claude-3-opus"
+    "gemini-flash"
+    "gemini-1.5-pro"
+    "grok-2-1212"
+    "grok-2-latest"
+    "grok-2"
+)
+
+# Parse args to find --model flag
+MODEL=""
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --model)
+            MODEL="$2"
+            shift 2
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Check if model is specified
+if [ -z "$MODEL" ]; then
+    echo "❌ ERROR: No --model specified. Always specify the model explicitly." >&2
+    echo "" >&2
+    echo "Latest models (Oct 2025):" >&2
+    printf "  - %s\n" "${LATEST_MODELS[@]}" >&2
+    echo "" >&2
+    echo "See docs/LATEST-MODELS-2025.md for details." >&2
+    exit 1
+fi
+
+# Check if model is deprecated
+for deprecated in "${DEPRECATED_MODELS[@]}"; do
+    if [[ "$MODEL" == "$deprecated" ]]; then
+        echo "❌ ERROR: Model '$MODEL' is DEPRECATED (as of Oct 2025)" >&2
+        echo "" >&2
+        echo "Do not use outdated models. Use latest models:" >&2
+        printf "  - %s\n" "${LATEST_MODELS[@]}" >&2
+        echo "" >&2
+        echo "See docs/LATEST-MODELS-2025.md for migration guide." >&2
+        exit 1
+    fi
+done
+
+# Check if model is in latest list (warn if not)
+IS_LATEST=false
+for latest in "${LATEST_MODELS[@]}"; do
+    if [[ "$MODEL" == "$latest" ]]; then
+        IS_LATEST=true
+        break
+    fi
+done
+
+if [ "$IS_LATEST" = false ]; then
+    echo "⚠️  WARNING: Model '$MODEL' is not in the known-latest list (Oct 2025)" >&2
+    echo "   This might be a new model or a typo. Proceeding anyway..." >&2
+    echo "" >&2
+fi
+
+# Call actual llmx with all args
+exec llmx --model "$MODEL" "${ARGS[@]}"

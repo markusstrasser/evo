@@ -9,9 +9,12 @@
 (defn empty-db
   "Create an empty database with canonical shape."
   []
-  {:nodes {}
-   :children-by-parent {}
-   :roots #{:doc :trash}
+  {:nodes {"session"           {:type :session-root :props {}}
+           "session/selection" {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}
+           "session/edit"      {:type :edit         :props {:block-id nil}}
+           "session/cursor"    {:type :cursor       :props {}}}
+   :children-by-parent {:session ["session/selection" "session/edit" "session/cursor"]}
+   :roots #{:doc :trash :session}
    :derived {:parent-of {}
              :index-of {}
              :prev-id-of {}
@@ -110,8 +113,8 @@
 
 (defn descendants-of
   "Return all descendant node IDs of the given parent (recursive).
-   
-   Includes the parent itself if it exists in :children-by-parent.
+
+   Does not include the parent itself, only its descendants.
    Returns empty vector if parent has no children."
   [db parent]
   (let [children-by-parent (:children-by-parent db)]
