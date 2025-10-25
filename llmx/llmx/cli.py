@@ -24,13 +24,42 @@ from rich.markdown import Markdown
 # Load .env files if they exist (for development/testing)
 # Priority: current dir > parent > grandparent
 # This allows project-specific .env files to override global ones
+#
+# NOTE: We preprocess the .env file to handle shell-style "export VAR=value" format
+# since python-dotenv only handles "VAR=value" format
+def load_env_with_export_support(env_path: Path) -> None:
+    """Load .env file with support for 'export VAR=value' shell format"""
+    if not env_path.exists():
+        return
+
+    # Read the file and process export statements
+    env_vars = {}
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
+            # Handle "export VAR=value" format
+            if line.startswith('export '):
+                line = line[7:]  # Remove "export " prefix
+            # Parse VAR=value
+            if '=' in line:
+                key, value = line.split('=', 1)
+                # Remove quotes if present
+                value = value.strip('"').strip("'")
+                env_vars[key.strip()] = value
+
+    # Set environment variables
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
 for env_path in [
     Path.cwd().parent.parent / ".env",
     Path.cwd().parent / ".env",
     Path.cwd() / ".env"
 ]:
-    if env_path.exists():
-        load_dotenv(env_path, override=True)
+    load_env_with_export_support(env_path)
 
 from . import __version__
 from .providers import chat, compare as compare_providers, list_providers, infer_provider_from_model
