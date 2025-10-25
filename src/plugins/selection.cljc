@@ -63,9 +63,8 @@
   (let [ids-vec (if (coll? ids) (vec ids) [ids])
         ids-set (set ids-vec)
         new-focus (last ids-vec)]
-    (assoc DB :selection {:nodes ids-set
-                          :focus new-focus
-                          :anchor new-focus})))
+    (assoc-in DB [:nodes "session/selection" :props]
+              {:nodes ids-set :focus new-focus :anchor new-focus})))
 
 
 (defn extend-selection
@@ -82,9 +81,8 @@
                     (tree/doc-range DB existing-anchor new-focus))
         new-anchor (or existing-anchor new-focus)
         new-nodes (or range-set (set/union (:nodes state) ids-set))]
-    (assoc DB :selection {:nodes new-nodes
-                          :focus new-focus
-                          :anchor new-anchor})))
+    (assoc-in DB [:nodes "session/selection" :props]
+              {:nodes new-nodes :focus new-focus :anchor new-anchor})))
 
 (defn deselect
   "Remove node ID(s) from the current selection.
@@ -97,14 +95,14 @@
         new-focus (if (contains? ids-set old-focus)
                     (first new-nodes)  ;; Focus was removed, pick first remaining
                     old-focus)]
-    (assoc DB :selection {:nodes new-nodes
-                          :focus new-focus
-                          :anchor (:anchor state)})))
+    (assoc-in DB [:nodes "session/selection" :props]
+              {:nodes new-nodes :focus new-focus :anchor (:anchor state)})))
 
 (defn clear
   "Clear all selection."
   [DB]
-  (assoc DB :selection {:nodes #{} :focus nil :anchor nil}))
+  (assoc-in DB [:nodes "session/selection" :props]
+            {:nodes #{} :focus nil :anchor nil}))
 
 (defn toggle
   "Toggle selection of node ID (add if not selected, remove if selected).

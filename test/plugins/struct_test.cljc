@@ -84,10 +84,10 @@
           "All compiled outputs should be valid ops"))))
 
 (deftest unknown-intent-type-is-noop
-  (testing "Unknown intent type returns :unknown path"
+  (testing "Unknown intent type returns empty ops"
     (let [db (build-doc)
           result (intent/apply-intent db {:type :unknown-intent :id "a"})]
-      (is (= :unknown (:path result))
-          "Unknown intent should return :unknown path")
       (is (= [] (:ops result))
-          "Unknown intent should have no ops"))))
+          "Unknown intent should have no ops")
+      (is (= db (:db result))
+          "DB should be unchanged"))))
