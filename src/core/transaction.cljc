@@ -2,49 +2,23 @@
   "Transaction interpreter: normalization, validation, execution pipeline."
   (:require [core.db :as db]
             [core.ops :as ops]
+            [core.position :as pos]
             [core.schema :as schema]
             [medley.core :as m]))
-
-(defn- find-index
-  "Find index of target-id in siblings vector. Returns -1 if not found."
-  [siblings target-id]
-  (or (some (fn [[idx id]] (when (= id target-id) idx))
-            (m/indexed siblings))
-      -1))
-
-(defn- resolve-anchor-position
-  "Resolve :at anchor to concrete index within siblings list.
-
-   Handles:
-   - Keywords (:first, :last)
-   - Integer indices (used as-is)
-   - Relative anchors ({:before id}, {:after id})
-   - Falls back to fallback-idx for invalid anchors"
-  [siblings at fallback-idx]
-  (cond
-    (= at :first) 0
-    (= at :last) (count siblings)
-    (integer? at) at
-
-    (map? at)
-    (let [{:keys [before after]} at]
-      (cond
-        before (let [idx (find-index siblings before)]
-                 (if (neg? idx) fallback-idx idx))
-        after (let [idx (find-index siblings after)]
-                (if (neg? idx) fallback-idx (inc idx)))
-        :else fallback-idx))
-
-    :else fallback-idx))
 
 (defn- same-position-after-place?
   "Check if node would end up at the same index after place operation.
    Simulates remove → resolve anchor → insert to find final position."
   [siblings id at]
-  (let [current-idx (find-index siblings id)
-        siblings-without-node (vec (remove #(= % id) siblings))
-        target-idx (resolve-anchor-position siblings-without-node at current-idx)]
-    (= current-idx target-idx)))
+  (let [current-idx (.indexOf siblings id)]
+    (when-not (neg? current-idx)
+      (let [siblings-without-node (vec (remove #(= % id) siblings))]
+        (try
+          (let [target-idx (pos/resolve-anchor-in-vec siblings-without-node at)]
+            (= current-idx target-idx))
+          (catch #?(:clj Exception :cljs :default) _
+            ;; Invalid anchor means not same position
+            false))))))
 
 (defn- is-noop-place?
   "Check if a :place operation is a no-op (same parent and index).
@@ -133,28 +107,26 @@
   (or (contains? (:roots db) parent)
       (contains? (:nodes db) parent)))
 
-(defn- anchor-in-siblings?
-  "Check if anchor-id exists in siblings list."
-  [siblings anchor-id]
-  (some #(= % anchor-id) siblings))
-
 (defn- validate-anchor
-  "Validate relative anchor (:before or :after).
+  "Validate anchor (keyword, integer, or map).
+   For place operations, simulates removal of the node being placed before validating.
    Returns issue vector if anchor is invalid, empty vector otherwise."
-  [db op op-index under at]
-  (let [siblings (get-in db [:children-by-parent under] [])]
-    (cond
-      (:before at)
-      (when-not (anchor-in-siblings? siblings (:before at))
-        [(make-issue op op-index :anchor-not-sibling
-                     (str "Anchor :before " (:before at) " is not a sibling under " under))])
-
-      (:after at)
-      (when-not (anchor-in-siblings? siblings (:after at))
-        [(make-issue op op-index :anchor-not-sibling
-                     (str "Anchor :after " (:after at) " is not a sibling under " under))])
-
-      :else [])))
+  [db op op-index under at node-id]
+  (let [siblings (get-in db [:children-by-parent under] [])
+        ;; Simulate removal of node being placed (if it's in this parent)
+        siblings-for-validation (vec (remove #(= % node-id) siblings))]
+    (try
+      (pos/resolve-anchor-in-vec siblings-for-validation at)
+      []  ;; Valid anchor, no issues
+      (catch #?(:clj Exception :cljs :default) e
+        (let [reason (ex-data e)]
+          [(make-issue op op-index
+                       (case (:reason reason)
+                         ::pos/missing-target :anchor-not-sibling
+                         ::pos/oob :anchor-oob
+                         ::pos/bad-anchor :anchor-bad
+                         :anchor-bad)
+                       (str "Invalid anchor: " (pr-str at)))])))))
 
 (defn- validate-create-node
   "Validate :create-node operation."
@@ -179,8 +151,8 @@
                         (str "Parent " under " does not exist")))
 
           ;; Only validate anchor if node exists (otherwise anchor check is moot)
-          (when (and (map? at) node-exists?)
-            (validate-anchor db op op-index under at))
+          (when node-exists?
+            (validate-anchor db op op-index under at id))
 
           ;; Only check for cycles if both node and parent exist
           (when (and node-exists? (valid-parent? db under)
