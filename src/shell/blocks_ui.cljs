@@ -16,7 +16,7 @@
             [plugins.struct :as struct]
             [plugins.editing :as edit]
             [keymap.core :as keymap]
-            [keymap.bindings]))  ; Side-effect: registers all bindings
+            [keymap.bindings :as bindings]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -210,6 +210,9 @@
 
 (defn main []
   (js/console.log "Blocks UI starting with proper architecture...")
+
+  ;; Initialize keyboard bindings (explicit, not side-effect)
+  (bindings/reload!)
 
   ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
   (d/set-dispatch!

@@ -15,11 +15,11 @@
     (keymap/register! ctx bs))
   :ok)
 
-;; ── Register Bindings on Namespace Load ──────────────────────────────────────
-
-(reload!)
-
 (comment
+  ;; IMPORTANT: Call (reload!) explicitly during app initialization.
+  ;; Do not rely on namespace load side-effects.
+
+
   ;; Hot reload: edit bindings_data.cljc and reload
   (require '[keymap.bindings] :reload)
 
