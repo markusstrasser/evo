@@ -7,7 +7,7 @@
    Note: Selection is handled separately via plugins.selection
    which uses boolean :selected? properties (see ADR-012)."
   (:require [kernel.db :as db]
-            [kernel.tree :as tree]
+            [kernel.query :as tree]
             [plugins.registry :as registry]))
 
 ;; =============================================================================
