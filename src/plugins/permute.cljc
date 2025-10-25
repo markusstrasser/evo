@@ -1,9 +1,9 @@
-(ns plugins.permute.core
+(ns plugins.permute
   "Intent-level reordering and movement operations.
 
    Lowers high-level reorder/move intents into minimal sequences of :place operations.
-   Uses algebra.anchor for position resolution and algebra.permutation for deterministic ordering."
-  (:require [algebra.anchor :as anchor]))
+   Uses core.position for position resolution and algebra.permutation for deterministic ordering."
+  (:require [core.position :as pos]))
 
 (defn planned-positions
   "Compute target sibling vector after applying selection at the given anchor.
@@ -23,7 +23,7 @@
      3. Insert selection at that position (preserving internal order)"
   [db {:keys [selection parent anchor]}]
   (let [;; Get current siblings
-        current-kids (anchor/children db parent)
+        current-kids (pos/children db parent)
 
         ;; Remove selected nodes (they'll be re-inserted)
         selection-set (set selection)
@@ -32,7 +32,7 @@
         ;; Resolve anchor in the list WITHOUT the selected nodes
         ;; This matches the :place semantics (remove → resolve → insert)
         target-idx (try
-                     (anchor/resolve-anchor-in-vec kids-without-selection anchor)
+                     (pos/resolve-anchor-in-vec kids-without-selection anchor)
                      (catch #?(:clj Exception :cljs js/Error) _
                        ;; If anchor references a selected node, it will fail after removal
                        ;; Fallback to end
