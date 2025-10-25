@@ -8,6 +8,7 @@
             [kernel.ops :as ops]
             [kernel.transaction :as tx]
             [kernel.api :as api]
+            [kernel.query :as q]
             [plugins.selection :as sel]
             [plugins.editing :as edit]))
 
@@ -58,7 +59,7 @@
           result (api/dispatch db {:type :select-next-sibling})
           final-db (:db result)]
       ;; Assert focus moved from "a" to "b"
-      (is (= "b" (sel/get-focus final-db))
+      (is (= "b" (q/focus final-db))
           "Focus should move to next sibling"))))
 
 (deftest test-arrow-up-navigation
@@ -71,7 +72,7 @@
           result (api/dispatch db {:type :select-prev-sibling})
           final-db (:db result)]
       ;; Assert focus moved from "c" to "b"
-      (is (= "b" (sel/get-focus final-db))
+      (is (= "b" (q/focus final-db))
           "Focus should move to previous sibling"))))
 
 ;; ── Selection Tests ───────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@
           ;; Simulate Shift+ArrowDown
           result (api/dispatch db {:type :extend-to-next-sibling})
           final-db (:db result)
-          selection (sel/get-selection final-db)]
+          selection (q/selection final-db)]
       ;; Assert both "a" and "b" are selected
       (is (contains? selection "a") "Original node should remain selected")
       (is (contains? selection "b") "Next sibling should be added to selection")
@@ -100,7 +101,7 @@
           ;; Simulate Shift+ArrowUp (extends to "b", creates range from b to c)
           result (api/dispatch db {:type :extend-to-prev-sibling})
           final-db (:db result)
-          selection (sel/get-selection final-db)]
+          selection (q/selection final-db)]
       ;; Range selection: selects all nodes in doc-order between anchor (c) and focus (b)
       ;; Tree: a, b(b1, b2), c → range from b to c includes: a, b, c (and b's children)
       (is (contains? selection "c") "Original node should remain selected")

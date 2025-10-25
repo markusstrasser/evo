@@ -4,6 +4,7 @@
    Uses plugin getters for data and dispatches intents for all state changes.
    Implements cursor boundary detection for seamless up/down navigation."
   (:require [replicant.dom :as d]
+            [kernel.query :as q]
             [plugins.editing :as edit]
             [plugins.selection :as sel]))
 
@@ -203,10 +204,10 @@
    Dispatches intents for all state changes."
   [{:keys [db block-id depth on-intent]}]
   (let [children (get-in db [:children-by-parent block-id] [])
-        selected? (sel/selected? db block-id)
-        focus? (= (sel/get-focus db) block-id)
-        editing? (= (edit/editing-block-id db) block-id)
-        text (edit/get-block-text db block-id)
+        selected? (q/selected? db block-id)
+        focus? (= (q/focus db) block-id)
+        editing? (= (q/editing-block-id db) block-id)
+        text (get-in db [:nodes block-id :props :text] "")
 
         ;; Atom to track if we're programmatically exiting edit mode
         ;; This prevents blur event from firing exit-edit after Escape

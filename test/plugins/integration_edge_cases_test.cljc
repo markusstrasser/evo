@@ -9,6 +9,7 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
+            [kernel.query :as q]
             [plugins.selection :as sel]
             [plugins.refs :as refs]
             [plugins.registry :as reg]))
@@ -54,9 +55,9 @@
           ;; Move 'a' to different position (still under :doc)
           db2 (interpret-ops db1 [{:op :place :id "a" :under :doc :at 1}])]
 
-      (is (sel/selected? db1 "a") "Node should be selected before move")
-      (is (sel/selected? db2 "a") "Selection should persist after move")
-      (is (= #{"a"} (sel/get-selected-nodes db2))))))
+      (is (q/selected? db1 "a") "Node should be selected before move")
+      (is (q/selected? db2 "a") "Selection should persist after move")
+      (is (= #{"a"} (q/selection db2))))))
 
 (deftest selection-cleared-when-node-trashed-test
   (testing "Selection is cleared when node moved to :trash"
@@ -68,8 +69,8 @@
           ;; Move 'a' to trash
           db2 (interpret-ops db1 [{:op :place :id "a" :under :trash :at :last}])]
 
-      (is (sel/selected? db1 "a") "Node should be selected before trashing")
-      (is (sel/selected? db2 "a") "Selection persists (manual clear needed)")
+      (is (q/selected? db1 "a") "Node should be selected before trashing")
+      (is (q/selected? db2 "a") "Selection persists (manual clear needed)")
       ;; Note: Selection state is independent of node location
       ;; Application code should clear selection when trashing
       )))
@@ -91,8 +92,8 @@
                    (interpret-ops (intent/intent->ops db1 {:type :deselect :ids "b"}))
                    (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :deselect :ids "a"}))))]
 
-      (is (= (sel/get-selected-nodes db2a)
-             (sel/get-selected-nodes db2b))
+      (is (= (q/selection db2a)
+             (q/selection db2b))
           "Deselect order should not affect final state"))))
 
 ;; =============================================================================
@@ -190,7 +191,7 @@
           "Refs should not be affected by selection changes")
 
       ;; Selection should be cleared
-      (is (= #{} (sel/get-selected-nodes db2))
+      (is (= #{} (q/selection db2))
           "Selection should be cleared"))))
 
 (deftest circular-ref-detected-test
