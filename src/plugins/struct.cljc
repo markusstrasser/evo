@@ -12,6 +12,7 @@
 
    Implements intent->ops multimethod from core.intent for structural intents."
   (:require [kernel.intent :as intent]
+            [kernel.constants :as const]
             [plugins.selection :as selection]
             [plugins.editing :as editing]
             [plugins.permute :as permute])
@@ -41,7 +42,7 @@
 (defn delete-ops
   "Compiles a delete intent into a :place operation that moves the node to :trash."
   [_DB id]
-  [{:op :place :id id :under :trash :at :last}])
+  [{:op :place :id id :under const/root-trash :at :last}])
 
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
@@ -58,7 +59,7 @@
   [db id]
   (let [p (parent-of db id)
         gp (grandparent-of db id)
-        roots (set (:roots db [:doc :trash]))]
+        roots (set (:roots db const/roots))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
       [{:op :place :id id :under gp :at {:after p}}]

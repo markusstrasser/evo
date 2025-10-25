@@ -10,6 +10,7 @@
    Implements intent->ops multimethod from core.intent."
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
+            [kernel.constants :as const]
             [kernel.tree :as tree])
   #?(:clj (:require [kernel.intent :refer [defintent]]))
   #?(:cljs (:require-macros [kernel.intent :refer [defintent]])))
@@ -19,7 +20,7 @@
 (defn- get-selection-state
   "Returns the selection state map from session/selection node."
   [db]
-  (get-in db [:nodes "session/selection" :props] {:nodes #{} :focus nil :anchor nil}))
+  (get-in db [:nodes const/session-selection-id :props] {:nodes #{} :focus nil :anchor nil}))
 
 (defn get-selection
   "Returns the set of selected node IDs (possibly empty)."
@@ -103,7 +104,7 @@
    :doc "Replace selection with given node ID(s). Last ID becomes focus."
    :spec [:map [:type [:= :select]] [:ids [:or :string [:vector :string]]]]
    :ops [{:op :update-node
-          :id "session/selection"
+          :id const/session-selection-id
           :props (calc-select-props ids)}]})
 
 (defintent :extend-selection
@@ -112,7 +113,7 @@
    :spec [:map [:type [:= :extend-selection]] [:ids [:or :string [:vector :string]]]]
    :ops (let [state (get-selection-state db)]
           [{:op :update-node
-            :id "session/selection"
+            :id const/session-selection-id
             :props (calc-extend-props db state ids)}])})
 
 (defintent :deselect
@@ -121,7 +122,7 @@
    :spec [:map [:type [:= :deselect]] [:ids [:or :string [:vector :string]]]]
    :ops (let [state (get-selection-state db)]
           [{:op :update-node
-            :id "session/selection"
+            :id const/session-selection-id
             :props (calc-deselect-props state ids)}])})
 
 (defintent :clear-selection
@@ -129,7 +130,7 @@
    :doc "Clear all selection."
    :spec [:map [:type [:= :clear-selection]]]
    :ops [{:op :update-node
-          :id "session/selection"
+          :id const/session-selection-id
           :props (calc-clear-props)}]})
 
 (defintent :toggle-selection
