@@ -1,12 +1,13 @@
 (ns plugins.refs
   "Typed refs plugin for links, citations, and highlights.
-   
+
    Computes derived views over refs whose :target is in :doc tree.
    Provides lint (warnings) and scrub (ops to fix dangling refs).
-   
+
    Note: Selection is handled separately via plugins.selection
    which uses boolean :selected? properties (see ADR-012)."
   (:require [core.db :as db]
+            [core.tree :as tree]
             [plugins.registry :as registry]))
 
 ;; =============================================================================
@@ -37,7 +38,7 @@
 (defn doc-node-ids
   "Return set of all node IDs that are descendants of :doc root."
   [db]
-  (set (db/descendants-of db :doc)))
+  (set (tree/descendants-of db :doc)))
 
 ;; =============================================================================
 ;; Derived Indexes - Helper Functions
