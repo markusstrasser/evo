@@ -141,12 +141,23 @@
         (on-intent {:type :merge-with-prev :block-id block-id})))))
 
 (defn handle-keydown [e db block-id on-intent]
+  "Handle keyboard events while editing a block.
+   
+   Global shortcuts (Alt+Arrow, Shift+Arrow, Cmd/Alt+Shift+Arrow, Backspace for deletion)
+   are handled by the global keydown handler when blocks are selected but NOT editing.
+   
+   This handler focuses on editing-specific behavior:
+   - Arrow keys with cursor boundary detection for seamless navigation
+   - Enter to create new blocks
+   - Escape to exit edit mode
+   - Backspace for delete/merge at cursor boundaries (within text)
+   - Tab/Shift+Tab for indent/outdent while editing"
   (let [key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         alt? (.-altKey e)]
     (cond
-      ;; Plain arrows (with boundary detection)
+      ;; Plain arrows (with boundary detection) - navigate between blocks while editing
       (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
       (handle-arrow-up e db block-id on-intent)
 
@@ -161,20 +172,21 @@
       (= key "Escape")
       (handle-escape e db block-id on-intent)
 
-      ;; Backspace - delete/merge
+      ;; Backspace - delete/merge at cursor boundary (within text editing)
       (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
       (handle-backspace e db block-id on-intent)
 
-      ;; Tab - indent/outdent (already handled by existing intents)
+      ;; Tab - indent while editing (also handled globally for selected non-editing blocks)
       (and (= key "Tab") (not shift?))
       (do (.preventDefault e)
           (on-intent {:type :indent-selected}))
 
+      ;; Shift+Tab - outdent while editing (also handled globally for selected non-editing blocks)
       (and (= key "Tab") shift?)
       (do (.preventDefault e)
           (on-intent {:type :outdent-selected}))
 
-      ;; Everything else - let browser handle
+      ;; Everything else - let browser or global handler handle
       :else nil)))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
@@ -191,93 +203,105 @@
    Uses plugin getters for all data access.
    Dispatches intents for all state changes."
   [{:keys [db block-id depth on-intent]}]
-  (let [block (get-in db [:nodes block-id])
-        children (get-in db [:children-by-parent block-id] [])
+  (let [children (get-in db [:children-by-parent block-id] [])
         selected? (sel/selected? db block-id)
         focus? (= (sel/get-focus db) block-id)
         editing? (= (edit/editing-block-id db) block-id)
-        text (edit/get-block-text db block-id)]
+        text (edit/get-block-text db block-id)
 
-    [:div.block
-     {:key block-id
-      :style {:margin-left (str (* depth 20) "px")
-              :padding "4px 8px"
-              :cursor "text"
-              :background-color (cond
-                                  focus? "#b3d9ff"
-                                  selected? "#e6f2ff"
-                                  :else "transparent")
-              :border-left (if selected? "3px solid #0066cc" "3px solid #ccc")
-              :margin-bottom "2px"}
-      :on {:click (fn [e]
-                    (.stopPropagation e)
-                    (if (.-shiftKey e)
-                      (on-intent {:type :extend-selection :ids block-id})
-                      (on-intent {:type :select :ids block-id})))}}
+        ;; Atom to track if we're programmatically exiting edit mode
+        ;; This prevents blur event from firing exit-edit after Escape
+        exiting-edit? (atom false)
 
-     ;; Bullet
-     [:span {:style {:margin-right "8px"}} "•"]
-
-     ;; ARCHITECTURE: Separate edit/view elements to avoid Replicant reconciliation conflicts
-     ;; When editing? changes, Replicant unmounts one element and mounts the other cleanly
-     (if editing?
-       ;; EDIT MODE: contenteditable element (manages its own content)
-       [:span.content-edit
-        {:contentEditable true
-         :suppressContentEditableWarning true
-         :style {:outline "none"
-                 :min-width "1px"
-                 :display "inline-block"}
+        container-props
+        {:key block-id
          :data-block-id block-id
-         :ref (fn [elem]
-                (when elem
-                  ;; Set initial content ONCE on mount
-                  (when (empty? (.-textContent elem))
-                    (set! (.-textContent elem) text))
-
-                  ;; Focus and position cursor at end
-                  (.focus elem)
-                  (let [range (.createRange js/document)
-                        sel (.getSelection js/window)]
-                    (.selectAllChildren range elem)
-                    (.collapseToEnd range)
-                    (.removeAllRanges sel)
-                    (.addRange sel range))
-
-                  ;; Initialize mock-text for cursor detection
-                  (update-mock-text! text)))
-         :on {:input (fn [e]
-                       (let [new-text (-> e .-target .-textContent)]
-                         ;; Update mock-text for cursor detection
-                         (update-mock-text! new-text)
-                         ;; Update block text (structural change via intent)
-                         (on-intent {:type :update-content
-                                     :block-id block-id
-                                     :text new-text})))
-              :blur (fn [_e]
-                      ;; Just exit edit mode - element will unmount, view will mount
-                      (on-intent {:type :exit-edit}))
-              :keydown (fn [e]
-                         (handle-keydown e db block-id on-intent))}}]
-
-       ;; VIEW MODE: static span (Replicant-managed, NOT contenteditable)
-       [:span.content-view
-        {:style {:min-width "1px"
-                 :display "inline-block"
-                 :cursor "text"}
-         :data-block-id block-id
+         :style {:margin-left (str (* depth 20) "px")
+                 :padding "4px 8px"
+                 :cursor "text"
+                 :background-color (cond
+                                     focus? "#b3d9ff"
+                                     selected? "#e6f2ff"
+                                     :else "transparent")
+                 :border-left (if selected? "3px solid #0066cc" "3px solid #ccc")
+                 :margin-bottom "2px"}
          :on {:click (fn [e]
-                       ;; Select the block AND enter edit mode
-                       ;; Don't stopPropagation - let parent block handler select it
-                       (on-intent {:type :enter-edit :block-id block-id}))}}
-        text])]
+                       (.stopPropagation e)
+                       (if (.-shiftKey e)
+                         (on-intent {:type :extend-selection :ids block-id})
+                         (on-intent {:type :select :ids block-id})))}}
 
-     ;; Children (recursive)
-     (when (seq children)
-       (into [:div {:style {:margin-top "2px"}}]
-             (map (fn [child-id]
-                    (Block {:db db
-                            :block-id child-id
-                            :depth (inc depth)
-                            :on-intent on-intent}))
-                  children)))]))
+        bullet [:span {:style {:margin-right "8px"}} "•"]
+
+        content
+        (if editing?
+          [:span.content-edit
+           {:contentEditable true
+            :suppressContentEditableWarning true
+            :style {:outline "none"
+                    :min-width "1px"
+                    :display "inline-block"}
+            :data-block-id block-id
+            ;; Use :replicant/on-render which fires on every render, not just mount
+            :replicant/on-render (fn [{:replicant/keys [node]}]
+                                   ;; Set text content if empty
+                                   (when (empty? (.-textContent node))
+                                     (set! (.-textContent node) text))
+
+                                   ;; Focus the element
+                                   (.focus node)
+
+                                   ;; Set cursor to end (only if there's content)
+                                   (when-not (empty? (.-textContent node))
+                                     (try
+                                       (let [range (.createRange js/document)
+                                             sel (.getSelection js/window)]
+                                         (.selectAllChildren range node)
+                                         (.collapseToEnd range)
+                                         (.removeAllRanges sel)
+                                         (.addRange sel range))
+                                       (catch js/Error e
+                                         (js/console.error "Cursor error:" e))))
+
+                                   (update-mock-text! text))
+            :on {:input (fn [e]
+                          (let [new-text (-> e .-target .-textContent)]
+                            (update-mock-text! new-text)
+                            (on-intent {:type :update-content
+                                        :block-id block-id
+                                        :text new-text})))
+                 :blur (fn [_e]
+                         ;; Only exit on blur if not already exiting via Escape
+                         (when-not @exiting-edit?
+                           (on-intent {:type :exit-edit})))
+                 :keydown (fn [e]
+                            (when (= (.-key e) "Escape")
+                              (reset! exiting-edit? true))
+                            (handle-keydown e db block-id on-intent))}}]
+          [:span.content-view
+           {:style {:min-width "1px"
+                    :display "inline-block"
+                    :cursor "text"}
+            :data-block-id block-id
+            :on {:click (fn [e]
+                          (.stopPropagation e)
+                          ;; First click = select, second click (when focused) = enter edit mode
+                          (if focus?
+                            (on-intent {:type :enter-edit :block-id block-id})
+                            (on-intent {:type :select :ids block-id})))}}
+           text])
+
+        children-el
+        (when (seq children)
+          (into [:div {:style {:margin-top "2px"}}]
+                (map (fn [child-id]
+                       (Block {:db db
+                               :block-id child-id
+                               :depth (inc depth)
+                               :on-intent on-intent}))
+                     children)))]
+
+    (cond-> [:div.block container-props
+             bullet
+             content]
+      children-el (conj children-el))))
