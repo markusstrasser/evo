@@ -57,11 +57,11 @@
     anchor))
 
 (defn lower-reorder
-  "Lower a :reorder intent to a minimal sequence of :place operations.
+  "Lower a :move intent to a minimal sequence of :place operations.
 
    Intent schema:
-   {:intent :reorder
-    :selection [id ...]      ; IDs to reorder (non-contiguous OK)
+   {:selection [id ...]
+    :selection [id ...]      ; IDs to move/reorder (non-contiguous OK)
     :parent parent-id        ; target parent
     :anchor Anchor}          ; where selection lands
 
@@ -94,25 +94,9 @@
                     selection)]
     ops))
 
-(defn lower-move
-  "Lower a multi-select move intent (potentially cross-parent).
-
-   Intent schema:
-   {:intent :move
-    :selection [id ...]      ; IDs to move (preserves order)
-    :parent parent-id        ; target parent (can differ from source)
-    :anchor Anchor}          ; where selection lands in target
-
-   Returns: vector of :place ops.
-
-   This is actually identical to lower-reorder - the :place operation handles
-   cross-parent moves automatically (remove from current, insert in target)."
-  [db intent]
-  ;; Move and reorder are the same at the op level
-  (lower-reorder db intent))
 
 (defn validate-intent
-  "Validate a reorder/move intent before lowering.
+  "Validate a move intent before lowering.
 
    Returns: nil if valid, or issue map if invalid.
 
@@ -161,7 +145,7 @@
       :else nil)))
 
 (defn lower
-  "Main entry point: lower a reorder or move intent to ops.
+  "Main entry point: lower a move intent to ops.
 
    Returns:
    - {:ops [Op...]} if valid
@@ -169,24 +153,12 @@
   [db intent]
   (if-let [issue (validate-intent db intent)]
     {:issues [issue]}
-    (let [ops (case (:intent intent)
-                :reorder (lower-reorder db intent)
-                :move (lower-move db intent)
-                (throw (ex-info "Unknown intent type"
-                               {:intent intent
-                                :expected #{:reorder :move}})))]
-      {:ops ops})))
+    {:ops (lower-reorder db intent)}))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
 (defintent :move
   {:sig [db intent]
-   :doc "Move selection to target parent at anchor position."
+   :doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
    :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
-   :ops (:ops (lower db (assoc intent :intent :move)))})
-
-(defintent :reorder
-  {:sig [db intent]
-   :doc "Reorder selection within same parent to anchor position."
-   :spec [:map [:type [:= :reorder]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
-   :ops (:ops (lower db (assoc intent :intent :reorder)))})
+   :ops (:ops (lower db intent))})
