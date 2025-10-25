@@ -68,12 +68,26 @@
    []
    ops))
 
+(defn- canon-at
+  "Canonicalize anchor values to standard forms.
+   :at-start → :first
+   :at-end → :last
+   integer → {:at-index n}"
+  [a]
+  (cond
+    (= a :at-start) :first
+    (= a :at-end) :last
+    (int? a) {:at-index a}
+    :else a))
+
 (defn- normalize-ops
   "Normalize operations:
+   - Canonicalize :at anchors (:at-start → :first, :at-end → :last, int → {:at-index n})
    - Drop no-op place (same parent & index)
    - Merge adjacent update-node on same id"
   [db ops]
   (->> ops
+       (map #(if (= (:op %) :place) (update % :at canon-at) %))
        (remove-noop-places db)
        merge-adjacent-updates))
 
