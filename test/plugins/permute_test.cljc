@@ -226,12 +226,11 @@
   (gen/fmap (fn [n] (str "parent-" n)) (gen/choose 1 3)))
 
 (def gen-children-list
-  "Generate a list of 3-8 child IDs under a parent."
-  (gen/vector gen-id 3 8))
+  "Generate a list of 3-8 unique child IDs under a parent."
+  (gen/fmap (fn [ids] (vec (distinct ids)))
+            (gen/vector gen-id 3 8)))
 
 (defspec reorder-intent-matches-permutation-algebra
-  "Property: Lowering a reorder intent and executing the ops
-   yields the same result as directly applying the permutation."
   100
   (prop/for-all [children gen-children-list
                  target-idx (gen/choose 0 7)]
