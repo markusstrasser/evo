@@ -16,25 +16,28 @@
      ;; Session intent (compiles to ops on session nodes)
      (apply-intent db {:type :select :ids [\"a\" \"b\"]})")
 
-;; ── Intent → Operations (Structural) ──────────────────────────────────────────
+;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────
 
-(defmulti intent->ops
-  "Compile a structural intent into a vector of core operations.
+(defonce !intents (atom {}))
 
-   Returns: vector of operation maps for interpretation
-   Dispatch: :type key of intent map
+;; ── Registration API ──────────────────────────────────────────────────────────
 
-   Structural intents affect the document tree and must go through
-   the interpret pipeline for validation and derived state updates.
+(defn register-intent!
+  "Register an intent handler with metadata.
+
+   Args:
+   - kw: Intent type keyword (e.g. :select, :indent)
+   - config: Map with :doc, :spec, :handler keys
 
    Example:
-     (defmethod intent->ops :indent [db {:keys [id]}]
-       [{:op :place :id id :under (prev-sibling db id) :at :last}])"
-  (fn [_db intent] (:type intent)))
-
-(defmethod intent->ops :default
-  [_db _intent]
-  nil)  ;; Return nil to signal no ops handler
+     (register-intent! :select
+       {:doc \"Set selection\"
+        :spec [:map [:type [:= :select]] [:ids [:vector :string]]]
+        :handler (fn [db {:keys [ids]}]
+                   [{:op :update-node :id \"session/selection\" :props {...}}])})"
+  [kw {:keys [doc spec handler]}]
+  (swap! !intents assoc kw {:doc doc :spec spec :handler handler})
+  nil)
 
 ;; ── Unified Entry Point ───────────────────────────────────────────────────────
 
@@ -53,56 +56,23 @@
      (apply-intent db {:type :select :ids [\"a\"]})
      ;=> {:db db :ops [{:op :update-node :id \"session/selection\" ...}]}"
   [db intent]
-  (let [ops (intent->ops db intent)]
-    {:db db :ops (vec (or ops []))}))
+  (if-let [handler (get-in @!intents [(:type intent) :handler])]
+    {:db db :ops (vec (or (handler db intent) []))}
+    {:db db :ops []}))
 
 ;; ── Convenience helpers ───────────────────────────────────────────────────────
 
 (defn has-handler?
-  "Returns true if intent type has an intent->ops implementation."
+  "Returns true if intent type has a registered handler."
   [intent-type]
-  (some? (get-method intent->ops intent-type)))
-
-;; ── Intent Registry ───────────────────────────────────────────────────────────
-
-(defonce intent-registry (atom {}))
-
-(defn get-intent-meta
-  "Get metadata for an intent type (doc, spec, etc.)."
-  [intent-type]
-  (get @intent-registry intent-type))
+  (contains? @!intents intent-type))
 
 (defn list-intents
   "List all registered intent types with their metadata."
   []
-  @intent-registry)
+  (into {} (map (fn [[k v]] [k (dissoc v :handler)]) @!intents)))
 
-;; ── defintent Macro ───────────────────────────────────────────────────────────
-
-#?(:clj
-   (defmacro defintent
-     "Define an intent with handler and metadata in one place.
-
-      Usage:
-        (defintent :select
-          {:sig [db {:keys [ids]}]
-           :doc \"Set selection; last id is focus.\"
-           :spec [:map [:type [:= :select]] [:ids [:vector :string]]]
-           :ops [{:op :update-node :id \"session/selection\" ...}]})
-
-      This expands to:
-        - defmethod for intent->ops
-        - registry entry with :doc and :spec"
-     [intent-kw {:keys [sig doc ops spec]}]
-     (let [[db-sym intent-destructure] sig
-           registry-sym 'kernel.intent/intent-registry
-           multimethod-sym 'kernel.intent/intent->ops]
-       `(do
-          ~(when ops
-             `(defmethod ~multimethod-sym ~intent-kw
-                [~db-sym ~intent-destructure]
-                ~ops))
-          (swap! ~registry-sym assoc ~intent-kw
-                 {:doc ~doc
-                  :spec ~spec})
-          ~intent-kw))))
+(defn intent->ops
+  "DEPRECATED: Use apply-intent instead. Kept for backward compatibility."
+  [db intent]
+  (:ops (apply-intent db intent)))
