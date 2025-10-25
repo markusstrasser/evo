@@ -1,4 +1,4 @@
-(ns plugins.selection.core
+(ns plugins.selection
   "Selection state management plugin (ADR-015 pattern).
 
    Manages the :selection namespace at DB root with focus tracking.

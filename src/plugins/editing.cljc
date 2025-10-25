@@ -1,4 +1,4 @@
-(ns plugins.editing.core
+(ns plugins.editing
   "Editing plugin: edit mode state, content operations.
 
    Provides getters for edit state and implements intent multimethods
