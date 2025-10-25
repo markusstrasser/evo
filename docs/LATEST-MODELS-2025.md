@@ -214,5 +214,26 @@ cat context.md | llmx --provider openai --model gpt-5-pro --temperature 1 "" > p
 
 ---
 
+---
+
+## Tournament MCP Judge Names
+
+The `tournament` MCP uses simplified judge names that map to actual API models:
+
+| Judge Name | Maps To | Provider |
+|------------|---------|----------|
+| `gpt5-pro` | `openai:gpt-5-pro` | OpenAI GPT-5 Pro |
+| `gemini25-pro` | `google-gla:gemini-2.5-pro` | Google Gemini 2.5 Pro |
+| `grok-4` | `xai:grok-4-latest` | xAI Grok 4 |
+| `claude-4.5` | `anthropic:claude-sonnet-4-5-20250929` | Anthropic Claude Sonnet 4.5 |
+
+**Note:** The judge name `gemini25-pro` (no dots) is correct for tournament MCP. It uses its own naming scheme but maps to the correct API model `gemini-2.5-pro`.
+
+**FIXED (2025-10-24):**
+- ✅ `grok-4` now uses actual xAI Grok-4 (was incorrectly using Groq/Llama!)
+- ✅ `gpt5-codex` renamed to `gpt5-pro` (actual model name)
+
+---
+
 **Last Verification:** 2025-10-24 23:45 UTC
 **Next Review:** When new models release or API changes
