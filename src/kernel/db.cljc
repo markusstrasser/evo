@@ -11,11 +11,10 @@
   "Create an empty database with canonical shape."
   []
   {:nodes {"session"                  {:type :session-root :props {}}
-           const/session-selection-id {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}}
-   :children-by-parent {const/root-session [const/session-selection-id]}
+           const/session-selection-id {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}
+           const/session-ui-id        {:type :ui           :props {:editing-block-id nil :cursor {}}}}
+   :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id]}
    :roots const/roots
-   :ui {:editing-block-id nil
-        :cursor {}}  ; Map of block-id -> {:first-row? bool :last-row? bool}
    :derived {:parent-of {}
              :index-of {}
              :prev-id-of {}
