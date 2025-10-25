@@ -43,15 +43,26 @@
   [db ops]
   (remove #(is-noop-place? db %) ops))
 
+(defn- deep-props-merge
+  "Deep merge props maps, preserving nested structure.
+   When both values are maps, recursively merge. Otherwise take the new value."
+  [a b]
+  (merge-with (fn [x y]
+                (if (and (map? x) (map? y))
+                  (deep-props-merge x y)
+                  y))
+              a b))
+
 (defn- merge-adjacent-updates
-  "Merge adjacent :update-node operations on the same id."
+  "Merge adjacent :update-node operations on the same id.
+   Uses deep merge to preserve nested property updates."
   [ops]
   (reduce
    (fn [acc op]
      (if-let [prev (peek acc)]
        (if (and (= :update-node (:op op) (:op prev))
                 (= (:id op) (:id prev)))
-         (conj (pop acc) (update prev :props merge (:props op)))
+         (conj (pop acc) (update prev :props deep-props-merge (:props op)))
          (conj acc op))
        [op]))
    []
@@ -78,11 +89,24 @@
    :at op-index
    :hint hint})
 
+(defn- parent-of-from
+  "Build parent-of map from children-by-parent.
+   Returns map of {child-id parent-id}."
+  [children-by-parent]
+  (reduce-kv
+   (fn [m parent kids]
+     (reduce #(assoc %1 %2 parent) m kids))
+   {}
+   children-by-parent))
+
 (defn- descendant-of?
   "Check if potential-descendant is a descendant of potential-ancestor.
-   Walks up the parent chain until reaching a root or detecting the ancestor."
+   Walks up the parent chain until reaching a root or detecting the ancestor.
+
+   Builds fresh parent-of map from children-by-parent to avoid stale derived data
+   during multi-op validation."
   [db potential-ancestor potential-descendant]
-  (let [parent-of (get-in db [:derived :parent-of])
+  (let [parent-of (parent-of-from (:children-by-parent db))
         roots (:roots db)]
     (loop [current potential-descendant]
       (cond
@@ -281,6 +305,14 @@
   "Return Malli schemas for operations."
   []
   (schema/describe-ops))
+
+(defn txret
+  "Convenience wrapper for interpret that returns {:db :issues}.
+   Omits :trace for cleaner test assertions."
+  ([db txs]
+   (select-keys (interpret db txs) [:db :issues]))
+  ([db txs opts]
+   (select-keys (interpret db txs opts) [:db :issues])))
 
 ;; ── Tagged Literal Readers ───────────────────────────────────────────────────
 
