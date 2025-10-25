@@ -11,6 +11,8 @@
   (:require [kernel.intent :as intent]
             [kernel.transaction :as tx]
             [kernel.history :as H]
+            [kernel.db :as db]
+            [kernel.dbg :as dbg]
             [clojure.string :as str])
   #?(:clj (:import [java.io File])))
 
@@ -187,3 +189,34 @@
      (has-handler? :foo) ;=> false"
   [intent-type]
   (intent/has-handler? intent-type))
+
+(defn check
+  "Validate database invariants and return formatted report.
+
+   Runs both:
+   - Global DB validation (parent/child relationships, cycles, etc.)
+   - Derived index freshness checks
+
+   Returns:
+   - {:ok? true} - If all checks pass
+   - {:ok? false :errors [...]} - If validation fails
+
+   Example:
+     (check db)
+     ;=> {:ok? true}
+
+     (check broken-db)
+     ;=> {:ok? false
+     ;    :errors [\"Child x of parent y does not exist in :nodes\"
+     ;             \":derived is stale - does not match recomputed version\"]}
+
+   Use in REPL:
+     (let [result (api/check db)]
+       (if (:ok? result)
+         (println \"✓ DB is valid\")
+         (do
+           (println \"✗ DB validation failed:\")
+           (doseq [err (:errors result)]
+             (println \"  -\" err)))))"
+  [db]
+  (db/validate db))
