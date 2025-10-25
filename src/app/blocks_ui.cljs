@@ -19,20 +19,21 @@
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
 (defonce !db
-  (atom (-> (DB/empty-db)
-            ;; Create sample outline structure
-            (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
-                          {:op :place :id "page" :under :doc :at :last}
-                          {:op :create-node :id "a" :type :block :props {:text "First block"}}
-                          {:op :place :id "a" :under "page" :at :last}
-                          {:op :create-node :id "b" :type :block :props {:text "Second block"}}
-                          {:op :place :id "b" :under "page" :at :last}
-                          {:op :create-node :id "c" :type :block :props {:text "Third block\nwith multiple\nlines for testing"}}
-                          {:op :place :id "c" :under "page" :at :last}
-                          {:op :create-node :id "d" :type :block :props {:text "Nested block"}}
-                          {:op :place :id "d" :under "b" :at :last}])
-            :db
-            (H/record)))) ;; Record initial state for undo
+         (atom
+           (-> (DB/empty-db)
+               ;; Create sample outline structure
+               (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
+                              {:op :place :id "page" :under :doc :at :last}
+                              {:op :create-node :id "a" :type :block :props {:text "First block"}}
+                              {:op :place :id "a" :under "page" :at :last}
+                              {:op :create-node :id "b" :type :block :props {:text "Second block"}}
+                              {:op :place :id "b" :under "page" :at :last}
+                              {:op :create-node :id "c" :type :block :props {:text "Third block\nwith multiple\nlines for testing"}}
+                              {:op :place :id "c" :under "page" :at :last}
+                              {:op :create-node :id "d" :type :block :props {:text "Nested block"}}
+                              {:op :place :id "d" :under "b" :at :last}])
+               :db
+               (H/record))))                                ;; Record initial state for undo
 
 ;; ── Intent dispatcher (routes to kernel or plugins) ──────────────────────────
 
@@ -61,8 +62,8 @@
   (let [db-before @!db
         {:keys [db ops path]} (intent/apply-intent db-before intent-map)]
     (case path
-      :ops (interpret! ops) ;; Structural: interpret through kernel
-      :db (swap! !db (constantly db)) ;; View: direct DB update
+      :ops (interpret! ops)                                 ;; Structural: interpret through kernel
+      :db (swap! !db (constantly db))                       ;; View: direct DB update
       :unknown (js/console.warn "Unknown intent type:" (:type intent-map)))))
 
 ;; ── Global keyboard shortcuts ─────────────────────────────────────────────────
@@ -88,14 +89,14 @@
       (do (.preventDefault e)
           (let [parent (get-in db [:derived :parent-of focus-id])
                 new-id (str "block-" (random-uuid))]
-            (handle-intent {:type :create-and-place
-                            :id new-id
+            (handle-intent {:type   :create-and-place
+                            :id     new-id
                             :parent parent
-                            :after focus-id})
+                            :after  focus-id})
             ;; Defer enter-edit to next tick to ensure create completes
             (js/setTimeout
-             #(handle-intent {:type :enter-edit :block-id new-id})
-             0)))
+              #(handle-intent {:type :enter-edit :block-id new-id})
+              0)))
 
       ;; ArrowDown - Navigate to next sibling (plain, only when NOT editing)
       (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?) focus-id (not editing?))
@@ -176,14 +177,14 @@
   "Hidden element for cursor position detection (Logseq technique)."
   []
   [:div#mock-text
-   {:style {:width "100%"
-            :height "100%"
-            :position "absolute"
-            :visibility "hidden"
-            :top 0
-            :left 0
+   {:style {:width          "100%"
+            :height         "100%"
+            :position       "absolute"
+            :visibility     "hidden"
+            :top            0
+            :left           0
             :pointer-events "none"
-            :z-index -1000}}])
+            :z-index        -1000}}])
 
 (defn Outline
   "Render outline tree by composing Block components."
@@ -191,20 +192,20 @@
   (let [children (get-in db [:children-by-parent root-id] [])]
     (into [:div.outline]
           (map (fn [child-id]
-                 (block/Block {:db db
-                               :block-id child-id
-                               :depth 0
+                 (block/Block {:db        db
+                               :block-id  child-id
+                               :depth     0
                                :on-intent on-intent}))
                children))))
 
 (defn DebugPanel [db]
   [:div.debug-panel
-   {:style {:margin-top "30px"
-            :padding "15px"
+   {:style {:margin-top       "30px"
+            :padding          "15px"
             :background-color "#f8f9fa"
-            :border-radius "4px"
-            :font-family "monospace"
-            :font-size "12px"}}
+            :border-radius    "4px"
+            :font-family      "monospace"
+            :font-size        "12px"}}
    [:div [:strong "Selection: "] (pr-str (sel/get-selection db))]
    [:div [:strong "Focus: "] (pr-str (sel/get-focus db))]
    [:div [:strong "Editing: "] (pr-str (edit/editing-block-id db))]
@@ -213,14 +214,14 @@
 
 (defn HotkeysReference []
   [:div.hotkeys-footer
-   {:style {:margin-top "30px"
-            :padding "20px"
+   {:style {:margin-top       "30px"
+            :padding          "20px"
             :background-color "#f0f0f0"
-            :border-radius "4px"}}
+            :border-radius    "4px"}}
    [:h4 "Keyboard Shortcuts (Logseq Style)"]
-   [:div {:style {:display "grid"
+   [:div {:style {:display               "grid"
                   :grid-template-columns "repeat(2, 1fr)"
-                  :gap "10px"}}
+                  :gap                   "10px"}}
     [:div
      [:h5 "Navigation"]
      [:div.hotkey-item "↑/↓ - Move cursor (or navigate blocks at boundary)"]
@@ -243,9 +244,9 @@
   (let [db @!db]
     [:div.app
      {:style {:font-family "system-ui, -apple-system, sans-serif"
-              :padding "20px"
-              :max-width "800px"
-              :margin "0 auto"}}
+              :padding     "20px"
+              :max-width   "800px"
+              :margin      "0 auto"}}
 
      ;; Mock-text for cursor detection
      (MockText)
@@ -255,8 +256,8 @@
       "Demonstrating: Plugins (multimethods) → Components (getters/intents) → App (composition)"]
 
      ;; Main outline
-     (Outline {:db db
-               :root-id "page"
+     (Outline {:db        db
+               :root-id   "page"
                :on-intent handle-intent})
 
      ;; Debug info
@@ -276,17 +277,17 @@
 
   ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
   (d/set-dispatch!
-   (fn [event-data handler-data]
-     (cond
-       ;; Handle lifecycle hooks
-       (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
-       (when (fn? handler-data)
-         (handler-data event-data))
+    (fn [event-data handler-data]
+      (cond
+        ;; Handle lifecycle hooks
+        (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+        (when (fn? handler-data)
+          (handler-data event-data))
 
-       ;; Handle DOM events (if we use data-driven events in the future)
-       (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (when (fn? handler-data)
-         (handler-data (:replicant/dom-event event-data))))))
+        ;; Handle DOM events (if we use data-driven events in the future)
+        (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+        (when (fn? handler-data)
+          (handler-data (:replicant/dom-event event-data))))))
 
   ;; Set up global keyboard listener (Cmd+Z, etc)
   (.addEventListener js/document "keydown" handle-global-keydown)

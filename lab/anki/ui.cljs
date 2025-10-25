@@ -1,11 +1,11 @@
-(ns lab.anki.ui
+(ns anki.ui
   "Anki clone UI using Replicant"
   (:require [clojure.string :as str]
             [clojure.walk]
-            [lab.anki.core :as core]
-            [lab.anki.fs :as fs]
-            [lab.anki.occlusion-creator :as creator]
-            [lab.anki.occlusion-creator-ui :as creator-ui]
+            [anki.core :as core]
+            [anki.fs :as fs]
+            [anki.occlusion-creator :as creator]
+            [anki.occlusion-creator-ui :as creator-ui]
             [promesa.core :as p]
             [replicant.dom :as r]))
 

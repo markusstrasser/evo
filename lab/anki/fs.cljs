@@ -1,4 +1,4 @@
-(ns lab.anki.fs
+(ns anki.fs
   "File System Access API operations"
   (:require [promesa.core :as p]
             [clojure.edn :as edn]

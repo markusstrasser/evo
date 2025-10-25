@@ -1,8 +1,8 @@
-(ns lab.anki.fsrs-test
+(ns test.anki.fsrs-test
   "FSRS algorithm tests - ported from hashcards
    https://github.com/eudoxia0/hashcards/blob/main/src/fsrs.rs"
   (:require [clojure.test :refer [deftest is testing]]
-            [lab.anki.fsrs :as fsrs]))
+            [anki.fsrs :as fsrs]))
 
 ;; Test utilities
 

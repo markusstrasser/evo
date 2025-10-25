@@ -4,7 +4,7 @@
   (:require #?(:clj  [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
             [core.db :as D]
-            [core.interpret :as I]
+            [core.transaction :as tx]
             [plugins.selection :as S]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -13,7 +13,7 @@
   "Creates a test DB with structure: doc1 -> [a, b, c]"
   []
   (let [DB0 (D/empty-db)
-        {:keys [db issues]} (I/interpret DB0
+        {:keys [db issues]} (tx/interpret DB0
                               [{:op :create-node :id "doc1" :type :doc :props {}}
                                {:op :place :id "doc1" :under :doc :at :last}
                                {:op :create-node :id "a" :type :p :props {}}
@@ -135,7 +135,7 @@
   (testing "No-op when multiple parents (invalid state)"
     (let [db (build-doc)
           ;; Create second doc with different parent
-          {:keys [db]} (I/interpret db
+          {:keys [db]} (tx/interpret db
                          [{:op :create-node :id "doc2" :type :doc :props {}}
                           {:op :place :id "doc2" :under :doc :at :last}
                           {:op :create-node :id "d" :type :p :props {}}
