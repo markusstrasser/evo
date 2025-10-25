@@ -94,8 +94,8 @@ Filesystem-based workflows with progressive disclosure (L1: metadata, L2: instru
 (repl/connect!)  (repl/init!)  (repl/quick-health-check!)
 
 ;; Tests:
-(repl/rt!)                      ; Run all tests
-(repl/rq! 'core.interpret-test) ; Reload and run specific test
+(repl/rt!)                        ; Run all tests
+(repl/rq! 'core-transaction-test) ; Reload and run specific test
 
 ;; Component testing (browser):
 (repl/sample-db! :fixture)                    ; Load test data in browser
@@ -184,13 +184,13 @@ DEBUG.reload()        // Hard reload
 ## Core Architecture
 
 **Database & Operations:**
-- `src/core/db.cljc` - Canonical DB shape, validation, derived indexes
+- `src/core/db.cljc` - Canonical DB shape, validation, derived indexes, tree utils
 - `src/core/ops.cljc` - Three core operations (create, place, update)
-- `src/core/interpret.cljc` - Transaction pipeline (normalize → validate → apply)
+- `src/core/transaction.cljc` - Transaction pipeline (normalize → validate → apply)
 - `src/core/schema.cljc` - Malli schemas
 
 **Testing:**
-- `test/core_interpret_test.cljc` - Comprehensive operation tests
+- `test/core_transaction_test.cljc` - Comprehensive operation tests
 - `dev/fixtures.cljc` - Test data generators
 - Run: `bb test` or `(repl/rt!)`
 
