@@ -198,6 +198,11 @@
                          (place-op "b" "a" :first)
                          (place-op "c" "a" :last)])
           all-nodes (keys (:nodes db))
+          ;; Roots like "session" exist in :nodes but not in :parent-of
+          ;; Node IDs are strings, but roots set contains keywords
+          roots-set (:roots db)
+          is-root? (fn [node-id] (contains? roots-set (keyword node-id)))
+          placed-nodes (remove is-root? all-nodes)
           nodes-with-parents (keys (get-in db [:derived :parent-of]))]
-      (is (= (set all-nodes) (set nodes-with-parents)))
+      (is (= (set placed-nodes) (set nodes-with-parents)))
       (is (db-valid? db)))))
