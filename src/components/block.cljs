@@ -4,9 +4,9 @@
    Uses plugin getters for data and dispatches intents for all state changes.
    Implements cursor boundary detection for seamless up/down navigation."
   (:require [replicant.dom :as d]
-            [plugins.navigation.core :as nav]
-            [plugins.editing.core :as edit]
-            [plugins.selection.core :as sel]))
+            [plugins.navigation :as nav]
+            [plugins.editing :as edit]
+            [plugins.selection :as sel]))
 
 ;; ── Mock-text cursor detection ───────────────────────────────────────────────
 

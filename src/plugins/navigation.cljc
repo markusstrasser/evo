@@ -1,4 +1,4 @@
-(ns plugins.navigation.core
+(ns plugins.navigation
   "Navigation plugin: cursor tracking, block traversal, boundary detection.
 
    Provides getters for navigation state and implements intent multimethods

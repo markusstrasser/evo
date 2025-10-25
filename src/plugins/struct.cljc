@@ -1,4 +1,4 @@
-(ns plugins.struct.core
+(ns plugins.struct
   "Structural-edit intent compiler → core ops.
 
    Lowers high-level structural editing intents (delete, indent, outdent, etc.)
@@ -14,8 +14,8 @@
   (:require [algebra.permutation :as perm]
             [core.intent :as intent]
             [plugins.siblings-order :as so]
-            [plugins.selection.core :as selection]
-            [plugins.editing.core :as editing]))
+            [plugins.selection :as selection]
+            [plugins.editing :as editing]))
 
 ;; ── Derived index accessors ──────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@
             [core.history :as H]
             [components.block :as block]
             [plugins.selection :as sel]
-            [plugins.struct.core :as struct]
+            [plugins.struct :as struct]
             [plugins.navigation :as nav]
             [plugins.editing :as edit]))
 
