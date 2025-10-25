@@ -33,6 +33,14 @@
    :spec [:map [:type [:= :exit-edit]]]
    :ops [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}]})
 
+(defintent :update-cursor-state
+  {:sig [db {:keys [block-id first-row? last-row?]}]
+   :doc "Update cursor position state for boundary detection. Ephemeral - not in history."
+   :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
+   :ops (let [current-cursor (get-in db [:nodes const/session-ui-id :props :cursor] {})
+              updated-cursor (assoc current-cursor block-id {:first-row? first-row? :last-row? last-row?})]
+          [{:op :update-node :id const/session-ui-id :props {:cursor updated-cursor}}])})
+
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
 (defintent :update-content
