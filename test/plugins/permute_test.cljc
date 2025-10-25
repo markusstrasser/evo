@@ -1,6 +1,10 @@
 (ns plugins.permute-test
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]
+            [clojure.test.check.clojure-test :refer [defspec]]
             [plugins.permute :as permute]
+            [core.permutation :as perm]
             [core.db :as db]
             [core.transaction :as tx]))
 
@@ -211,3 +215,57 @@
       (is (empty? issues))
       (is (= ["D" "A" "B" "C"]
              (get-in db [:children-by-parent "P"]))))))
+
+;; ── Property-Based Tests ──────────────────────────────────────────────────────
+
+(def gen-id
+  "Generate simple string IDs for testing."
+  (gen/fmap (fn [n] (str "node-" n)) (gen/choose 1 20)))
+
+(def gen-parent-id
+  (gen/fmap (fn [n] (str "parent-" n)) (gen/choose 1 3)))
+
+(def gen-children-list
+  "Generate a list of 3-8 child IDs under a parent."
+  (gen/vector gen-id 3 8))
+
+(defspec reorder-intent-matches-permutation-algebra
+  "Property: Lowering a reorder intent and executing the ops
+   yields the same result as directly applying the permutation."
+  100
+  (prop/for-all [children gen-children-list
+                 target-idx (gen/choose 0 7)]
+    (let [parent "test-parent"
+          ;; Pick a subset to move (at least 1, at most all)
+          num-to-select (inc (rand-int (count children)))
+          selection (vec (take num-to-select (shuffle children)))
+
+          ;; Build DB with these children
+          db (-> (db/empty-db)
+                 (assoc :nodes (zipmap children (repeat {:type :p :props {}})))
+                 (assoc-in [:children-by-parent parent] (vec children))
+                 db/derive-indexes)
+
+          ;; Create reorder intent (move selection to target-idx)
+          anchor-idx (min target-idx (dec (count children)))
+          anchor (if (zero? anchor-idx)
+                   :first
+                   {:after (nth children (dec anchor-idx))})
+
+          intent {:intent :reorder
+                  :selection selection
+                  :parent parent
+                  :anchor anchor}
+
+          ;; Method 1: Use intent lowering
+          {:keys [ops]} (permute/lower db intent)
+          {:keys [db result-via-ops issues]} (tx/txret db ops)
+
+          ;; Method 2: Direct permutation application
+          planned (permute/planned-positions db intent)
+
+          ;; Both should yield same final order
+          actual-children (get-in result-via-ops [:children-by-parent parent])]
+
+      (and (empty? issues)
+           (= planned actual-children)))))

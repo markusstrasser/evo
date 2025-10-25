@@ -72,8 +72,8 @@
 
 (defn rt!
   "Run tests in specified namespaces. If none provided, runs all tests.
-   Usage: (rt! 'algebra.permutation-test)
-          (rt! 'algebra.permutation-test 'struct.reorder-test)"
+   Usage: (rt! 'core.permutation-test)
+          (rt! 'core.permutation-test 'struct.reorder-test)"
   [& test-nses]
   #?(:clj
      (if (seq test-nses)
@@ -84,7 +84,7 @@
 
 (defn rq!
   "Quick test - run a single test namespace after requiring it.
-   Usage: (rq! 'algebra.permutation-test)"
+   Usage: (rq! 'core.permutation-test)"
   [test-ns]
   #?(:clj
      (do
@@ -250,8 +250,8 @@
   (clj! '(println "Hello from JVM"))
 
   ;; Run tests:
-  (rt! 'algebra.permutation-test)      ; Run specific test
-  (rq! 'algebra.permutation-test)      ; Reload and run
+  (rt! 'core.permutation-test)      ; Run specific test
+  (rq! 'core.permutation-test)      ; Reload and run
   (rt!)                                ; Run all tests
 
   ;; Component testing:

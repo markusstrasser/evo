@@ -11,7 +11,7 @@
    never destroyed. This maintains referential integrity and enables undo.
 
    Implements intent->ops multimethod from core.intent for structural intents."
-  (:require [algebra.permutation :as perm]
+  (:require [core.permutation :as perm]
             [core.intent :as intent]
             [plugins.siblings-order :as so]
             [plugins.selection :as selection]
