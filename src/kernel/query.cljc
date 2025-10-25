@@ -54,7 +54,7 @@
   "Get currently editing block ID (nil if not editing).
    Ephemeral state - not recorded in history."
   [db]
-  (get-in db [:ui :editing-block-id]))
+  (get-in db [:nodes const/session-ui-id :props :editing-block-id]))
 
 (defn editing?
   "Returns true if currently in edit mode."
@@ -65,19 +65,19 @@
   "Get cursor state for a block (first-row?, last-row?).
    Ephemeral state - not recorded in history."
   [db block-id]
-  (get-in db [:ui :cursor block-id]))
+  (get-in db [:nodes const/session-ui-id :props :cursor block-id]))
 
 (defn cursor-first-row?
   "Check if cursor is on first row of the given block.
    Ephemeral state - not recorded in history."
   [db block-id]
-  (get-in db [:ui :cursor block-id :first-row?] false))
+  (get-in db [:nodes const/session-ui-id :props :cursor block-id :first-row?] false))
 
 (defn cursor-last-row?
   "Check if cursor is on last row of the given block.
    Ephemeral state - not recorded in history."
   [db block-id]
-  (get-in db [:ui :cursor block-id :last-row?] false))
+  (get-in db [:nodes const/session-ui-id :props :cursor block-id :last-row?] false))
 
 ;; ── Tree Queries (Derived Indexes) ────────────────────────────────────────────
 
