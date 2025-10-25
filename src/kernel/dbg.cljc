@@ -117,10 +117,10 @@
      "  focus: " (get-in db [:nodes const/session-selection-id :props :focus]) "\n"
      "\n"
      "Edit (ephemeral):\n"
-     "  editing-block-id: " (get-in db [:ui :editing-block-id]) "\n"
+     "  editing-block-id: " (get-in db [:nodes const/session-ui-id :props :editing-block-id]) "\n"
      "\n"
      "Cursor (ephemeral):\n"
-     "  " (pr-str (get-in db [:ui :cursor])) "\n")))
+     "  " (pr-str (get-in db [:nodes const/session-ui-id :props :cursor])) "\n")))
 
 (defn inspect-node
   "Pretty-print a single node with all its properties and relationships.

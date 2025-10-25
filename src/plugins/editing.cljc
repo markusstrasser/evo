@@ -25,13 +25,13 @@
   {:sig [_db {:keys [block-id]}]
    :doc "Enter edit mode for a block. Ephemeral - not in undo/redo history."
    :spec [:map [:type [:= :enter-edit]] [:block-id :string]]
-   :ops [{:op :update-ui :props {:editing-block-id block-id}}]})
+   :ops [{:op :update-node :id const/session-ui-id :props {:editing-block-id block-id}}]})
 
 (defintent :exit-edit
   {:sig [_db _intent]
    :doc "Exit edit mode. Ephemeral - not in undo/redo history."
    :spec [:map [:type [:= :exit-edit]]]
-   :ops [{:op :update-ui :props {:editing-block-id nil}}]})
+   :ops [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}]})
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 

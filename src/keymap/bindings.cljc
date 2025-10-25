@@ -1,38 +1,27 @@
 (ns keymap.bindings
-  "Load and register keyboard bindings from EDN data.
+  "Load and register keyboard bindings from pure data.
 
-   Bindings are defined in bindings.edn for hot-reload and easy editing."
-  #?(:cljs (:require-macros [keymap.bindings :refer [bindings-edn]]))
-  (:require [keymap.core :as keymap]))
+   Bindings are defined in bindings-data namespace for hot-reload and easy editing."
+  (:require [keymap.core :as keymap]
+            [keymap.bindings-data :as BD]))
 
-;; ── Load Bindings from EDN ────────────────────────────────────────────────────
+;; ── Reload Function ───────────────────────────────────────────────────────────
 
-#?(:clj
-   (defmacro bindings-edn []
-     (read-string (slurp "src/keymap/bindings.edn"))))
-
-(def ^:private bindings-data
-  "Keymap bindings loaded from EDN file at compile time."
-  (bindings-edn))
+(defn reload!
+  "Reload all bindings from bindings-data. Call after editing bindings."
+  []
+  (keymap/reset-all!)
+  (doseq [[ctx bs] BD/data]
+    (keymap/register! ctx bs))
+  :ok)
 
 ;; ── Register Bindings on Namespace Load ──────────────────────────────────────
 
-(doseq [[context bindings] bindings-data]
-  (keymap/register! context bindings))
+(reload!)
 
 (comment
-  ;; Usage example from UI layer:
-  (let [event (keymap/parse-dom-event dom-event)
-        db @!db
-        intent-type (keymap/resolve-intent-type event db)]
-    (when intent-type
-      (handle-intent {:type intent-type})))
-
-  ;; Hot reload example (edit bindings.edn and reload this namespace):
+  ;; Hot reload: edit bindings_data.cljc and reload
   (require '[keymap.bindings] :reload)
 
-  ;; Or programmatically:
-  (keymap/clear-bindings! :non-editing)
-  (keymap/register! :non-editing
-    [[{:key "j"} :select-next-sibling]
-     [{:key "k"} :select-prev-sibling]]))
+  ;; Or call reload! directly
+  (reload!))
