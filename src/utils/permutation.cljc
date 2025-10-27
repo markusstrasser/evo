@@ -1,4 +1,4 @@
-(ns kernel.permutation
+(ns utils.permutation
   "Pure permutation algebra for sibling reordering.
 
   Permutations are represented as maps {index → index} with fixed points elided.
@@ -6,8 +6,8 @@
 
   Inspired by Electric/Hyperfiddle's incseq/permutation, but independent implementation.
 
-  INTERNAL: API surface is the plugins.permute intents. Do not depend on this
-  namespace elsewhere.")
+  ARCHIVED: This module is currently unused. Preserved in utils for potential future use.
+  The active implementation in plugins.permute uses direct vector calculations instead.")
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Core Data & Constants
