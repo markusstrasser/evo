@@ -259,26 +259,22 @@
                                      (.focus node)
 
                                      ;; Set cursor position based on session state
+                                     ;; NOTE: cursor-position is cleared by the caller (shell), not here
                                      (when (and cursor-pos (not (empty? (.-textContent node))))
                                        (try
                                          (let [range (.createRange js/document)
-                                               sel (.getSelection js/window)]
-                                           (.selectAllChildren range node)
-                                           ;; Position cursor based on requested position
-                                           (if (= cursor-pos :start)
-                                             (.collapseToStart range)
-                                             (.collapseToEnd range))
-                                           (.removeAllRanges sel)
-                                           (.addRange sel range))
+                                               sel (.getSelection js/window)
+                                               text-node (.-firstChild node)]
+                                           ;; Position cursor in the text node
+                                           (when (and text-node (= (.-nodeType text-node) 3))
+                                             (let [text-length (.-length text-node)
+                                                   pos (if (= cursor-pos :start) 0 text-length)]
+                                               (.setStart range text-node pos)
+                                               (.setEnd range text-node pos)
+                                               (.removeAllRanges sel)
+                                               (.addRange sel range))))
                                          (catch js/Error e
-                                           (js/console.error "Cursor error:" e)))
-
-                                       ;; Clear cursor position AFTER positioning (async to avoid re-render loop)
-                                       (js/setTimeout
-                                         #(on-intent {:type :update-node
-                                                      :id "session/ui"
-                                                      :props {:cursor-position nil}})
-                                         0))
+                                           (js/console.error "Cursor positioning failed:" e))))
 
                                      (update-mock-text! (.-textContent node))))
             :on {:input (fn [e]
