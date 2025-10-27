@@ -1,7 +1,7 @@
 (ns plugins.struct
-  "Structural-edit intent compiler → core ops.
+  "Structural-edit and movement intent compiler → core ops.
 
-   Lowers high-level structural editing intents (delete, indent, outdent, etc.)
+   Lowers high-level structural editing intents (delete, indent, outdent, move, etc.)
    into the closed instruction set of three core operations:
    - :create-node
    - :place
@@ -10,13 +10,12 @@
    Design principle: Delete is archive by design - nodes are moved to :trash,
    never destroyed. This maintains referential integrity and enables undo.
 
-   Implements intent->ops multimethod from core.intent for structural intents."
+   Includes movement/reordering logic (merged from plugins.permute)."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.query :as q]
-            [plugins.selection :as selection]
-            [plugins.editing :as editing]
-            [plugins.permute :as permute]))
+            [kernel.position :as pos]))
+
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
@@ -73,26 +72,19 @@
               [{:op :create-node :id id :type :block :props {:text ""}}
                {:op :place :id id :under parent :at (if after {:after after} :last)}])})
 
-
-;; ── Reorder intents ───────────────────────────────────────────────────────────
-
-(intent/register-intent! :reorder/children
-  {:doc "Reorder children to explicit target order."
-   :spec [:map [:type [:= :reorder/children]] [:parent :string] [:order [:vector :string]]]
-   :handler (fn [db {:keys [parent order]}]
-              (intent/intent->ops db {:type :move
-                                      :selection (vec order)
-                                      :parent parent
-                                      :anchor :first}))})
-
-(intent/register-intent! :reorder/move-blocks
-  {:doc "Move contiguous selection after pivot."
-   :spec [:map [:type [:= :reorder/move-blocks]] [:parent :string] [:ids [:vector :string]] [:after {:optional true} :string]]
-   :handler (fn [db {:keys [parent ids after]}]
-              (intent/intent->ops db {:type :move
-                                      :selection (vec ids)
-                                      :parent parent
-                                      :anchor (if after {:after after} :first)}))})
+(intent/register-intent! :create-and-enter-edit
+  {:doc "Create new block after focus and immediately enter edit mode.
+   This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent."
+   :spec [:map [:type [:= :create-and-enter-edit]]]
+   :handler (fn [db _]
+              (let [focus-id (q/focus db)
+                    parent (q/parent-of db focus-id)
+                    new-id (str "block-" (random-uuid))]
+                [{:op :create-node :id new-id :type :block :props {:text ""}}
+                 {:op :place :id new-id :under parent :at {:after focus-id}}
+                 {:op :update-node
+                  :id const/session-ui-id
+                  :props {:editing-block-id new-id}}]))})
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
@@ -112,6 +104,13 @@
                   editing-id [editing-id]
                   :else [])]
     (vec (sort-by-doc-order db targets))))
+
+(defn- apply-to-active-targets
+  "Apply op-fn to each active target node, returning combined ops vector."
+  [db op-fn]
+  (->> (active-targets db)
+       (mapcat #(op-fn db %))
+       vec))
 
 (defn- same-parent?
   "Check that all ids share the same parent."
@@ -153,31 +152,19 @@
   {:doc "Delete all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :delete-selected]]]
    :handler (fn [db _]
-              (let [selected (q/selection db)
-                    editing-id (q/editing-block-id db)
-                    targets (if (seq selected) selected (if editing-id [editing-id] []))
-                    ordered (sort-by-doc-order db targets)]
-                (vec (mapcat #(delete-ops db %) ordered))))})
+              (apply-to-active-targets db delete-ops))})
 
 (intent/register-intent! :indent-selected
   {:doc "Indent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :indent-selected]]]
    :handler (fn [db _]
-              (let [selected (q/selection db)
-                    editing-id (q/editing-block-id db)
-                    targets (if (seq selected) selected (if editing-id [editing-id] []))
-                    ordered (sort-by-doc-order db targets)]
-                (vec (mapcat #(indent-ops db %) ordered))))})
+              (apply-to-active-targets db indent-ops))})
 
 (intent/register-intent! :outdent-selected
   {:doc "Outdent all selected nodes (or editing block if no selection)."
    :spec [:map [:type [:= :outdent-selected]]]
    :handler (fn [db _]
-              (let [selected (q/selection db)
-                    editing-id (q/editing-block-id db)
-                    targets (if (seq selected) selected (if editing-id [editing-id] []))
-                    ordered (sort-by-doc-order db targets)]
-                (vec (mapcat #(outdent-ops db %) ordered))))})
+              (apply-to-active-targets db outdent-ops))})
 
 (intent/register-intent! :move-selected-up
   {:doc "Move selected nodes up one sibling position."
@@ -191,3 +178,148 @@
    :handler (fn [db _]
               (move-selected-down-ops db))})
 
+;; ── Movement/Reordering (merged from plugins.permute) ────────────────────────
+
+(defn planned-positions
+  "Compute target sibling vector after applying selection at the given anchor.
+
+   Args:
+     db - database
+     selection - vector of node IDs to move (preserves order)
+     parent - target parent ID
+     anchor - position anchor (from kernel.anchor)
+
+   Returns:
+     Vector representing the final sibling order after move.
+
+   Algorithm:
+     1. Remove all selected nodes from parent's current children
+     2. Resolve anchor position in the remaining siblings
+     3. Insert selection at that position (preserving internal order)"
+  [db {:keys [selection parent anchor]}]
+  (let [;; Get current siblings
+        current-kids (pos/children db parent)
+
+        ;; Remove selected nodes (they'll be re-inserted)
+        selection-set (set selection)
+        kids-without-selection (filterv #(not (contains? selection-set %)) current-kids)
+
+        ;; Resolve anchor in the list WITHOUT the selected nodes
+        ;; This matches the :place semantics (remove → resolve → insert)
+        target-idx (try
+                     (pos/resolve-anchor-in-vec kids-without-selection anchor)
+                     (catch #?(:clj Exception :cljs js/Error) _
+                       ;; If anchor references a selected node, it will fail after removal
+                       ;; Fallback to end
+                       (count kids-without-selection)))
+
+        ;; Build result: head + selection + tail
+        head (subvec kids-without-selection 0 (min target-idx (count kids-without-selection)))
+        tail (subvec kids-without-selection (min target-idx (count kids-without-selection)))]
+
+    (vec (concat head selection tail))))
+
+
+(defn lower-reorder
+  "Lower a :move intent to a minimal sequence of :place operations.
+
+   Intent schema:
+   {:selection [id ...]      ; IDs to move/reorder (non-contiguous OK)
+    :parent parent-id        ; target parent
+    :anchor Anchor}          ; where selection lands
+
+   Returns: vector of :place ops that achieve the reorder.
+
+   Strategy: emit one :place per selected ID, in target order, using relative anchors.
+   Each :place uses {:after prev-id} to build up the sequence incrementally."
+  [db intent]
+  (let [{:keys [selection parent anchor]} intent
+        target-order (planned-positions db intent)
+
+        ;; Build ops: place each selected node using {:after previous-in-target-order}
+        ops (reduce (fn [ops-acc id]
+                      (let [;; Find what comes before this ID in target order
+                            idx-in-target (.indexOf target-order id)
+                            prev-id (when (pos? idx-in-target)
+                                      (nth target-order (dec idx-in-target)))]
+                        (conj ops-acc
+                              (if prev-id
+                                {:op :place
+                                 :id id
+                                 :under parent
+                                 :at {:after prev-id}}
+                                ;; First in selection goes at the anchor
+                                {:op :place
+                                 :id id
+                                 :under parent
+                                 :at anchor}))))
+                    []
+                    selection)]
+    ops))
+
+
+(defn validate-move-intent
+  "Validate a move intent before lowering.
+
+   Returns: nil if valid, or issue map if invalid.
+
+   Checks:
+   - Selection IDs exist
+   - Parent exists
+   - No cycles (none of selection are ancestors of parent)
+   - Anchor is valid (if it can be pre-validated)"
+  [db {:keys [selection parent] :as intent}]
+  (let [nodes (:nodes db)
+        roots (set (:roots db))]
+    (cond
+      ;; Check all selected nodes exist
+      (not-every? #(contains? nodes %) selection)
+      {:reason ::node-not-found
+       :hint "One or more selected nodes don't exist"
+       :missing (filterv #(not (contains? nodes %)) selection)
+       :intent intent}
+
+      ;; Check parent exists
+      (not (or (contains? roots parent)
+               (contains? nodes parent)))
+      {:reason ::parent-not-found
+       :hint (str "Parent " parent " doesn't exist")
+       :parent parent
+       :intent intent}
+
+      ;; Check for cycles: none of selection can be ancestors of parent
+      (and (string? parent)  ; roots can't have parents
+           (some (fn [sel-id]
+                   (loop [curr parent
+                          visited #{}]
+                     (cond
+                       (nil? curr) false
+                       (= curr sel-id) true
+                       (contains? visited curr) false
+                       (contains? roots curr) false
+                       :else (recur (get-in db [:derived :parent-of curr])
+                                    (conj visited curr)))))
+                 selection))
+      {:reason ::would-create-cycle
+       :hint "Cannot move node into its own descendant"
+       :intent intent}
+
+      ;; All checks passed
+      :else nil)))
+
+(defn lower-move
+  "Main entry point: lower a move intent to ops.
+
+   Returns:
+   - {:ops [Op...]} if valid
+   - {:issues [Issue...]} if invalid"
+  [db intent]
+  (if-let [issue (validate-move-intent db intent)]
+    {:issues [issue]}
+    {:ops (lower-reorder db intent)}))
+
+(intent/register-intent! :move
+  {:doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
+   :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
+   :handler (fn [db intent]
+              (:ops (lower-move db intent)))})
