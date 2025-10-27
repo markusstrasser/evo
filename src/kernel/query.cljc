@@ -67,6 +67,12 @@
   [db block-id]
   (get-in db [:nodes const/session-ui-id :props :cursor block-id]))
 
+(defn cursor-position
+  "Get cursor position hint (:start or :end) for entering edit mode.
+   Ephemeral state - not recorded in history."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :cursor-position]))
+
 (defn cursor-first-row?
   "Check if cursor is on first row of the given block.
    Ephemeral state - not recorded in history."
@@ -78,6 +84,45 @@
    Ephemeral state - not recorded in history."
   [db block-id]
   (get-in db [:nodes const/session-ui-id :props :cursor block-id :last-row?] false))
+
+;; ── Fold/Zoom Queries (Ephemeral) ─────────────────────────────────────────────
+
+(defn folded-set
+  "Get the set of folded block IDs.
+   Ephemeral state - not recorded in history."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :folded] #{}))
+
+(defn folded?
+  "Check if a block is currently folded (children hidden).
+   Ephemeral state - not recorded in history."
+  [db block-id]
+  (contains? (folded-set db) block-id))
+
+(defn zoom-stack
+  "Get the zoom navigation stack.
+   Ephemeral state - not recorded in history."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :zoom-stack] []))
+
+(defn zoom-root
+  "Get the current zoom root (rendering root block ID).
+   Returns nil if at document root.
+   Ephemeral state - not recorded in history."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :zoom-root]))
+
+(defn zoom-level
+  "Get current zoom level (0 = root, 1+ = zoomed in).
+   Ephemeral state - not recorded in history."
+  [db]
+  (count (zoom-stack db)))
+
+(defn in-zoom?
+  "Check if currently zoomed into a block.
+   Ephemeral state - not recorded in history."
+  [db]
+  (pos? (zoom-level db)))
 
 ;; ── Tree Queries (Derived Indexes) ────────────────────────────────────────────
 
