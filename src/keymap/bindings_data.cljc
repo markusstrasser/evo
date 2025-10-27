@@ -10,7 +10,7 @@
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace"} :delete-selected]
-                 [{:key "Enter"} :create-new-block-after-focus]]
+                 [{:key "Enter"} :create-and-enter-edit]]
    :editing     [[{:key "Escape"} :exit-edit]
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]

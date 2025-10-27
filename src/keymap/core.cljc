@@ -31,7 +31,7 @@
 
    Example:
      (register! :non-editing
-       [[{:key \"Enter\"} :create-new-block-after-focus]
+       [[{:key \"Enter\"} :create-and-enter-edit]
         [{:key \"ArrowDown\"} :select-next-sibling]
         [{:key \"Tab\" :shift true} :outdent-selected]])"
   [context bindings]

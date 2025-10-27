@@ -79,18 +79,6 @@
       intent-type
       (do (.preventDefault e)
           (cond
-            ;; Special handling: Enter creates block and enters edit mode
-            (= intent-type :create-new-block-after-focus)
-            (let [parent (get-in db [:derived :parent-of focus-id])
-                  new-id (str "block-" (random-uuid))]
-              (handle-intent {:type :create-and-place
-                              :id new-id
-                              :parent parent
-                              :after focus-id})
-              (js/setTimeout
-                #(handle-intent {:type :enter-edit :block-id new-id})
-                0))
-
             ;; Map intent: use directly
             (map? intent-type)
             (handle-intent intent-type)
