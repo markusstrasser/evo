@@ -144,7 +144,27 @@
                     :id const/session-selection-id
                     :props props}])))})
 
-;; ── Helper Intents (for keybindings) ──────────────────────────────────────────
+;; ── Helper Intents (for keybindings & backward compat) ────────────────────────
+
+(intent/register-intent! :select-next-sibling
+  {:doc "Select next sibling of focused node. Wrapper for unified :selection intent."
+   :spec [:map [:type [:= :select-next-sibling]]]
+   :handler (fn [db _]
+              (when-let [current (tree/focus db)]
+                (when-let [next-id (tree/next-sibling db current)]
+                  [{:op :update-node
+                    :id const/session-selection-id
+                    :props (calc-select-props next-id)}])))})
+
+(intent/register-intent! :select-prev-sibling
+  {:doc "Select previous sibling of focused node. Wrapper for unified :selection intent."
+   :spec [:map [:type [:= :select-prev-sibling]]]
+   :handler (fn [db _]
+              (when-let [current (tree/focus db)]
+                (when-let [prev-id (tree/prev-sibling db current)]
+                  [{:op :update-node
+                    :id const/session-selection-id
+                    :props (calc-select-props prev-id)}])))})
 
 (intent/register-intent! :extend-to-next-sibling
   {:doc "Extend selection to include next sibling of focused node."
