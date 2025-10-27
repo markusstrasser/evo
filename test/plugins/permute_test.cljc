@@ -3,8 +3,8 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]
-            [plugins.permute :as permute]
-            [kernel.permutation :as perm]
+            [plugins.struct :as struct]
+            [utils.permutation :as perm]
             [kernel.db :as db]
             [kernel.transaction :as tx]))
 
@@ -29,7 +29,7 @@
           intent {:selection ["B" "D"]
                   :parent "P"
                   :anchor {:after "A"}}
-          result (permute/planned-positions db intent)]
+          result (struct/planned-positions db intent)]
       (is (= ["A" "B" "D" "C"] result)
           "B and D should be placed after A"))))
 
@@ -39,7 +39,7 @@
           intent {:selection ["C" "D"]
                   :parent "P"
                   :anchor :at-start}
-          result (permute/planned-positions db intent)]
+          result (struct/planned-positions db intent)]
       (is (= ["C" "D" "A" "B"] result)))))
 
 (deftest test-planned-positions-at-end
@@ -48,7 +48,7 @@
           intent {:selection ["A" "B"]
                   :parent "P"
                   :anchor :at-end}
-          result (permute/planned-positions db intent)]
+          result (struct/planned-positions db intent)]
       (is (= ["C" "D" "A" "B"] result)))))
 
 (deftest test-planned-positions-cross-parent
@@ -57,7 +57,7 @@
           intent {:selection ["B" "C"]
                   :parent "Q"
                   :anchor :at-end}
-          result (permute/planned-positions db intent)]
+          result (struct/planned-positions db intent)]
       (is (= ["X" "B" "C"] result)
           "B and C should be appended to Q's children"))))
 
@@ -68,7 +68,7 @@
                   :selection ["B" "D"]
                   :parent "P"
                   :anchor {:after "A"}}
-          {:keys [ops issues]} (permute/lower db intent)]
+          {:keys [ops issues]} (struct/lower-move db intent)]
       (is (empty? issues) "Should have no issues")
       (is (= 2 (count ops)) "Should emit one op per selected node")
 
@@ -93,7 +93,7 @@
                   :selection ["B" "D"]
                   :parent "P"
                   :anchor {:after "A"}}
-          {:keys [ops]} (permute/lower db intent)
+          {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues) "All ops should execute successfully")
       (is (= ["A" "B" "D" "C"]
@@ -107,7 +107,7 @@
                   :selection ["B" "C"]
                   :parent "Q"
                   :anchor :at-end}
-          {:keys [ops issues]} (permute/lower db intent)]
+          {:keys [ops issues]} (struct/lower-move db intent)]
       (is (empty? issues))
       (is (= 2 (count ops)))
 
@@ -119,30 +119,30 @@
         (is (= ["A" "D"] (get-in db [:children-by-parent "P"]))
             "A and D should remain in P")))))
 
-(deftest test-validate-intent-missing-node
+(deftest test-validate-move-intent-missing-node
   (testing "Validation catches missing node"
     (let [db (make-test-db)
           intent {:intent :reorder
                   :selection ["B" "MISSING"]
                   :parent "P"
                   :anchor :at-end}
-          issue (permute/validate-intent db intent)]
+          issue (struct/validate-move-intent db intent)]
       (is (some? issue))
-      (is (= ::permute/node-not-found (:reason issue)))
+      (is (= ::struct/node-not-found (:reason issue)))
       (is (= ["MISSING"] (:missing issue))))))
 
-(deftest test-validate-intent-missing-parent
+(deftest test-validate-move-intent-missing-parent
   (testing "Validation catches missing parent"
     (let [db (make-test-db)
           intent {:intent :reorder
                   :selection ["B"]
                   :parent "MISSING"
                   :anchor :at-end}
-          issue (permute/validate-intent db intent)]
+          issue (struct/validate-move-intent db intent)]
       (is (some? issue))
-      (is (= ::permute/parent-not-found (:reason issue))))))
+      (is (= ::struct/parent-not-found (:reason issue))))))
 
-(deftest test-validate-intent-cycle
+(deftest test-validate-move-intent-cycle
   (testing "Validation catches would-be cycles"
     ;; Create a nested structure: P -> A -> B
     (let [db (-> (make-test-db)
@@ -153,9 +153,9 @@
                   :selection ["P"]
                   :parent "B"
                   :anchor :at-end}
-          issue (permute/validate-intent db intent)]
+          issue (struct/validate-move-intent db intent)]
       (is (some? issue))
-      (is (= ::permute/would-create-cycle (:reason issue))))))
+      (is (= ::struct/would-create-cycle (:reason issue))))))
 
 (deftest test-idempotence
   (testing "Applying the same reorder twice is idempotent"
@@ -164,11 +164,11 @@
                   :selection ["B" "D"]
                   :parent "P"
                   :anchor {:after "A"}}
-          {:keys [ops]} (permute/lower db intent)
+          {:keys [ops]} (struct/lower-move db intent)
           result1 (tx/txret db ops)
           db1 (:db result1)
           ;; Apply again
-          {:keys [ops]} (permute/lower db1 intent)
+          {:keys [ops]} (struct/lower-move db1 intent)
           result2 (tx/txret db1 ops)
           db2 (:db result2)]
       (is (empty? (:issues result1)))
@@ -185,7 +185,7 @@
                   :selection ["B" "D"]
                   :parent "P"
                   :anchor :at-start}
-          {:keys [ops]} (permute/lower db intent)
+          {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
       (is (= ["B" "D" "A" "C"]
@@ -199,7 +199,7 @@
                   :selection []
                   :parent "P"
                   :anchor :at-end}
-          {:keys [ops issues]} (permute/lower db intent)]
+          {:keys [ops issues]} (struct/lower-move db intent)]
       (is (empty? issues))
       (is (empty? ops)))))
 
@@ -210,7 +210,7 @@
                   :selection ["D"]
                   :parent "P"
                   :anchor :at-start}
-          {:keys [ops]} (permute/lower db intent)
+          {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
       (is (= ["D" "A" "B" "C"]
@@ -260,11 +260,11 @@
                   :anchor anchor}
 
           ;; Method 1: Use intent lowering
-          {:keys [ops]} (permute/lower db intent)
+          {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)
 
           ;; Method 2: Direct permutation application
-          planned (permute/planned-positions db intent)
+          planned (struct/planned-positions db intent)
 
           ;; Both should yield same final order
           actual-children (get-in db [:children-by-parent parent])]
