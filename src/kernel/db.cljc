@@ -12,7 +12,11 @@
   []
   {:nodes {"session"                  {:type :session-root :props {}}
            const/session-selection-id {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}
-           const/session-ui-id        {:type :ui           :props {:editing-block-id nil :cursor {}}}}
+           const/session-ui-id        {:type :ui           :props {:editing-block-id nil
+                                                                    :cursor {}
+                                                                    :folded #{}
+                                                                    :zoom-stack []
+                                                                    :zoom-root nil}}}
    :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id]}
    :roots const/roots
    :derived {:parent-of {}
@@ -25,25 +29,19 @@
              :doc/pre {}
              :doc/id-by-pre {}}})
 
-(defn- compute-parent-of
-  "Compute :parent-of map from :children-by-parent."
-  [children-by-parent]
+(defn- compute-parent-of [children-by-parent]
   (into {}
         (for [[parent children] children-by-parent
               child children]
           [child parent])))
 
-(defn- compute-index-of
-  "Compute :index-of map - position of each child within its parent's children list."
-  [children-by-parent]
+(defn- compute-index-of [children-by-parent]
   (into {}
         (for [[_parent children] children-by-parent
               [idx child] (map-indexed vector children)]
           [child idx])))
 
-(defn- compute-siblings
-  "Compute prev/next sibling relationships."
-  [children-by-parent]
+(defn- compute-siblings [children-by-parent]
   (let [prev-next (for [[_parent children] children-by-parent
                         [prev-sib curr next-sib] (partition 3 1 (concat [nil] children [nil]))
                         :when curr]
@@ -60,27 +58,19 @@
    - :id-by-pre - map of index->id for pre-order lookup"
   [children-by-parent roots]
   (letfn [(visit-node [state id]
-            ;; Pre-order: record node BEFORE visiting children
             (let [state-with-pre (update state :pre-order conj id)
                   children (get children-by-parent id [])
-                  ;; Recursively visit all children, threading state
                   state-with-children (reduce visit-node state-with-pre children)]
-              ;; Post-order: record node AFTER visiting children
               (update state-with-children :post-order conj id)))]
 
-    ;; 1. Traverse tree from all roots, accumulating pre/post vectors
     (let [{:keys [pre-order post-order]}
           (reduce (fn [state root]
-                    ;; Only visit roots that have children or are leaves
                     (if (contains? children-by-parent root)
                       (visit-node state root)
                       state))
                   {:pre-order [] :post-order []}
                   roots)
 
-          ;; 2. Convert traversal vectors to lookup maps
-          ;; For pre/post: id -> index (e.g., "n1" -> 1)
-          ;; For id-by-pre: index -> id (e.g., 1 -> "n1")
           id->pre-idx (->> pre-order
                            m/indexed
                            (map (fn [[idx id]] [id idx]))
@@ -106,15 +96,10 @@
       :else (recur (get parent-of current)))))
 
 (defn- filter-doc-traversal
-  "Derive doc-only traversal from all-roots traversal by filtering.
-
-   Filters to nodes under :doc root and renumbers them sequentially."
+  "Derive doc-only traversal from all-roots traversal by filtering."
   [parent-of id-by-pre]
-  (let [;; Get all [idx id] pairs from id-by-pre, already sorted by index (key)
-        all-ids (sort-by first (seq id-by-pre))
-        ;; Filter to only nodes under :doc (walk up parent chain)
+  (let [all-ids (sort-by first (seq id-by-pre))
         doc-ids (filter (fn [[_idx id]] (under-doc-root? parent-of id)) all-ids)
-        ;; Renumber filtered IDs sequentially
         renumbered (map-indexed (fn [new-idx [_old-idx id]] [id new-idx]) doc-ids)]
     {:doc/pre (into {} renumbered)
      :doc/id-by-pre (into {} (map (fn [[id idx]] [idx id]) renumbered))}))
@@ -126,11 +111,8 @@
    merges in results from registered plugins."
   [db]
   (let [{:keys [children-by-parent roots]} db
-        ;; Core derived indexes
         parent-of (compute-parent-of children-by-parent)
-        ;; Compute single canonical traversal over all roots
         all-roots-traversal (compute-traversal children-by-parent roots)
-        ;; Derive doc-only indexes by filtering the main traversal
         doc-indexes (filter-doc-traversal parent-of (:id-by-pre all-roots-traversal))
 
         core-derived (merge {:parent-of parent-of
