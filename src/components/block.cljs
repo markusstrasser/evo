@@ -167,8 +167,8 @@
          :on {:click (fn [e]
                        (.stopPropagation e)
                        (if (.-shiftKey e)
-                         (on-intent {:type :extend-selection :ids block-id})
-                         (on-intent {:type :select :ids block-id})))}}
+                         (on-intent {:type :selection :mode :extend :ids block-id})
+                         (on-intent {:type :selection :mode :replace :ids block-id})))}}
 
         bullet [:span {:style {:margin-right "8px"}} "•"]
 
@@ -227,7 +227,7 @@
                           ;; First click = select, second click (when focused) = enter edit mode
                           (if focus?
                             (on-intent {:type :enter-edit :block-id block-id})
-                            (on-intent {:type :select :ids block-id})))}}
+                            (on-intent {:type :selection :mode :replace :ids block-id})))}}
            text])
 
         children-el
