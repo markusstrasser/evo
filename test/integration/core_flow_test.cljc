@@ -29,9 +29,9 @@
   (testing "Selection changes are recorded in history"
     (let [db0 (demo-db)
           {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
-          {:keys [db]} (api/dispatch db {:type :navigate-down})]
+          {:keys [db]} (api/dispatch db {:type :selection :mode :next})]
       (is (= "b" (q/focus db))
-          "Navigate-down should move focus to next sibling")
+          "Navigate to next sibling should move focus")
       (is (H/can-undo? db)
           "Selection changes should be recorded in history"))))
 
