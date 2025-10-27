@@ -72,6 +72,8 @@
    - :clear     - Clear all selection
    - :next      - Select next sibling of focus
    - :prev      - Select previous sibling of focus
+   - :extend-next - Extend selection to include next sibling
+   - :extend-prev - Extend selection to include previous sibling
    - :parent    - Select parent of selection (if unique)
    - :all-siblings - Select all siblings of focus
 
@@ -107,6 +109,12 @@
           [:prev [:map
                   [:type [:= :selection]]
                   [:mode [:= :prev]]]]
+          [:extend-next [:map
+                         [:type [:= :selection]]
+                         [:mode [:= :extend-next]]]]
+          [:extend-prev [:map
+                         [:type [:= :selection]]
+                         [:mode [:= :extend-prev]]]]
           [:parent [:map
                     [:type [:= :selection]]
                     [:mode [:= :parent]]]]
@@ -131,6 +139,12 @@
                             :prev (when-let [current (tree/focus db)]
                                     (when-let [prev-id (tree/prev-sibling db current)]
                                       (calc-select-props prev-id)))
+                            :extend-next (when-let [current (tree/focus db)]
+                                          (when-let [next-id (tree/next-sibling db current)]
+                                            (calc-extend-props db state next-id)))
+                            :extend-prev (when-let [current (tree/focus db)]
+                                          (when-let [prev-id (tree/prev-sibling db current)]
+                                            (calc-extend-props db state prev-id)))
                             :parent (let [selection (tree/selection db)
                                           parents (set (keep #(tree/parent-of db %) selection))]
                                       (when (= 1 (count parents))
@@ -143,74 +157,6 @@
                   [{:op :update-node
                     :id const/session-selection-id
                     :props props}])))})
-
-;; ── Helper Intents (for keybindings & backward compat) ────────────────────────
-
-(intent/register-intent! :select
-  {:doc "Select blocks by IDs. Wrapper for unified :selection intent with :mode :replace."
-   :spec [:map
-          [:type [:= :select]]
-          [:ids [:or :string [:vector :string]]]]
-   :handler (fn [_db {:keys [ids]}]
-              (let [ids-vec (if (coll? ids) (vec ids) [ids])
-                    ids-set (set ids-vec)
-                    new-focus (last ids-vec)]
-                [{:op :update-node
-                  :id const/session-selection-id
-                  :props {:nodes ids-set :focus new-focus :anchor new-focus}}]))})
-
-(intent/register-intent! :extend-selection
-  {:doc "Extend selection to include given IDs. Wrapper for unified :selection intent."
-   :spec [:map
-          [:type [:= :extend-selection]]
-          [:ids [:or :string [:vector :string]]]]
-   :handler (fn [db {:keys [ids]}]
-              (let [state (get-selection-state db)]
-                [{:op :update-node
-                  :id const/session-selection-id
-                  :props (calc-extend-props db state ids)}]))})
-
-(intent/register-intent! :select-next-sibling
-  {:doc "Select next sibling of focused node. Wrapper for unified :selection intent."
-   :spec [:map [:type [:= :select-next-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [next-id (tree/next-sibling db current)]
-                  [{:op :update-node
-                    :id const/session-selection-id
-                    :props (calc-select-props next-id)}])))})
-
-(intent/register-intent! :select-prev-sibling
-  {:doc "Select previous sibling of focused node. Wrapper for unified :selection intent."
-   :spec [:map [:type [:= :select-prev-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [prev-id (tree/prev-sibling db current)]
-                  [{:op :update-node
-                    :id const/session-selection-id
-                    :props (calc-select-props prev-id)}])))})
-
-(intent/register-intent! :extend-to-next-sibling
-  {:doc "Extend selection to include next sibling of focused node."
-   :spec [:map [:type [:= :extend-to-next-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [next-id (tree/next-sibling db current)]
-                  (let [state (get-selection-state db)]
-                    [{:op :update-node
-                      :id const/session-selection-id
-                      :props (calc-extend-props db state next-id)}]))))})
-
-(intent/register-intent! :extend-to-prev-sibling
-  {:doc "Extend selection to include previous sibling of focused node."
-   :spec [:map [:type [:= :extend-to-prev-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [prev-id (tree/prev-sibling db current)]
-                  (let [state (get-selection-state db)]
-                    [{:op :update-node
-                      :id const/session-selection-id
-                      :props (calc-extend-props db state prev-id)}]))))})
 
 ;; ── Navigation Intents ────────────────────────────────────────────────────────
 

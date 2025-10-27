@@ -84,7 +84,7 @@
                  (api/dispatch {:type :selection :mode :replace :ids "a"})
                  :db)
           ;; Simulate Shift+ArrowDown
-          result (api/dispatch db {:type :extend-to-next-sibling})
+          result (api/dispatch db {:type :selection :mode :extend-next})
           final-db (:db result)
           selection (q/selection final-db)]
       ;; Assert both "a" and "b" are selected
@@ -99,7 +99,7 @@
                  (api/dispatch {:type :selection :mode :replace :ids "c"})
                  :db)
           ;; Simulate Shift+ArrowUp (extends to "b", creates range from b to c)
-          result (api/dispatch db {:type :extend-to-prev-sibling})
+          result (api/dispatch db {:type :selection :mode :extend-prev})
           final-db (:db result)
           selection (q/selection final-db)]
       ;; Range selection: selects all nodes in doc-order between anchor (c) and focus (b)
