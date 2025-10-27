@@ -17,10 +17,14 @@
 ;; ── Intent Implementations (Session State Changes) ───────────────────────────
 
 (intent/register-intent! :enter-edit
-  {:doc "Enter edit mode for a block. Ephemeral - not in undo/redo history."
-   :spec [:map [:type [:= :enter-edit]] [:block-id :string]]
-   :handler (fn [_db {:keys [block-id]}]
-              [{:op :update-node :id const/session-ui-id :props {:editing-block-id block-id}}])})
+  {:doc "Enter edit mode for a block. Ephemeral - not in undo/redo history.
+         Optional :cursor-at can be :start or :end to position cursor."
+   :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
+   :handler (fn [_db {:keys [block-id cursor-at]}]
+              [{:op :update-node
+                :id const/session-ui-id
+                :props {:editing-block-id block-id
+                        :cursor-position cursor-at}}])})
 
 (intent/register-intent! :exit-edit
   {:doc "Exit edit mode. Ephemeral - not in undo/redo history."
