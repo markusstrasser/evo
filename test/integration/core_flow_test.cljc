@@ -28,7 +28,7 @@
 (deftest selection-and-navigation
   (testing "Selection changes are recorded in history"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :select :ids "a"})
+          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
           {:keys [db]} (api/dispatch db {:type :navigate-down})]
       (is (= "b" (q/focus db))
           "Navigate-down should move focus to next sibling")
@@ -67,8 +67,8 @@
 (deftest undo-redo-roundtrip
   (testing "Undo/redo preserves state correctly"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :select :ids "a"})
-          {:keys [db]} (api/dispatch db {:type :select :ids "b"})
+          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
+          {:keys [db]} (api/dispatch db {:type :selection :mode :replace :ids "b"})
           db-undone (H/undo db)
           db-redone (H/redo db-undone)]
       (is (= "a" (q/focus db-undone))
@@ -92,7 +92,7 @@
 (deftest structural-edit-with-selection
   (testing "Indent works on selected node"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :select :ids "b"})
+          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "b"})
           {:keys [db]} (api/dispatch db {:type :indent :id "b"})]
       (is (= "a" (q/parent-of db "b"))
           "Indent should move b under its previous sibling a")

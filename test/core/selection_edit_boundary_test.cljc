@@ -45,27 +45,27 @@
           initial-ui (:ui db0)]
 
       (testing ":select intent"
-        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :select :ids "b"})]
+        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :selection :mode :replace :ids "b"})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":select must not modify :ui")))
 
       (testing ":toggle-selection intent"
-        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :toggle-selection :ids "c"})]
+        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :selection :mode :toggle :idss "c"})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":toggle-selection must not modify :ui")))
 
       (testing ":extend-selection intent"
-        (let [db-with-selection (-> (api/dispatch db0 {:type :select :ids "a"}) :db)
+        (let [db-with-selection (-> (api/dispatch db0 {:type :selection :mode :replace :ids "a"}) :db)
               initial-ui-2 (:ui db-with-selection)
-              {db1 :db issues :issues} (api/dispatch db-with-selection {:type :extend-selection :ids "b"})]
+              {db1 :db issues :issues} (api/dispatch db-with-selection {:type :selection :mode :extend :ids "b"})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui-2 (:ui db1))
               ":extend-selection must not modify :ui")))
 
       (testing ":clear-selection intent"
-        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :clear-selection})]
+        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :selection :mode :clear})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":clear-selection must not modify :ui"))))))
@@ -73,7 +73,7 @@
 (deftest editing-intents-dont-touch-selection
   (testing "Editing intents preserve selection state (structural boundary)"
     (let [db0 (-> (setup-db-with-blocks)
-                  (api/dispatch {:type :select :ids "b"})
+                  (api/dispatch {:type :selection :mode :replace :ids "b"})
                   :db)
           initial-selection (q/selection db0)
           initial-focus (q/focus db0)]
@@ -117,10 +117,10 @@
                       :cursor {"a" {:first-row? true :last-row? false}}}]
 
       (testing ":select-prev-sibling intent"
-        (let [db-with-ui (-> (api/dispatch db0 {:type :select :ids "b"})
+        (let [db-with-ui (-> (api/dispatch db0 {:type :selection :mode :replace :ids "b"})
                              :db
                              (assoc :ui initial-ui))
-              {db1 :db issues :issues} (api/dispatch db-with-ui {:type :select-prev-sibling})]
+              {db1 :db issues :issues} (api/dispatch db-with-ui {:type :selection :mode :prev})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":select-prev-sibling must not modify :ui")
@@ -128,10 +128,10 @@
               ":select-prev-sibling should update focus to previous block")))
 
       (testing ":select-next-sibling intent"
-        (let [db-with-ui (-> (api/dispatch db0 {:type :select :ids "a"})
+        (let [db-with-ui (-> (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
                              :db
                              (assoc :ui initial-ui))
-              {db1 :db issues :issues} (api/dispatch db-with-ui {:type :select-next-sibling})]
+              {db1 :db issues :issues} (api/dispatch db-with-ui {:type :selection :mode :next})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":select-next-sibling must not modify :ui")
@@ -141,7 +141,7 @@
 (deftest structural-intents-respect-boundaries
   (testing "Structural intents may set focus after creation, but never touch :ui"
     (let [db0 (-> (setup-db-with-blocks)
-                  (api/dispatch {:type :select :ids "a"})
+                  (api/dispatch {:type :selection :mode :replace :ids "a"})
                   :db
                   (assoc :ui {:editing-block-id "a"
                               :cursor {"a" {:first-row? true :last-row? false}}}))
@@ -169,7 +169,7 @@
 
       (testing ":outdent-selected intent"
         (let [db-indented (-> (setup-db-with-blocks)
-                              (api/dispatch {:type :select :ids "b"})
+                              (api/dispatch {:type :selection :mode :replace :ids "b"})
                               :db
                               (api/dispatch {:type :indent-selected})
                               :db

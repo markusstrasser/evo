@@ -1,5 +1,17 @@
 (ns kernel.transaction
-  "Transaction interpreter: normalization, validation, execution pipeline."
+  "Transaction interpreter: normalization, validation, execution pipeline.
+
+   READER GUIDE:
+   ─────────────
+   This is the transaction pipeline. It turns operation lists into state changes.
+   Flow: normalize → validate → apply → derive (optional)
+   - normalize: Filter no-ops, resolve references
+   - validate: Check schema, invariants (cycles, missing refs)
+   - apply: Execute ops via kernel.ops
+   - derive: Recompute derived indexes (unless :tx/skip-derived? true)
+
+   ONE LAW: The pipeline is a pure transformation (DB, ops) → {:db :issues :trace}.
+   Issues block execution (return old DB). No issues means ops executed successfully."
   (:require [kernel.db :as db]
             [kernel.ops :as ops]
             [kernel.position :as pos]
@@ -8,17 +20,16 @@
 
 (defn- same-position-after-place?
   "Check if node would end up at the same index after place operation.
-   Simulates remove → resolve anchor → insert to find final position."
+   Uses resolve-insert-index with :drop-id for consistent 'remove before place' semantics."
   [siblings id at]
   (let [current-idx (.indexOf siblings id)]
     (when-not (neg? current-idx)
-      (let [siblings-without-node (vec (remove #(= % id) siblings))]
-        (try
-          (let [target-idx (pos/resolve-anchor-in-vec siblings-without-node at)]
-            (= current-idx target-idx))
-          (catch #?(:clj Exception :cljs :default) _
-            ;; Invalid anchor means not same position
-            false))))))
+      (try
+        (let [target-idx (pos/resolve-insert-index siblings at {:drop-id id})]
+          (= current-idx target-idx))
+        (catch #?(:clj Exception :cljs :default) _
+          ;; Invalid anchor means not same position
+          false)))))
 
 (defn- is-noop-place?
   "Check if a :place operation is a no-op (same parent and index).
@@ -125,14 +136,12 @@
 
 (defn- validate-anchor
   "Validate anchor (keyword, integer, or map).
-   For place operations, simulates removal of the node being placed before validating.
+   Uses resolve-insert-index with :drop-id for consistent 'remove before place' semantics.
    Returns issue vector if anchor is invalid, empty vector otherwise."
   [db op op-index under at node-id]
-  (let [siblings (get-in db [:children-by-parent under] [])
-        ;; Simulate removal of node being placed (if it's in this parent)
-        siblings-for-validation (vec (remove #(= % node-id) siblings))]
+  (let [siblings (get-in db [:children-by-parent under] [])]
     (try
-      (pos/resolve-anchor-in-vec siblings-for-validation at)
+      (pos/resolve-insert-index siblings at {:drop-id node-id})
       []  ;; Valid anchor, no issues
       (catch #?(:clj Exception :cljs :default) e
         (let [reason (ex-data e)]

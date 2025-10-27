@@ -1,18 +1,20 @@
 (ns plugins.selection
   "Selection state management via session nodes.
 
-   Selection is stored as a node under :session root.
-   Structure: session/selection node with :props {:nodes #{id1 id2} :focus id2 :anchor id1}
+   READER GUIDE:
+   ─────────────
+   This is the unified selection reducer. One intent (:selection) with modes.
+   Modes: :replace, :extend, :deselect, :toggle, :clear, :next, :prev, :parent, :all-siblings
+   Selection stored in session/selection node {:nodes #{...} :focus id :anchor id}
+   All changes emit :update-node ops → enables undo/redo of selection.
 
-   All selection changes emit ops (:update-node on session/selection).
-   This enables full undo/redo of selection state.
+   ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props.
 
-   Implements intent->ops multimethod from core.intent."
+   Special behavior: :extend with single ID triggers range selection (doc-range from anchor to new-focus)"
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
             [kernel.constants :as const]
-            [kernel.query :as tree])
-)
+            [kernel.query :as tree]))
 
 ;; Private helper for internal use
 (defn- get-selection-state [db] (tree/selection-state db))
@@ -57,99 +59,114 @@
   []
   {:nodes #{} :focus nil :anchor nil})
 
-;; ── Intent → Ops ──────────────────────────────────────────────────────────────
+;; ── Unified Selection Intent ─────────────────────────────────────────────────
 
-(intent/register-intent! :select
-  {:doc "Replace selection with given node ID(s). Last ID becomes focus."
-   :spec [:map [:type [:= :select]] [:ids [:or :string [:vector :string]]]]
-   :handler (fn [_db {:keys [ids]}]
-              [{:op :update-node
-                :id const/session-selection-id
-                :props (calc-select-props ids)}])})
+(intent/register-intent! :selection
+  {:doc "Unified selection reducer with modes.
 
-(intent/register-intent! :extend-selection
-  {:doc "Add node ID(s) to selection. Supports range selection if single ID."
-   :spec [:map [:type [:= :extend-selection]] [:ids [:or :string [:vector :string]]]]
-   :handler (fn [db {:keys [ids]}]
-              (let [state (get-selection-state db)]
-                [{:op :update-node
-                  :id const/session-selection-id
-                  :props (calc-extend-props db state ids)}]))})
+   Modes:
+   - :replace   - Replace selection with given IDs (last becomes focus) [requires :ids]
+   - :extend    - Add IDs to selection (supports range if anchor exists) [requires :ids]
+   - :deselect  - Remove IDs from selection [requires :ids]
+   - :toggle    - Toggle ID (add if not selected, remove if selected) [requires :ids]
+   - :clear     - Clear all selection
+   - :next      - Select next sibling of focus
+   - :prev      - Select previous sibling of focus
+   - :parent    - Select parent of selection (if unique)
+   - :all-siblings - Select all siblings of focus
 
-(intent/register-intent! :deselect
-  {:doc "Remove node ID(s) from selection."
-   :spec [:map [:type [:= :deselect]] [:ids [:or :string [:vector :string]]]]
-   :handler (fn [db {:keys [ids]}]
-              (let [state (get-selection-state db)]
-                [{:op :update-node
-                  :id const/session-selection-id
-                  :props (calc-deselect-props state ids)}]))})
+   Examples:
+     {:type :selection :mode :replace :ids [\"a\" \"b\"]}
+     {:type :selection :mode :extend :ids \"c\"}
+     {:type :selection :mode :next}
+     {:type :selection :mode :clear}"
+   ;; Mode-conditional validation: :ids required for certain modes
+   :spec [:multi {:dispatch :mode}
+          [:replace [:map
+                     [:type [:= :selection]]
+                     [:mode [:= :replace]]
+                     [:ids [:or :string [:vector :string]]]]]
+          [:extend [:map
+                    [:type [:= :selection]]
+                    [:mode [:= :extend]]
+                    [:ids [:or :string [:vector :string]]]]]
+          [:deselect [:map
+                      [:type [:= :selection]]
+                      [:mode [:= :deselect]]
+                      [:ids [:or :string [:vector :string]]]]]
+          [:toggle [:map
+                    [:type [:= :selection]]
+                    [:mode [:= :toggle]]
+                    [:ids :string]]]  ;; toggle expects single ID
+          [:clear [:map
+                   [:type [:= :selection]]
+                   [:mode [:= :clear]]]]
+          [:next [:map
+                  [:type [:= :selection]]
+                  [:mode [:= :next]]]]
+          [:prev [:map
+                  [:type [:= :selection]]
+                  [:mode [:= :prev]]]]
+          [:parent [:map
+                    [:type [:= :selection]]
+                    [:mode [:= :parent]]]]
+          [:all-siblings [:map
+                          [:type [:= :selection]]
+                          [:mode [:= :all-siblings]]]]]
+   :handler (fn [db {:keys [mode ids]}]
+              (let [state (get-selection-state db)
+                    props (case mode
+                            :replace (calc-select-props ids)
+                            :extend (calc-extend-props db state ids)
+                            :deselect (calc-deselect-props state ids)
+                            :toggle (let [id ids  ;; toggle expects single ID
+                                          selected? (contains? (:nodes state) id)]
+                                      (if selected?
+                                        (calc-deselect-props state id)
+                                        (calc-extend-props db state id)))
+                            :clear (calc-clear-props)
+                            :next (when-let [current (tree/focus db)]
+                                    (when-let [next-id (tree/next-sibling db current)]
+                                      (calc-select-props next-id)))
+                            :prev (when-let [current (tree/focus db)]
+                                    (when-let [prev-id (tree/prev-sibling db current)]
+                                      (calc-select-props prev-id)))
+                            :parent (let [selection (tree/selection db)
+                                          parents (set (keep #(tree/parent-of db %) selection))]
+                                      (when (= 1 (count parents))
+                                        (calc-select-props (first parents))))
+                            :all-siblings (when-let [current (tree/focus db)]
+                                            (when-let [parent (tree/parent-of db current)]
+                                              (let [all-siblings (tree/children db parent)]
+                                                (calc-select-props all-siblings)))))]
+                (when props
+                  [{:op :update-node
+                    :id const/session-selection-id
+                    :props props}])))})
 
-(intent/register-intent! :clear-selection
-  {:doc "Clear all selection."
-   :spec [:map [:type [:= :clear-selection]]]
-   :handler (fn [_db _]
-              [{:op :update-node
-                :id const/session-selection-id
-                :props (calc-clear-props)}])})
-
-(intent/register-intent! :toggle-selection
-  {:doc "Toggle selection of node (add if not selected, remove if selected)."
-   :spec [:map [:type [:= :toggle-selection]] [:id :string]]
-   :handler (fn [db {:keys [id]}]
-              (if (tree/selected? db id)
-                (intent/intent->ops db {:type :deselect :ids id})
-                (intent/intent->ops db {:type :extend-selection :ids id})))})
-
-(intent/register-intent! :select-next-sibling
-  {:doc "Select next sibling of focused node."
-   :spec [:map [:type [:= :select-next-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [next-id (tree/next-sibling db current)]
-                  (intent/intent->ops db {:type :select :ids next-id}))))})
-
-(intent/register-intent! :select-prev-sibling
-  {:doc "Select previous sibling of focused node."
-   :spec [:map [:type [:= :select-prev-sibling]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [prev-id (tree/prev-sibling db current)]
-                  (intent/intent->ops db {:type :select :ids prev-id}))))})
+;; ── Helper Intents (for keybindings) ──────────────────────────────────────────
 
 (intent/register-intent! :extend-to-next-sibling
-  {:doc "Extend selection to include next sibling."
+  {:doc "Extend selection to include next sibling of focused node."
    :spec [:map [:type [:= :extend-to-next-sibling]]]
    :handler (fn [db _]
               (when-let [current (tree/focus db)]
                 (when-let [next-id (tree/next-sibling db current)]
-                  (intent/intent->ops db {:type :extend-selection :ids next-id}))))})
+                  (let [state (get-selection-state db)]
+                    [{:op :update-node
+                      :id const/session-selection-id
+                      :props (calc-extend-props db state next-id)}]))))})
 
 (intent/register-intent! :extend-to-prev-sibling
-  {:doc "Extend selection to include previous sibling."
+  {:doc "Extend selection to include previous sibling of focused node."
    :spec [:map [:type [:= :extend-to-prev-sibling]]]
    :handler (fn [db _]
               (when-let [current (tree/focus db)]
                 (when-let [prev-id (tree/prev-sibling db current)]
-                  (intent/intent->ops db {:type :extend-selection :ids prev-id}))))})
-
-(intent/register-intent! :select-parent
-  {:doc "Select parent of selected node(s)."
-   :spec [:map [:type [:= :select-parent]]]
-   :handler (fn [db _]
-              (let [selection (tree/selection db)
-                    parents (set (keep #(tree/parent-of db %) selection))]
-                (when (= 1 (count parents))
-                  (intent/intent->ops db {:type :select :ids (first parents)}))))})
-
-(intent/register-intent! :select-all-siblings
-  {:doc "Select all siblings of focused node."
-   :spec [:map [:type [:= :select-all-siblings]]]
-   :handler (fn [db _]
-              (when-let [current (tree/focus db)]
-                (when-let [parent (tree/parent-of db current)]
-                  (let [all-siblings (tree/children db parent)]
-                    (intent/intent->ops db {:type :select :ids all-siblings})))))})
+                  (let [state (get-selection-state db)]
+                    [{:op :update-node
+                      :id const/session-selection-id
+                      :props (calc-extend-props db state prev-id)}]))))})
 
 ;; ── Navigation Intents ────────────────────────────────────────────────────────
 

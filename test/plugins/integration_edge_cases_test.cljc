@@ -50,7 +50,7 @@
     (let [db0 (create-base-db)
 
           ;; Select node 'a' (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids "a"}))
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
 
           ;; Move 'a' to different position (still under :doc)
           db2 (interpret-ops db1 [{:op :place :id "a" :under :doc :at 1}])]
@@ -64,7 +64,7 @@
     (let [db0 (create-base-db)
 
           ;; Select node 'a' (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids "a"}))
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
 
           ;; Move 'a' to trash
           db2 (interpret-ops db1 [{:op :place :id "a" :under :trash :at :last}])]
@@ -80,17 +80,17 @@
     (let [db0 (create-base-db)
 
           ;; Select all three (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :select :ids ["a" "b" "c"]}))
+          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids ["a" "b" "c"]}))
 
           ;; Deselect in one order
           db2a (-> db1
-                   (interpret-ops (intent/intent->ops db1 {:type :deselect :ids "a"}))
-                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :deselect :ids "b"}))))
+                   (interpret-ops (intent/intent->ops db1 {:type :selection :mode :deselect :ids "a"}))
+                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :selection :mode :deselect :ids "b"}))))
 
           ;; Deselect in different order
           db2b (-> db1
-                   (interpret-ops (intent/intent->ops db1 {:type :deselect :ids "b"}))
-                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :deselect :ids "a"}))))]
+                   (interpret-ops (intent/intent->ops db1 {:type :selection :mode :deselect :ids "b"}))
+                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :selection :mode :deselect :ids "a"}))))]
 
       (is (= (q/selection db2a)
              (q/selection db2b))
@@ -180,11 +180,11 @@
 
           ;; Select node (via intent->ops) and add ref (via interpret)
           db1 (-> db0
-                  (interpret-ops (intent/intent->ops db0 {:type :select :ids "a"}))
+                  (interpret-ops (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
                   (interpret-ops [(refs/add-link-op db0 "a" "b")]))
 
           ;; Clear selection (via intent->ops)
-          db2 (interpret-ops db1 (intent/intent->ops db1 {:type :clear-selection}))]
+          db2 (interpret-ops db1 (intent/intent->ops db1 {:type :selection :mode :clear}))]
 
       ;; Refs should persist after clearing selection
       (is (= #{"b"} (get-in db2 [:derived :ref/outgoing "a"]))

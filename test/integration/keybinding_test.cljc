@@ -53,10 +53,10 @@
   (testing "ArrowDown: Navigate to next sibling"
     (let [db (-> (make-tree)
                  ;; Select "a"
-                 (api/dispatch {:type :select :ids "a"})
+                 (api/dispatch {:type :selection :mode :replace :ids "a"})
                  :db)
           ;; Simulate ArrowDown keypress
-          result (api/dispatch db {:type :select-next-sibling})
+          result (api/dispatch db {:type :selection :mode :next})
           final-db (:db result)]
       ;; Assert focus moved from "a" to "b"
       (is (= "b" (q/focus final-db))
@@ -66,10 +66,10 @@
   (testing "ArrowUp: Navigate to previous sibling"
     (let [db (-> (make-tree)
                  ;; Select "c"
-                 (api/dispatch {:type :select :ids "c"})
+                 (api/dispatch {:type :selection :mode :replace :ids "c"})
                  :db)
           ;; Simulate ArrowUp keypress
-          result (api/dispatch db {:type :select-prev-sibling})
+          result (api/dispatch db {:type :selection :mode :prev})
           final-db (:db result)]
       ;; Assert focus moved from "c" to "b"
       (is (= "b" (q/focus final-db))
@@ -81,7 +81,7 @@
   (testing "Shift+ArrowDown: Extend selection to next sibling"
     (let [db (-> (make-tree)
                  ;; Select "a"
-                 (api/dispatch {:type :select :ids "a"})
+                 (api/dispatch {:type :selection :mode :replace :ids "a"})
                  :db)
           ;; Simulate Shift+ArrowDown
           result (api/dispatch db {:type :extend-to-next-sibling})
@@ -96,7 +96,7 @@
   (testing "Shift+ArrowUp: Extend selection range (doc-order between anchor and focus)"
     (let [db (-> (make-tree)
                  ;; Select "c"
-                 (api/dispatch {:type :select :ids "c"})
+                 (api/dispatch {:type :selection :mode :replace :ids "c"})
                  :db)
           ;; Simulate Shift+ArrowUp (extends to "b", creates range from b to c)
           result (api/dispatch db {:type :extend-to-prev-sibling})
@@ -114,7 +114,7 @@
   (testing "Tab: Indent selected block under previous sibling"
     (let [db (-> (make-tree)
                  ;; Select "b"
-                 (api/dispatch {:type :select :ids "b"})
+                 (api/dispatch {:type :selection :mode :replace :ids "b"})
                  :db)
           ;; Simulate Tab keypress
           result (api/dispatch db {:type :indent-selected})
@@ -129,7 +129,7 @@
   (testing "Shift+Tab: Outdent prevented at root level (design constraint)"
     (let [db (-> (make-tree)
                  ;; Select "b1" (child of "b", grandparent is :doc which is a root)
-                 (api/dispatch {:type :select :ids "b1"})
+                 (api/dispatch {:type :selection :mode :replace :ids "b1"})
                  :db)
           ;; Simulate Shift+Tab keypress
           result (api/dispatch db {:type :outdent-selected})
@@ -147,7 +147,7 @@
   (testing "Alt+Shift+ArrowUp: Move selected block up"
     (let [db (-> (make-tree)
                  ;; Select "b"
-                 (api/dispatch {:type :select :ids "b"})
+                 (api/dispatch {:type :selection :mode :replace :ids "b"})
                  :db)
           ;; Simulate Alt+Shift+ArrowUp
           result (api/dispatch db {:type :move-selected-up})
@@ -160,7 +160,7 @@
   (testing "Alt+Shift+ArrowDown: Move selected block down"
     (let [db (-> (make-tree)
                  ;; Select "a"
-                 (api/dispatch {:type :select :ids "a"})
+                 (api/dispatch {:type :selection :mode :replace :ids "a"})
                  :db)
           ;; Simulate Alt+Shift+ArrowDown
           result (api/dispatch db {:type :move-selected-down})
@@ -175,7 +175,7 @@
   (testing "Enter: Create new block after focused block"
     (let [db (-> (make-tree)
                  ;; Select "a"
-                 (api/dispatch {:type :select :ids "a"})
+                 (api/dispatch {:type :selection :mode :replace :ids "a"})
                  :db)
           parent (get-in db [:derived :parent-of "a"])
           new-id "new-block"
