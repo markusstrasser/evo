@@ -146,6 +146,30 @@
 
 ;; ── Helper Intents (for keybindings & backward compat) ────────────────────────
 
+(intent/register-intent! :select
+  {:doc "Select blocks by IDs. Wrapper for unified :selection intent with :mode :replace."
+   :spec [:map
+          [:type [:= :select]]
+          [:ids [:or :string [:vector :string]]]]
+   :handler (fn [_db {:keys [ids]}]
+              (let [ids-vec (if (coll? ids) (vec ids) [ids])
+                    ids-set (set ids-vec)
+                    new-focus (last ids-vec)]
+                [{:op :update-node
+                  :id const/session-selection-id
+                  :props {:nodes ids-set :focus new-focus :anchor new-focus}}]))})
+
+(intent/register-intent! :extend-selection
+  {:doc "Extend selection to include given IDs. Wrapper for unified :selection intent."
+   :spec [:map
+          [:type [:= :extend-selection]]
+          [:ids [:or :string [:vector :string]]]]
+   :handler (fn [db {:keys [ids]}]
+              (let [state (get-selection-state db)]
+                [{:op :update-node
+                  :id const/session-selection-id
+                  :props (calc-extend-props db state ids)}]))})
+
 (intent/register-intent! :select-next-sibling
   {:doc "Select next sibling of focused node. Wrapper for unified :selection intent."
    :spec [:map [:type [:= :select-next-sibling]]]

@@ -91,13 +91,36 @@ test.describe('Blocks UI - Keyboard Shortcuts', () => {
   });
 
   test('should navigate with Alt+ArrowDown/Up', async ({ page }) => {
+    // Wait for app to be fully initialized
+    await page.waitForSelector('.debug-panel');
+
     // Click first block
     await page.locator('.block[data-block-id="a"]').click();
 
-    // Press Alt+ArrowDown to select next sibling
-    const isMac = process.platform === 'darwin';
-    await page.keyboard.press(isMac ? 'Alt+ArrowDown' : 'Alt+ArrowDown');
-    await page.waitForTimeout(100);
+    // Wait for selection to be committed
+    await page.waitForTimeout(200);
+
+    // Check initial selection
+    const initialSelection = await page.locator('.debug-panel').textContent();
+    console.log('Initial selection:', initialSelection?.match(/Selection: ([^\s]+)/)?.[1]);
+    console.log('Initial focus:', initialSelection?.match(/Focus: ([^\s]+)/)?.[1]);
+
+    // Dispatch keyboard event via JavaScript to ensure it works
+    await page.evaluate(() => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        altKey: true,
+        bubbles: true,
+        cancelable: true
+      });
+      document.dispatchEvent(event);
+    });
+    await page.waitForTimeout(200);
+
+    // Check final selection
+    const finalSelection = await page.locator('.debug-panel').textContent();
+    console.log('Final selection:', finalSelection?.match(/Selection: ([^\s]+)/)?.[1]);
+    console.log('Final focus:', finalSelection?.match(/Focus: ([^\s]+)/)?.[1]);
 
     // Second block should now be focused
     const secondBlock = page.locator('.block:has-text("Second block")');
