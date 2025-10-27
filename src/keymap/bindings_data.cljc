@@ -1,10 +1,10 @@
 (ns keymap.bindings-data)
 
 (def data
-  {:non-editing [[{:key "ArrowDown"} :select-next-sibling]
-                 [{:key "ArrowUp"} :select-prev-sibling]
-                 [{:key "ArrowDown" :alt true} :select-next-sibling]
-                 [{:key "ArrowUp" :alt true} :select-prev-sibling]
+  {:non-editing [[{:key "ArrowDown"} {:type :selection :mode :next}]
+                 [{:key "ArrowUp"} {:type :selection :mode :prev}]
+                 [{:key "ArrowDown" :alt true} {:type :selection :mode :next}]
+                 [{:key "ArrowUp" :alt true} {:type :selection :mode :prev}]
                  [{:key "ArrowDown" :shift true} :extend-to-next-sibling]
                  [{:key "ArrowUp" :shift true} :extend-to-prev-sibling]
                  [{:key "Tab"} :indent-selected]
@@ -12,6 +12,8 @@
                  [{:key "Backspace"} :delete-selected]
                  [{:key "Enter"} :create-new-block-after-focus]]
    :editing     [[{:key "Escape"} :exit-edit]
+                 [{:key "Tab"} :indent-selected]
+                 [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace" :mod true} :merge-with-prev]]
    :global      [[{:key "ArrowUp" :shift true :mod true} :move-selected-up]
                  [{:key "ArrowDown" :shift true :mod true} :move-selected-down]

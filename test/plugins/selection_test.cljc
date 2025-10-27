@@ -18,39 +18,39 @@
 
 (defn select [db ids]
   "Helper: select using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :select :ids ids})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :replace :ids ids})))
 
 (defn extend-selection [db ids]
   "Helper: extend selection using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :extend-selection :ids ids})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :extend :ids ids})))
 
 (defn deselect [db ids]
   "Helper: deselect using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :deselect :ids ids})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :deselect :ids ids})))
 
 (defn clear [db]
   "Helper: clear selection using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :clear-selection})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :clear})))
 
 (defn toggle [db id]
   "Helper: toggle using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :toggle-selection :id id})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :toggle :ids id})))
 
 (defn select-next-sibling [db]
   "Helper: select next sibling using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :select-next-sibling})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :next})))
 
 (defn select-prev-sibling [db]
   "Helper: select previous sibling using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :select-prev-sibling})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :prev})))
 
 (defn select-parent [db]
   "Helper: select parent using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :select-parent})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :parent})))
 
 (defn select-all-siblings [db]
   "Helper: select all siblings using intent->ops"
-  (interpret-ops db (intent/intent->ops db {:type :select-all-siblings})))
+  (interpret-ops db (intent/intent->ops db {:type :selection :mode :all-siblings})))
 
 (defn build-doc
   "Creates a test DB with structure: doc1 -> [a, b, c]"

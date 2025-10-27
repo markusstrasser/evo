@@ -136,11 +136,14 @@
   ([db intent] (dispatch* db intent nil))
   ([db intent {:keys [history/enabled?] :as _opts}]
    (let [{:keys [ops]} (intent/apply-intent db intent)
+         ;; Check if ALL ops are ephemeral
+         all-ephemeral? (every? ephemeral-op? ops)
          record? (and (not (false? enabled?))
-                      (some (complement ephemeral-op?) ops))
+                      (not all-ephemeral?))
          db0 (if record? (H/record db) db)]
      #?(:clj (journal-tx! intent ops))
-     (tx/interpret db0 ops))))
+     ;; Fast path: skip derive for fully ephemeral transactions
+     (tx/interpret db0 ops {:tx/skip-derived? all-ephemeral?}))))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
