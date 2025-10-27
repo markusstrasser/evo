@@ -78,9 +78,9 @@
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
-          (case intent-type
+          (cond
             ;; Special handling: Enter creates block and enters edit mode
-            :create-new-block-after-focus
+            (= intent-type :create-new-block-after-focus)
             (let [parent (get-in db [:derived :parent-of focus-id])
                   new-id (str "block-" (random-uuid))]
               (handle-intent {:type :create-and-place
@@ -91,7 +91,12 @@
                 #(handle-intent {:type :enter-edit :block-id new-id})
                 0))
 
-            ;; Default: direct intent dispatch
+            ;; Map intent: use directly
+            (map? intent-type)
+            (handle-intent intent-type)
+
+            ;; Keyword intent: wrap in :type
+            :else
             (handle-intent {:type intent-type})))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
