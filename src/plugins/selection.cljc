@@ -59,6 +59,21 @@
   []
   {:nodes #{} :focus nil :anchor nil})
 
+(defn- calc-navigate-props
+  "Pure: calculate props for navigating in a direction.
+   direction: :next or :prev
+   extend?: if true, extends selection; if false, replaces selection"
+  [db state direction extend?]
+  (when-let [current (tree/focus db)]
+    (let [sibling-fn (case direction
+                       :next tree/next-sibling
+                       :prev tree/prev-sibling)
+          sibling-id (sibling-fn db current)]
+      (when sibling-id
+        (if extend?
+          (calc-extend-props db state sibling-id)
+          (calc-select-props sibling-id))))))
+
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
 
 (intent/register-intent! :selection
@@ -133,18 +148,10 @@
                                         (calc-deselect-props state id)
                                         (calc-extend-props db state id)))
                             :clear (calc-clear-props)
-                            :next (when-let [current (tree/focus db)]
-                                    (when-let [next-id (tree/next-sibling db current)]
-                                      (calc-select-props next-id)))
-                            :prev (when-let [current (tree/focus db)]
-                                    (when-let [prev-id (tree/prev-sibling db current)]
-                                      (calc-select-props prev-id)))
-                            :extend-next (when-let [current (tree/focus db)]
-                                          (when-let [next-id (tree/next-sibling db current)]
-                                            (calc-extend-props db state next-id)))
-                            :extend-prev (when-let [current (tree/focus db)]
-                                          (when-let [prev-id (tree/prev-sibling db current)]
-                                            (calc-extend-props db state prev-id)))
+                            :next (calc-navigate-props db state :next false)
+                            :prev (calc-navigate-props db state :prev false)
+                            :extend-next (calc-navigate-props db state :next true)
+                            :extend-prev (calc-navigate-props db state :prev true)
                             :parent (let [selection (tree/selection db)
                                           parents (set (keep #(tree/parent-of db %) selection))]
                                       (when (= 1 (count parents))
@@ -157,19 +164,3 @@
                   [{:op :update-node
                     :id const/session-selection-id
                     :props props}])))})
-
-;; ── Navigation Intents ────────────────────────────────────────────────────────
-
-(intent/register-intent! :navigate-up
-  {:doc "Navigate to previous visible block. Updates selection focus only."
-   :spec [:map [:type [:= :navigate-up]] [:block-id {:optional true} :string]]
-   :handler (fn [db {:keys [block-id]}]
-              (when-let [prev-id (tree/prev-sibling db (or block-id (tree/focus db)))]
-                [{:op :update-node :id const/session-selection-id :props {:focus prev-id}}]))})
-
-(intent/register-intent! :navigate-down
-  {:doc "Navigate to next visible block. Updates selection focus only."
-   :spec [:map [:type [:= :navigate-down]] [:block-id {:optional true} :string]]
-   :handler (fn [db {:keys [block-id]}]
-              (when-let [next-id (tree/next-sibling db (or block-id (tree/focus db)))]
-                [{:op :update-node :id const/session-selection-id :props {:focus next-id}}]))})
