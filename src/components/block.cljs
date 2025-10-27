@@ -222,7 +222,20 @@
                          (on-intent {:type :selection :mode :extend :ids block-id})
                          (on-intent {:type :selection :mode :replace :ids block-id})))}}
 
-        bullet [:span {:style {:margin-right "8px"}} "•"]
+        ;; Fold indicator bullet
+        has-children? (seq (q/children db block-id))
+        folded? (q/folded? db block-id)
+        bullet [:span {:style {:margin-right "8px"
+                              :cursor (if has-children? "pointer" "default")
+                              :user-select "none"}
+                       :on {:click (fn [e]
+                                    (.stopPropagation e)
+                                    (when has-children?
+                                      (on-intent {:type :toggle-fold :block-id block-id})))}}
+                (cond
+                  (not has-children?) "•"
+                  folded? "▸"
+                  :else "▾")]
 
         content
         (if editing?
@@ -235,26 +248,39 @@
             :data-block-id block-id
             ;; Use :replicant/on-render which fires on every render, not just mount
             :replicant/on-render (fn [{:replicant/keys [node]}]
-                                   ;; Set text content if empty
-                                   (when (empty? (.-textContent node))
-                                     (set! (.-textContent node) text))
+                                   (let [current-text (.-textContent node)
+                                         cursor-pos (q/cursor-position db)]
 
-                                   ;; Focus the element
-                                   (.focus node)
+                                     ;; Only set text if node is truly empty (first render)
+                                     (when (and (empty? current-text) (not= text ""))
+                                       (set! (.-textContent node) text))
 
-                                   ;; Set cursor to end (only if there's content)
-                                   (when-not (empty? (.-textContent node))
-                                     (try
-                                       (let [range (.createRange js/document)
-                                             sel (.getSelection js/window)]
-                                         (.selectAllChildren range node)
-                                         (.collapseToEnd range)
-                                         (.removeAllRanges sel)
-                                         (.addRange sel range))
-                                       (catch js/Error e
-                                         (js/console.error "Cursor error:" e))))
+                                     ;; Focus the element
+                                     (.focus node)
 
-                                   (update-mock-text! text))
+                                     ;; Set cursor position based on session state
+                                     (when (and cursor-pos (not (empty? (.-textContent node))))
+                                       (try
+                                         (let [range (.createRange js/document)
+                                               sel (.getSelection js/window)]
+                                           (.selectAllChildren range node)
+                                           ;; Position cursor based on requested position
+                                           (if (= cursor-pos :start)
+                                             (.collapseToStart range)
+                                             (.collapseToEnd range))
+                                           (.removeAllRanges sel)
+                                           (.addRange sel range))
+                                         (catch js/Error e
+                                           (js/console.error "Cursor error:" e)))
+
+                                       ;; Clear cursor position AFTER positioning (async to avoid re-render loop)
+                                       (js/setTimeout
+                                         #(on-intent {:type :update-node
+                                                      :id "session/ui"
+                                                      :props {:cursor-position nil}})
+                                         0))
+
+                                     (update-mock-text! (.-textContent node))))
             :on {:input (fn [e]
                           (let [new-text (-> e .-target .-textContent)]
                             (update-mock-text! new-text)
@@ -295,4 +321,5 @@
     (cond-> [:div.block container-props
              bullet
              content]
-      children-el (conj children-el))))
+      ;; Only show children if not folded
+      (and children-el (not folded?)) (conj children-el))))
