@@ -15,6 +15,8 @@
             [plugins.selection :as sel]
             [plugins.struct :as struct]
             [plugins.editing :as edit]
+            [plugins.folding]  ;; Load to register fold/zoom intents
+            [plugins.smart-editing]  ;; Load to register smart editing intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
 
@@ -68,6 +70,37 @@
         editing? (q/editing-block-id db)
         intent-type (keymap/resolve-intent-type event db)
 
+        ;; Cursor boundary detection for arrow key navigation in edit mode
+        editable-el (when editing? (.-activeElement js/document))
+        at-start? (when (and editable-el (= "true" (.-contentEditable editable-el)))
+                    (try
+                      (let [sel (.getSelection js/window)]
+                        (when (pos? (.-rangeCount sel))
+                          (let [range (.getRangeAt sel 0)
+                                node (.-startContainer range)
+                                offset (.-startOffset range)]
+                            ;; At start if offset is 0 and we're in the first text node
+                            (and (zero? offset)
+                                 (or (= node editable-el)
+                                     (= node (.-firstChild editable-el)))))))
+                      (catch js/Error e
+                        (js/console.log "Boundary detection error:" e)
+                        false)))
+        at-end? (when (and editable-el (= "true" (.-contentEditable editable-el)))
+                  (try
+                    (let [sel (.getSelection js/window)]
+                      (when (pos? (.-rangeCount sel))
+                        (let [range (.getRangeAt sel 0)
+                              node (.-endContainer range)
+                              offset (.-endOffset range)
+                              text-content (or (.-textContent editable-el) "")
+                              text-length (count text-content)]
+                          ;; At end if cursor is at the end of the text
+                          (= offset text-length))))
+                    (catch js/Error e
+                      (js/console.log "Boundary detection error:" e)
+                      false)))
+
         ;; Printable character check for "start typing to edit" behavior
         printable? (and (= 1 (.-length key))
                         (not (:mod event))
@@ -75,17 +108,46 @@
                         (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
 
     (cond
+      ;; Arrow navigation at boundaries while editing (Logseq-style)
+      ;; Navigate up: exit edit, go to prev block, enter edit at END
+      (and editing? (= key "ArrowUp") at-start? (not mod?) (not shift?))
+      (do (.preventDefault e)
+          (let [prev-id (get-in db [:derived :prev-id-of editing?])]
+            (when prev-id
+              (handle-intent {:type :exit-edit})
+              (js/setTimeout
+                #(do (handle-intent {:type :selection :mode :replace :ids prev-id})
+                     (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end}))
+                10))))
+
+      ;; Navigate down: exit edit, go to next block, enter edit at START
+      (and editing? (= key "ArrowDown") at-end? (not mod?) (not shift?))
+      (do (.preventDefault e)
+          (let [next-id (get-in db [:derived :next-id-of editing?])]
+            (when next-id
+              (handle-intent {:type :exit-edit})
+              (js/setTimeout
+                #(do (handle-intent {:type :selection :mode :replace :ids next-id})
+                     (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start}))
+                10))))
+
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
-          (cond
-            ;; Map intent: use directly
-            (map? intent-type)
-            (handle-intent intent-type)
+          (let [;; Inject focused block-id for fold/zoom intents
+                intent-with-id (if (and (map? intent-type)
+                                       (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
+                                       focus-id)
+                                (assoc intent-type :block-id focus-id)
+                                intent-type)]
+            (cond
+              ;; Map intent: use directly (with injected block-id if needed)
+              (map? intent-with-id)
+              (handle-intent intent-with-id)
 
-            ;; Keyword intent: wrap in :type
-            :else
-            (handle-intent {:type intent-type})))
+              ;; Keyword intent: wrap in :type
+              :else
+              (handle-intent {:type intent-with-id}))))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
@@ -149,20 +211,31 @@
             :border-radius    "4px"}}
    [:h4 "Keyboard Shortcuts (Logseq Style)"]
    [:div {:style {:display               "grid"
-                  :grid-template-columns "repeat(2, 1fr)"
+                  :grid-template-columns "repeat(3, 1fr)"
                   :gap                   "10px"}}
     [:div
      [:h5 "Navigation"]
      [:div.hotkey-item "↑/↓ - Move cursor (or navigate blocks at boundary)"]
+     [:div.hotkey-item "Shift+↑/↓ - Extend selection"]
      [:div.hotkey-item "Esc - Exit edit mode"]
-     [:div.hotkey-item "Click - Select block"]]
+     [:div.hotkey-item "Click - Select block"]
+     [:div.hotkey-item "Shift+Click - Extend selection"]]
     [:div
      [:h5 "Editing"]
      [:div.hotkey-item "Enter - New block"]
      [:div.hotkey-item "Shift+Enter - Newline in block"]
      [:div.hotkey-item "Backspace - Delete/merge"]
      [:div.hotkey-item "Tab - Indent"]
-     [:div.hotkey-item "Shift+Tab - Outdent"]]
+     [:div.hotkey-item "Shift+Tab - Outdent"]
+     [:div.hotkey-item "⌘+Enter - Toggle checkbox"]]
+    [:div
+     [:h5 "Folding & Zoom"]
+     [:div.hotkey-item "Click bullet - Toggle fold"]
+     [:div.hotkey-item "⌘+; - Toggle fold"]
+     [:div.hotkey-item "⌘+↑ - Collapse"]
+     [:div.hotkey-item "⌘+↓ - Expand all"]
+     [:div.hotkey-item "⌘+. - Zoom in"]
+     [:div.hotkey-item "⌘+, - Zoom out"]]
     [:div
      [:h5 "Undo/Redo"]
      [:div.hotkey-item "⌘/Ctrl+Z - Undo"]
