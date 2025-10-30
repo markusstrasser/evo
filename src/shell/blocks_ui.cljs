@@ -113,14 +113,15 @@
             (when prev-id
               (handle-intent {:type :exit-edit})
               (js/setTimeout
-                #(do (handle-intent {:type :selection :mode :replace :ids prev-id})
-                     (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end})
-                     ;; Clear cursor-position after component has applied it
-                     (js/setTimeout
-                       #(handle-intent {:type :update-node
-                                        :id "session/ui"
-                                        :props {:cursor-position nil}})
-                       50))
+                (fn []
+                  (handle-intent {:type :selection :mode :replace :ids prev-id})
+                  (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end})
+                  ;; Clear cursor-position after component has applied it
+                  (js/setTimeout
+                    #(handle-intent {:type :update-node
+                                     :id "session/ui"
+                                     :props {:cursor-position nil}})
+                    50))
                 10))))
 
       ;; Navigate down: exit edit, go to next block, enter edit at START
@@ -130,14 +131,15 @@
             (when next-id
               (handle-intent {:type :exit-edit})
               (js/setTimeout
-                #(do (handle-intent {:type :selection :mode :replace :ids next-id})
-                     (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start})
-                     ;; Clear cursor-position after component has applied it
-                     (js/setTimeout
-                       #(handle-intent {:type :update-node
-                                        :id "session/ui"
-                                        :props {:cursor-position nil}})
-                       50))
+                (fn []
+                  (handle-intent {:type :selection :mode :replace :ids next-id})
+                  (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start})
+                  ;; Clear cursor-position after component has applied it
+                  (js/setTimeout
+                    #(handle-intent {:type :update-node
+                                     :id "session/ui"
+                                     :props {:cursor-position nil}})
+                    50))
                 10))))
 
       ;; Keymap-resolved intent
