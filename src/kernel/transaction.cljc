@@ -227,6 +227,17 @@
     :place (ops/place db id under at)
     :update-node (ops/update-node db id props)))
 
+(defn- process-operation
+  "Process a single operation during validation.
+   Returns updated [db issues] or reduced value if validation fails."
+  [[current-db all-issues] [op-index op]]
+  (let [op-issues (validate-op current-db op op-index)]
+    (if (seq op-issues)
+      ;; Stop on first error
+      (reduced [current-db (into all-issues op-issues)])
+      ;; Apply valid operation and continue
+      [(apply-op current-db op) all-issues])))
+
 (defn- validate-ops
   "Validate all operations in sequence, accumulating issues.
 
@@ -237,16 +248,7 @@
 
    Returns: [final-db issues]"
   [db ops]
-  (reduce
-   (fn [[current-db all-issues] [op-index op]]
-     (let [op-issues (validate-op current-db op op-index)]
-       (if (seq op-issues)
-         ;; Stop on first error
-         (reduced [current-db (into all-issues op-issues)])
-         ;; Apply valid operation and continue
-         [(apply-op current-db op) all-issues])))
-   [db []]
-   (m/indexed ops)))
+  (reduce process-operation [db []] (m/indexed ops)))
 
 (defn interpret
   "Interpret a transaction sequence.

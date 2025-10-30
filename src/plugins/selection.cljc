@@ -59,20 +59,23 @@
   []
   {:nodes #{} :focus nil :anchor nil})
 
+(defn- get-sibling-fn
+  "Return the sibling function for the given direction."
+  [direction]
+  (case direction
+    :next tree/next-sibling
+    :prev tree/prev-sibling))
+
 (defn- calc-navigate-props
   "Pure: calculate props for navigating in a direction.
    direction: :next or :prev
    extend?: if true, extends selection; if false, replaces selection"
   [db state direction extend?]
   (when-let [current (tree/focus db)]
-    (let [sibling-fn (case direction
-                       :next tree/next-sibling
-                       :prev tree/prev-sibling)
-          sibling-id (sibling-fn db current)]
-      (when sibling-id
-        (if extend?
-          (calc-extend-props db state sibling-id)
-          (calc-select-props sibling-id))))))
+    (when-let [sibling-id ((get-sibling-fn direction) db current)]
+      (if extend?
+        (calc-extend-props db state sibling-id)
+        (calc-select-props sibling-id)))))
 
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
 
