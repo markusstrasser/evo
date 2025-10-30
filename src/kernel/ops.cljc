@@ -89,6 +89,37 @@
                 [child-id]
                 (drop target-idx siblings))))
 
+(defn- resolve-target-position
+  "Resolve the target index for placing a node, simulating removal first.
+
+   Args:
+     db - database
+     under - parent (ID or root keyword)
+     at - position anchor
+     drop-id - ID to simulate removing before resolution
+
+   Returns:
+     Target index for insertion"
+  [db under at drop-id]
+  (let [siblings (get-in db [:children-by-parent under] [])]
+    (pos/resolve-insert-index siblings at {:drop-id drop-id})))
+
+(defn- insert-at-resolved-position
+  "Insert node at resolved position in parent's children.
+
+   Args:
+     db - database
+     id - node to insert
+     under - parent (ID or root keyword)
+     target-idx - resolved index for insertion
+
+   Returns:
+     Updated database"
+  [db id under target-idx]
+  (let [siblings (get-in db [:children-by-parent under] [])
+        updated-siblings (insert-child-at-position siblings id target-idx)]
+    (assoc-in db [:children-by-parent under] updated-siblings)))
+
 (defn place
   "Move node to new parent at specified position. Three phases: remove, resolve, insert.
 
@@ -101,16 +132,10 @@
    Returns:
      Updated database"
   [db id under at]
-  (let [siblings-before (get-in db [:children-by-parent under] [])
-        ;; Resolve anchor in simulated state (with id removed)
-        target-idx (pos/resolve-insert-index siblings-before at {:drop-id id})
-        ;; Actually remove from current parent
-        db-after-remove (remove-from-current-parent db id)
-        ;; Get siblings after removal (should match simulated state)
-        siblings-after (get-in db-after-remove [:children-by-parent under] [])
-        ;; Insert at resolved index
-        updated-siblings (insert-child-at-position siblings-after id target-idx)]
-    (assoc-in db-after-remove [:children-by-parent under] updated-siblings)))
+  (let [target-idx (resolve-target-position db under at id)]
+    (-> db
+        (remove-from-current-parent id)
+        (insert-at-resolved-position id under target-idx))))
 
 (defn deep-merge
   "Recursively merge maps. For nested maps, merge recursively.

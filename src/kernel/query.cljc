@@ -151,19 +151,22 @@
   [db parent]
   (get-in db [:children-by-parent parent] []))
 
+(defn- get-child-ids
+  "Get child IDs for a node from children-by-parent map."
+  [children-by-parent node-id]
+  (get children-by-parent node-id []))
+
 (defn descendants-of
   "Return all descendant node IDs of the given parent (recursive).
 
    Does not include the parent itself, only its descendants.
    Returns empty vector if parent has no children."
   [db parent]
-  (let [children-by-parent (:children-by-parent db)]
-    (letfn [(collect [node-id]
-              (let [children (get children-by-parent node-id [])]
-                (if (seq children)
-                  (concat children (mapcat collect children))
-                  [])))]
-      (vec (collect parent)))))
+  (let [children-by-parent (:children-by-parent db)
+        get-children (partial get-child-ids children-by-parent)]
+    (->> (tree-seq (comp seq get-children) get-children parent)
+         (rest)  ;; Remove the parent itself
+         vec)))
 
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
