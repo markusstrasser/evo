@@ -12,9 +12,6 @@
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [components.block :as block]
-            [plugins.selection :as sel]
-            [plugins.struct :as struct]
-            [plugins.editing :as edit]
             [plugins.folding]  ;; Load to register fold/zoom intents
             [plugins.smart-editing]  ;; Load to register smart editing intents
             [keymap.core :as keymap]

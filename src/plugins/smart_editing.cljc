@@ -8,7 +8,6 @@
    - Smart text manipulation (future: markup exit, code blocks)"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
-            [kernel.query :as q]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 

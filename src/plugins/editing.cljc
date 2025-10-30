@@ -4,8 +4,7 @@
    Edit state stored in :ui (ephemeral, not in history).
    Content changes emit ops for full undo/redo support."
   (:require [kernel.intent :as intent]
-            [kernel.constants :as const]
-            [kernel.query :as q]))
+            [kernel.constants :as const]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 

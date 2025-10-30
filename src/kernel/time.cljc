@@ -1,8 +1,7 @@
 (ns kernel.time
   "Centralized time utilities for cross-platform consistency."
   #?(:clj (:import (java.time Instant)
-                   (java.util Date Calendar))
-     :cljs (:import goog.string)))
+                   (java.util Date Calendar))))
 
 (defn now-ms
   "Get current time in milliseconds."
