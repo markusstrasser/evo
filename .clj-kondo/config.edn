@@ -12,25 +12,49 @@
                                                           clojure.edn
                                                           clojure.string
                                                           lab.anki.fs
-                                                          replicant.dom]}
-           :unused-binding               {:level :warning}
+                                                          replicant.dom
+                                                          ;; Test files with archived/future utilities
+                                                          core.permutation-test
+                                                          plugins.permute-test
+                                                          test-util
+                                                          plugins.struct-test
+                                                          integration.keybinding-test
+                                                          plugins.integration-edge-cases-test
+                                                          core.history-test
+                                                          golden.runner]}
+           :unused-binding               {:level   :warning
+                                          ;; Exclude platform-specific and dev files
+                                          :exclude [repl            ; REPL helpers use platform-specific bindings
+                                                    kernel.dbg      ; Debug helpers
+                                                    dev.debug       ; Browser debug
+                                                    fixtures        ; Test data generators
+                                                    components.block ; Event handlers for side effects
+                                                    shell.blocks-ui]}; UI event handlers
            :unused-referred-var          {:level :warning}
            :unused-private-var           {:level :warning}
            :invalid-arity                {:level :error}
            :type-mismatch                {:level :error}
-           :misplaced-docstring          {:level :warning}
+           :misplaced-docstring          {:level   :warning
+                                          ;; Exclude test helpers (they use string literals as comments)
+                                          :exclude [plugins.selection-test]}
            :missing-docstring            {:level :off}      ; Too noisy for helpers
            :deprecated-var               {:level :warning}
            :redefined-var                {:level :error}
            :refer-all                    {:level :warning}
            :unsorted-required-namespaces {:level :off}
            :unused-import                {:level :warning}
-           :shadowed-var                 {:level :warning}
+           :shadowed-var                 {:level   :warning
+                                          ;; Allow intentional domain names
+                                          :exclude [key range next type future
+                                                    parents descendants children
+                                                    chars ns-name record?]}
            :duplicate-require            {:level :error}
            :single-operand-comparison    {:level :warning}
            :single-logical-operand       {:level :warning}
            :redundant-do                 {:level :warning}
-           :redundant-let                {:level :warning}
+           :redundant-let                {:level   :warning
+                                          ;; Exclude tests where sequential deps aid clarity
+                                          :exclude [core.history-test]}
            :cond-else                    {:level :warning}
            :not-empty?                   {:level :warning}
            :consistent-alias             {:level   :warning
