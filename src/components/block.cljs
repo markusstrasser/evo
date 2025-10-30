@@ -4,9 +4,7 @@
    Uses plugin getters for data and dispatches intents for all state changes.
    Implements cursor boundary detection for seamless up/down navigation."
   (:require [replicant.dom :as d]
-            [kernel.query :as q]
-            [plugins.editing :as edit]
-            [plugins.selection :as sel]))
+            [kernel.query :as q]))
 
 ;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
 
@@ -260,7 +258,7 @@
 
                                      ;; Set cursor position based on session state
                                      ;; NOTE: cursor-position is cleared by the caller (shell), not here
-                                     (when (and cursor-pos (not (empty? (.-textContent node))))
+                                     (when (and cursor-pos (seq (.-textContent node)))
                                        (try
                                          (let [range (.createRange js/document)
                                                sel (.getSelection js/window)

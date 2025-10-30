@@ -11,8 +11,7 @@
    - Zoom in: focus on a block (make it rendering root)
    - Zoom out: return to parent context"
   (:require [kernel.intent :as intent]
-            [kernel.constants :as const]
-            [kernel.query :as q]))
+            [kernel.constants :as const]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
