@@ -4,7 +4,9 @@
    Uses plugin getters for data and dispatches intents for all state changes.
    Implements cursor boundary detection for seamless up/down navigation."
   (:require [replicant.dom :as d]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [parser.block-refs :as block-refs]
+            [components.block-ref :as block-ref]))
 
 ;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
 
@@ -178,6 +180,24 @@
 
       :else nil)))
 
+;; ── Content Rendering with Block References ───────────────────────────────────
+
+(defn render-text-with-refs
+  "Parse text for block references and render with BlockRef components.
+
+   Returns a vector of strings and BlockRef components mixed together.
+   Uses ref-set for cycle detection."
+  [db text ref-set]
+  (let [segments (block-refs/split-with-refs text)]
+    (into [:span]
+          (map (fn [{:keys [type value id]}]
+                 (case type
+                   :text value
+                   :ref (block-ref/BlockRef {:db db
+                                             :block-id id
+                                             :ref-set ref-set})))
+               segments))))
+
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
 (defn Block
@@ -300,7 +320,8 @@
                           (if focus?
                             (on-intent {:type :enter-edit :block-id block-id})
                             (on-intent {:type :selection :mode :replace :ids block-id})))}}
-           text])
+           ;; Render text with block references (transclusion)
+           (render-text-with-refs db text #{block-id})])
 
         children-el
         (when (seq children)
