@@ -658,3 +658,39 @@ select:hover {
   background: #ef5350;
   color: white;
 }
+
+/* Block References (Transclusion) */
+.block-ref {
+  background-color: #e8f4f8;
+  border-left: 2px solid #4a9eff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.block-ref:hover {
+  background-color: #d0e7f3;
+}
+
+.block-ref-missing {
+  background-color: #ffe8e8;
+  border-left: 2px solid #ff4a4a;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #cc0000;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.block-ref-circular {
+  background-color: #fff3cd;
+  border-left: 2px solid #ffc107;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #856404;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
