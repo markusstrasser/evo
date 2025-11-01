@@ -12,6 +12,9 @@
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [components.block :as block]
+            [plugins.selection]  ;; Load to register selection intents
+            [plugins.editing]  ;; Load to register editing intents (enter-edit, exit-edit, update-content)
+            [plugins.struct]  ;; Load to register structural intents (delete, indent, outdent, move)
             [plugins.folding]  ;; Load to register fold/zoom intents
             [plugins.smart-editing]  ;; Load to register smart editing intents
             [keymap.core :as keymap]
@@ -22,14 +25,14 @@
 (defonce !db
          (atom
            (-> (DB/empty-db)
-               ;; Create sample outline structure
+               ;; Create sample outline structure with transclusion examples
                (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
                               {:op :place :id "page" :under :doc :at :last}
                               {:op :create-node :id "a" :type :block :props {:text "First block"}}
                               {:op :place :id "a" :under "page" :at :last}
-                              {:op :create-node :id "b" :type :block :props {:text "Second block"}}
+                              {:op :create-node :id "b" :type :block :props {:text "Second block with ref to ((a))"}}
                               {:op :place :id "b" :under "page" :at :last}
-                              {:op :create-node :id "c" :type :block :props {:text "Third block\nwith multiple\nlines for testing"}}
+                              {:op :create-node :id "c" :type :block :props {:text "Test: ((a)) and ((missing)) and ((d))"}}
                               {:op :place :id "c" :under "page" :at :last}
                               {:op :create-node :id "d" :type :block :props {:text "Nested block"}}
                               {:op :place :id "d" :under "b" :at :last}])
