@@ -41,7 +41,7 @@
     (str/replace-first text "[x]" "[ ]")
 
     (str/includes? text "[X]")
-    (str/replace-first text "[X]" "[x]")
+    (str/replace-first text "[X]" "[ ]")
 
     :else text))
 
