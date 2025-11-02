@@ -1,215 +1,180 @@
-(ns dev.debug
+(ns debug
   "REPL debugging helpers - load in browser console or REPL"
-  (:require [lab.anki.ui :as ui]
-            [lab.anki.core :as core]
+  (:require [shell.blocks-ui :as app]
+            [kernel.db :as db]
+            [kernel.query :as q]
+            [kernel.history :as H]
+            [kernel.api :as api]
             [cljs.pprint :refer [pprint]]))
 
-;; State inspection
+;; ── State Inspection ──────────────────────────────────────────────────────────
 
 (defn state
-  "Get current app state"
+  "Get current app DB state"
   []
-  @ui/!state)
+  @app/!db)
 
-(defn cards
-  "Get all cards"
+(defn nodes
+  "Get all nodes"
   []
-  (get-in @ui/!state [:state :cards]))
+  (:nodes (state)))
 
-(defn events
-  "Get all events"
+(defn node
+  "Get specific node by ID"
+  [id]
+  (get-in (state) [:nodes id]))
+
+(defn children
+  "Get children of a node"
+  [parent-id]
+  (q/children (state) parent-id))
+
+(defn parent
+  "Get parent of a node"
+  [node-id]
+  (q/parent-of (state) node-id))
+
+(defn selection
+  "Get current selection"
   []
-  (:events @ui/!state))
+  (q/selection (state)))
 
-(defn undo-stack
-  "Get undo stack"
+(defn editing
+  "Get currently editing block ID"
   []
-  (get-in @ui/!state [:state :undo-stack]))
+  (q/editing-block-id (state)))
 
-(defn redo-stack
-  "Get redo stack"
+(defn folded
+  "Get set of folded block IDs"
   []
-  (get-in @ui/!state [:state :redo-stack]))
+  (q/folded-blocks (state)))
 
-(defn due-cards
-  "Get cards due now"
+;; ── History Inspection ────────────────────────────────────────────────────────
+
+(defn history
+  "Get history map"
   []
-  (core/due-cards (:state @ui/!state)))
+  (H/get-history (state)))
 
-;; Event inspection
-
-(defn last-event
-  "Get last event"
+(defn undo-count
+  "Get number of undo steps available"
   []
-  (last (events)))
+  (H/undo-count (state)))
 
-(defn event-types
-  "Get list of event types"
+(defn redo-count
+  "Get number of redo steps available"
   []
-  (map :event/type (events)))
+  (H/redo-count (state)))
 
-(defn event-status-map
-  "Get event status map (active/undone)"
+(defn can-undo?
+  "Check if undo is available"
   []
-  (core/build-event-status-map (events)))
+  (H/can-undo? (state)))
 
-(defn active-events
-  "Get only active events"
+(defn can-redo?
+  "Check if redo is available"
   []
-  (let [status-map (event-status-map)]
-    (filter #(= :active (get status-map (:event/id %) :active)) (events))))
+  (H/can-redo? (state)))
 
-(defn undone-events
-  "Get only undone events"
-  []
-  (let [status-map (event-status-map)]
-    (filter #(= :undone (get status-map (:event/id %))) (events))))
-
-;; Summary functions
+;; ── Summary Functions ─────────────────────────────────────────────────────────
 
 (defn summary
   "Print state summary"
   []
   (let [s (state)]
-    {:cards/total (count (cards))
-     :cards/due (count (due-cards))
-     :events/total (count (events))
-     :events/active (count (active-events))
-     :events/undone (count (undone-events))
-     :undo-stack/size (count (undo-stack))
-     :redo-stack/size (count (redo-stack))}))
+    {:nodes/total (count (nodes))
+     :nodes/blocks (count (filter #(= :block (:type %)) (vals (nodes))))
+     :nodes/pages (count (filter #(= :page (:type %)) (vals (nodes))))
+     :selection/count (count (selection))
+     :selection/ids (vec (selection))
+     :editing/block-id (editing)
+     :folded/count (count (folded))
+     :history/undo-count (undo-count)
+     :history/redo-count (redo-count)}))
 
-(defn inspect-events
-  "Print recent events with status"
-  ([] (inspect-events 10))
-  ([n]
-   (let [status-map (event-status-map)]
-     (doseq [event (take-last n (events))]
-       (let [status (get status-map (:event/id event) :active)]
-         (println (if (= status :active) "✅" "❌")
-                  (:event/type event)
-                  (str "(" (subs (str (:event/id event)) 0 8) "...)")))))))
+(defn tree
+  "Print tree structure starting from root"
+  ([] (tree :doc))
+  ([root-id]
+   (letfn [(print-tree [id depth]
+             (let [n (node id)
+                   text (get-in n [:props :text] "")
+                   title (get-in n [:props :title] "")
+                   label (if (seq text) text title)
+                   indent (apply str (repeat (* depth 2) " "))]
+               (println (str indent "- " id " (" (:type n) "): " label))
+               (doseq [child-id (children id)]
+                 (print-tree child-id (inc depth)))))]
+     (print-tree root-id 0))))
 
-;; Action helpers
+;; ── Action Helpers ────────────────────────────────────────────────────────────
 
 (defn reload!
   "Hard reload the page"
   []
   (.reload js/location true))
 
-(defn clear-events!
-  "Clear all events (WARNING: destructive)"
+(defn clear-db!
+  "Reset to empty DB (WARNING: destructive)"
   []
-  (when (js/confirm "Clear all events? This will reset the app.")
-    (swap! ui/!state assoc :events [] :state {:cards {} :meta {}})))
+  (when (js/confirm "Reset to empty DB? This will lose all data.")
+    (reset! app/!db (db/empty-db))
+    (println "✅ DB reset to empty")))
 
-;; Undo/redo specific helpers
+(defn dispatch!
+  "Dispatch an intent and show trace"
+  [intent-map]
+  (js/console.log "Dispatching intent:" (pr-str intent-map))
+  (let [{:keys [db trace]} (api/dispatch @app/!db intent-map)]
+    (js/console.log "Trace:" (pr-str trace))
+    (reset! app/!db db)
+    trace))
 
-(defn explain-undo-stack
-  "Explain what's in the undo stack"
-  []
-  (let [stack (undo-stack)
-        evts (events)]
-    (js/console.log "=== Undo Stack (" (count stack) "items) ===")
-    (doseq [[idx event-id] (map-indexed vector stack)]
-      (let [event (first (filter #(= event-id (:event/id %)) evts))]
-        (when event
-          (case (:event/type event)
-            :review
-            (js/console.log
-             (str (inc idx) ". REVIEW "
-                  (get-in event [:event/data :card-hash])
-                  " → "
-                  (get-in event [:event/data :rating])))
-
-            :card-created
-            (js/console.log
-             (str (inc idx) ". CREATE "
-                  (get-in event [:event/data :card-hash])))
-
-            (js/console.log (str (inc idx) ". " (:event/type event)))))))))
-
-(defn explain-redo-stack
-  "Explain what's in the redo stack"
-  []
-  (let [stack (redo-stack)
-        evts (events)]
-    (js/console.log "=== Redo Stack (" (count stack) "items) ===")
-    (doseq [[idx event-id] (map-indexed vector stack)]
-      (let [event (first (filter #(= event-id (:event/id %)) evts))]
-        (when event
-          (case (:event/type event)
-            :review
-            (js/console.log
-             (str (inc idx) ". REVIEW "
-                  (get-in event [:event/data :card-hash])
-                  " → "
-                  (get-in event [:event/data :rating])))
-
-            (js/console.log (str (inc idx) ". " (:event/type event)))))))))
-
-(defn verify-undo-invariants
-  "Verify undo/redo invariants"
-  []
-  (let [stack (undo-stack)
-        evts (events)
-        stack-events (keep (fn [event-id]
-                             (first (filter #(= event-id (:event/id %)) evts)))
-                           stack)
-        has-card-created? (some #(= :card-created (:event/type %)) stack-events)]
-    {:all-reviews? (every? #(= :review (:event/type %)) stack-events)
-     :has-card-created? has-card-created?
-     :invariant-ok? (not has-card-created?)
-     :message (if has-card-created?
-                "❌ ERROR: Undo stack contains card-created events!"
-                "✅ OK: Undo stack only contains review events")}))
-
-;; Integrity checks
+;; ── Integrity Checks ──────────────────────────────────────────────────────────
 
 (defn check-integrity!
-  "Check data integrity and print report"
+  "Check DB integrity and print report"
   []
   (let [s (state)
-        issues (core/check-integrity (:state s) (:events s))]
-    (if (empty? issues)
+        {:keys [ok? issues]} (db/validate s)]
+    (if ok?
       (do
         (js/console.log "✅ No integrity issues found")
         {:ok? true :issues []})
       (do
         (js/console.log "⚠️  Found" (count issues) "issue(s):")
         (doseq [issue issues]
-          (let [icon (case (:severity issue)
-                       :error "❌"
-                       :warning "⚠️ "
-                       :info "ℹ️ ")]
-            (js/console.log icon (:message issue))
-            (when (:data issue)
-              (js/console.log "   Data:" (pr-str (:data issue))))))
+          (js/console.log "  ❌" (pr-str issue)))
         {:ok? false :issues issues}))))
 
-;; Export to window for console access
+;; ── Export to window for console access ──────────────────────────────────────
+
 (defn ^:export init! []
   (js/console.log "🔧 Debug helpers loaded. Try:")
-  (js/console.log "  DEBUG.summary()")
-  (js/console.log "  DEBUG.checkIntegrity()")
-  (js/console.log "  DEBUG.explainUndoStack()")
-  (js/console.log "  DEBUG.verifyUndoInvariants()")
+  (js/console.log "  DEBUG.summary()         - State overview")
+  (js/console.log "  DEBUG.tree()            - Print tree structure")
+  (js/console.log "  DEBUG.checkIntegrity()  - Validate DB")
+  (js/console.log "  DEBUG.nodes             - All nodes")
+  (js/console.log "  DEBUG.selection()       - Current selection")
+  (js/console.log "  DEBUG.history()         - History state")
+  (js/console.log "  DEBUG.reload()          - Hard reload")
   (set! js/window.DEBUG
         #js {:state state
-             :cards cards
-             :events events
-             :undoStack undo-stack
-             :redoStack redo-stack
-             :dueCards due-cards
+             :nodes nodes
+             :node node
+             :children children
+             :parent parent
+             :selection selection
+             :editing editing
+             :folded folded
+             :history history
+             :undoCount undo-count
+             :redoCount redo-count
+             :canUndo can-undo?
+             :canRedo can-redo?
              :summary summary
-             :inspectEvents inspect-events
+             :tree tree
              :checkIntegrity check-integrity!
-             :explainUndoStack explain-undo-stack
-             :explainRedoStack explain-redo-stack
-             :verifyUndoInvariants verify-undo-invariants
-             :lastEvent last-event
-             :eventTypes event-types
-             :activeEvents active-events
-             :undoneEvents undone-events
+             :dispatch dispatch!
              :reload reload!
-             :clearEvents clear-events!}))
+             :clearDb clear-db!}))
