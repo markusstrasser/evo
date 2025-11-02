@@ -63,39 +63,31 @@
                     [source-id refs]))))
         nodes))
 
-(defn- refs-to-backlinks-entries
-  "Convert source-id and its refs to backlink entries.
-   Returns seq of [kind target source-id] tuples for grouping."
-  [source-id refs]
-  (for [{:keys [kind target]} refs]
-    [kind target source-id]))
-
 (defn- group-backlinks-by-kind
   "Transform outgoing refs into backlinks grouped by kind.
    Returns: {kind {target-id #{source-id}}}"
   [outgoing-typed]
-  (->> outgoing-typed
-       (mapcat (fn [[source-id refs]]
-                 (refs-to-backlinks-entries source-id refs)))
-       (group-by first) ;; Group by kind
-       (into {}
-             (map (fn [[kind entries]]
-                    [kind (reduce (fn [acc [_ target source]]
-                                    (update acc target (fnil conj #{}) source))
-                                  {}
-                                  entries)])))))
+  (reduce-kv
+   (fn [backlinks source-id refs]
+     (reduce (fn [acc {:keys [kind target]}]
+               (update-in acc [kind target] (fnil conj #{}) source-id))
+             backlinks
+             refs))
+   {}
+   outgoing-typed))
 
 (defn- calculate-citation-counts
   "Count total citations per target across all ref kinds.
    Returns: {target-id total-citation-count}"
   [backlinks-by-kind]
-  (reduce (fn [citations [_kind target-to-sources]]
-            (reduce (fn [acc [target sources]]
-                      (update acc target (fnil + 0) (count sources)))
-                    citations
-                    target-to-sources))
-          {}
-          backlinks-by-kind))
+  (reduce-kv
+   (fn [citations _kind target-to-sources]
+     (reduce-kv (fn [acc target sources]
+                  (assoc acc target (+ (get acc target 0) (count sources))))
+                citations
+                target-to-sources))
+   {}
+   backlinks-by-kind))
 
 (defn- simplify-outgoing-to-targets
   "Convert typed outgoing refs to simple target ID sets.
