@@ -69,14 +69,22 @@
    []
    ops))
 
+(defn- canonicalize-place-anchor
+  "Canonicalize :at anchor for :place operations.
+   Non-place operations pass through unchanged."
+  [op]
+  (if (= :place (:op op))
+    (update op :at pos/canon)
+    op))
+
 (defn- normalize-ops
   "Normalize operations:
-   - Canonicalize :at anchors (:at-start → :first, :at-end → :last, int → {:at-index n})
+   - Canonicalize :at anchors (:at-start → :first, :at-end → :last)
    - Drop no-op place (same parent & index)
    - Merge adjacent update-node on same id"
   [db ops]
   (->> ops
-       (map #(if (= (:op %) :place) (update % :at pos/canon) %))
+       (map canonicalize-place-anchor)
        (remove-noop-places db)
        merge-adjacent-updates))
 
@@ -102,7 +110,7 @@
    {}
    children-by-parent))
 
-(defn- descendant-of?
+(defn- descendant-of-fresh?
   "Check if potential-descendant is a descendant of potential-ancestor.
    Walks up the parent chain until reaching a root or detecting the ancestor.
 
@@ -122,17 +130,14 @@
   "Check if placing node-id under parent would create a cycle.
    A cycle occurs when:
    1. node-id equals parent (self-parent)
-   2. parent is a descendant of node-id (would create loop)"
+   2. parent is a descendant of node-id (would create loop)
+
+   Uses descendant-of-fresh? which rebuilds parent-of from children-by-parent
+   to avoid stale derived data during multi-op validation."
   [db node-id parent]
   (or (= node-id parent)
       (and (string? parent)
-           (descendant-of? db node-id parent))))
-
-(defn- valid-parent?
-  "Check if parent is valid (either a root or an existing node)."
-  [db parent]
-  (or (some #{parent} (:roots db))
-      (contains? (:nodes db) parent)))
+           (descendant-of-fresh? db node-id parent))))
 
 (defn- validate-anchor
   "Validate anchor (keyword, integer, or map).
@@ -166,12 +171,13 @@
   "Validate :place operation."
   [db op op-index]
   (let [{:keys [id under at]} op
-        node-exists? (contains? (:nodes db) id)]
+        node-exists? (contains? (:nodes db) id)
+        parent-valid? (db/valid-parent? db under)]
     (->> [(when-not node-exists?
             (make-issue op op-index :node-not-found
                         (str "Node " id " does not exist")))
 
-          (when-not (valid-parent? db under)
+          (when-not parent-valid?
             (make-issue op op-index :parent-not-found
                         (str "Parent " under " does not exist")))
 
@@ -180,7 +186,7 @@
             (validate-anchor db op op-index under at id))
 
           ;; Only check for cycles if both node and parent exist
-          (when (and node-exists? (valid-parent? db under)
+          (when (and node-exists? parent-valid?
                      (would-create-cycle? db id under))
             (make-issue op op-index :cycle-detected
                         (str "Cannot place " id " under " under " - would create cycle")))]
