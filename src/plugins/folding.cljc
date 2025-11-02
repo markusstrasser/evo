@@ -149,8 +149,8 @@
    :handler (fn [db _intent]
               (let [current-stack (get-zoom-stack db)]
                 (when (seq current-stack)
-                  (let [new-stack (pop current-stack)
-                        previous-level (peek new-stack)
+                  (let [previous-level (peek current-stack)
+                        new-stack (pop current-stack)
                         new-root (if previous-level
                                   (:block-id previous-level)
                                   const/root-doc)]
