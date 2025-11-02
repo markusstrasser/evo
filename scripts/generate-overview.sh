@@ -142,34 +142,69 @@ if [[ -z "$MODE" ]]; then
   exit 1
 fi
 
-# Auto mode: generate all three and exit
+# Auto mode: generate all three in parallel and exit
 if [[ "$MODE" == "auto" ]]; then
-  echo "📦 Auto Mode: Generating three overviews..."
+  echo "📦 Auto Mode: Generating three overviews in parallel..."
   echo ""
 
-  echo "🔍 Generating AUTO-SOURCE-OVERVIEW.md..."
-  if "$0" --source; then
+  # Create temp dir for logs
+  TEMP_DIR=$(mktemp -d)
+
+  # Launch all three in parallel
+  echo "🔍 Starting AUTO-SOURCE-OVERVIEW.md..."
+  "$0" --source > "$TEMP_DIR/source.log" 2>&1 &
+  PID_SOURCE=$!
+
+  echo "📂 Starting AUTO-PROJECT-OVERVIEW.md..."
+  "$0" --project > "$TEMP_DIR/project.log" 2>&1 &
+  PID_PROJECT=$!
+
+  echo "🛠️  Starting AUTO-DEV-OVERVIEW.md..."
+  "$0" --dev > "$TEMP_DIR/dev.log" 2>&1 &
+  PID_DEV=$!
+
+  echo ""
+  echo "⏳ Waiting for all three to complete..."
+
+  # Wait for all and collect exit codes
+  wait $PID_SOURCE
+  EXIT_SOURCE=$?
+
+  wait $PID_PROJECT
+  EXIT_PROJECT=$?
+
+  wait $PID_DEV
+  EXIT_DEV=$?
+
+  echo ""
+
+  # Report results
+  if [[ $EXIT_SOURCE -eq 0 ]]; then
     echo "✓ AUTO-SOURCE-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate source overview" >&2
-    exit 1
+    cat "$TEMP_DIR/source.log" >&2
   fi
-  echo ""
 
-  echo "📂 Generating AUTO-PROJECT-OVERVIEW.md..."
-  if "$0" --project; then
+  if [[ $EXIT_PROJECT -eq 0 ]]; then
     echo "✓ AUTO-PROJECT-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate project overview" >&2
-    exit 1
+    cat "$TEMP_DIR/project.log" >&2
   fi
-  echo ""
 
-  echo "🛠️  Generating AUTO-DEV-OVERVIEW.md..."
-  if "$0" --dev; then
+  if [[ $EXIT_DEV -eq 0 ]]; then
     echo "✓ AUTO-DEV-OVERVIEW.md generated"
   else
     echo "✗ Failed to generate dev overview" >&2
+    cat "$TEMP_DIR/dev.log" >&2
+  fi
+
+  # Cleanup temp logs
+  rm -rf "$TEMP_DIR"
+
+  # Exit with failure if any failed
+  if [[ $EXIT_SOURCE -ne 0 || $EXIT_PROJECT -ne 0 || $EXIT_DEV -ne 0 ]]; then
     exit 1
   fi
 
