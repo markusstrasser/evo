@@ -51,36 +51,85 @@
                    :parent-id parent-id
                    :suggest {:replace-anchor :at-end}})))
 
-(defn- resolve-before
-  "Resolve {:before id} anchor."
-  [kids parent-id target-id]
-  (let [i (.indexOf kids target-id)]
-    (when (neg? i)
-      (throw-missing-target :before target-id parent-id kids))
-    {:idx i :normalized-anchor {:before target-id}}))
+(defn- resolve-anchor-core
+  "Core anchor resolution logic. Shared by both ->index and resolve-insert-index.
 
-(defn- resolve-after
-  "Resolve {:after id} anchor."
-  [kids parent-id target-id]
-  (let [i (.indexOf kids target-id)]
-    (when (neg? i)
-      (throw-missing-target :after target-id parent-id kids))
-    {:idx (inc i) :normalized-anchor {:after target-id}}))
+   Args:
+     kids - vector of sibling IDs
+     anchor - anchor specification
+     parent-id - optional parent ID for error messages (can be nil)
 
-(defn- resolve-map-anchor
-  "Resolve map-based anchor ({:before/:after ...})."
-  [kids _n parent-id anchor]
-  (cond
-    (contains? anchor :before)
-    (resolve-before kids parent-id (:before anchor))
+   Returns: integer index
+   Throws: ex-info with ::bad-anchor or ::missing-target
 
-    (contains? anchor :after)
-    (resolve-after kids parent-id (:after anchor))
+   This is the single source of truth for anchor resolution logic."
+  [kids anchor parent-id]
+  (let [n (count kids)]
+    (cond
+      ;; Keyword anchors
+      (or (= anchor :first) (= anchor :at-start))
+      0
 
-    :else
-    (throw (ex-info "Invalid map anchor - must have :before or :after"
-                    {:reason ::bad-anchor
-                     :anchor anchor}))))
+      (or (= anchor :last) (= anchor :at-end))
+      n
+
+      ;; Map anchors
+      (map? anchor)
+      (cond
+        (contains? anchor :before)
+        (let [target-id (:before anchor)
+              i (.indexOf kids target-id)]
+          (when (neg? i)
+            (throw-missing-target :before target-id parent-id kids))
+          i)
+
+        (contains? anchor :after)
+        (let [target-id (:after anchor)
+              i (.indexOf kids target-id)]
+          (when (neg? i)
+            (throw-missing-target :after target-id parent-id kids))
+          (inc i))
+
+        :else
+        (throw (ex-info "Invalid map anchor - must have :before or :after"
+                       {:reason ::bad-anchor :anchor anchor})))
+
+      ;; Unknown anchor type
+      :else
+      (throw (ex-info "Unknown anchor type"
+                     {:reason ::bad-anchor
+                      :anchor anchor
+                      :expected "One of: :first, :last, {:before id}, {:after id}"})))))
+
+(defn resolve-insert-index
+  "Resolve anchor within kids vec, optionally dropping `id` before resolution.
+
+   This is the primary interface for anchor resolution used by transaction
+   validation and apply phases. It ensures consistent 'remove before place'
+   semantics across the system.
+
+   Args:
+     kids - vector of IDs
+     anchor - anchor specification (:first, :last, {:before id}, {:after id})
+     opts - optional map with:
+       :drop-id - ID to remove from kids before resolving anchor
+
+   Returns: integer index
+   Throws: ex-info with ::bad-anchor or ::missing-target on invalid anchor
+
+   Example:
+     ;; Place 'a' after 'b' when 'a' is already in the list [a b c]
+     (resolve-insert-index [\"a\" \"b\" \"c\"] {:after \"b\"} {:drop-id \"a\"})
+     ;=> 2 (after b in list [b c])
+
+     ;; Place 'a' before itself (should use the position after removal)
+     (resolve-insert-index [\"a\" \"b\" \"c\"] {:before \"a\"} {:drop-id \"a\"})
+     ;=> 0 (first position in list [b c])"
+  ([kids anchor]
+   (resolve-insert-index kids anchor nil))
+  ([kids anchor {:keys [drop-id]}]
+   (let [kids' (if drop-id (vec (remove #(= % drop-id) kids)) kids)]
+     (resolve-anchor-core kids' anchor nil))))
 
 (defn ->index
   "Resolve Anchor within parent's children vector.
@@ -90,25 +139,18 @@
 
    Reasons:
    - ::missing-target - anchor references non-existent sibling
-   - ::bad-anchor - anchor format is invalid"
+   - ::bad-anchor - anchor format is invalid
+
+   This function provides the DB-aware interface with normalized anchor output.
+   It delegates to the core resolution logic but enriches the result."
   [db parent-id anchor]
   (let [kids (children db parent-id)
-        n (count kids)]
-    (cond
-      (or (= anchor :first) (= anchor :at-start))
-      {:idx 0 :normalized-anchor :first}
-
-      (or (= anchor :last) (= anchor :at-end))
-      {:idx n :normalized-anchor :last}
-
-      (map? anchor)
-      (resolve-map-anchor kids n parent-id anchor)
-
-      :else
-      (throw (ex-info "Unknown anchor type"
-                      {:reason ::bad-anchor
-                       :anchor anchor
-                       :expected "One of: :first, :last, {:before id}, {:after id}"})))))
+        idx (resolve-anchor-core kids anchor parent-id)
+        normalized-anchor (cond
+                            (or (= anchor :first) (= anchor :at-start)) :first
+                            (or (= anchor :last) (= anchor :at-end)) :last
+                            :else anchor)]
+    {:idx idx :normalized-anchor normalized-anchor}))
 
 (defn normalize-intent
   "Lifts {:into parent-id anchor?} to {:parent parent-id :anchor anchor'}.
@@ -136,63 +178,6 @@
    Use this for simple cases where you just need the index."
   [db parent-id anchor]
   (:idx (->index db parent-id anchor)))
-
-(defn resolve-insert-index
-  "Resolve anchor within kids vec, optionally dropping `id` before resolution.
-
-   This is the single source of truth for anchor resolution used by both
-   validation and apply phases. It ensures consistent 'remove before place'
-   semantics across the system.
-
-   Args:
-     kids - vector of IDs
-     anchor - anchor specification (:first, :last, {:before id}, {:after id})
-     opts - optional map with:
-       :drop-id - ID to remove from kids before resolving anchor
-
-   Returns: integer index
-   Throws: ex-info with ::bad-anchor or ::missing-target on invalid anchor
-
-   Example:
-     ;; Place 'a' after 'b' when 'a' is already in the list [a b c]
-     (resolve-insert-index [\"a\" \"b\" \"c\"] {:after \"b\"} {:drop-id \"a\"})
-     ;=> 2 (after b in list [b c])
-
-     ;; Place 'a' before itself (should use the position after removal)
-     (resolve-insert-index [\"a\" \"b\" \"c\"] {:before \"a\"} {:drop-id \"a\"})
-     ;=> 0 (first position in list [b c])"
-  ([kids anchor] (resolve-insert-index kids anchor nil))
-  ([kids anchor {:keys [drop-id]}]
-   (let [kids' (if drop-id (vec (remove #(= % drop-id) kids)) kids)
-         n (count kids')]
-     (cond
-       (or (= anchor :first) (= anchor :at-start)) 0
-       (or (= anchor :last) (= anchor :at-end)) n
-
-       (map? anchor)
-       (cond
-         (contains? anchor :before)
-         (let [i (.indexOf kids' (:before anchor))]
-           (when (neg? i)
-             (throw (ex-info "Anchor :before not found in vector"
-                            {:reason ::missing-target :target (:before anchor)})))
-           i)
-
-         (contains? anchor :after)
-         (let [i (.indexOf kids' (:after anchor))]
-           (when (neg? i)
-             (throw (ex-info "Anchor :after not found in vector"
-                            {:reason ::missing-target :target (:after anchor)})))
-           (inc i))
-
-         :else
-         (throw (ex-info "Invalid map anchor - must have :before or :after"
-                        {:reason ::bad-anchor :anchor anchor})))
-
-       :else
-       (throw (ex-info "Unknown anchor type"
-                      {:reason ::bad-anchor :anchor anchor
-                       :expected "One of: :first, :last, {:before id}, {:after id}"}))))))
 
 (defn resolve-anchor-in-vec
   "Resolve anchor within an arbitrary vector (not from DB).
