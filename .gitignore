@@ -17,6 +17,21 @@ venv/
 __pycache__/
 *.pyc
 
+# Backup files
+*.backup
+*.bak
+*.bak[0-9]
+*.bak[0-9][0-9]
+
+# Session analysis files (AI artifacts)
+*-ANALYSIS.md
+*-SUMMARY.md
+*-RESULTS.md
+
+# Playwright reports
+playwright-report/
+test-results/
+
 gemini-output
 repomix-output.xml
 bun.lock
