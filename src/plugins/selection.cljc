@@ -33,15 +33,16 @@
   "Pure: calculate props for extending selection with given IDs.
    Supports range selection when single ID provided and anchor exists."
   [db current-state ids]
-  (let [ids-vec (if (coll? ids) (vec ids) [ids])
-        ids-set (set ids-vec)
-        new-focus (last ids-vec)
-        existing-anchor (:anchor current-state)
-        range-set (when (and existing-anchor (= 1 (count ids-vec)))
-                    (tree/doc-range db existing-anchor new-focus))
-        new-anchor (or existing-anchor new-focus)
-        new-nodes (or range-set (set/union (:nodes current-state) ids-set))]
-    {:nodes new-nodes :focus new-focus :anchor new-anchor}))
+  (let [ids-vec     (if (coll? ids) (vec ids) [ids])
+        new-focus   (last ids-vec)
+        anchor      (:anchor current-state)
+        single-id?  (= 1 (count ids-vec))
+        range-mode? (and anchor single-id?)
+        range-set   (when range-mode? (tree/doc-range db anchor new-focus))
+        new-nodes   (or range-set (set/union (:nodes current-state) (set ids-vec)))]
+    {:nodes  new-nodes
+     :focus  new-focus
+     :anchor (or anchor new-focus)}))
 
 (defn- calc-deselect-props
   "Pure: calculate props for removing IDs from selection."
