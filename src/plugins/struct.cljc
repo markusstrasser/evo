@@ -14,7 +14,8 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.query :as q]
-            [kernel.position :as pos]))
+            [kernel.position :as pos]
+            [kernel.db :as db]))
 
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
@@ -197,26 +198,17 @@
      2. Resolve anchor position in the remaining siblings
      3. Insert selection at that position (preserving internal order)"
   [db {:keys [selection parent anchor]}]
-  (let [;; Get current siblings
-        current-kids (pos/children db parent)
-
-        ;; Remove selected nodes (they'll be re-inserted)
+  (let [current-kids (pos/children db parent)
         selection-set (set selection)
-        kids-without-selection (filterv #(not (contains? selection-set %)) current-kids)
-
-        ;; Resolve anchor in the list WITHOUT the selected nodes
-        ;; This matches the :place semantics (remove → resolve → insert)
+        kids-without-selection (vec (remove selection-set current-kids))
         target-idx (try
                      (pos/resolve-anchor-in-vec kids-without-selection anchor)
                      (catch #?(:clj Exception :cljs js/Error) _
                        ;; If anchor references a selected node, it will fail after removal
                        ;; Fallback to end
                        (count kids-without-selection)))
-
-        ;; Build result: head + selection + tail
-        head (subvec kids-without-selection 0 (min target-idx (count kids-without-selection)))
-        tail (subvec kids-without-selection (min target-idx (count kids-without-selection)))]
-
+        safe-idx (min target-idx (count kids-without-selection))
+        [head tail] (split-at safe-idx kids-without-selection)]
     (vec (concat head selection tail))))
 
 
@@ -258,6 +250,20 @@
     ops))
 
 
+(defn- find-missing-nodes
+  "Return vector of selection IDs that don't exist in db."
+  [db selection]
+  (let [nodes (:nodes db)]
+    (filterv #(not (contains? nodes %)) selection)))
+
+(defn- would-create-cycle-any?
+  "Check if moving any node in selection under parent would create a cycle.
+   A cycle occurs when parent is a descendant of any selected node.
+   Short-circuits on first cycle found."
+  [db selection parent]
+  (and (string? parent)  ; Keywords (roots) can't be descendants
+       (some #(db/descendant-of? db % parent) selection)))
+
 (defn validate-move-intent
   "Validate a move intent before lowering.
 
@@ -266,45 +272,27 @@
    Checks:
    - Selection IDs exist
    - Parent exists
-   - No cycles (none of selection are ancestors of parent)
-   - Anchor is valid (if it can be pre-validated)"
+   - No cycles (none of selection are ancestors of parent)"
   [db {:keys [selection parent] :as intent}]
-  (let [nodes (:nodes db)
-        roots (set (:roots db))]
+  (let [missing (find-missing-nodes db selection)]
     (cond
-      ;; Check all selected nodes exist
-      (not-every? #(contains? nodes %) selection)
+      (seq missing)
       {:reason ::node-not-found
        :hint "One or more selected nodes don't exist"
-       :missing (filterv #(not (contains? nodes %)) selection)
+       :missing missing
        :intent intent}
 
-      ;; Check parent exists
-      (not (or (contains? roots parent)
-               (contains? nodes parent)))
+      (not (db/valid-parent? db parent))
       {:reason ::parent-not-found
        :hint (str "Parent " parent " doesn't exist")
        :parent parent
        :intent intent}
 
-      ;; Check for cycles: none of selection can be ancestors of parent
-      (and (string? parent)  ; roots can't have parents
-           (some (fn [sel-id]
-                   (loop [curr parent
-                          visited #{}]
-                     (cond
-                       (nil? curr) false
-                       (= curr sel-id) true
-                       (contains? visited curr) false
-                       (contains? roots curr) false
-                       :else (recur (get-in db [:derived :parent-of curr])
-                                    (conj visited curr)))))
-                 selection))
+      (would-create-cycle-any? db selection parent)
       {:reason ::would-create-cycle
        :hint "Cannot move node into its own descendant"
        :intent intent}
 
-      ;; All checks passed
       :else nil)))
 
 (defn lower-move
