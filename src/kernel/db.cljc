@@ -205,6 +205,31 @@
     (when (not= (:derived db) recomputed-derived)
       [":derived is stale - does not match recomputed version"])))
 
+;; =============================================================================
+;; Public tree utilities (used by transaction, struct, etc.)
+;; =============================================================================
+
+(defn valid-parent?
+  "Check if parent is valid (either a root or an existing node)."
+  [db parent]
+  (or (some #{parent} (:roots db))
+      (contains? (:nodes db) parent)))
+
+(defn descendant-of?
+  "Check if potential-descendant is a descendant of potential-ancestor.
+   Walks up the parent chain from :derived :parent-of map.
+
+   Note: Assumes :derived indexes are up-to-date."
+  [db potential-ancestor potential-descendant]
+  (let [parent-of (get-in db [:derived :parent-of])
+        roots (set (:roots db))]
+    (loop [current potential-descendant]
+      (cond
+        (nil? current) false
+        (= current potential-ancestor) true
+        (contains? roots current) false
+        :else (recur (get parent-of current))))))
+
 (defn validate
   "Validate database invariants. Returns {:ok? bool :errors [...]}.
 
