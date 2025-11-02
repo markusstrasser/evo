@@ -110,17 +110,11 @@
 
 (defn handle-enter [e db block-id on-intent]
   (.preventDefault e)
-  (let [target (.-target e)
-        selection (.getSelection js/window)
-        cursor-pos (.-anchorOffset selection)
-        ;; TODO: Use split-at-cursor intent for proper implementation
-        ;; For now, just create new block after
-        parent (get-in db [:derived :parent-of block-id])
-        new-id (str "block-" (random-uuid))]
-    (on-intent {:type :create-and-place
-                :id new-id
-                :parent parent
-                :after block-id})))
+  (let [selection (.getSelection js/window)
+        cursor-pos (.-anchorOffset selection)]
+    (on-intent {:type :split-at-cursor
+                :block-id block-id
+                :cursor-pos cursor-pos})))
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
