@@ -33,6 +33,16 @@
   [DB]
   (count (:future (get-history DB))))
 
+(defn- trim-to-limit
+  "Keep only the last N items from collection, enforcing the history limit.
+   Returns a vector."
+  [limit coll]
+  (let [v (vec coll)
+        n (count v)]
+    (if (and (some? limit) (> n limit))
+      (vec (take-last limit v))
+      v)))
+
 (defn- strip-history
   "Remove :history and clear session/ui props from DB (for storing in history stack).
 
@@ -54,10 +64,7 @@
   (let [{:keys [past limit]} (get-history DB)
         db-snapshot (strip-history DB)
         new-past (conj (vec past) db-snapshot)
-        ;; Trim to limit (keep most recent N)
-        trimmed-past (if (> (count new-past) limit)
-                       (vec (take-last limit new-past))
-                       new-past)]
+        trimmed-past (trim-to-limit limit new-past)]
     (assoc DB :history
            {:past trimmed-past
             :future []
@@ -111,9 +118,7 @@
    Returns DB with updated limit."
   [DB new-limit]
   (let [{:keys [past future]} (get-history DB)
-        trimmed-past (if (> (count past) new-limit)
-                       (vec (take-last new-limit past))
-                       past)]
+        trimmed-past (trim-to-limit new-limit past)]
     (assoc DB :history
            {:past trimmed-past
             :future future
