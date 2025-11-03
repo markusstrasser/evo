@@ -6,7 +6,11 @@
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [parser.block-refs :as block-refs]
-            [components.block-ref :as block-ref]))
+            [parser.embeds :as embeds]
+            [parser.page-refs :as page-refs]
+            [components.block-ref :as block-ref]
+            [components.block-embed :as block-embed]
+            [components.page-ref :as page-ref]))
 
 ;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
 
@@ -174,22 +178,98 @@
 
       :else nil)))
 
-;; ── Content Rendering with Block References ───────────────────────────────────
+;; ── Content Rendering with Block References, Embeds, and Page Refs ────────────
+
+(defn- parse-all-refs
+  "Parse text for all reference types: embeds, block refs, and page refs.
+
+   Returns vector of segments with :type and type-specific data.
+   Types: :text, :embed, :ref, :page-ref
+
+   Embeds are parsed first (highest priority), then block refs, then page refs.
+   This prevents ambiguity in overlapping patterns."
+  [text]
+  (when text
+    ;; Find all matches with their positions
+    (let [embed-matches (map (fn [[match id]]
+                               {:type :embed
+                                :match match
+                                :id id
+                                :start (.indexOf text match)})
+                             (embeds/extract-embeds text))
+          block-ref-matches (map (fn [[match id]]
+                                   {:type :ref
+                                    :match match
+                                    :id id
+                                    :start (.indexOf text match)})
+                                 (block-refs/extract-refs text))
+          page-ref-matches (map (fn [[match page]]
+                                  {:type :page-ref
+                                   :match match
+                                   :page page
+                                   :start (.indexOf text match)})
+                                (page-refs/extract-refs text))
+
+          ;; Combine all matches and sort by position
+          all-matches (->> (concat embed-matches block-ref-matches page-ref-matches)
+                           (filter #(>= (:start %) 0))
+                           (sort-by :start))]
+
+      ;; Build segments from matches
+      (loop [remaining text
+             matches-left all-matches
+             result []]
+        (if-let [match (first matches-left)]
+          (let [idx (.indexOf remaining (:match match))
+                before (subs remaining 0 idx)
+                after (subs remaining (+ idx (count (:match match))))]
+            (recur after
+                   (rest matches-left)
+                   (cond-> result
+                     (not (empty? before)) (conj {:type :text :value before})
+                     true (conj match))))
+          ;; No more matches - add remaining text if any
+          (cond-> result
+            (not (empty? remaining)) (conj {:type :text :value remaining})))))))
+
+(declare Block)  ; Forward declaration for BlockEmbed
 
 (defn render-text-with-refs
-  "Parse text for block references and render with BlockRef components.
+  "Parse text for all reference types and render with appropriate components.
 
-   Returns a vector of strings and BlockRef components mixed together.
-   Uses ref-set for cycle detection."
-  [db text ref-set]
-  (let [segments (block-refs/split-with-refs text)]
+   Handles:
+   - Block embeds: {{embed ((block-id))}} - full tree rendering
+   - Block refs: ((block-id)) - inline text transclusion
+   - Page refs: [[page-name]] - page links
+
+   Returns a vector of strings and components mixed together.
+   Uses ref-set for cycle detection and embed-depth for limiting recursion."
+  [db text ref-set embed-depth on-intent]
+  (let [segments (parse-all-refs text)]
     (into [:span]
-          (map (fn [{:keys [type value id]}]
-                 (case type
-                   :text value
+          (map (fn [segment]
+                 (case (:type segment)
+                   :text (:value segment)
+
                    :ref (block-ref/BlockRef {:db db
-                                             :block-id id
-                                             :ref-set ref-set})))
+                                             :block-id (:id segment)
+                                             :ref-set ref-set})
+
+                   :embed [:div.inline-embed
+                           {:style {:display "inline-block"
+                                    :vertical-align "top"
+                                    :width "100%"}}
+                           (block-embed/BlockEmbed {:db db
+                                                    :block-id (:id segment)
+                                                    :embed-set ref-set
+                                                    :depth (or embed-depth 0)
+                                                    :max-depth 3
+                                                    :Block Block
+                                                    :on-intent on-intent})]
+
+                   :page-ref (page-ref/PageRef {:db db
+                                                :page-name (:page segment)
+                                                :on-intent on-intent})))
                segments))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
@@ -202,10 +282,13 @@
    - block-id: ID of block to render
    - depth: nesting depth (for indentation)
    - on-intent: callback for dispatching intents
+   - embed-set: Set of block IDs in current embed chain (for cycle detection)
+   - embed-depth: Current embed nesting depth (for limiting recursion)
 
    Uses plugin getters for all data access.
    Dispatches intents for all state changes."
-  [{:keys [db block-id depth on-intent]}]
+  [{:keys [db block-id depth on-intent embed-set embed-depth]
+    :or {embed-set #{} embed-depth 0}}]
   (let [children (get-in db [:children-by-parent block-id] [])
         selected? (q/selected? db block-id)
         focus? (= (q/focus db) block-id)
@@ -249,6 +332,9 @@
                   folded? "▸"
                   :else "▾")]
 
+        ;; Track if we're in initial render to prevent spurious input events
+        initializing? (atom true)
+
         content
         (if editing?
           [:span.content-edit
@@ -263,9 +349,11 @@
                                    (let [current-text (.-textContent node)
                                          cursor-pos (q/cursor-position db)]
 
-                                     ;; Only set text if node is truly empty (first render)
-                                     (when (and (empty? current-text) (not= text ""))
-                                       (set! (.-textContent node) text))
+                                     ;; Always set the correct source text on initial render
+                                     ;; This ensures we show the raw syntax (((id))) not rendered text
+                                     (when @initializing?
+                                       (set! (.-textContent node) text)
+                                       (reset! initializing? false))
 
                                      ;; Focus the element
                                      (.focus node)
@@ -290,11 +378,13 @@
 
                                      (update-mock-text! (.-textContent node))))
             :on {:input (fn [e]
-                          (let [new-text (-> e .-target .-textContent)]
-                            (update-mock-text! new-text)
-                            (on-intent {:type :update-content
-                                        :block-id block-id
-                                        :text new-text})))
+                          ;; Ignore input events during initialization
+                          (when-not @initializing?
+                            (let [new-text (-> e .-target .-textContent)]
+                              (update-mock-text! new-text)
+                              (on-intent {:type :update-content
+                                          :block-id block-id
+                                          :text new-text}))))
                  :blur (fn [_e]
                          ;; Only exit on blur if not already exiting via Escape
                          (when-not @exiting-edit?
@@ -314,8 +404,11 @@
                           (if focus?
                             (on-intent {:type :enter-edit :block-id block-id})
                             (on-intent {:type :selection :mode :replace :ids block-id})))}}
-           ;; Render text with block references (transclusion)
-           (render-text-with-refs db text #{block-id})])
+           ;; Render text with block references, embeds, and page refs
+           (render-text-with-refs db text
+                                  (conj embed-set block-id)
+                                  embed-depth
+                                  on-intent)])
 
         children-el
         (when (seq children)
@@ -324,6 +417,8 @@
                        (Block {:db db
                                :block-id child-id
                                :depth (inc depth)
+                               :embed-set embed-set
+                               :embed-depth embed-depth
                                :on-intent on-intent}))
                      children)))]
 
