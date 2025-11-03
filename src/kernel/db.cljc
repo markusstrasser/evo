@@ -16,7 +16,8 @@
                                                                     :cursor {}
                                                                     :folded #{}
                                                                     :zoom-stack []
-                                                                    :zoom-root nil}}}
+                                                                    :zoom-root nil
+                                                                    :current-page nil}}}
    :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id]}
    :roots const/roots
    :derived {:parent-of {}
