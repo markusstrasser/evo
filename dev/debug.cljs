@@ -178,3 +178,6 @@
              :dispatch dispatch!
              :reload reload!
              :clearDb clear-db!}))
+
+;; Auto-initialize when preloaded
+(init!)
