@@ -12,11 +12,13 @@
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [components.block :as block]
+            [components.sidebar :as sidebar]
             [plugins.selection]  ;; Load to register selection intents
             [plugins.editing]  ;; Load to register editing intents (enter-edit, exit-edit, update-content)
             [plugins.struct]  ;; Load to register structural intents (delete, indent, outdent, move)
             [plugins.folding]  ;; Load to register fold/zoom intents
             [plugins.smart-editing]  ;; Load to register smart editing intents
+            [plugins.pages :as pages]  ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
 
@@ -25,17 +27,54 @@
 (defonce !db
          (atom
            (-> (DB/empty-db)
-               ;; Create sample outline structure with transclusion examples
-               (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "My Page"}}
-                              {:op :place :id "page" :under :doc :at :last}
-                              {:op :create-node :id "a" :type :block :props {:text "First block"}}
-                              {:op :place :id "a" :under "page" :at :last}
-                              {:op :create-node :id "b" :type :block :props {:text "Second block with ref to ((a))"}}
-                              {:op :place :id "b" :under "page" :at :last}
-                              {:op :create-node :id "c" :type :block :props {:text "Test: ((a)) and ((missing)) and ((d))"}}
-                              {:op :place :id "c" :under "page" :at :last}
-                              {:op :create-node :id "d" :type :block :props {:text "Nested block"}}
-                              {:op :place :id "d" :under "b" :at :last}])
+               ;; Create multiple pages with transclusion examples
+               (tx/interpret [
+                              ;; ── Projects Page ──
+                              {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
+                              {:op :place :id "projects" :under :doc :at :last}
+                              {:op :create-node :id "proj-1" :type :block :props {:text "Evolver - Outliner Project"}}
+                              {:op :place :id "proj-1" :under "projects" :at :last}
+                              {:op :create-node :id "proj-1-1" :type :block :props {:text "Building a Logseq-inspired outliner"}}
+                              {:op :place :id "proj-1-1" :under "proj-1" :at :last}
+                              {:op :create-node :id "proj-1-2" :type :block :props {:text "Using event sourcing architecture"}}
+                              {:op :place :id "proj-1-2" :under "proj-1" :at :last}
+                              {:op :create-node :id "proj-2" :type :block :props {:text "Tech Stack: ClojureScript + Replicant"}}
+                              {:op :place :id "proj-2" :under "projects" :at :last}
+                              {:op :create-node :id "proj-3" :type :block :props {:text "See also: [[Tasks]] page for work items"}}
+                              {:op :place :id "proj-3" :under "projects" :at :last}
+
+                              ;; ── Tasks Page ──
+                              {:op :create-node :id "tasks" :type :page :props {:title "Tasks"}}
+                              {:op :place :id "tasks" :under :doc :at :last}
+                              {:op :create-node :id "task-1" :type :block :props {:text "Implement block embeds"}}
+                              {:op :place :id "task-1" :under "tasks" :at :last}
+                              {:op :create-node :id "task-1-1" :type :block :props {:text "Parse embed syntax"}}
+                              {:op :place :id "task-1-1" :under "task-1" :at :last}
+                              {:op :create-node :id "task-1-2" :type :block :props {:text "Reference example: ((proj-2)) shows tech stack"}}
+                              {:op :place :id "task-1-2" :under "task-1" :at :last}
+                              {:op :create-node :id "task-1-3" :type :block :props {:text "Render full tree with children"}}
+                              {:op :place :id "task-1-3" :under "task-1" :at :last}
+                              {:op :create-node :id "task-2" :type :block :props {:text "Test embed here: {{embed ((proj-1))}}"}}
+                              {:op :place :id "task-2" :under "tasks" :at :last}
+                              {:op :create-node :id "task-3" :type :block :props {:text "Related project: [[Projects]]"}}
+                              {:op :place :id "task-3" :under "tasks" :at :last}
+
+                              ;; ── Notes Page ──
+                              {:op :create-node :id "notes" :type :page :props {:title "Notes"}}
+                              {:op :place :id "notes" :under :doc :at :last}
+                              {:op :create-node :id "note-1" :type :block :props {:text "Block reference example: ((proj-2))"}}
+                              {:op :place :id "note-1" :under "notes" :at :last}
+                              {:op :create-node :id "note-2" :type :block :props {:text "This refs a task inline: ((task-1))"}}
+                              {:op :place :id "note-2" :under "notes" :at :last}
+                              {:op :create-node :id "note-3" :type :block :props {:text "Navigate between: [[Projects]], [[Tasks]], [[Notes]]"}}
+                              {:op :place :id "note-3" :under "notes" :at :last}
+                              {:op :create-node :id "note-4" :type :block :props {:text "Full embed of task tree:"}}
+                              {:op :place :id "note-4" :under "notes" :at :last}
+                              {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
+                              {:op :place :id "note-4-1" :under "note-4" :at :last}
+
+                              ;; Set initial current page to Projects
+                              {:op :update-node :id "session/ui" :props {:current-page "projects"}}])
                :db
                (H/record))))                                ;; Record initial state for undo
 
@@ -257,30 +296,55 @@
 
 (defn App []
   "Main app - pure composition, no business logic."
-  (let [db @!db]
+  (let [db @!db
+        current-page-id (pages/current-page db)
+        page-title (when current-page-id (pages/page-title db current-page-id))]
     [:div.app
-     {:style {:font-family "system-ui, -apple-system, sans-serif"
-              :padding     "20px"
-              :max-width   "800px"
-              :margin      "0 auto"}}
+     {:style {:display "flex"
+              :min-height "100vh"}}
 
-     ;; Mock-text for cursor detection
-     (MockText)
+     ;; Sidebar for page navigation
+     (sidebar/Sidebar {:db db :on-intent handle-intent})
 
-     [:h2 "Blocks UI - Architectural Demo"]
-     [:p {:style {:color "#666"}}
-      "Demonstrating: Plugins (multimethods) → Components (getters/intents) → App (composition)"]
+     ;; Main content area
+     [:div.main-content
+      {:style {:flex "1"
+               :margin-left "220px"  ; Offset for fixed sidebar
+               :font-family "system-ui, -apple-system, sans-serif"
+               :padding "20px"
+               :max-width "800px"}}
 
-     ;; Main outline
-     (Outline {:db        db
-               :root-id   "page"
-               :on-intent handle-intent})
+      ;; Mock-text for cursor detection
+      (MockText)
 
-     ;; Debug info
-     (DebugPanel db)
+      [:h2 "Blocks UI - Multi-Page Demo"]
+      [:p {:style {:color "#666"}}
+       "Features: Block refs " [:code "((id))"] ", Embeds " [:code "{{embed ((id))}}"] ", Page refs " [:code "[[Page]]"]]
 
-     ;; Hotkeys reference
-     (HotkeysReference)]))
+      ;; Current page title and outline
+      (if current-page-id
+        [:div
+         [:h3 {:style {:margin-top "20px"
+                       :margin-bottom "10px"
+                       :color "rgb(29, 78, 216)"}}
+          "📄 " page-title]
+
+         ;; Main outline for current page only
+         (Outline {:db        db
+                   :root-id   current-page-id
+                   :on-intent handle-intent})]
+
+        ;; No page selected
+        [:div {:style {:padding "40px"
+                       :text-align "center"
+                       :color "rgb(156, 163, 175)"}}
+         [:p "Select a page from the sidebar to begin"]])
+
+      ;; Debug info
+      (DebugPanel db)
+
+      ;; Hotkeys reference
+      (HotkeysReference)]]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
