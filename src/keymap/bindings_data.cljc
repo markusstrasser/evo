@@ -12,7 +12,10 @@
    :editing     [[{:key "Escape"} :exit-edit]
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
-                 [{:key "Backspace" :mod true} :merge-with-prev]]
+                 [{:key "Backspace" :mod true} :merge-with-prev]
+                 ;; Text formatting (requires selection)
+                 [{:key "b" :mod true} {:type :format-selection :marker "**"}]
+                 [{:key "i" :mod true} {:type :format-selection :marker "__"}]]
    :global      [;; Multi-selection (works everywhere, including edit mode)
                  [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
                  [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
