@@ -18,6 +18,7 @@
             [plugins.struct]  ;; Load to register structural intents (delete, indent, outdent, move)
             [plugins.folding]  ;; Load to register fold/zoom intents
             [plugins.smart-editing]  ;; Load to register smart editing intents
+            [plugins.text-formatting]  ;; Load to register text formatting intents (format-selection)
             [plugins.pages :as pages]  ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
@@ -192,15 +193,36 @@
                                        (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
                                        focus-id)
                                 (assoc intent-type :block-id focus-id)
-                                intent-type)]
-            (cond
+                                intent-type)
+                ;; Enrich format-selection intent with DOM selection data
+                enriched-intent (if (and (map? intent-with-id)
+                                        (= (:type intent-with-id) :format-selection)
+                                        editing?
+                                        editable-el)
+                                 (try
+                                   (let [sel (.getSelection js/window)]
+                                     (when (and sel (pos? (.-rangeCount sel)))
+                                       (let [range (.getRangeAt sel 0)
+                                             start (.-startOffset range)
+                                             end (.-endOffset range)]
+                                         (when (not= start end)  ;; Only if there's actual selection
+                                           (merge intent-with-id
+                                                 {:block-id editing?
+                                                  :start start
+                                                  :end end})))))
+                                   (catch js/Error e
+                                     (js/console.error "Selection read failed:" e)
+                                     nil))  ;; Return nil if enrichment fails
+                                 intent-with-id)]
+            (when enriched-intent  ;; Only dispatch if enrichment succeeded
+              (cond
               ;; Map intent: use directly (with injected block-id if needed)
-              (map? intent-with-id)
-              (handle-intent intent-with-id)
+              (map? enriched-intent)
+              (handle-intent enriched-intent)
 
               ;; Keyword intent: wrap in :type
               :else
-              (handle-intent {:type intent-with-id}))))
+              (handle-intent {:type enriched-intent})))))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
@@ -377,5 +399,28 @@
 
   ;; Set up auto-render on state changes
   (add-watch !db :render (fn [_ _ _ _] (render!)))
+
+  ;; Apply text selection effects from formatting operations
+  (add-watch !db :text-selection-effects
+    (fn [_ _ _ new-db]
+      (when-let [{:keys [block-id start end]}
+                 (get-in new-db [:nodes "session/ui" :props :pending-selection])]
+        (js/requestAnimationFrame
+          (fn []
+            (when-let [editable-el (.querySelector js/document
+                                                   (str "[data-block-id='" block-id "'].content-edit"))]
+              (try
+                (let [text-node (.-firstChild editable-el)
+                      sel (.getSelection js/window)
+                      range (.createRange js/document)]
+                  (when (and text-node (= (.-nodeType text-node) 3))
+                    (.setStart range text-node start)
+                    (.setEnd range text-node end)
+                    (.removeAllRanges sel)
+                    (.addRange sel range)))
+                (catch js/Error e
+                  (js/console.error "Text selection failed:" e))))
+            ;; Clear pending selection after applying
+            (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
 
   (render!))
