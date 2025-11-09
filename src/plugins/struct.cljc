@@ -311,3 +311,20 @@
    :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
    :handler (fn [db intent]
               (:ops (lower-move db intent)))})
+
+;; ── Move While Editing ────────────────────────────────────────────────────────
+
+(intent/register-intent! :move-block-up-while-editing
+  {:doc "Move current editing block up, preserving edit mode."
+   :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
+   :handler (fn [db {:keys [block-id]}]
+              ;; Use existing move-selected-up logic but don't exit edit mode
+              ;; Just return the structural move ops
+              (move-selected-up-ops db))})
+
+(intent/register-intent! :move-block-down-while-editing
+  {:doc "Move current editing block down, preserving edit mode."
+   :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
+   :handler (fn [db {:keys [block-id]}]
+              ;; Use existing move-selected-down logic
+              (move-selected-down-ops db))})
