@@ -132,7 +132,8 @@
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
-    (on-intent {:type :split-at-cursor
+    ;; Use :smart-split instead of :split-at-cursor for context-aware behavior
+    (on-intent {:type :smart-split
                 :block-id block-id
                 :cursor-pos cursor-pos})))
 
