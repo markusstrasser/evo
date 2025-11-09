@@ -31,6 +31,12 @@
                           :handler (fn [_db _intent]
                                      [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}])})
 
+(intent/register-intent! :clear-cursor-position
+                         {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
+                          :spec [:map [:type [:= :clear-cursor-position]]]
+                          :handler (fn [_db _intent]
+                                     [{:op :update-node :id const/session-ui-id :props {:cursor-position nil}}])})
+
 (intent/register-intent! :update-cursor-state
                          {:doc "Update cursor position state for boundary detection. Ephemeral - not in history."
                           :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
