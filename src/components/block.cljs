@@ -86,10 +86,18 @@
         (.preventDefault e)
         (.collapseToStart selection))
 
-      ;; At first row - navigate to previous block
+      ;; At first row - navigate to previous block with cursor memory
       (:first-row? cursor-pos)
       (do (.preventDefault e)
-          (on-intent {:type :selection :mode :prev}))
+          ;; NEW: Use cursor-memory navigation instead of simple :prev
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-offset (.-anchorOffset selection)]
+            (on-intent {:type :navigate-with-cursor-memory
+                        :direction :up
+                        :current-block-id block-id
+                        :current-text text-content
+                        :current-cursor-pos cursor-offset})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -104,10 +112,18 @@
         (.preventDefault e)
         (.collapseToEnd selection))
 
-      ;; At last row - navigate to next block
+      ;; At last row - navigate to next block with cursor memory
       (:last-row? cursor-pos)
       (do (.preventDefault e)
-          (on-intent {:type :selection :mode :next}))
+          ;; NEW: Use cursor-memory navigation instead of simple :next
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-offset (.-anchorOffset selection)]
+            (on-intent {:type :navigate-with-cursor-memory
+                        :direction :down
+                        :current-block-id block-id
+                        :current-text text-content
+                        :current-cursor-pos cursor-offset})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -232,7 +248,7 @@
           (cond-> result
             (not (empty? remaining)) (conj {:type :text :value remaining})))))))
 
-(declare Block)  ; Forward declaration for BlockEmbed
+(declare Block) ; Forward declaration for BlockEmbed
 
 (defn render-text-with-refs
   "Parse text for all reference types and render with appropriate components.
@@ -321,12 +337,12 @@
         has-children? (seq (q/children db block-id))
         folded? (q/folded? db block-id)
         bullet [:span {:style {:margin-right "8px"
-                              :cursor (if has-children? "pointer" "default")
-                              :user-select "none"}
+                               :cursor (if has-children? "pointer" "default")
+                               :user-select "none"}
                        :on {:click (fn [e]
-                                    (.stopPropagation e)
-                                    (when has-children?
-                                      (on-intent {:type :toggle-fold :block-id block-id})))}}
+                                     (.stopPropagation e)
+                                     (when has-children?
+                                       (on-intent {:type :toggle-fold :block-id block-id})))}}
                 (cond
                   (not has-children?) "•"
                   folded? "▸"
