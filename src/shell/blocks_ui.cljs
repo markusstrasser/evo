@@ -100,7 +100,11 @@
   "Global keyboard shortcuts via central keymap resolver.
 
    Single source of truth: keymap/bindings.cljc registers all bindings.
-   This function just resolves key event → intent type → dispatch."
+   This function just resolves key event → intent type → dispatch.
+   
+   NOTE: Arrow key navigation at block boundaries is handled by the Block component
+   (see components/block.cljs handle-arrow-up/down) using cursor row detection,
+   NOT here. The block component dispatches :navigate-with-cursor-memory intents."
   (let [event (keymap/parse-dom-event e)
         db @!db
         key (.-key e)
@@ -110,36 +114,8 @@
         editing? (q/editing-block-id db)
         intent-type (keymap/resolve-intent-type event db)
 
-        ;; Cursor boundary detection for arrow key navigation in edit mode
+        ;; Editable element for text formatting
         editable-el (when editing? (.-activeElement js/document))
-        at-start? (when (and editable-el (= "true" (.-contentEditable editable-el)))
-                    (try
-                      (let [sel (.getSelection js/window)]
-                        (when (pos? (.-rangeCount sel))
-                          (let [range (.getRangeAt sel 0)
-                                node (.-startContainer range)
-                                offset (.-startOffset range)]
-                            ;; At start if offset is 0 and we're in the first text node
-                            (and (zero? offset)
-                                 (or (= node editable-el)
-                                     (= node (.-firstChild editable-el)))))))
-                      (catch js/Error e
-                        (js/console.log "Boundary detection error:" e)
-                        false)))
-        at-end? (when (and editable-el (= "true" (.-contentEditable editable-el)))
-                  (try
-                    (let [sel (.getSelection js/window)]
-                      (when (pos? (.-rangeCount sel))
-                        (let [range (.getRangeAt sel 0)
-                              node (.-endContainer range)
-                              offset (.-endOffset range)
-                              text-content (or (.-textContent editable-el) "")
-                              text-length (count text-content)]
-                          ;; At end if cursor is at the end of the text
-                          (= offset text-length))))
-                    (catch js/Error e
-                      (js/console.log "Boundary detection error:" e)
-                      false)))
 
         ;; Printable character check for "start typing to edit" behavior
         printable? (and (= 1 (.-length key))
@@ -148,42 +124,7 @@
                         (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
 
     (cond
-      ;; Arrow navigation at boundaries while editing (Logseq-style)
-      ;; Navigate up: exit edit, go to prev block, enter edit at END
-      (and editing? (= key "ArrowUp") at-start? (not mod?) (not shift?))
-      (do (.preventDefault e)
-          (let [prev-id (get-in db [:derived :prev-id-of editing?])]
-            (when prev-id
-              (handle-intent {:type :exit-edit})
-              (js/setTimeout
-               (fn []
-                 (handle-intent {:type :selection :mode :replace :ids prev-id})
-                 (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end})
-                  ;; Clear cursor-position after component has applied it
-                 (js/setTimeout
-                  #(handle-intent {:type :update-node
-                                   :id "session/ui"
-                                   :props {:cursor-position nil}})
-                  50))
-               10))))
-
-      ;; Navigate down: exit edit, go to next block, enter edit at START
-      (and editing? (= key "ArrowDown") at-end? (not mod?) (not shift?))
-      (do (.preventDefault e)
-          (let [next-id (get-in db [:derived :next-id-of editing?])]
-            (when next-id
-              (handle-intent {:type :exit-edit})
-              (js/setTimeout
-               (fn []
-                 (handle-intent {:type :selection :mode :replace :ids next-id})
-                 (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start})
-                  ;; Clear cursor-position after component has applied it
-                 (js/setTimeout
-                  #(handle-intent {:type :update-node
-                                   :id "session/ui"
-                                   :props {:cursor-position nil}})
-                  50))
-               10))))
+      ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
 
       ;; Keymap-resolved intent
       intent-type
@@ -240,7 +181,11 @@
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
 (defn MockText
-  "Hidden element for cursor position detection (Logseq technique)."
+  "Hidden element for cursor position detection (Logseq technique).
+   
+   CRITICAL: Must match contenteditable styling for accurate row detection:
+   - word-wrap and overflow-wrap must match to ensure same wrapping behavior
+   - width, font-size, font-family, line-height copied dynamically by update-mock-text!"
   []
   [:div#mock-text
    {:style {:width "100%"
@@ -250,7 +195,9 @@
             :top 0
             :left 0
             :pointer-events "none"
-            :z-index -1000}}])
+            :z-index -1000
+            :word-wrap "break-word" ;; Match contenteditable
+            :overflow-wrap "break-word"}}]) ;; Match contenteditable
 
 (defn Outline
   "Render outline tree by composing Block components."
