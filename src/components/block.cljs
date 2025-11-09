@@ -155,6 +155,16 @@
         ;; At start with content - merge with previous
         (on-intent {:type :merge-with-prev :block-id block-id})))))
 
+(defn handle-delete [e db block-id on-intent]
+  "Handle Delete key - merge with next block if at end."
+  (let [target (.-target e)
+        text-content (.-textContent target)
+        selection (.getSelection js/window)
+        is-at-end (= (.-anchorOffset selection) (count text-content))]
+    (when is-at-end
+      (.preventDefault e)
+      (on-intent {:type :merge-with-next :block-id block-id}))))
+
 (defn handle-keydown [e db block-id on-intent]
   "Handle keyboard events while editing a block.
    
@@ -187,9 +197,13 @@
       (= key "Escape")
       (handle-escape e db block-id on-intent)
 
-      ;; Backspace - delete/merge at cursor boundary (within text editing)
+;; Backspace - delete/merge at cursor boundary (within text editing)
       (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
       (handle-backspace e db block-id on-intent)
+
+      ;; Delete at end - merge with next block
+      (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+      (handle-delete e db block-id on-intent)
 
       ;; Tab/Shift+Tab handled by global keymap (bindings_data.cljc :editing context)
 
