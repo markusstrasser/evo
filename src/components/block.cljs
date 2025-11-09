@@ -15,22 +15,36 @@
 ;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
 
 (defn- update-mock-text!
-  "Update hidden mock-text element with current contenteditable content.
-   This enables cursor row position detection (Logseq technique)."
-  [text]
-  (when-let [mock-elem (js/document.getElementById "mock-text")]
-    (let [content (str text "0")
-          chars (seq content)]
-      (set! (.-innerHTML mock-elem) "")
-      (doseq [[idx c] (map-indexed vector chars)]
-        (let [span (.createElement js/document "span")]
-          (.setAttribute span "id" (str "mock-text_" idx))
-          (if (= c \newline)
-            (do
-              (set! (.-textContent span) "0")
-              (.appendChild span (.createElement js/document "br")))
-            (set! (.-textContent span) (str c)))
-          (.appendChild mock-elem span))))))
+  "Update hidden mock-text element with current contenteditable content and position.
+   This enables cursor row position detection (Logseq technique).
+   
+   The mock-text element must be positioned at the same location as the editing
+   block for accurate cursor row detection."
+  [elem text]
+  (when (and elem (.-getBoundingClientRect elem))
+    (when-let [mock-elem (js/document.getElementById "mock-text")]
+      ;; Position mock-text to match the editing element
+      (let [rect (.getBoundingClientRect elem)
+            top (.-top rect)
+            left (.-left rect)
+            width (.-width rect)]
+        (set! (.. mock-elem -style -top) (str top "px"))
+        (set! (.. mock-elem -style -left) (str left "px"))
+        (set! (.. mock-elem -style -width) (str width "px")))
+
+      ;; Update content with character spans
+      (let [content (str text "0")
+            chars (seq content)]
+        (set! (.-innerHTML mock-elem) "")
+        (doseq [[idx c] (map-indexed vector chars)]
+          (let [span (.createElement js/document "span")]
+            (.setAttribute span "id" (str "mock-text_" idx))
+            (if (= c \newline)
+              (do
+                (set! (.-textContent span) "0")
+                (.appendChild span (.createElement js/document "br")))
+              (set! (.-textContent span) (str c)))
+            (.appendChild mock-elem span)))))))
 
 (defn- get-caret-rect
   "Get bounding rect of cursor position in contenteditable element."
@@ -58,13 +72,39 @@
 
 (defn- detect-cursor-row-position
   "Detect if cursor is on first/last row of contenteditable.
-   Returns {:first-row? bool :last-row? bool}"
+   Returns {:first-row? bool :last-row? bool}
+   
+   Uses character position in mock-text instead of range rect for accuracy
+   with wrapped text."
   [elem]
-  (when-let [cursor-rect (get-caret-rect elem)]
-    (let [tops (get-mock-text-tops)
-          cursor-top (.-top cursor-rect)]
-      {:first-row? (and (seq tops) (= (first tops) cursor-top))
-       :last-row? (and (seq tops) (= (last tops) cursor-top))})))
+  (when elem
+    (let [selection (.getSelection js/window)]
+      (when (and selection (> (.-rangeCount selection) 0))
+        ;; Calculate cursor character index
+        (let [char-index (loop [node (.createTreeWalker js/document elem 4 nil) ;; NodeFilter.SHOW_TEXT = 4
+                                index 0]
+                           (if-let [text-node (.nextNode node)]
+                             (if (= text-node (.-focusNode selection))
+                               (+ index (.-focusOffset selection))
+                               (recur node (+ index (.-length text-node))))
+                             index))
+
+              ;; Get mock-text span for the character BEFORE cursor (the char cursor is after)
+              mock-elem (js/document.getElementById "mock-text")
+              mock-span-before (when (and mock-elem (pos? char-index))
+                                 (aget (.-children mock-elem) (dec char-index)))
+
+              ;; Get all unique line tops
+              tops (get-mock-text-tops)
+
+              ;; Cursor is on the same line as the character before it
+              ;; (or first line if at position 0)
+              cursor-top (if mock-span-before
+                           (.-top (.getBoundingClientRect mock-span-before))
+                           (first tops))]
+
+          {:first-row? (and (seq tops) (= (first tops) cursor-top))
+           :last-row? (and (seq tops) (= (last tops) cursor-top))})))))
 
 (defn- has-text-selection?
   "Check if user has selected text within contenteditable."
@@ -86,10 +126,18 @@
         (.preventDefault e)
         (.collapseToStart selection))
 
-      ;; At first row - navigate to previous block
+      ;; At first row - navigate to previous block with cursor memory
       (:first-row? cursor-pos)
       (do (.preventDefault e)
-          (on-intent {:type :selection :mode :prev}))
+          ;; NEW: Use cursor-memory navigation instead of simple :prev
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-offset (.-anchorOffset selection)]
+            (on-intent {:type :navigate-with-cursor-memory
+                        :direction :up
+                        :current-block-id block-id
+                        :current-text text-content
+                        :current-cursor-pos cursor-offset})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -104,10 +152,18 @@
         (.preventDefault e)
         (.collapseToEnd selection))
 
-      ;; At last row - navigate to next block
+      ;; At last row - navigate to next block with cursor memory
       (:last-row? cursor-pos)
       (do (.preventDefault e)
-          (on-intent {:type :selection :mode :next}))
+          ;; NEW: Use cursor-memory navigation instead of simple :next
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-offset (.-anchorOffset selection)]
+            (on-intent {:type :navigate-with-cursor-memory
+                        :direction :down
+                        :current-block-id block-id
+                        :current-text text-content
+                        :current-cursor-pos cursor-offset})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -116,7 +172,8 @@
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
-    (on-intent {:type :split-at-cursor
+    ;; Use :smart-split instead of :split-at-cursor for context-aware behavior
+    (on-intent {:type :smart-split
                 :block-id block-id
                 :cursor-pos cursor-pos})))
 
@@ -137,6 +194,16 @@
         (on-intent {:type :delete :id block-id})
         ;; At start with content - merge with previous
         (on-intent {:type :merge-with-prev :block-id block-id})))))
+
+(defn handle-delete [e db block-id on-intent]
+  "Handle Delete key - merge with next block if at end."
+  (let [target (.-target e)
+        text-content (.-textContent target)
+        selection (.getSelection js/window)
+        is-at-end (= (.-anchorOffset selection) (count text-content))]
+    (when is-at-end
+      (.preventDefault e)
+      (on-intent {:type :merge-with-next :block-id block-id}))))
 
 (defn handle-keydown [e db block-id on-intent]
   "Handle keyboard events while editing a block.
@@ -170,9 +237,13 @@
       (= key "Escape")
       (handle-escape e db block-id on-intent)
 
-      ;; Backspace - delete/merge at cursor boundary (within text editing)
+;; Backspace - delete/merge at cursor boundary (within text editing)
       (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
       (handle-backspace e db block-id on-intent)
+
+      ;; Delete at end - merge with next block
+      (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+      (handle-delete e db block-id on-intent)
 
       ;; Tab/Shift+Tab handled by global keymap (bindings_data.cljc :editing context)
 
@@ -232,7 +303,7 @@
           (cond-> result
             (not (empty? remaining)) (conj {:type :text :value remaining})))))))
 
-(declare Block)  ; Forward declaration for BlockEmbed
+(declare Block) ; Forward declaration for BlockEmbed
 
 (defn render-text-with-refs
   "Parse text for all reference types and render with appropriate components.
@@ -242,35 +313,35 @@
    - Block refs: ((block-id)) - inline text transclusion
    - Page refs: [[page-name]] - page links
 
-   Returns a vector of strings and components mixed together.
+   Returns a seq of strings and components mixed together (NOT wrapped in a container).
+   The parent component is responsible for providing the container.
    Uses ref-set for cycle detection and embed-depth for limiting recursion."
   [db text ref-set embed-depth on-intent]
   (let [segments (parse-all-refs text)]
-    (into [:span]
-          (map (fn [segment]
-                 (case (:type segment)
-                   :text (:value segment)
+    (map (fn [segment]
+           (case (:type segment)
+             :text (:value segment)
 
-                   :ref (block-ref/BlockRef {:db db
-                                             :block-id (:id segment)
-                                             :ref-set ref-set})
+             :ref (block-ref/BlockRef {:db db
+                                       :block-id (:id segment)
+                                       :ref-set ref-set})
 
-                   :embed [:div.inline-embed
-                           {:style {:display "inline-block"
-                                    :vertical-align "top"
-                                    :width "100%"}}
-                           (block-embed/BlockEmbed {:db db
-                                                    :block-id (:id segment)
-                                                    :embed-set ref-set
-                                                    :depth (or embed-depth 0)
-                                                    :max-depth 3
-                                                    :Block Block
-                                                    :on-intent on-intent})]
+             :embed [:div.inline-embed
+                     {:style {:display "inline-block"
+                              :vertical-align "top"
+                              :width "100%"}}
+                     (block-embed/BlockEmbed {:db db
+                                              :block-id (:id segment)
+                                              :embed-set ref-set
+                                              :depth (or embed-depth 0)
+                                              :max-depth 3
+                                              :Block Block
+                                              :on-intent on-intent})]
 
-                   :page-ref (page-ref/PageRef {:db db
-                                                :page-name (:page segment)
-                                                :on-intent on-intent})))
-               segments))))
+             :page-ref (page-ref/PageRef {:db db
+                                          :page-name (:page segment)
+                                          :on-intent on-intent})))
+         segments)))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
@@ -321,19 +392,16 @@
         has-children? (seq (q/children db block-id))
         folded? (q/folded? db block-id)
         bullet [:span {:style {:margin-right "8px"
-                              :cursor (if has-children? "pointer" "default")
-                              :user-select "none"}
+                               :cursor (if has-children? "pointer" "default")
+                               :user-select "none"}
                        :on {:click (fn [e]
-                                    (.stopPropagation e)
-                                    (when has-children?
-                                      (on-intent {:type :toggle-fold :block-id block-id})))}}
+                                     (.stopPropagation e)
+                                     (when has-children?
+                                       (on-intent {:type :toggle-fold :block-id block-id})))}}
                 (cond
                   (not has-children?) "•"
                   folded? "▸"
                   :else "▾")]
-
-        ;; Track if we're in initial render to prevent spurious input events
-        initializing? (atom true)
 
         content
         (if editing?
@@ -345,46 +413,51 @@
                     :display "inline-block"}
             :data-block-id block-id
             ;; Use :replicant/on-render which fires on every render, not just mount
-            :replicant/on-render (fn [{:replicant/keys [node]}]
-                                   (let [current-text (.-textContent node)
-                                         cursor-pos (q/cursor-position db)]
+            :replicant/on-render (fn [{:replicant/keys [node mounting?]}]
+                                   (let [cursor-pos (q/cursor-position db)]
 
-                                     ;; Always set the correct source text on initial render
+                                     ;; Set text content ONLY on initial mount
                                      ;; This ensures we show the raw syntax (((id))) not rendered text
-                                     (when @initializing?
-                                       (set! (.-textContent node) text)
-                                       (reset! initializing? false))
+                                     (when mounting?
+                                       (set! (.-textContent node) text))
 
                                      ;; Focus the element
                                      (.focus node)
 
-                                     ;; Set cursor position based on session state
-                                     ;; NOTE: cursor-position is cleared by the caller (shell), not here
-                                     (when (and cursor-pos (seq (.-textContent node)))
-                                       (try
-                                         (let [range (.createRange js/document)
-                                               sel (.getSelection js/window)
-                                               text-node (.-firstChild node)]
-                                           ;; Position cursor in the text node
-                                           (when (and text-node (= (.-nodeType text-node) 3))
-                                             (let [text-length (.-length text-node)
-                                                   pos (if (= cursor-pos :start) 0 text-length)]
-                                               (.setStart range text-node pos)
-                                               (.setEnd range text-node pos)
-                                               (.removeAllRanges sel)
-                                               (.addRange sel range))))
-                                         (catch js/Error e
-                                           (js/console.error "Cursor positioning failed:" e))))
+                                     ;; Apply cursor position ONCE per cursor-pos value
+                                     ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
+                                     (when cursor-pos
+                                       (let [last-applied (aget node "__lastAppliedCursorPos")]
+                                         (when (not= cursor-pos last-applied)
+                                           (try
+                                             (let [range (.createRange js/document)
+                                                   sel (.getSelection js/window)
+                                                   text-node (.-firstChild node)]
+                                               ;; Position cursor in the text node
+                                               (when (and text-node (= (.-nodeType text-node) 3))
+                                                 (let [text-length (.-length text-node)
+                                                       pos (cond
+                                                             (= cursor-pos :start) 0
+                                                             (= cursor-pos :end) text-length
+                                                             (number? cursor-pos) (min cursor-pos text-length)
+                                                             :else text-length)]
+                                                   (.setStart range text-node pos)
+                                                   (.setEnd range text-node pos)
+                                                   (.removeAllRanges sel)
+                                                   (.addRange sel range)
+                                                   ;; Mark this cursor-pos as applied
+                                                   (aset node "__lastAppliedCursorPos" cursor-pos))))
+                                             (catch js/Error e
+                                               (js/console.error "Cursor positioning failed:" e))))))
 
-                                     (update-mock-text! (.-textContent node))))
+                                     (update-mock-text! node (.-textContent node))))
             :on {:input (fn [e]
-                          ;; Ignore input events during initialization
-                          (when-not @initializing?
-                            (let [new-text (-> e .-target .-textContent)]
-                              (update-mock-text! new-text)
-                              (on-intent {:type :update-content
-                                          :block-id block-id
-                                          :text new-text}))))
+                          (let [target (.-target e)
+                                new-text (.-textContent target)]
+                            (update-mock-text! target new-text)
+                            (on-intent {:type :update-content
+                                        :block-id block-id
+                                        :text new-text})))
                  :blur (fn [_e]
                          ;; Only exit on blur if not already exiting via Escape
                          (when-not @exiting-edit?
