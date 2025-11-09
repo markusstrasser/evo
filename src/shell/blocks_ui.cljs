@@ -13,71 +13,71 @@
             [kernel.history :as H]
             [components.block :as block]
             [components.sidebar :as sidebar]
-            [plugins.selection]  ;; Load to register selection intents
-            [plugins.editing]  ;; Load to register editing intents (enter-edit, exit-edit, update-content)
-            [plugins.struct]  ;; Load to register structural intents (delete, indent, outdent, move)
-            [plugins.folding]  ;; Load to register fold/zoom intents
-            [plugins.smart-editing]  ;; Load to register smart editing intents
-            [plugins.text-formatting]  ;; Load to register text formatting intents (format-selection)
-            [plugins.pages :as pages]  ;; Load to register page intents
+            [plugins.selection]
+            [plugins.editing]
+            [plugins.navigation] ;; Load to register navigation intents (cursor memory)
+            [plugins.struct]
+            [plugins.folding]
+            [plugins.smart-editing]
+            [plugins.text-formatting]
+            [plugins.pages :as pages] ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
 (defonce !db
-         (atom
-           (-> (DB/empty-db)
+  (atom
+   (-> (DB/empty-db)
                ;; Create multiple pages with transclusion examples
-               (tx/interpret [
-                              ;; ── Projects Page ──
-                              {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
-                              {:op :place :id "projects" :under :doc :at :last}
-                              {:op :create-node :id "proj-1" :type :block :props {:text "Evolver - Outliner Project"}}
-                              {:op :place :id "proj-1" :under "projects" :at :last}
-                              {:op :create-node :id "proj-1-1" :type :block :props {:text "Building a Logseq-inspired outliner"}}
-                              {:op :place :id "proj-1-1" :under "proj-1" :at :last}
-                              {:op :create-node :id "proj-1-2" :type :block :props {:text "Using event sourcing architecture"}}
-                              {:op :place :id "proj-1-2" :under "proj-1" :at :last}
-                              {:op :create-node :id "proj-2" :type :block :props {:text "Tech Stack: ClojureScript + Replicant"}}
-                              {:op :place :id "proj-2" :under "projects" :at :last}
-                              {:op :create-node :id "proj-3" :type :block :props {:text "See also: [[Tasks]] page for work items"}}
-                              {:op :place :id "proj-3" :under "projects" :at :last}
+       (tx/interpret [;; ── Projects Page ──
+                      {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
+                      {:op :place :id "projects" :under :doc :at :last}
+                      {:op :create-node :id "proj-1" :type :block :props {:text "Evolver - Outliner Project"}}
+                      {:op :place :id "proj-1" :under "projects" :at :last}
+                      {:op :create-node :id "proj-1-1" :type :block :props {:text "Building a Logseq-inspired outliner"}}
+                      {:op :place :id "proj-1-1" :under "proj-1" :at :last}
+                      {:op :create-node :id "proj-1-2" :type :block :props {:text "Using event sourcing architecture"}}
+                      {:op :place :id "proj-1-2" :under "proj-1" :at :last}
+                      {:op :create-node :id "proj-2" :type :block :props {:text "Tech Stack: ClojureScript + Replicant"}}
+                      {:op :place :id "proj-2" :under "projects" :at :last}
+                      {:op :create-node :id "proj-3" :type :block :props {:text "See also: [[Tasks]] page for work items"}}
+                      {:op :place :id "proj-3" :under "projects" :at :last}
 
                               ;; ── Tasks Page ──
-                              {:op :create-node :id "tasks" :type :page :props {:title "Tasks"}}
-                              {:op :place :id "tasks" :under :doc :at :last}
-                              {:op :create-node :id "task-1" :type :block :props {:text "Implement block embeds"}}
-                              {:op :place :id "task-1" :under "tasks" :at :last}
-                              {:op :create-node :id "task-1-1" :type :block :props {:text "Parse embed syntax"}}
-                              {:op :place :id "task-1-1" :under "task-1" :at :last}
-                              {:op :create-node :id "task-1-2" :type :block :props {:text "Reference example: ((proj-2)) shows tech stack"}}
-                              {:op :place :id "task-1-2" :under "task-1" :at :last}
-                              {:op :create-node :id "task-1-3" :type :block :props {:text "Render full tree with children"}}
-                              {:op :place :id "task-1-3" :under "task-1" :at :last}
-                              {:op :create-node :id "task-2" :type :block :props {:text "Test embed here: {{embed ((proj-1))}}"}}
-                              {:op :place :id "task-2" :under "tasks" :at :last}
-                              {:op :create-node :id "task-3" :type :block :props {:text "Related project: [[Projects]]"}}
-                              {:op :place :id "task-3" :under "tasks" :at :last}
+                      {:op :create-node :id "tasks" :type :page :props {:title "Tasks"}}
+                      {:op :place :id "tasks" :under :doc :at :last}
+                      {:op :create-node :id "task-1" :type :block :props {:text "Implement block embeds"}}
+                      {:op :place :id "task-1" :under "tasks" :at :last}
+                      {:op :create-node :id "task-1-1" :type :block :props {:text "Parse embed syntax"}}
+                      {:op :place :id "task-1-1" :under "task-1" :at :last}
+                      {:op :create-node :id "task-1-2" :type :block :props {:text "Reference example: ((proj-2)) shows tech stack"}}
+                      {:op :place :id "task-1-2" :under "task-1" :at :last}
+                      {:op :create-node :id "task-1-3" :type :block :props {:text "Render full tree with children"}}
+                      {:op :place :id "task-1-3" :under "task-1" :at :last}
+                      {:op :create-node :id "task-2" :type :block :props {:text "Test embed here: {{embed ((proj-1))}}"}}
+                      {:op :place :id "task-2" :under "tasks" :at :last}
+                      {:op :create-node :id "task-3" :type :block :props {:text "Related project: [[Projects]]"}}
+                      {:op :place :id "task-3" :under "tasks" :at :last}
 
                               ;; ── Notes Page ──
-                              {:op :create-node :id "notes" :type :page :props {:title "Notes"}}
-                              {:op :place :id "notes" :under :doc :at :last}
-                              {:op :create-node :id "note-1" :type :block :props {:text "Block reference example: ((proj-2))"}}
-                              {:op :place :id "note-1" :under "notes" :at :last}
-                              {:op :create-node :id "note-2" :type :block :props {:text "This refs a task inline: ((task-1))"}}
-                              {:op :place :id "note-2" :under "notes" :at :last}
-                              {:op :create-node :id "note-3" :type :block :props {:text "Navigate between: [[Projects]], [[Tasks]], [[Notes]]"}}
-                              {:op :place :id "note-3" :under "notes" :at :last}
-                              {:op :create-node :id "note-4" :type :block :props {:text "Full embed of task tree:"}}
-                              {:op :place :id "note-4" :under "notes" :at :last}
-                              {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
-                              {:op :place :id "note-4-1" :under "note-4" :at :last}
+                      {:op :create-node :id "notes" :type :page :props {:title "Notes"}}
+                      {:op :place :id "notes" :under :doc :at :last}
+                      {:op :create-node :id "note-1" :type :block :props {:text "Block reference example: ((proj-2))"}}
+                      {:op :place :id "note-1" :under "notes" :at :last}
+                      {:op :create-node :id "note-2" :type :block :props {:text "This refs a task inline: ((task-1))"}}
+                      {:op :place :id "note-2" :under "notes" :at :last}
+                      {:op :create-node :id "note-3" :type :block :props {:text "Navigate between: [[Projects]], [[Tasks]], [[Notes]]"}}
+                      {:op :place :id "note-3" :under "notes" :at :last}
+                      {:op :create-node :id "note-4" :type :block :props {:text "Full embed of task tree:"}}
+                      {:op :place :id "note-4" :under "notes" :at :last}
+                      {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
+                      {:op :place :id "note-4-1" :under "note-4" :at :last}
 
                               ;; Set initial current page to Projects
-                              {:op :update-node :id "session/ui" :props {:current-page "projects"}}])
-               :db
-               (H/record))))                                ;; Record initial state for undo
+                      {:op :update-node :id "session/ui" :props {:current-page "projects"}}])
+       :db
+       (H/record)))) ;; Record initial state for undo
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
@@ -156,16 +156,16 @@
             (when prev-id
               (handle-intent {:type :exit-edit})
               (js/setTimeout
-                (fn []
-                  (handle-intent {:type :selection :mode :replace :ids prev-id})
-                  (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end})
+               (fn []
+                 (handle-intent {:type :selection :mode :replace :ids prev-id})
+                 (handle-intent {:type :enter-edit :block-id prev-id :cursor-at :end})
                   ;; Clear cursor-position after component has applied it
-                  (js/setTimeout
-                    #(handle-intent {:type :update-node
-                                     :id "session/ui"
-                                     :props {:cursor-position nil}})
-                    50))
-                10))))
+                 (js/setTimeout
+                  #(handle-intent {:type :update-node
+                                   :id "session/ui"
+                                   :props {:cursor-position nil}})
+                  50))
+               10))))
 
       ;; Navigate down: exit edit, go to next block, enter edit at START
       (and editing? (= key "ArrowDown") at-end? (not mod?) (not shift?))
@@ -174,55 +174,55 @@
             (when next-id
               (handle-intent {:type :exit-edit})
               (js/setTimeout
-                (fn []
-                  (handle-intent {:type :selection :mode :replace :ids next-id})
-                  (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start})
+               (fn []
+                 (handle-intent {:type :selection :mode :replace :ids next-id})
+                 (handle-intent {:type :enter-edit :block-id next-id :cursor-at :start})
                   ;; Clear cursor-position after component has applied it
-                  (js/setTimeout
-                    #(handle-intent {:type :update-node
-                                     :id "session/ui"
-                                     :props {:cursor-position nil}})
-                    50))
-                10))))
+                 (js/setTimeout
+                  #(handle-intent {:type :update-node
+                                   :id "session/ui"
+                                   :props {:cursor-position nil}})
+                  50))
+               10))))
 
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
           (let [;; Inject focused block-id for fold/zoom intents
                 intent-with-id (if (and (map? intent-type)
-                                       (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                       focus-id)
-                                (assoc intent-type :block-id focus-id)
-                                intent-type)
+                                        (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
+                                        focus-id)
+                                 (assoc intent-type :block-id focus-id)
+                                 intent-type)
                 ;; Enrich format-selection intent with DOM selection data
                 enriched-intent (if (and (map? intent-with-id)
-                                        (= (:type intent-with-id) :format-selection)
-                                        editing?
-                                        editable-el)
-                                 (try
-                                   (let [sel (.getSelection js/window)]
-                                     (when (and sel (pos? (.-rangeCount sel)))
-                                       (let [range (.getRangeAt sel 0)
-                                             start (.-startOffset range)
-                                             end (.-endOffset range)]
-                                         (when (not= start end)  ;; Only if there's actual selection
-                                           (merge intent-with-id
-                                                 {:block-id editing?
-                                                  :start start
-                                                  :end end})))))
-                                   (catch js/Error e
-                                     (js/console.error "Selection read failed:" e)
-                                     nil))  ;; Return nil if enrichment fails
-                                 intent-with-id)]
-            (when enriched-intent  ;; Only dispatch if enrichment succeeded
+                                         (= (:type intent-with-id) :format-selection)
+                                         editing?
+                                         editable-el)
+                                  (try
+                                    (let [sel (.getSelection js/window)]
+                                      (when (and sel (pos? (.-rangeCount sel)))
+                                        (let [range (.getRangeAt sel 0)
+                                              start (.-startOffset range)
+                                              end (.-endOffset range)]
+                                          (when (not= start end) ;; Only if there's actual selection
+                                            (merge intent-with-id
+                                                   {:block-id editing?
+                                                    :start start
+                                                    :end end})))))
+                                    (catch js/Error e
+                                      (js/console.error "Selection read failed:" e)
+                                      nil)) ;; Return nil if enrichment fails
+                                  intent-with-id)]
+            (when enriched-intent ;; Only dispatch if enrichment succeeded
               (cond
               ;; Map intent: use directly (with injected block-id if needed)
-              (map? enriched-intent)
-              (handle-intent enriched-intent)
+                (map? enriched-intent)
+                (handle-intent enriched-intent)
 
               ;; Keyword intent: wrap in :type
-              :else
-              (handle-intent {:type enriched-intent})))))
+                :else
+                (handle-intent {:type enriched-intent})))))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
@@ -243,14 +243,14 @@
   "Hidden element for cursor position detection (Logseq technique)."
   []
   [:div#mock-text
-   {:style {:width          "100%"
-            :height         "100%"
-            :position       "absolute"
-            :visibility     "hidden"
-            :top            0
-            :left           0
+   {:style {:width "100%"
+            :height "100%"
+            :position "absolute"
+            :visibility "hidden"
+            :top 0
+            :left 0
             :pointer-events "none"
-            :z-index        -1000}}])
+            :z-index -1000}}])
 
 (defn Outline
   "Render outline tree by composing Block components."
@@ -258,20 +258,20 @@
   (let [children (get-in db [:children-by-parent root-id] [])]
     (into [:div.outline]
           (map (fn [child-id]
-                 (block/Block {:db        db
-                               :block-id  child-id
-                               :depth     0
+                 (block/Block {:db db
+                               :block-id child-id
+                               :depth 0
                                :on-intent on-intent}))
                children))))
 
 (defn DebugPanel [db]
   [:div.debug-panel
-   {:style {:margin-top       "30px"
-            :padding          "15px"
+   {:style {:margin-top "30px"
+            :padding "15px"
             :background-color "#f8f9fa"
-            :border-radius    "4px"
-            :font-family      "monospace"
-            :font-size        "12px"}}
+            :border-radius "4px"
+            :font-family "monospace"
+            :font-size "12px"}}
    [:div [:strong "Selection: "] (pr-str (q/selection db))]
    [:div [:strong "Focus: "] (pr-str (q/focus db))]
    [:div [:strong "Editing: "] (pr-str (q/editing-block-id db))]
@@ -280,14 +280,14 @@
 
 (defn HotkeysReference []
   [:div.hotkeys-footer
-   {:style {:margin-top       "30px"
-            :padding          "20px"
+   {:style {:margin-top "30px"
+            :padding "20px"
             :background-color "#f0f0f0"
-            :border-radius    "4px"}}
+            :border-radius "4px"}}
    [:h4 "Keyboard Shortcuts (Logseq Style)"]
-   [:div {:style {:display               "grid"
+   [:div {:style {:display "grid"
                   :grid-template-columns "repeat(3, 1fr)"
-                  :gap                   "10px"}}
+                  :gap "10px"}}
     [:div
      [:h5 "Navigation"]
      [:div.hotkey-item "↑/↓ - Move cursor (or navigate blocks at boundary)"]
@@ -331,7 +331,7 @@
      ;; Main content area
      [:div.main-content
       {:style {:flex "1"
-               :margin-left "220px"  ; Offset for fixed sidebar
+               :margin-left "220px" ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
                :max-width "800px"}}
@@ -352,8 +352,8 @@
           "📄 " page-title]
 
          ;; Main outline for current page only
-         (Outline {:db        db
-                   :root-id   current-page-id
+         (Outline {:db db
+                   :root-id current-page-id
                    :on-intent handle-intent})]
 
         ;; No page selected
@@ -382,17 +382,17 @@
 
   ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
   (d/set-dispatch!
-    (fn [event-data handler-data]
-      (cond
+   (fn [event-data handler-data]
+     (cond
         ;; Handle lifecycle hooks
-        (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
-        (when (fn? handler-data)
-          (handler-data event-data))
+       (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+       (when (fn? handler-data)
+         (handler-data event-data))
 
         ;; Handle DOM events (if we use data-driven events in the future)
-        (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-        (when (fn? handler-data)
-          (handler-data (:replicant/dom-event event-data))))))
+       (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+       (when (fn? handler-data)
+         (handler-data (:replicant/dom-event event-data))))))
 
   ;; Set up global keyboard listener (Cmd+Z, etc)
   (.addEventListener js/document "keydown" handle-global-keydown)
@@ -402,25 +402,25 @@
 
   ;; Apply text selection effects from formatting operations
   (add-watch !db :text-selection-effects
-    (fn [_ _ _ new-db]
-      (when-let [{:keys [block-id start end]}
-                 (get-in new-db [:nodes "session/ui" :props :pending-selection])]
-        (js/requestAnimationFrame
-          (fn []
-            (when-let [editable-el (.querySelector js/document
-                                                   (str "[data-block-id='" block-id "'].content-edit"))]
-              (try
-                (let [text-node (.-firstChild editable-el)
-                      sel (.getSelection js/window)
-                      range (.createRange js/document)]
-                  (when (and text-node (= (.-nodeType text-node) 3))
-                    (.setStart range text-node start)
-                    (.setEnd range text-node end)
-                    (.removeAllRanges sel)
-                    (.addRange sel range)))
-                (catch js/Error e
-                  (js/console.error "Text selection failed:" e))))
+             (fn [_ _ _ new-db]
+               (when-let [{:keys [block-id start end]}
+                          (get-in new-db [:nodes "session/ui" :props :pending-selection])]
+                 (js/requestAnimationFrame
+                  (fn []
+                    (when-let [editable-el (.querySelector js/document
+                                                           (str "[data-block-id='" block-id "'].content-edit"))]
+                      (try
+                        (let [text-node (.-firstChild editable-el)
+                              sel (.getSelection js/window)
+                              range (.createRange js/document)]
+                          (when (and text-node (= (.-nodeType text-node) 3))
+                            (.setStart range text-node start)
+                            (.setEnd range text-node end)
+                            (.removeAllRanges sel)
+                            (.addRange sel range)))
+                        (catch js/Error e
+                          (js/console.error "Text selection failed:" e))))
             ;; Clear pending selection after applying
-            (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
+                    (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
 
   (render!))
