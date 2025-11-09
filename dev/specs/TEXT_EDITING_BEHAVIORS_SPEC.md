@@ -1022,6 +1022,451 @@ Detect what the cursor is inside (markup, refs, code blocks, etc.) to enable con
 
 ---
 
+## Component 10: Undo/Redo with Debounced Checkpoints
+
+**Files:** `src/kernel/history.cljc`, `src/shell/blocks_ui.cljs`, `src/components/block.cljs`
+
+### Problem Statement
+
+**Current Issue:** Browser's contenteditable maintains its own undo stack, which conflicts with kernel history:
+
+```clojure
+// User types "hello world" in contenteditable
+// Browser undo stack: ["h", "he", "hel", ..., "hello world"]
+// Kernel history: Gets :update-content intent every keystroke
+
+// User presses Cmd+Z:
+// Option A: Browser handles it → DOM changes but DB unchanged → DESYNC
+// Option B: Kernel handles it → DB changes but browser undo stack still active → CONFLICT
+```
+
+**Solution:** Disable browser undo + debounced checkpoint system for text changes.
+
+### Architecture Changes
+
+**1. Disable Browser Undo Stack**
+
+```clojure
+;; components/block.cljs - Add to contenteditable element
+[:span.content-edit
+ {:contentEditable true
+  :on {:beforeinput (fn [e]
+                      ;; Block browser undo/redo from building history
+                      (when (contains? #{"historyUndo" "historyRedo"} (.-inputType e))
+                        (.preventDefault e)))
+       :input (fn [e] ...)}}]
+```
+
+**2. Filter Text Changes from History Recording**
+
+```clojure
+;; kernel/transaction.cljc - Add history filter
+(defn should-record-in-history?
+  "Determine if an intent should create a history entry.
+
+   Filters out ephemeral state changes that shouldn't be undoable:
+   - :update-content (too granular - use checkpoints instead)
+   - :selection (ephemeral UI state)
+   - :enter-edit/:exit-edit (ephemeral UI state)
+
+   All structural changes (split, merge, delete, move, indent) record automatically."
+  [intent]
+  (case (:type intent)
+    ;; Ephemeral - don't record
+    :update-content false
+    :selection false
+    :enter-edit false
+    :exit-edit false
+
+    ;; Structural - always record
+    (:split-at-cursor :merge-with-prev :merge-with-next
+     :delete :indent :outdent :move-up :move-down
+     :create-and-enter-edit :toggle-checkbox :toggle-fold) true
+
+    ;; Checkpoint - always record
+    :checkpoint true
+
+    ;; Default - record
+    true))
+
+;; Update apply-intent to use filter
+(defn apply-intent [db intent]
+  (let [ops (intent/handle db intent)
+        new-db (ops/apply-ops db ops)]
+    (if (should-record-in-history? intent)
+      (H/record new-db)
+      new-db)))
+```
+
+**3. Add Checkpoint Intent**
+
+```clojure
+;; plugins/editing.cljc
+(intent/register-intent! :checkpoint
+  {:doc "Record current DB state to history (manual checkpoint).
+
+         Used for debounced text editing history.
+         Creates history entry without changing DB state."
+   :handler (fn [db _intent]
+              ;; Return empty ops - just trigger history.record via should-record?
+              [])})
+```
+
+**4. Debounced Checkpoint in Component**
+
+```clojure
+;; components/block.cljs - Enhanced input handler
+(defn Block [{:keys [db block-id depth on-intent ...]}]
+  (let [;; Component-local state for debounce timer
+        checkpoint-timer (atom nil)]
+    [:div.block
+     ;; ... block structure ...
+     [:span.content-edit
+      {:contentEditable true
+       :on {:beforeinput (fn [e]
+                           ;; Prevent browser undo/redo
+                           (when (contains? #{"historyUndo" "historyRedo"} (.-inputType e))
+                             (.preventDefault e)))
+            :input (fn [e]
+                     (let [new-text (.. e -target -textContent)]
+                       ;; Update DB immediately (responsive UI)
+                       (on-intent {:type :update-content
+                                  :block-id block-id
+                                  :text new-text})
+
+                       ;; Clear existing checkpoint timer
+                       (when @checkpoint-timer
+                         (js/clearTimeout @checkpoint-timer))
+
+                       ;; Schedule checkpoint after 500ms of no typing
+                       (reset! checkpoint-timer
+                               (js/setTimeout
+                                (fn []
+                                  (on-intent {:type :checkpoint})
+                                  (reset! checkpoint-timer nil))
+                                500))))}}]]))
+```
+
+### Behavior
+
+**Typing Experience:**
+```clojure
+// User types "hello world"
+t=0ms:    Type "h" → :update-content (not recorded) + schedule checkpoint(500ms)
+t=100ms:  Type "e" → :update-content (not recorded) + cancel previous + schedule(500ms)
+t=200ms:  Type "l" → :update-content (not recorded) + cancel previous + schedule(500ms)
+...
+t=1000ms: Type "d" → :update-content (not recorded) + cancel previous + schedule(500ms)
+t=1500ms: [500ms pause] → :checkpoint fires → history.record
+
+// History stack now has: ["hello world"]
+// User types more...
+t=1600ms: Type " " → :update-content + schedule(500ms)
+t=1700ms: Type "f" → :update-content + schedule(500ms)
+...
+t=2500ms: [500ms pause] → :checkpoint → history.record
+
+// History stack: ["hello world", "hello world foo"]
+```
+
+**Undo Behavior:**
+```clojure
+// User presses Cmd+Z
+→ Kernel undo triggers
+→ DB reverts to "hello world" (previous checkpoint)
+→ Component re-renders with old text
+→ Browser contenteditable shows "hello world"
+→ No desync!
+```
+
+**Structural Changes Still Record Immediately:**
+```clojure
+// User types "hello" then presses Enter (split)
+→ :update-content "hello" (not recorded)
+→ :split-at-cursor (RECORDED - structural change)
+→ History: [initial-state, after-split]
+
+// User presses Cmd+Z
+→ Undo split
+→ Back to single block with "hello"
+```
+
+### Edge Cases
+
+**1. Quick Undo Before Checkpoint**
+```clojure
+// User types "hello" then immediately Cmd+Z (before 500ms checkpoint)
+→ No checkpoint exists yet
+→ Undo reverts to last structural change (e.g., previous block split)
+→ User loses "hello" (expected - they didn't pause typing)
+```
+
+**2. Multiple Blocks Editing**
+```clojure
+// User edits block A, switches to block B, edits block B
+→ Block A: :exit-edit (not recorded)
+→ Block B: :enter-edit (not recorded)
+→ Block B gets its own checkpoint timer
+→ Each block's text changes checkpoint independently
+```
+
+**3. Checkpoint During Autocomplete**
+```clojure
+// User types "[[hello" → autocomplete opens
+→ Checkpoint timer running (500ms from last char)
+→ User selects page from menu before checkpoint
+→ :close-autocomplete + :insert-page-ref (structural - recorded)
+→ Checkpoint timer cleared (autocomplete closed = interaction done)
+```
+
+### Testing
+
+```clojure
+;; test/kernel/history_checkpoint_test.cljc
+(deftest debounced-checkpoint-test
+  (testing "Text changes don't record until checkpoint"
+    (let [db (-> (sample-db)
+                 (tx/apply-intent {:type :update-content :block-id "a" :text "hello"})
+                 (tx/apply-intent {:type :update-content :block-id "a" :text "hello world"}))]
+      ;; No history entries yet (update-content filtered)
+      (is (= 0 (count (get-in db [:history :past]))))
+
+      ;; Checkpoint records current state
+      (let [db2 (tx/apply-intent db {:type :checkpoint})]
+        (is (= 1 (count (get-in db2 [:history :past]))))
+        (is (= "hello world" (get-in (H/undo db2) [:nodes "a" :props :text])))))))
+
+(deftest structural-changes-still-record-test
+  (testing "Split/merge/delete record immediately"
+    (let [db (-> (sample-db)
+                 (tx/apply-intent {:type :update-content :block-id "a" :text "hello"})
+                 (tx/apply-intent {:type :split-at-cursor :block-id "a" :cursor-pos 5}))]
+      ;; Split recorded (structural change)
+      (is (= 1 (count (get-in db [:history :past]))))
+      (is (= 2 (count (q/all-blocks (H/undo db)))))))) ;; Undo split → 1 block
+```
+
+### Manual Testing (Browser)
+
+**Smoke Test:**
+1. Open app, create block
+2. Type "hello world" slowly (observe each character appears)
+3. Wait 1 second (checkpoint timer expires)
+4. Press Cmd+Z
+5. ✅ Text reverts to empty (before typing)
+6. Press Cmd+Shift+Z (redo)
+7. ✅ Text reappears as "hello world"
+
+**Multi-Checkpoint Test:**
+1. Type "hello", wait 1s
+2. Type " world", wait 1s
+3. Type " foo", wait 1s
+4. Press Cmd+Z 3 times
+5. ✅ Reverts: "hello world foo" → "hello world" → "hello" → ""
+
+**Structural Operation Test:**
+1. Type "hello world"
+2. Press Enter immediately (before checkpoint)
+3. New block created
+4. Press Cmd+Z
+5. ✅ Split undone, back to "hello world" in single block
+6. Press Cmd+Z again
+7. ✅ Text reverts to empty (no checkpoint existed for "hello world")
+
+---
+
+## Component 11: Shift+Arrow Multi-Block Selection at Editing Boundaries
+
+**File:** `src/shell/blocks_ui.cljs`
+
+### Problem Statement
+
+**Current Behavior:** Shift+Arrow in non-editing mode extends selection (✅ working). Shift+Arrow WHILE EDITING is blocked:
+
+```clojure
+;; blocks_ui.cljs:56-100 - Current arrow boundary handlers
+;; ArrowUp at start → exit edit, navigate up, enter edit at end
+;; ArrowDown at end → exit edit, navigate down, enter edit at start
+
+// But what about Shift+ArrowUp at start?
+// Currently: Does nothing (or browser text selection inside block)
+// Expected: Extend block selection to include previous block
+```
+
+**Expected Logseq Behavior:**
+
+```clojure
+// User editing block B, cursor at start
+// Presses Shift+ArrowUp
+→ Block A and B both selected (multi-block selection)
+→ Edit mode PRESERVED on block B
+→ Visual: Both blocks highlighted, cursor still in B
+
+// User presses Shift+ArrowUp again
+→ Block A, B, and C selected
+→ Still editing B
+```
+
+### Implementation
+
+**Enhanced Boundary Detection in blocks_ui.cljs**
+
+```clojure
+;; shell/blocks_ui.cljs - Add to handle-global-keydown
+(defn handle-global-keydown [e]
+  (let [event (keymap/parse-dom-event e)
+        db @!db
+        key (.-key e)
+        mod? (or (.-metaKey e) (.-ctrlKey e))
+        shift? (.-shiftKey e)
+        focus-id (q/focus db)
+        editing? (q/editing-block-id db)
+
+        ;; Boundary detection (same as before)
+        editable-el (when editing? (.-activeElement js/document))
+        at-start? (when (and editable-el ...)
+                    ;; ... existing detection ...)
+        at-end? (when (and editable-el ...)
+                  ;; ... existing detection ...)]
+
+    (cond
+      ;; NEW: Shift+ArrowUp at start → Extend selection up
+      (and editing? (= key "ArrowUp") at-start? shift? (not mod?))
+      (do (.preventDefault e)
+          ;; Don't exit edit mode - just extend selection
+          (handle-intent {:type :selection :mode :extend-prev}))
+
+      ;; NEW: Shift+ArrowDown at end → Extend selection down
+      (and editing? (= key "ArrowDown") at-end? shift? (not mod?))
+      (do (.preventDefault e)
+          ;; Don't exit edit mode - just extend selection
+          (handle-intent {:type :selection :mode :extend-next}))
+
+      ;; Existing: Plain ArrowUp at start (no shift)
+      (and editing? (= key "ArrowUp") at-start? (not mod?) (not shift?))
+      (do (.preventDefault e)
+          ;; ... existing exit-edit + navigate + enter-edit logic ...)
+
+      ;; Existing: Plain ArrowDown at end (no shift)
+      (and editing? (= key "ArrowDown") at-end? (not mod?) (not shift?))
+      (do (.preventDefault e)
+          ;; ... existing exit-edit + navigate + enter-edit logic ...)
+
+      ;; ... rest of keydown handler ...)))
+```
+
+### Key Differences
+
+**Plain Arrow (no Shift):**
+- Exit edit mode
+- Navigate to adjacent block
+- Enter edit mode in new block
+- Cursor position specified (start/end)
+
+**Shift+Arrow (extend selection):**
+- STAY in edit mode
+- Extend selection to include adjacent block
+- Cursor remains in current editing block
+- Both blocks visually highlighted
+
+### Visual Behavior
+
+**Before (editing block B):**
+```
+[ ] Block A
+[█] Block B (editing, cursor at start)
+[ ] Block C
+```
+
+**After Shift+ArrowUp:**
+```
+[█] Block A (selected, not editing)
+[█] Block B (selected AND editing, cursor still at start)
+[ ] Block C
+```
+
+**After Shift+ArrowUp again:**
+```
+[█] Block C (parent of A, selected)
+[█] Block A (selected, not editing)
+[█] Block B (selected AND editing, cursor still at start)
+```
+
+### Interaction with Text Selection
+
+**Inside Block (not at boundary):**
+```clojure
+// User editing block B, cursor in middle: "hel|lo"
+// Presses Shift+ArrowUp
+→ Browser text selection (select text within block)
+→ No block-level selection
+
+// User at start: "|hello"
+// Presses Shift+ArrowUp
+→ Block-level selection (extend to include prev block)
+→ No text selection
+```
+
+**Detection Priority:**
+```clojure
+(cond
+  ;; If cursor at boundary → block-level selection
+  (and at-start? shift?)
+  (handle-intent {:type :selection :mode :extend-prev})
+
+  ;; Otherwise → browser text selection (default behavior)
+  :else nil)  ; Let browser handle
+```
+
+### Testing
+
+**Unit Test (Selection State):**
+```clojure
+(deftest shift-arrow-extend-while-editing-test
+  (testing "Shift+ArrowUp at start extends selection"
+    (let [db (-> (sample-db)
+                 (tx/apply-intent {:type :enter-edit :block-id "b" :cursor-at :start})
+                 (tx/apply-intent {:type :selection :mode :extend-prev}))]
+      ;; Both blocks selected
+      (is (= #{"a" "b"} (q/selection db)))
+      ;; Still editing block B
+      (is (= "b" (q/editing-block-id db)))
+      ;; Focus moved to A (new selection focus)
+      (is (= "a" (q/focus db)))))
+
+  (testing "Shift+ArrowDown at end extends selection"
+    (let [db (-> (sample-db)
+                 (tx/apply-intent {:type :enter-edit :block-id "a" :cursor-at :end})
+                 (tx/apply-intent {:type :selection :mode :extend-next}))]
+      (is (= #{"a" "b"} (q/selection db)))
+      (is (= "a" (q/editing-block-id db)))
+      (is (= "b" (q/focus db))))))
+```
+
+**Manual Test (Browser):**
+1. Create 3 blocks: A, B, C
+2. Click block B to select
+3. Press Enter to edit
+4. Move cursor to start (press Home or Cmd+Left)
+5. Press Shift+ArrowUp
+6. ✅ Both A and B highlighted (multi-block selection)
+7. ✅ Cursor still blinking in B (edit mode preserved)
+8. Press Shift+ArrowUp again
+9. ✅ A, B, C all highlighted
+10. Press Escape
+11. ✅ Exit edit mode, selection preserved
+
+**Edge Case - Text Selection vs Block Selection:**
+1. Edit block B: "hello world"
+2. Cursor in middle: "hel|lo world"
+3. Press Shift+ArrowUp
+4. ✅ Text selected within block (browser behavior)
+5. Press Home to move cursor to start
+6. Press Shift+ArrowUp
+7. ✅ Block selection extended to previous block
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests (Pure Logic)
