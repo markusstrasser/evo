@@ -1,0 +1,90 @@
+(ns utils.text
+  "Text manipulation utilities with multi-byte character support.
+
+   NOTE: This is a simplified implementation. For full emoji/grapheme cluster support,
+   install grapheme-splitter library: npm install grapheme-splitter")
+
+;; ── Grapheme Cluster Handling ────────────────────────────────────────────────
+
+(defn grapheme-length-at
+  "Get length of grapheme cluster at position (handles basic emoji, CJK).
+
+   Simplified implementation without grapheme-splitter library.
+   Handles basic emoji (surrogate pairs) but not complex clusters.
+
+   Example:
+     text: 'Hello😀World'
+     pos: 5
+     => 2  (emoji takes 2 UTF-16 code units)
+
+   Returns: Integer (1 for ASCII, 2 for basic emoji/CJK)
+
+   TODO: Use grapheme-splitter library for full Unicode correctness:
+         npm install grapheme-splitter
+         Then use GraphemeSplitter.splitGraphemes()"
+  [text pos]
+  #?(:cljs
+     ;; Simple surrogate pair detection
+     (let [char-code (.charCodeAt text pos)]
+       (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
+         2  ; High surrogate - emoji/CJK likely 2 code units
+         1))
+     :clj
+     ;; On JVM, use Character.charCount
+     (if (< pos (count text))
+       (let [code-point (.codePointAt text (int pos))]
+         (Character/charCount code-point))
+       1)))
+
+(defn count-graphemes
+  "Count grapheme clusters in string (not UTF-16 code units).
+
+   Simplified implementation - counts surrogate pairs as 1 grapheme.
+
+   Example:
+     text: 'Hi😀'
+     => 3  (not 4)
+
+   TODO: Use grapheme-splitter for full correctness"
+  [text]
+  #?(:cljs
+     ;; Simple counting - treat surrogate pairs as 1
+     (loop [i 0
+            count 0]
+       (if (>= i (.-length text))
+         count
+         (let [char-code (.charCodeAt text i)]
+           (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
+             (recur (+ i 2) (inc count))  ; Skip surrogate pair
+             (recur (inc i) (inc count))))))
+     :clj
+     (.codePointCount text 0 (count text))))
+
+(defn cursor-pos-to-grapheme-index
+  "Convert UTF-16 cursor position to grapheme index.
+
+   Useful for cursor positioning that respects emoji.
+
+   Simplified implementation using surrogate pair detection.
+
+   TODO: Use grapheme-splitter for full correctness"
+  [text cursor-pos]
+  #?(:cljs
+     (loop [i 0
+            grapheme-idx 0]
+       (if (>= i cursor-pos)
+         grapheme-idx
+         (let [char-code (.charCodeAt text i)]
+           (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
+             (recur (+ i 2) (inc grapheme-idx))  ; Surrogate pair
+             (recur (inc i) (inc grapheme-idx))))))
+     :clj
+     (loop [idx 0
+            utf16-pos 0]
+       (if (>= utf16-pos cursor-pos)
+         idx
+         (if (< utf16-pos (count text))
+           (let [code-point (.codePointAt text (int utf16-pos))
+                 char-count (Character/charCount code-point)]
+             (recur (inc idx) (+ utf16-pos char-count)))
+           idx)))))
