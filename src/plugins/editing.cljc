@@ -56,7 +56,9 @@
                                      [{:op :update-node :id block-id :props {:text text}}])})
 
 (intent/register-intent! :merge-with-prev
-                         {:doc "Merge block with previous sibling, placing cursor at merge point."
+                         {:doc "Merge block with previous sibling, placing cursor at merge point.
+
+                                CRITICAL: Re-parents children of deleted block to prev block (Logseq behavior)."
                           :spec [:map [:type [:= :merge-with-prev]] [:block-id :string]]
                           :handler (fn [db {:keys [block-id]}]
                                      (let [prev-id (get-in db [:derived :prev-id-of block-id])
@@ -64,15 +66,29 @@
                                            curr-text (get-block-text db block-id)
                                            merged-text (str prev-text curr-text)
                     ;; KEY: Calculate where cursor should land (end of prev text)
-                                           cursor-at (count prev-text)]
+                                           cursor-at (count prev-text)
+
+                    ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
+                                           curr-children (get-in db [:children-by-parent block-id] [])]
                                        (when prev-id
-                                         [{:op :update-node :id prev-id :props {:text merged-text}}
-                                          {:op :place :id block-id :under const/root-trash :at :last}
-                   ;; NEW: Store cursor position for entering prev block
-                                          {:op :update-node
-                                           :id const/session-ui-id
-                                           :props {:editing-block-id prev-id
-                                                   :cursor-position cursor-at}}])))})
+                                         (concat
+                                           ;; Update prev block with merged text
+                                           [{:op :update-node :id prev-id :props {:text merged-text}}]
+
+                                           ;; CRITICAL: Re-parent children of deleted block to prev block
+                                           ;; This prevents data loss - children would otherwise go to trash!
+                                           (mapv (fn [child-id]
+                                                   {:op :place :id child-id :under prev-id :at :last})
+                                                 curr-children)
+
+                                           ;; Move current block to trash (now empty of children)
+                                           [{:op :place :id block-id :under const/root-trash :at :last}
+
+                    ;; Store cursor position for entering prev block
+                                            {:op :update-node
+                                             :id const/session-ui-id
+                                             :props {:editing-block-id prev-id
+                                                     :cursor-position cursor-at}}]))))})
 
 (intent/register-intent! :split-at-cursor
                          {:doc "Split block at cursor position into two blocks."
