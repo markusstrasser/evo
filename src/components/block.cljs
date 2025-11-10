@@ -512,45 +512,46 @@
                     :min-width "1px"
                     :display "inline-block"}
             :data-block-id block-id
-            ;; Use :replicant/on-render which fires on every render, not just mount
-            :replicant/on-render (fn [{:replicant/keys [node mounting?]}]
-                                   (let [cursor-pos (q/cursor-position db)]
+            ;; Set text content ONLY on mount (not on every render)
+            ;; This ensures we show the raw syntax (((id))) not rendered text
+            :replicant/on-mount (fn [{:replicant/keys [node]}]
+                                  (set! (.-textContent node) text))
+            ;; Focus and cursor positioning on every render
+            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+                                   ;; Don't run on unmount
+                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
+                                     (let [cursor-pos (q/cursor-position db)]
 
-                                     ;; Set text content ONLY on initial mount
-                                     ;; This ensures we show the raw syntax (((id))) not rendered text
-                                     (when mounting?
-                                       (set! (.-textContent node) text))
+                                       ;; Focus the element
+                                       (.focus node)
 
-                                     ;; Focus the element
-                                     (.focus node)
+                                       ;; Apply cursor position ONCE per cursor-pos value
+                                       ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
+                                       (when cursor-pos
+                                         (let [last-applied (aget node "__lastAppliedCursorPos")]
+                                           (when (not= cursor-pos last-applied)
+                                             (try
+                                               (let [range (.createRange js/document)
+                                                     sel (.getSelection js/window)
+                                                     text-node (.-firstChild node)]
+                                                 ;; Position cursor in the text node
+                                                 (when (and text-node (= (.-nodeType text-node) 3))
+                                                   (let [text-length (.-length text-node)
+                                                         pos (cond
+                                                               (= cursor-pos :start) 0
+                                                               (= cursor-pos :end) text-length
+                                                               (number? cursor-pos) (min cursor-pos text-length)
+                                                               :else text-length)]
+                                                     (.setStart range text-node pos)
+                                                     (.setEnd range text-node pos)
+                                                     (.removeAllRanges sel)
+                                                     (.addRange sel range)
+                                                     ;; Mark this cursor-pos as applied
+                                                     (aset node "__lastAppliedCursorPos" cursor-pos))))
+                                               (catch js/Error e
+                                                 (js/console.error "Cursor positioning failed:" e))))))
 
-                                     ;; Apply cursor position ONCE per cursor-pos value
-                                     ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
-                                     (when cursor-pos
-                                       (let [last-applied (aget node "__lastAppliedCursorPos")]
-                                         (when (not= cursor-pos last-applied)
-                                           (try
-                                             (let [range (.createRange js/document)
-                                                   sel (.getSelection js/window)
-                                                   text-node (.-firstChild node)]
-                                               ;; Position cursor in the text node
-                                               (when (and text-node (= (.-nodeType text-node) 3))
-                                                 (let [text-length (.-length text-node)
-                                                       pos (cond
-                                                             (= cursor-pos :start) 0
-                                                             (= cursor-pos :end) text-length
-                                                             (number? cursor-pos) (min cursor-pos text-length)
-                                                             :else text-length)]
-                                                   (.setStart range text-node pos)
-                                                   (.setEnd range text-node pos)
-                                                   (.removeAllRanges sel)
-                                                   (.addRange sel range)
-                                                   ;; Mark this cursor-pos as applied
-                                                   (aset node "__lastAppliedCursorPos" cursor-pos))))
-                                             (catch js/Error e
-                                               (js/console.error "Cursor positioning failed:" e))))))
-
-                                     (update-mock-text! node (.-textContent node))))
+                                       (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
                           (let [target (.-target e)
                                 new-text (.-textContent target)]
@@ -558,9 +559,15 @@
                             (on-intent {:type :update-content
                                         :block-id block-id
                                         :text new-text})))
-                 :blur (fn [_e]
+                 :blur (fn [e]
                          ;; Only exit on blur if not already exiting via Escape
                          (when-not @exiting-edit?
+                           ;; CRITICAL: Capture final text from contenteditable before exiting
+                           ;; This prevents race conditions where the last input event hasn't fired
+                           (let [final-text (.-textContent (.-target e))]
+                             (on-intent {:type :update-content
+                                        :block-id block-id
+                                        :text final-text}))
                            (on-intent {:type :exit-edit})))
                  :keydown (fn [e]
                             (when (= (.-key e) "Escape")
