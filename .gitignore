@@ -111,3 +111,11 @@ llmx/**/*.pyc
 
 # Archived files
 .archived/
+
+# Claude Code skills (symlinked)
+.claude/skills/architect
+.claude/skills/code-research
+.claude/skills/computer-use
+.claude/skills/diagnostics
+.claude/skills/llmx-guide
+.claude/skills/session-memory
