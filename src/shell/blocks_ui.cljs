@@ -288,7 +288,13 @@
                :margin-left "220px" ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
-               :max-width "800px"}}
+               :max-width "800px"}
+       ;; Background click to clear selection (Logseq parity)
+       ;; Blocks call stopPropagation, so this only fires for empty background clicks
+       :on {:click (fn [e]
+                     ;; Only clear if not editing and clicking empty background
+                     (when-not (q/editing-block-id db)
+                       (handle-intent {:type :selection :mode :clear})))}}
 
       ;; Mock-text for cursor detection
       (MockText)

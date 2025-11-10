@@ -1,7 +1,8 @@
 (ns keymap.bindings-data)
 
 (def data
-  {:non-editing [[{:key "ArrowDown"} {:type :selection :mode :next}]
+  {:non-editing [[{:key "Escape"} {:type :selection :mode :clear}]
+                 [{:key "ArrowDown"} {:type :selection :mode :next}]
                  [{:key "ArrowUp"} {:type :selection :mode :prev}]
                  [{:key "ArrowDown" :alt true} {:type :selection :mode :next}]
                  [{:key "ArrowUp" :alt true} {:type :selection :mode :prev}]
