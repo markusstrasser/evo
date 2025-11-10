@@ -20,8 +20,44 @@
                         (shell "npx shadow-cljs compile :test")
                         (shell "node out/tests.js"))}
 
+   test-watch  {:doc "Run tests in watch mode (auto-rerun on save)"
+                :task (shell "clj -M:test -m kaocha.runner --watch")}
+
+   test-focus  {:doc "Run only tests matching pattern"
+                :task (shell "clj -M:test -m kaocha.runner --focus"
+                             (first *command-line-args*))}
+
+   test-fail-fast {:doc "Stop on first failure with full context"
+                   :task (shell "clj -M:test -m kaocha.runner --fail-fast")}
+
+   test-seed   {:doc "Run tests with specific seed (reproduce property test failures)"
+                :task (shell "clj -M:test -m kaocha.runner --randomize --seed"
+                             (first *command-line-args*))}
+
    check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
                     :task (shell "scripts/check-version-sync.sh")}
+
+   ;; E2E Testing with Playwright
+   e2e         {:doc "Run Playwright E2E tests"
+                :task (shell "npx playwright test")}
+
+   e2e-watch   {:doc "Run E2E tests in watch mode (UI)"
+                :task (shell "npx playwright test --ui")}
+
+   e2e-debug   {:doc "Run E2E tests with debugger"
+                :task (shell "npx playwright test --debug")}
+
+   e2e-headed  {:doc "Run E2E tests with visible browser"
+                :task (shell "npx playwright test --headed")}
+
+   e2e-report  {:doc "Open last E2E test report"
+                :task (shell "npx playwright show-report")}
+
+   e2e-visual  {:doc "Run visual regression tests with Percy"
+                :task (shell "npx percy exec -- npx playwright test visual")}
+
+   e2e-a11y    {:doc "Run accessibility tests only"
+                :task (shell "npx playwright test accessibility")}
 
    ;; Cache & index management
    clean       {:doc "Clear all caches and semantic search index"
@@ -74,6 +110,14 @@
                         (println "  bb check           - Lint + compile check")
                         (println "  bb test            - Run test suite")
                         (println "  bb check-deps-sync - Verify dependency versions match\n")
+                        (println "E2E Testing:")
+                        (println "  bb e2e             - Run Playwright E2E tests")
+                        (println "  bb e2e-watch       - Watch mode (UI)")
+                        (println "  bb e2e-debug       - Debug mode")
+                        (println "  bb e2e-headed      - Visible browser")
+                        (println "  bb e2e-report      - Open test report")
+                        (println "  bb e2e-visual      - Visual regression (Percy)")
+                        (println "  bb e2e-a11y        - Accessibility tests\n")
                         (println "Cache & Index:")
                         (println "  bb clean           - Clear all caches + semantic index")
                         (println "  bb index           - Rebuild ck semantic index\n")
