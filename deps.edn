@@ -44,11 +44,10 @@
            ;; Test runner with property-based testing and enhanced output
            :test            {:extra-paths ["test"]
                              :extra-deps  {lambdaisland/kaocha           {:mvn/version "1.91.1392"}
-                                           lambdaisland/kaocha-cljs2     {:mvn/version "1.5.40"}
+                                           lambdaisland/kaocha-cljs2     {:mvn/version "0.2.72"}
                                            nubank/matcher-combinators    {:mvn/version "3.9.2"}
                                            exoscale/ex                   {:mvn/version "0.4.0"}
-                                           fipp/fipp                     {:mvn/version "0.6.26"}
-                                           metosin/malli-dev             {:mvn/version "0.19.1"}}
+                                           fipp/fipp                     {:mvn/version "0.6.26"}}
                              :main-opts   ["-m" "kaocha.runner"]
                              :exec-fn     kaocha.runner/exec-fn
                              :exec-args   {:color?     true

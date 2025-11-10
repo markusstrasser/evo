@@ -8,8 +8,6 @@
             [clojure.data :as data]
             #?(:clj [clojure.test :refer [is]]
                :cljs [cljs.test :refer [is]])
-            #?(:clj [matcher-combinators.test :refer [match?]]
-               :cljs [matcher-combinators.test :refer [match?]])
             #?(:clj [fipp.edn :refer [pprint]]
                :cljs [cljs.pprint :refer [pprint]])))
 
@@ -48,7 +46,7 @@
        [{:op :update-node :id \"a\" :props {:text \"merged\"}}])"
   [db intent expected-ops]
   (let [{:keys [ops]} (intent/apply-intent db intent)]
-    (when-not (match? expected-ops ops)
+    (when-not (= expected-ops ops)
       (println "\n=== INTENT ASSERTION FAILED ===")
       (println "Intent:" (pr-str intent))
       (println "\nExpected ops:")
@@ -57,7 +55,7 @@
       (pprint ops)
       (println "\nDiff:")
       (pprint (data/diff expected-ops ops)))
-    (is (match? expected-ops ops))))
+    (is (= expected-ops ops))))
 
 (defn assert-db-nodes
   "Assert DB nodes match expected shape. Supports partial matching.
@@ -69,14 +67,14 @@
   [db node-id->expected-props]
   (doseq [[node-id expected-props] node-id->expected-props]
     (let [actual-props (get-in db [:nodes node-id :props])]
-      (when-not (match? expected-props actual-props)
+      (when-not (= expected-props actual-props)
         (println "\n=== NODE ASSERTION FAILED ===")
         (println "Node ID:" node-id)
         (println "\nExpected props:")
         (pprint expected-props)
         (println "\nActual props:")
         (pprint actual-props))
-      (is (match? expected-props actual-props)
+      (is (= expected-props actual-props)
           (str "Node " node-id " props mismatch")))))
 
 (defn assert-tree-structure
