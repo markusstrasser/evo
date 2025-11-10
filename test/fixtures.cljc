@@ -8,10 +8,15 @@
    - anki_fixtures.cljc (Anki review scenarios)
 
    This file provides:
-   - DB builders (make-db)
+   - DB builders (make-db, make-blocks)
    - Tree generators (linear, flat, balanced)
    - Node generators (gen-node)
-   - Predefined fixtures (empty-db, simple-tree)")
+   - Intent helpers (apply-intent-and-interpret, intent-chain)
+   - Predefined fixtures (empty-db, simple-tree)"
+  (:require [kernel.db :as db]
+            [kernel.transaction :as tx]
+            [kernel.intent :as intent]
+            #?@(:cljs [[dev.validation :as validation]])))
 
 ;; =============================================================================
 ;; Generic DB builders
@@ -131,6 +136,57 @@
      :root-id root
      :child-ids [a b]}))
 
+;; =============================================================================
+;; Enhanced Test Helpers
+;; =============================================================================
+
+;; Enable validation in tests (ClojureScript only)
+#?(:cljs (validation/wrap-apply-intent-with-validation))
+
+(defn make-blocks
+  "Create blocks with sensible defaults. Returns db.
+
+   Usage:
+     (make-blocks
+       {:a {:text \"First\" :children [:b :c]}
+        :b {:text \"Second\"}
+        :c {:text \"Third\" :children [:d]}
+        :d {:text \"Fourth\"}})"
+  [block-map]
+  (let [ops (for [[id {:keys [text children] :or {text "" children []}}] block-map]
+              {:op :create-node :id (name id) :type :block :props {:text text}})
+        place-ops (for [[id {:keys [children]}] block-map
+                        child children]
+                    {:op :place :id (name child) :under (name id) :at :last})]
+    (:db (tx/interpret (db/empty-db) (concat ops place-ops)))))
+
+(defn apply-intent-and-interpret
+  "Apply intent and return resulting db (convenience helper)."
+  [db intent]
+  (let [{:keys [ops]} (intent/apply-intent db intent)]
+    (:db (tx/interpret db ops))))
+
+(defn intent-chain
+  "Apply multiple intents in sequence, returning final db.
+
+   Usage:
+     (intent-chain db
+       {:type :enter-edit :block-id \"a\"}
+       {:type :update-content :block-id \"a\" :text \"new\"}
+       {:type :exit-edit})"
+  [db & intents]
+  (reduce apply-intent-and-interpret db intents))
+
+(defn snapshot-db
+  "Return readable snapshot of db for printing/comparing."
+  [db & [node-ids]]
+  (let [nodes (if node-ids
+                (select-keys (:nodes db) node-ids)
+                (:nodes db))]
+    {:nodes nodes
+     :tree (:children-by-parent db)
+     :derived (select-keys (:derived db) [:parent-id-of :index-of])}))
+
 (comment
   ;; Build a custom tree
   (make-db {"root" {:type :div}
@@ -144,4 +200,14 @@
 
   ;; Use predefined fixtures
   (:db simple-tree)
+
+  ;; Build blocks with text
+  (make-blocks {:doc {:children [:a :b]}
+                :a {:text "First"}
+                :b {:text "Second"}})
+
+  ;; Chain intents
+  (intent-chain (make-blocks {:a {:text "Hello"}})
+                {:type :enter-edit :block-id "a"}
+                {:type :update-content :block-id "a" :text "Hello World"})
   )

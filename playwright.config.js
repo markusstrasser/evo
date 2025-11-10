@@ -7,27 +7,64 @@ const headless =
     : !!process.env.CI;
 
 export default defineConfig({
-  testDir: './test-browser',
+  testDir: './test/e2e',
   testMatch: '**/*.spec.js',
-  fullyParallel: false,
-  retries: 0,
-  workers: 1,
-  reporter: 'list',
+
+  // Run tests in parallel
+  fullyParallel: true,
+
+  // Fail fast on CI, retry locally
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+
+  // Structured output for AI parsing
+  reporter: [
+    ['list'],  // Console output
+    ['json', { outputFile: 'test-results/e2e-results.json' }],
+    ['html', { open: 'never' }]  // HTML report for manual review
+  ],
 
   use: {
+    // Base URL for tests
     baseURL: 'http://localhost:8080',
-    headless, // Default headless in CI; override with PLAYWRIGHT_HEADLESS env var
+
+    // Headless mode (CI or env override)
+    headless,
+
+    // Capture on failure
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    trace: 'retain-on-failure',
+
+    // Browser viewport
+    viewport: { width: 1280, height: 720 }
   },
 
+  // Cross-browser testing
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'] }
     },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] }
+    },
+    {
+      name: 'webkit',  // Safari engine
+      use: { ...devices['Desktop Safari'] }
+    },
+    {
+      name: 'Mobile Safari',
+      use: { ...devices['iPhone 13'] }
+    }
   ],
 
-  // Don't start a web server - shadow-cljs already running
-  webServer: undefined,
+  // Dev server
+  webServer: {
+    command: 'bb dev',
+    url: 'http://localhost:8080',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120000
+  }
 });
