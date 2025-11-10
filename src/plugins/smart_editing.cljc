@@ -125,7 +125,7 @@
             {:op :update-node
              :id const/session-ui-id
              :props {:editing-block-id block-id
-                     :cursor-position (+ cursor-pos (count char))}}]))))})
+                     :cursor-position (+ cursor-pos (count input-char))}}]))))})
 
 (intent/register-intent! :delete-with-pair-check
   {:doc "Delete character, removing paired closing char if present.
