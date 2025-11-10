@@ -126,3 +126,31 @@
                                     :id const/session-ui-id
                                     :props {:editing-block-id target-id
                                             :cursor-position cursor-at}}]))))})
+
+(intent/register-intent! :navigate-to-adjacent
+                         {:doc "Navigate to adjacent block (for left/right arrows at boundaries).
+
+         Simpler than :navigate-with-cursor-memory - doesn't preserve column.
+         Just enters adjacent block at specified position."
+                          :spec [:map
+                                 [:type [:= :navigate-to-adjacent]]
+                                 [:direction [:enum :up :down]]
+                                 [:current-block-id :string]
+                                 [:cursor-position [:or :int [:enum :max]]]]
+                          :handler
+                          (fn [db {:keys [direction current-block-id cursor-position]}]
+                            (let [target-id (case direction
+                                             :up (get-in db [:derived :prev-id-of current-block-id])
+                                             :down (get-in db [:derived :next-id-of current-block-id]))]
+                              (when target-id
+                                (let [target-text (get-block-text db target-id)
+                                      actual-pos (if (= cursor-position :max)
+                                                  (count target-text)
+                                                  cursor-position)]
+                                  [{:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id nil}}
+                                   {:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id target-id
+                                            :cursor-position actual-pos}}]))))})
