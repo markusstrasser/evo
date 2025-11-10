@@ -117,14 +117,21 @@
 
 (intent/register-intent! :create-and-enter-edit
   {:doc "Create new block after focus and immediately enter edit mode.
-   This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent."
+   This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent.
+   Clears selection to maintain edit/view mode mutual exclusivity."
    :spec [:map [:type [:= :create-and-enter-edit]]]
    :handler (fn [db _]
               (let [focus-id (q/focus db)
                     parent (q/parent-of db focus-id)
                     new-id (str "block-" (random-uuid))]
-                [{:op :create-node :id new-id :type :block :props {:text ""}}
+                [;; INVARIANT: Clear selection before entering edit mode
+                 {:op :update-node
+                  :id const/session-selection-id
+                  :props {:nodes #{} :focus nil :anchor nil}}
+                 ;; Create and place new block
+                 {:op :create-node :id new-id :type :block :props {:text ""}}
                  {:op :place :id new-id :under parent :at {:after focus-id}}
+                 ;; Enter edit mode on new block
                  {:op :update-node
                   :id const/session-ui-id
                   :props {:editing-block-id new-id}}]))})
