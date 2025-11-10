@@ -57,6 +57,132 @@
 
     :else text))
 
+;; ── Paired Character Handling ──────────────────────────────────────────────────
+
+(def pairs
+  "Character pairs that auto-close and delete together."
+  {"[" "]"
+   "(" ")"
+   "{" "}"
+   "\"" "\""
+   "**" "**"    ; Bold
+   "__" "__"    ; Italic
+   "~~" "~~"    ; Strikethrough
+   "^^" "^^"})  ; Highlight
+
+(intent/register-intent! :insert-paired-char
+  {:doc "Insert character with auto-closing pair.
+
+         If opening char typed, insert both and position cursor between.
+         If closing char typed and next char matches, skip over it instead."
+
+   :spec [:map
+          [:type [:= :insert-paired-char]]
+          [:block-id :string]
+          [:cursor-pos :int]
+          [:char :string]]
+
+   :handler
+   (fn [db {:keys [block-id cursor-pos char]}]
+     (let [text (get-block-text db block-id)
+           next-char (when (< cursor-pos (count text))
+                      (str (nth text cursor-pos)))
+           closing-char (get pairs char)]
+
+       (cond
+         ;; Closing char and next char matches - skip over
+         (and (contains? (set (vals pairs)) char)
+              (= next-char char))
+         [{:op :update-node
+           :id const/session-ui-id
+           :props {:editing-block-id block-id
+                   :cursor-position (inc cursor-pos)}}]
+
+         ;; Opening char - insert both and position cursor between
+         closing-char
+         (let [new-text (str (subs text 0 cursor-pos)
+                            char
+                            closing-char
+                            (subs text cursor-pos))]
+           [{:op :update-node
+             :id block-id
+             :props {:text new-text}}
+            {:op :update-node
+             :id const/session-ui-id
+             :props {:editing-block-id block-id
+                     :cursor-position (+ cursor-pos (count char))}}])
+
+         ;; Not a paired char - just insert
+         :else
+         (let [new-text (str (subs text 0 cursor-pos)
+                            char
+                            (subs text cursor-pos))]
+           [{:op :update-node
+             :id block-id
+             :props {:text new-text}}
+            {:op :update-node
+             :id const/session-ui-id
+             :props {:editing-block-id block-id
+                     :cursor-position (+ cursor-pos (count char))}}]))))})
+
+(intent/register-intent! :delete-with-pair-check
+  {:doc "Delete character, removing paired closing char if present.
+
+         If cursor is after opening char and before closing char,
+         delete both (e.g., [|] becomes empty).
+
+         Otherwise, normal backspace behavior."
+
+   :spec [:map
+          [:type [:= :delete-with-pair-check]]
+          [:block-id :string]
+          [:cursor-pos :int]]
+
+   :handler
+   (fn [db {:keys [block-id cursor-pos]}]
+     (when (pos? cursor-pos)
+       (let [text (get-block-text db block-id)
+             ;; Check for matching pairs - try multi-char first, then single-char
+             ;; Sort pairs by length descending so we check multi-char pairs first
+             pair-match (some (fn [[opening closing]]
+                               (let [open-len (count opening)
+                                     close-len (count closing)
+                                     start-pos (- cursor-pos open-len)
+                                     end-pos cursor-pos]
+                                 (when (and (>= start-pos 0)
+                                           (<= (+ cursor-pos close-len) (count text))
+                                           (= (subs text start-pos end-pos) opening)
+                                           (= (subs text cursor-pos (+ cursor-pos close-len)) closing))
+                                   {:opening opening
+                                    :closing closing
+                                    :open-len open-len
+                                    :close-len close-len})))
+                             (sort-by (comp - count key) pairs))]  ; Sort by key length descending
+
+         (if pair-match
+           ;; Delete both pair characters
+           (let [{:keys [open-len close-len]} pair-match
+                 new-text (str (subs text 0 (- cursor-pos open-len))
+                              (subs text (+ cursor-pos close-len)))]
+             [{:op :update-node
+               :id block-id
+               :props {:text new-text}}
+              {:op :update-node
+               :id const/session-ui-id
+               :props {:editing-block-id block-id
+                       :cursor-position (- cursor-pos open-len)}}])
+
+           ;; Normal backspace - delete one char
+           (let [new-text (str (subs text 0 (dec cursor-pos))
+                              (subs text cursor-pos))]
+             [{:op :update-node
+               :id block-id
+               :props {:text new-text}}
+              {:op :update-node
+               :id const/session-ui-id
+               :props {:editing-block-id block-id
+                       :cursor-position (dec cursor-pos)}}])))))})
+
 ;; ── Merge Operations ──────────────────────────────────────────────────────────
 
 (intent/register-intent! :merge-with-next
