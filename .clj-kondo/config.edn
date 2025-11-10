@@ -47,7 +47,8 @@
                                           ;; Allow intentional domain names
                                           :exclude [key range next type future
                                                     parents descendants children
-                                                    chars ns-name record?]}
+                                                    chars ns-name record?
+                                                    count]}  ; Function calls like (count x) are not shadowing
            :duplicate-require            {:level :error}
            :single-operand-comparison    {:level :warning}
            :single-logical-operand       {:level :warning}
