@@ -71,7 +71,9 @@ rg "def root-" src/kernel/constants.cljc
 - `char`, `count`, `num`, `name`, `key`, `val`
 - `filter`, `map`, `remove` (less common but still shadowed)
 
-**Detection:** `bb lint` will warn about shadowed vars
+**Detection:**
+- `bb lint` will warn about shadowed vars
+- **Pre-commit hook blocks commits** with shadowed vars (bypass with `--no-verify` if needed)
 
 ---
 
