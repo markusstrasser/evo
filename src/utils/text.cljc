@@ -88,3 +88,77 @@
                  char-count (Character/charCount code-point)]
              (recur (inc idx) (+ utf16-pos char-count)))
            idx)))))
+
+;; ── Word Boundary Detection ──────────────────────────────────────────────────
+
+(defn whitespace?
+  "Check if character is whitespace (space, newline, or tab)."
+  [c]
+  (or (= c \space)
+      (= c \newline)
+      (= c \tab)
+      (= c \return)))
+
+(defn find-next-word-boundary
+  "Find position of start of next word.
+
+   Args:
+     text: String
+     pos: Current cursor position
+
+   Returns: Integer (position of next word start)
+
+   Examples:
+     (find-next-word-boundary \"hello world\" 0)  => 6
+     (find-next-word-boundary \"hello   world\" 5) => 8
+     (find-next-word-boundary \"hello\" 5)  => 5 (at end)"
+  [text pos]
+  (let [len (count text)
+        ;; Skip current word (non-whitespace chars)
+        skip-current (loop [p pos]
+                      (if (and (< p len)
+                              (not (whitespace? (nth text p))))
+                        (recur (inc p))
+                        p))
+        ;; Skip whitespace
+        skip-spaces (loop [p skip-current]
+                     (if (and (< p len)
+                             (whitespace? (nth text p)))
+                       (recur (inc p))
+                       p))]
+    skip-spaces))
+
+(defn find-prev-word-boundary
+  "Find position of start of previous word.
+
+   Args:
+     text: String
+     pos: Current cursor position
+
+   Returns: Integer (position of previous word start) or nil if at start
+
+   Examples:
+     (find-prev-word-boundary \"hello world\" 11) => 6
+     (find-prev-word-boundary \"hello   world\" 8) => 0
+     (find-prev-word-boundary \"hello\" 0) => nil"
+  [text pos]
+  (when (pos? pos)
+    (let [;; Move back one if at space
+          start-pos (if (and (< pos (count text))
+                            (pos? pos)
+                            (whitespace? (nth text (dec pos))))
+                     (dec pos)
+                     pos)
+          ;; Skip spaces backward
+          skip-spaces (loop [p (dec start-pos)]
+                       (if (and (>= p 0)
+                               (whitespace? (nth text p)))
+                         (recur (dec p))
+                         p))
+          ;; Skip word backward
+          skip-word (loop [p skip-spaces]
+                     (if (and (>= p 0)
+                             (not (whitespace? (nth text p))))
+                       (recur (dec p))
+                       p))]
+      (max 0 (inc skip-word)))))

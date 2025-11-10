@@ -168,6 +168,28 @@
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
 
+(defn handle-shift-arrow-up [e db block-id on-intent]
+  "Handle Shift+Up: text selection within block OR block selection at boundary.
+
+   - NOT at first row → Let browser handle (text selection)
+   - At first row → Extend block selection upward"
+  (let [target (.-target e)
+        cursor-pos (detect-cursor-row-position target)]
+    (when (:first-row? cursor-pos)
+      (.preventDefault e)
+      (on-intent {:type :selection :mode :extend-prev}))))
+
+(defn handle-shift-arrow-down [e db block-id on-intent]
+  "Handle Shift+Down: text selection within block OR block selection at boundary.
+
+   - NOT at last row → Let browser handle (text selection)
+   - At last row → Extend block selection downward"
+  (let [target (.-target e)
+        cursor-pos (detect-cursor-row-position target)]
+    (when (:last-row? cursor-pos)
+      (.preventDefault e)
+      (on-intent {:type :selection :mode :extend-next}))))
+
 (defn handle-arrow-left [e db block-id on-intent]
   "Handle left arrow key.
 
@@ -263,12 +285,13 @@
 
 (defn handle-keydown [e db block-id on-intent]
   "Handle keyboard events while editing a block.
-   
+
    Global shortcuts (Alt+Arrow, Shift+Arrow, Cmd/Alt+Shift+Arrow, Backspace for deletion)
    are handled by the global keydown handler when blocks are selected but NOT editing.
-   
+
    This handler focuses on editing-specific behavior:
    - Arrow keys with cursor boundary detection for seamless navigation
+   - Shift+Arrow for text selection OR block selection at boundaries
    - Enter to create new blocks
    - Escape to exit edit mode
    - Backspace for delete/merge at cursor boundaries (within text)
@@ -276,8 +299,23 @@
   (let [key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
-        alt? (.-altKey e)]
+        alt? (.-altKey e)
+        ctrl? (.-ctrlKey e)]
     (cond
+      ;; Shift+Arrow - text selection OR block selection at boundaries
+      (and (= key "ArrowUp") shift? (not mod?) (not alt?))
+      (handle-shift-arrow-up e db block-id on-intent)
+
+      (and (= key "ArrowDown") shift? (not mod?) (not alt?))
+      (handle-shift-arrow-down e db block-id on-intent)
+
+      ;; Ctrl+P/N - Emacs-style navigation aliases (same as arrows)
+      (and (= key "p") ctrl? (not shift?) (not alt?))
+      (handle-arrow-up e db block-id on-intent)
+
+      (and (= key "n") ctrl? (not shift?) (not alt?))
+      (handle-arrow-down e db block-id on-intent)
+
       ;; Plain arrows (with boundary detection) - navigate between blocks while editing
       (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
       (handle-arrow-up e db block-id on-intent)
