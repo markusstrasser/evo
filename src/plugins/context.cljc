@@ -58,7 +58,6 @@
    Returns {:pos position} or nil if not found."
   [text cursor-pos marker]
   (let [before (subs text 0 cursor-pos)
-        marker-len (count marker)
         pos (str/last-index-of before marker)]
     (when pos
       {:pos pos})))
@@ -129,8 +128,8 @@
   [text cursor-pos]
   (when-let [bounds (find-enclosing-pair text cursor-pos "((" "))")]
     (let [inner-text (subs text (:inner-start bounds) (:inner-end bounds))
-          uuid? (re-matches #"[a-f0-9-]+" inner-text)]
-      (when uuid?
+          is-uuid? (re-matches #"[a-f0-9-]+" inner-text)]
+      (when is-uuid?
         (assoc bounds
                :type :block-ref
                :uuid inner-text)))))
