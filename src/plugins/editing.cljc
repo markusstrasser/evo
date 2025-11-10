@@ -5,6 +5,7 @@
    Content changes emit ops for full undo/redo support."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
+            [kernel.history :as H]
             [utils.text :as text]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────

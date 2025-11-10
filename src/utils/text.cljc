@@ -50,13 +50,13 @@
   #?(:cljs
      ;; Simple counting - treat surrogate pairs as 1
      (loop [i 0
-            count 0]
+            grapheme-count 0]
        (if (>= i (.-length text))
-         count
+         grapheme-count
          (let [char-code (.charCodeAt text i)]
            (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
-             (recur (+ i 2) (inc count))  ; Skip surrogate pair
-             (recur (inc i) (inc count))))))
+             (recur (+ i 2) (inc grapheme-count))  ; Skip surrogate pair
+             (recur (inc i) (inc grapheme-count))))))
      :clj
      (.codePointCount text 0 (count text))))
 
