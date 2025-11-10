@@ -33,6 +33,10 @@
                  ;; Selection operations
                  [{:key "a" :shift true :mod true} {:type :selection :mode :all-in-view}]
                  [{:key "a" :mod true} {:type :selection :mode :parent}]
+                 ;; Undo/Redo
+                 [{:key "z" :mod true} :undo]
+                 [{:key "z" :shift true :mod true} :redo]
+                 [{:key "y" :mod true} :redo]
                  ;; Moving blocks
                  [{:key "ArrowUp" :shift true :mod true} :move-selected-up]
                  [{:key "ArrowDown" :shift true :mod true} :move-selected-down]

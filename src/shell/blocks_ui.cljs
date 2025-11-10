@@ -129,54 +129,55 @@
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
-          (let [;; Inject focused block-id for fold/zoom intents
-                intent-with-id (if (and (map? intent-type)
-                                        (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                        focus-id)
-                                 (assoc intent-type :block-id focus-id)
-                                 intent-type)
-                ;; Enrich format-selection intent with DOM selection data
-                enriched-intent (if (and (map? intent-with-id)
-                                         (= (:type intent-with-id) :format-selection)
-                                         editing?
-                                         editable-el)
-                                  (try
-                                    (let [sel (.getSelection js/window)]
-                                      (when (and sel (pos? (.-rangeCount sel)))
-                                        (let [range (.getRangeAt sel 0)
-                                              start (.-startOffset range)
-                                              end (.-endOffset range)]
-                                          (when (not= start end) ;; Only if there's actual selection
-                                            (merge intent-with-id
-                                                   {:block-id editing?
-                                                    :start start
-                                                    :end end})))))
-                                    (catch js/Error e
-                                      (js/console.error "Selection read failed:" e)
-                                      nil)) ;; Return nil if enrichment fails
-                                  intent-with-id)]
-            (when enriched-intent ;; Only dispatch if enrichment succeeded
-              (cond
-              ;; Map intent: use directly (with injected block-id if needed)
-                (map? enriched-intent)
-                (handle-intent enriched-intent)
+          (cond
+            ;; Undo/Redo - special handling (modify DB directly, not via operations)
+            (= intent-type :undo)
+            (swap! !db (fn [db] (or (H/undo db) db)))
 
-              ;; Keyword intent: wrap in :type
-                :else
-                (handle-intent {:type enriched-intent})))))
+            (= intent-type :redo)
+            (swap! !db (fn [db] (or (H/redo db) db)))
+
+            ;; All other intents - go through normal intent dispatch
+            :else
+            (let [;; Inject focused block-id for fold/zoom intents
+                  intent-with-id (if (and (map? intent-type)
+                                          (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
+                                          focus-id)
+                                   (assoc intent-type :block-id focus-id)
+                                   intent-type)
+                  ;; Enrich format-selection intent with DOM selection data
+                  enriched-intent (if (and (map? intent-with-id)
+                                           (= (:type intent-with-id) :format-selection)
+                                           editing?
+                                           editable-el)
+                                    (try
+                                      (let [sel (.getSelection js/window)]
+                                        (when (and sel (pos? (.-rangeCount sel)))
+                                          (let [range (.getRangeAt sel 0)
+                                                start (.-startOffset range)
+                                                end (.-endOffset range)]
+                                            (when (not= start end) ;; Only if there's actual selection
+                                              (merge intent-with-id
+                                                     {:block-id editing?
+                                                      :start start
+                                                      :end end})))))
+                                      (catch js/Error e
+                                        (js/console.error "Selection read failed:" e)
+                                        nil)) ;; Return nil if enrichment fails
+                                    intent-with-id)]
+              (when enriched-intent ;; Only dispatch if enrichment succeeded
+                (cond
+                ;; Map intent: use directly (with injected block-id if needed)
+                  (map? enriched-intent)
+                  (handle-intent enriched-intent)
+
+                ;; Keyword intent: wrap in :type
+                  :else
+                  (handle-intent {:type enriched-intent}))))))
 
       ;; Printable character - Enter edit mode (Logseq-style "start typing")
       (and printable? focus-id (not editing?))
-      (handle-intent {:type :enter-edit :block-id focus-id})
-
-      ;; Undo/Redo (not in keymap yet - direct handling)
-      (and mod? shift? (= key "z"))
-      (do (.preventDefault e)
-          (swap! !db (fn [db] (or (H/redo db) db))))
-
-      (and mod? (= key "z"))
-      (do (.preventDefault e)
-          (swap! !db (fn [db] (or (H/undo db) db)))))))
+      (handle-intent {:type :enter-edit :block-id focus-id}))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
