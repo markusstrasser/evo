@@ -49,3 +49,46 @@
        (is (= 1 (text/cursor-pos-to-grapheme-index "Hi😀there" 1)))  ; i
        (is (= 2 (text/cursor-pos-to-grapheme-index "Hi😀there" 2)))  ; Start of 😀
        (is (= 3 (text/cursor-pos-to-grapheme-index "Hi😀there" 4)))))) ; t (after 😀)
+
+;; ── Word Boundary Detection Tests ────────────────────────────────────────────
+
+(deftest find-next-word-boundary-test
+  (testing "Simple case: two words"
+    (is (= 6 (text/find-next-word-boundary "hello world" 0))))
+
+  (testing "Multiple spaces between words"
+    (is (= 8 (text/find-next-word-boundary "hello   world" 5))))
+
+  (testing "At end of text"
+    (is (= 5 (text/find-next-word-boundary "hello" 5))))
+
+  (testing "With newlines"
+    (is (= 6 (text/find-next-word-boundary "hello\nworld" 0))))
+
+  (testing "Starting in middle of word"
+    (is (= 11 (text/find-next-word-boundary "hello world" 7)))))
+
+(deftest find-prev-word-boundary-test
+  (testing "Simple case: two words"
+    (is (= 6 (text/find-prev-word-boundary "hello world" 11))))
+
+  (testing "Multiple spaces between words"
+    (is (= 0 (text/find-prev-word-boundary "hello   world" 8))))
+
+  (testing "At start of text"
+    (is (nil? (text/find-prev-word-boundary "hello" 0))))
+
+  (testing "From middle of second word"
+    (is (= 6 (text/find-prev-word-boundary "hello world" 8))))
+
+  (testing "From space after word"
+    (is (= 0 (text/find-prev-word-boundary "hello world" 5)))))
+
+(deftest whitespace-test
+  (testing "Recognizes common whitespace characters"
+    (is (true? (text/whitespace? \space)))
+    (is (true? (text/whitespace? \newline)))
+    (is (true? (text/whitespace? \tab)))
+    (is (true? (text/whitespace? \return)))
+    (is (false? (text/whitespace? \a)))
+    (is (false? (text/whitespace? \1)))))

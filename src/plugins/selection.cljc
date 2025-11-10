@@ -95,6 +95,7 @@
    - :extend-prev - Extend selection to include previous sibling
    - :parent    - Select parent of selection (if unique)
    - :all-siblings - Select all siblings of focus
+   - :all-in-view - Select all blocks in current page/zoom level
 
    Examples:
      {:type :selection :mode :replace :ids [\"a\" \"b\"]}
@@ -139,7 +140,10 @@
                     [:mode [:= :parent]]]]
           [:all-siblings [:map
                           [:type [:= :selection]]
-                          [:mode [:= :all-siblings]]]]]
+                          [:mode [:= :all-siblings]]]]
+          [:all-in-view [:map
+                         [:type [:= :selection]]
+                         [:mode [:= :all-in-view]]]]]
    :handler (fn [db {:keys [mode ids]}]
               (let [state (get-selection-state db)
                     props (case mode
@@ -163,7 +167,17 @@
                             :all-siblings (when-let [current (tree/focus db)]
                                             (when-let [parent (tree/parent-of db current)]
                                               (let [all-siblings (tree/children db parent)]
-                                                (calc-select-props all-siblings)))))]
+                                                (calc-select-props all-siblings))))
+                            :all-in-view (let [root-id (or (get-in db [:nodes const/session-ui-id :props :zoom-id])
+                                                          (get-in db [:nodes const/session-ui-id :props :current-page]))
+                                              all-blocks (when root-id
+                                                          (->> (tree-seq
+                                                                (fn [id] (seq (tree/children db id)))
+                                                                (fn [id] (tree/children db id))
+                                                                root-id)
+                                                              (filter #(= :block (get-in db [:nodes % :type])))))]
+                                          (when (seq all-blocks)
+                                            (calc-select-props all-blocks))))]
                 (when props
                   [{:op :update-node
                     :id const/session-selection-id
