@@ -4,7 +4,8 @@
    Edit state stored in :ui (ephemeral, not in history).
    Content changes emit ops for full undo/redo support."
   (:require [kernel.intent :as intent]
-            [kernel.constants :as const]))
+            [kernel.constants :as const]
+            [utils.text :as text]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
@@ -85,3 +86,65 @@
                                          [{:op :update-node :id block-id :props {:text before}}
                                           {:op :create-node :id new-id :type :block :props {:text after}}
                                           {:op :place :id new-id :under parent :at {:after block-id}}])))})
+
+(intent/register-intent! :delete-forward
+                         {:doc "Handle Delete key (forward delete).
+
+         Behaviors:
+         - Has text selection → Delete selection (handled by component)
+         - At end of block → Merge with next block (child-first, then sibling)
+         - Middle of text → Delete next character
+
+         Merge priority:
+         1. First child (if exists)
+         2. Next sibling (if no children)
+         3. No-op (if neither exists)"
+                          :spec [:map
+                                 [:type [:= :delete-forward]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]
+                                 [:has-selection? :boolean]]
+                          :handler (fn [db {:keys [block-id cursor-pos has-selection?]}]
+                                     (let [text (get-block-text db block-id)
+                                           at-end? (= cursor-pos (count text))]
+                                       (cond
+                                         ;; Has selection - component handles this
+                                         has-selection?
+                                         nil
+
+                                         ;; At end - merge with next (child-first priority)
+                                         at-end?
+                                         (let [first-child (first (get-in db [:children-by-parent block-id]))
+                                               next-sibling (get-in db [:derived :next-id-of block-id])
+                                               target-id (or first-child next-sibling)]
+                                           (when target-id
+                                             (let [target-text (get-block-text db target-id)
+                                                   merged-text (str text target-text)
+                                                   ;; If merging with child, move child's children up
+                                                   target-children (get-in db [:children-by-parent target-id] [])]
+                                               (concat
+                                                ;; Update current block with merged text
+                                                [{:op :update-node :id block-id :props {:text merged-text}}]
+                                                ;; Move target's children to current block
+                                                (map (fn [child-id]
+                                                       {:op :place :id child-id :under block-id :at :last})
+                                                     target-children)
+                                                ;; Delete target block
+                                                [{:op :place :id target-id :under const/root-trash :at :last}]
+                                                ;; Cursor stays at original position (end of original text)
+                                                [{:op :update-node
+                                                  :id const/session-ui-id
+                                                  :props {:editing-block-id block-id
+                                                          :cursor-position (count text)}}]))))
+
+                                         ;; Middle of text - delete next character
+                                         :else
+                                         (let [;; Handle multi-byte characters (emoji, CJK)
+                                               next-char-len (text/grapheme-length-at text cursor-pos)
+                                               new-text (str (subs text 0 cursor-pos)
+                                                            (subs text (+ cursor-pos next-char-len)))]
+                                           [{:op :update-node :id block-id :props {:text new-text}}
+                                            {:op :update-node
+                                             :id const/session-ui-id
+                                             :props {:editing-block-id block-id
+                                                     :cursor-position cursor-pos}}]))))})
