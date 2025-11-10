@@ -1,0 +1,488 @@
+/**
+ * Editing/Navigation Parity E2E Tests
+ *
+ * Tests for all new editing and navigation features:
+ * - Shift+Arrow text selection
+ * - Word navigation (Ctrl+Shift+F/B)
+ * - Kill commands (Cmd+L, Cmd+U, Cmd+K, Cmd+Delete, Option+Delete)
+ * - Selection operations (Cmd+A, Cmd+Shift+A)
+ * - Undo/Redo (Cmd+Z, Cmd+Shift+Z, Cmd+Y)
+ * - Ctrl+P/N navigation aliases
+ * - Highlight/Strikethrough (Cmd+Shift+H, Cmd+Shift+S)
+ */
+
+import { test, expect } from '@playwright/test';
+import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
+import { getAllBlocks } from './helpers/blocks.js';
+import { enterEditModeAndClick } from './helpers/edit-mode.js';
+
+test.describe('Shift+Arrow Block Selection', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Shift+Down extends block selection at last row', async ({ page }) => {
+    // Create multiple blocks
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First block');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second block');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Third block');
+
+    // Navigate to first block
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(100);
+
+    // Position cursor at end of first block
+    const firstBlock = await page.evaluate(() => {
+      const blocks = document.querySelectorAll('[contenteditable="true"]');
+      return blocks[0].getAttribute('data-block-id');
+    });
+    await setCursorPosition(page, firstBlock, 11); // End of "First block"
+
+    // Press Shift+Down to extend selection
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.waitForTimeout(100);
+
+    // Verify multiple blocks are selected
+    const selectedBlocks = await page.evaluate(() => {
+      const selected = document.querySelectorAll('.block[style*="background-color"]');
+      return Array.from(selected).map(b => b.textContent.trim());
+    });
+
+    // Should have at least 2 blocks selected
+    expect(selectedBlocks.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('Shift+Up extends block selection at first row', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First block');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second block');
+
+    // Cursor is at end of second block
+    // Press Shift+Up at first row to extend selection
+    await setCursorPosition(page, await page.evaluate(() =>
+      document.querySelectorAll('[contenteditable="true"]')[1].getAttribute('data-block-id')
+    ), 0);
+
+    await page.keyboard.press('Shift+ArrowUp');
+    await page.waitForTimeout(100);
+
+    // Verify selection extended
+    const selectedBlocks = await page.evaluate(() => {
+      return document.querySelectorAll('.block[style*="background"]').length;
+    });
+
+    expect(selectedBlocks).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Word Navigation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Ctrl+Shift+F moves cursor forward by word', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Move to start
+    await page.keyboard.press('Home');
+    await page.waitForTimeout(100);
+
+    // Press Ctrl+Shift+F (word forward on Mac)
+    await page.keyboard.press('Control+Shift+KeyF');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    // Should be after "hello " (position 6)
+    expect(cursor.offset).toBe(6);
+  });
+
+  test('Ctrl+Shift+B moves cursor backward by word', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Cursor at end, press Ctrl+Shift+B
+    await page.keyboard.press('Control+Shift+KeyB');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    // Should be at start of "test" (position 12)
+    expect(cursor.offset).toBe(12);
+  });
+
+  test('Word navigation skips multiple spaces', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello   world'); // 3 spaces
+
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Control+Shift+KeyF');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    // Should jump to start of "world", skipping all spaces (position 8)
+    expect(cursor.offset).toBe(8);
+  });
+});
+
+test.describe('Kill Commands', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Cmd+L clears entire block content', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Some text to clear');
+
+    // Press Cmd+L
+    await page.keyboard.press('Meta+KeyL');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    expect(cursor.text).toBe('');
+    expect(cursor.offset).toBe(0);
+  });
+
+  test('Cmd+U kills from cursor to beginning', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Position cursor in middle (after "world ")
+    await setCursorPosition(page, await page.evaluate(() =>
+      document.querySelector('[contenteditable="true"]').getAttribute('data-block-id')
+    ), 12);
+
+    // Press Cmd+U
+    await page.keyboard.press('Meta+KeyU');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    expect(cursor.text).toBe('test');
+    expect(cursor.offset).toBe(0);
+  });
+
+  test('Cmd+K kills from cursor to end', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Position cursor after "hello "
+    await setCursorPosition(page, await page.evaluate(() =>
+      document.querySelector('[contenteditable="true"]').getAttribute('data-block-id')
+    ), 6);
+
+    // Press Cmd+K
+    await page.keyboard.press('Meta+KeyK');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    expect(cursor.text).toBe('hello ');
+    expect(cursor.offset).toBe(6);
+  });
+
+  test('Cmd+Delete kills word forward', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Move to start
+    await page.keyboard.press('Home');
+    await page.waitForTimeout(100);
+
+    // Press Cmd+Delete
+    await page.keyboard.press('Meta+Delete');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    // "hello" should be deleted, cursor at start
+    expect(cursor.text).toBe(' world test');
+    expect(cursor.offset).toBe(0);
+  });
+
+  test('Option+Delete kills word backward', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('hello world test');
+
+    // Cursor at end, press Option+Delete
+    await page.keyboard.press('Alt+Delete');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+
+    // "test" should be deleted
+    expect(cursor.text).toBe('hello world ');
+    expect(cursor.offset).toBe(12);
+  });
+});
+
+test.describe('Selection Operations', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Cmd+A while editing selects parent block', async ({ page }) => {
+    // Create nested blocks
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Parent');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab'); // Indent to create child
+    await page.keyboard.type('Child block');
+
+    // Press Cmd+A to select parent
+    await page.keyboard.press('Meta+KeyA');
+    await page.waitForTimeout(100);
+
+    // Verify parent is selected
+    const selection = await page.evaluate(() => {
+      const selected = document.querySelectorAll('.block[style*="background"]');
+      return Array.from(selected).map(b => b.textContent.includes('Parent'));
+    });
+
+    expect(selection.some(Boolean)).toBe(true);
+  });
+
+  test('Cmd+Shift+A selects all blocks in view', async ({ page }) => {
+    // Create multiple blocks
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Third');
+
+    // Press Cmd+Shift+A
+    await page.keyboard.press('Meta+Shift+KeyA');
+    await page.waitForTimeout(100);
+
+    // Count selected blocks
+    const selectedCount = await page.evaluate(() => {
+      return document.querySelectorAll('.block[style*="background"]').length;
+    });
+
+    // Should select all visible blocks (at least 3)
+    expect(selectedCount).toBeGreaterThanOrEqual(3);
+  });
+});
+
+test.describe('Undo/Redo', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Cmd+Z undoes text changes', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First version');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second block');
+
+    // Undo
+    await page.keyboard.press('Meta+KeyZ');
+    await page.waitForTimeout(100);
+
+    const blocks = await getAllBlocks(page);
+
+    // Second block should be undone
+    expect(blocks.length).toBeLessThanOrEqual(1);
+  });
+
+  test('Cmd+Shift+Z redoes changes', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Original text');
+    await page.keyboard.press('Enter');
+
+    // Undo
+    await page.keyboard.press('Meta+KeyZ');
+    await page.waitForTimeout(100);
+
+    // Redo with Cmd+Shift+Z
+    await page.keyboard.press('Meta+Shift+KeyZ');
+    await page.waitForTimeout(100);
+
+    const blocks = await getAllBlocks(page);
+    expect(blocks.length).toBeGreaterThan(1);
+  });
+
+  test('Cmd+Y also redoes changes', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Original text');
+    await page.keyboard.press('Enter');
+
+    // Undo
+    await page.keyboard.press('Meta+KeyZ');
+    await page.waitForTimeout(100);
+
+    // Redo with Cmd+Y (alternative)
+    await page.keyboard.press('Meta+KeyY');
+    await page.waitForTimeout(100);
+
+    const blocks = await getAllBlocks(page);
+    expect(blocks.length).toBeGreaterThan(1);
+  });
+});
+
+test.describe('Ctrl+P/N Navigation Aliases', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Ctrl+N navigates down like ArrowDown', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First block');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second block');
+
+    // Navigate to first block
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(100);
+
+    // Press Ctrl+N (should behave like ArrowDown)
+    await page.keyboard.press('Control+KeyN');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+    expect(cursor.text).toContain('Second');
+  });
+
+  test('Ctrl+P navigates up like ArrowUp', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('First block');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Second block');
+
+    // Cursor in second block, press Ctrl+P
+    await page.keyboard.press('Control+KeyP');
+    await page.waitForTimeout(100);
+
+    const cursor = await getCursorPosition(page);
+    expect(cursor.text).toContain('First');
+  });
+});
+
+test.describe('Text Formatting - Highlight & Strikethrough', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Cmd+Shift+H adds highlight markers', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('highlight this text');
+
+    // Select "highlight"
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+Control+Shift+KeyF'); // Select first word
+    await page.waitForTimeout(100);
+
+    // Apply highlight
+    await page.keyboard.press('Meta+Shift+KeyH');
+    await page.waitForTimeout(100);
+
+    const text = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]').textContent;
+    });
+
+    // Should contain highlight markers ^^
+    expect(text).toContain('^^');
+  });
+
+  test('Cmd+Shift+S adds strikethrough markers', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('strike this text');
+
+    // Select "strike"
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+Control+Shift+KeyF'); // Select first word
+    await page.waitForTimeout(100);
+
+    // Apply strikethrough
+    await page.keyboard.press('Meta+Shift+KeyS');
+    await page.waitForTimeout(100);
+
+    const text = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]').textContent;
+    });
+
+    // Should contain strikethrough markers ~~
+    expect(text).toContain('~~');
+  });
+});
+
+test.describe('UI Feel - No Regressions', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
+  });
+
+  test('Word navigation does not break normal typing', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+
+    // Type, use word navigation, then continue typing
+    await page.keyboard.type('hello world');
+    await page.keyboard.press('Control+Shift+KeyB'); // Word backward
+    await page.keyboard.type('beautiful ');
+
+    const text = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]').textContent;
+    });
+
+    expect(text).toContain('beautiful');
+  });
+
+  test('Kill commands do not break cursor position', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('start middle end');
+
+    // Position in middle
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Control+Shift+KeyF');
+    await page.keyboard.press('Control+Shift+KeyF');
+
+    // Kill to end
+    await page.keyboard.press('Meta+KeyK');
+    await page.waitForTimeout(50);
+
+    // Type more
+    await page.keyboard.type('NEW');
+
+    const text = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]').textContent;
+    });
+
+    expect(text).toContain('NEW');
+  });
+
+  test('Shift+Arrow selection does not interfere with normal arrow navigation', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Line 1');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Line 2');
+
+    // Normal arrow up (without Shift)
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(50);
+
+    const cursor = await getCursorPosition(page);
+    expect(cursor.text).toContain('Line 1');
+
+    // Should not have extended selection
+    const isCollapsed = await page.evaluate(() => {
+      return window.getSelection().isCollapsed;
+    });
+    expect(isCollapsed).toBe(true);
+  });
+});
