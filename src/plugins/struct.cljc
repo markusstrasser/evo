@@ -33,17 +33,57 @@
     [{:op :place :id id :under sib :at :last}]
     []))
 
+(defn- collect-right-siblings
+  "Collect all right siblings of a node (all siblings after it).
+   Returns vector of sibling IDs in document order.
+
+   Example:
+     Parent: [A B C D]
+     (collect-right-siblings db B) => [C D]"
+  [db id]
+  (loop [current-id (q/next-sibling db id)
+         result []]
+    (if current-id
+      (recur (q/next-sibling db current-id)
+             (conj result current-id))
+      result)))
+
 (defn outdent-ops
-  "Compiles an outdent intent into a :place operation that moves the node
-   to be a sibling of its parent (under its grandparent, after its parent).
+  "Direct Outdenting (Logseq/Roam/Workflowy style):
+
+   Moves node to be sibling of its parent, AND makes right siblings into children.
+
+   Example:
+     Before:
+       - Parent
+         - A
+         - B ← outdent this
+         - C
+         - D
+
+     After (Direct Outdenting):
+       - Parent
+         - A
+       - B  ← outdented
+         - C  ← became child of B
+         - D  ← became child of B
+
    Prevents outdenting if grandparent is a root container (already at top level)."
   [db id]
   (let [p (q/parent-of db id)
         gp (when p (q/parent-of db p))
-        roots (set (:roots db const/roots))]
+        roots (set (:roots db const/roots))
+        right-siblings (when p (collect-right-siblings db id))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
-      [{:op :place :id id :under gp :at {:after p}}]
+      (concat
+        ;; Move block up to grandparent level
+        [{:op :place :id id :under gp :at {:after p}}]
+
+        ;; NEW: Move right siblings to become children of outdented block (Direct Outdenting)
+        (mapv (fn [sibling-id]
+                {:op :place :id sibling-id :under id :at :last})
+              right-siblings))
       [])))
 
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
