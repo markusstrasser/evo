@@ -6,10 +6,11 @@
 
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Accessibility Compliance', () => {
   test('page meets WCAG AA standards', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/blocks.html');
 
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
@@ -24,8 +25,8 @@ test.describe('Accessibility Compliance', () => {
   });
 
   test('contenteditable has proper ARIA', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[contenteditable="true"]');
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
 
     // Check for required ARIA attributes
     const editable = page.locator('[contenteditable="true"]').first();
@@ -44,8 +45,8 @@ test.describe('Accessibility Compliance', () => {
   });
 
   test('keyboard navigation works', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[contenteditable="true"]');
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
 
     // Navigate with Tab only (no mouse)
     await page.keyboard.press('Tab');
@@ -60,8 +61,8 @@ test.describe('Accessibility Compliance', () => {
   });
 
   test('focus indicator visible', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[contenteditable="true"]');
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
 
     const block = page.locator('[contenteditable="true"]').first();
     await block.focus();
@@ -76,7 +77,7 @@ test.describe('Accessibility Compliance', () => {
   });
 
   test('color contrast meets WCAG AA', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/blocks.html');
 
     const results = await new AxeBuilder({ page })
       .withRules(['color-contrast'])

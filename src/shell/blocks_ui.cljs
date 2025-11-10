@@ -140,11 +140,17 @@
             ;; All other intents - go through normal intent dispatch
             :else
             (let [;; Inject focused block-id for fold/zoom intents
-                  intent-with-id (if (and (map? intent-type)
-                                          (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                          focus-id)
-                                   (assoc intent-type :block-id focus-id)
-                                   intent-type)
+                  intent-with-focus (if (and (map? intent-type)
+                                             (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
+                                             focus-id)
+                                      (assoc intent-type :block-id focus-id)
+                                      intent-type)
+                  ;; Replace :editing-block-id placeholder with actual editing block ID
+                  intent-with-id (if (and (map? intent-with-focus)
+                                          (= (:block-id intent-with-focus) :editing-block-id)
+                                          editing?)
+                                   (assoc intent-with-focus :block-id editing?)
+                                   intent-with-focus)
                   ;; Enrich format-selection intent with DOM selection data
                   enriched-intent (if (and (map? intent-with-id)
                                            (= (:type intent-with-id) :format-selection)

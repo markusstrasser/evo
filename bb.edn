@@ -95,7 +95,7 @@
 
    ;; Development server
    dev         {:doc "Start shadow-cljs dev server + watch"
-                :task (shell "npx shadow-cljs watch :anki")}
+                :task (shell "npx shadow-cljs watch :blocks-ui")}
 
    ;; Git hooks
    install-hooks {:doc "Install git pre-commit hooks"
