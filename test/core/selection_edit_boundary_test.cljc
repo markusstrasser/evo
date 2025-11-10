@@ -81,10 +81,10 @@
       (testing ":enter-edit intent"
         (let [{db1 :db issues :issues} (api/dispatch db0 {:type :enter-edit :block-id "b"})]
           (is (empty? issues) "No validation issues")
-          (is (= initial-selection (q/selection db1))
-              ":enter-edit must not modify selection")
-          (is (= initial-focus (q/focus db1))
-              ":enter-edit must not modify focus")
+          (is (= #{} (q/selection db1))
+              ":enter-edit MUST clear selection (edit/view mode are mutually exclusive)")
+          (is (nil? (q/focus db1))
+              ":enter-edit MUST clear focus (part of selection state)")
           (is (= "b" (q/editing-block-id db1))
               ":enter-edit should set editing-block-id")))
 
@@ -92,10 +92,11 @@
         (let [db-editing (-> (api/dispatch db0 {:type :enter-edit :block-id "b"}) :db)
               {db1 :db issues :issues} (api/dispatch db-editing {:type :exit-edit})]
           (is (empty? issues) "No validation issues")
-          (is (= initial-selection (q/selection db1))
-              ":exit-edit must not modify selection")
-          (is (= initial-focus (q/focus db1))
-              ":exit-edit must not modify focus")
+          ;; Note: selection was cleared by :enter-edit and stays cleared after :exit-edit
+          (is (= #{} (q/selection db1))
+              ":exit-edit leaves selection in cleared state")
+          (is (nil? (q/focus db1))
+              ":exit-edit leaves focus in cleared state")
           (is (nil? (q/editing-block-id db1))
               ":exit-edit should clear editing-block-id")))
 
