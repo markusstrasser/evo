@@ -152,16 +152,18 @@ Lifecycle hooks receive a map with these keys:
   (.scrollIntoView node))
 ```
 
-### 🐛 BUG: `mounting?` Does NOT Exist
+### 🐛 BUG: `mounting?` Does NOT Exist (FIXED)
 
-**This is a bug in the current codebase:**
+**This was a bug in a previous version of the codebase, but has since been fixed.**
+
+The `src/components/block.cljs` file no longer uses the non-existent `mounting?` key. It now correctly uses `:replicant/life-cycle` to determine the lifecycle phase.
 
 ```clojure
-;; ❌ WRONG - mounting? doesn't exist in Replicant
+;; ❌ PREVIOUSLY WRONG - mounting? doesn't exist in Replicant
 :replicant/on-render (fn [{:replicant/keys [node mounting?]}]
   (when mounting? ...))
 
-;; ✅ CORRECT - Use :replicant/life-cycle
+;; ✅ CORRECT - Use :replicant/life-cycle (as implemented in src/components/block.cljs)
 :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
   (when (= life-cycle :replicant.life-cycle/mount)
     ...))
@@ -171,7 +173,7 @@ Lifecycle hooks receive a map with these keys:
   ...)
 ```
 
-**Location of bug**: `src/components/block.cljs:516`
+**Location of bug**: `src/components/block.cljs:516` (FIXED)
 
 ### Memory: Storing State Across Renders
 
