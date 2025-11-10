@@ -168,6 +168,62 @@
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
 
+(defn handle-arrow-left [e db block-id on-intent]
+  "Handle left arrow key.
+
+   Behaviors:
+   - Has text selection → Collapse to start
+   - At start of block → Edit previous block at end
+   - Middle of text → Move cursor left (browser default)"
+  (let [target (.-target e)
+        selection (.getSelection js/window)
+        at-start? (and (= (.-anchorOffset selection) 0)
+                      (= (.-anchorNode selection) (.-firstChild target)))]
+    (cond
+      ;; Has selection - collapse to start
+      (has-text-selection?)
+      (do (.preventDefault e)
+          (.collapseToStart selection))
+
+      ;; At start - navigate to previous block
+      at-start?
+      (do (.preventDefault e)
+          (on-intent {:type :navigate-to-adjacent
+                     :direction :up
+                     :current-block-id block-id
+                     :cursor-position :max}))  ; Enter previous at end
+
+      ;; Middle - let browser handle
+      :else nil)))
+
+(defn handle-arrow-right [e db block-id on-intent]
+  "Handle right arrow key.
+
+   Behaviors:
+   - Has text selection → Collapse to end
+   - At end of block → Edit next block at start
+   - Middle of text → Move cursor right (browser default)"
+  (let [target (.-target e)
+        text-content (.-textContent target)
+        selection (.getSelection js/window)
+        at-end? (= (.-anchorOffset selection) (count text-content))]
+    (cond
+      ;; Has selection - collapse to end
+      (has-text-selection?)
+      (do (.preventDefault e)
+          (.collapseToEnd selection))
+
+      ;; At end - navigate to next block
+      at-end?
+      (do (.preventDefault e)
+          (on-intent {:type :navigate-to-adjacent
+                     :direction :down
+                     :current-block-id block-id
+                     :cursor-position 0}))  ; Enter next at start
+
+      ;; Middle - let browser handle
+      :else nil)))
+
 (defn handle-enter [e db block-id on-intent]
   (.preventDefault e)
   (let [selection (.getSelection js/window)
@@ -228,6 +284,12 @@
 
       (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
       (handle-arrow-down e db block-id on-intent)
+
+      (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-left e db block-id on-intent)
+
+      (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-right e db block-id on-intent)
 
       ;; Enter - create new block
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))

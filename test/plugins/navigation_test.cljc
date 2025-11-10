@@ -263,3 +263,57 @@
 
       ;; Target "hello world" is also 11 chars, should be at end
       (is (= :end (get-in (:ops result) [2 :props :cursor-position]))))))
+
+;; ── Navigate To Adjacent Tests ────────────────────────────────────────────────
+
+(deftest navigate-to-adjacent-up-test
+  (testing "Navigate up to previous block with max cursor position"
+    (let [db (sample-db)
+          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
+                                                  :direction :up
+                                                  :current-block-id "b"
+                                                  :cursor-position :max})
+          db' (:db (tx/interpret db ops))]
+      ;; Should edit previous block
+      (is (= "a" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      ;; Cursor at end of "hello world" (11 chars)
+      (is (= 11 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest navigate-to-adjacent-down-test
+  (testing "Navigate down to next block with cursor position 0"
+    (let [db (sample-db)
+          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
+                                                  :direction :down
+                                                  :current-block-id "a"
+                                                  :cursor-position 0})
+          db' (:db (tx/interpret db ops))]
+      ;; Should edit next block
+      (is (= "b" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      ;; Cursor at start
+      (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest navigate-to-adjacent-numeric-cursor-test
+  (testing "Navigate with specific cursor position"
+    (let [db (sample-db)
+          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
+                                                  :direction :down
+                                                  :current-block-id "a"
+                                                  :cursor-position 3})
+          db' (:db (tx/interpret db ops))]
+      ;; Should edit next block
+      (is (= "b" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      ;; Cursor at position 3
+      (is (= 3 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest navigate-to-adjacent-no-target-test
+  (testing "Navigate with no adjacent block does nothing"
+    (let [db (-> (DB/empty-db)
+                 (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "Only"}}
+                                {:op :place :id "a" :under :doc :at :last}])
+                 :db)
+          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
+                                                  :direction :down
+                                                  :current-block-id "a"
+                                                  :cursor-position 0})]
+      ;; Should return empty ops (no target)
+      (is (empty? ops)))))
