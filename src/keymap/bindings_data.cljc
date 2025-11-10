@@ -51,4 +51,6 @@
                  [{:key "." :mod true} {:type :zoom-in}]
                  [{:key "," :mod true} {:type :zoom-out}]
                  ;; Smart editing
-                 [{:key "Enter" :mod true} {:type :toggle-checkbox}]]})
+                 [{:key "Enter" :mod true} {:type :toggle-checkbox}]
+                 ;; Follow link (Logseq parity)
+                 [{:key "o" :mod true} {:type :follow-link-under-cursor :block-id :editing-block-id :cursor-pos :cursor-pos}]]})

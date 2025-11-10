@@ -1,32 +1,77 @@
 # Replicant Quick Reference
 
-## Event Handler Gotchas
+## What is Replicant?
 
-### ✅ Correct syntax for input values
+**Replicant is a data-driven rendering library** for ClojureScript that renders hiccup to the DOM efficiently. Key principles:
+- UI is a pure function of application state
+- No components, no local state, no subscriptions
+- Just render the entire UI as hiccup data on every state change
+- Replicant diffs and patches the DOM efficiently
+
+**What Replicant is NOT:**
+- Not React (different lifecycle API, no hooks/refs)
+- Not a state management library
+- Not a framework (just a renderer)
+
+## Event Handlers: Two Approaches
+
+### Function-Based (Simple, Direct)
+
 ```clojure
-[:input {:on {:input [[:action-name :event/target.value]]}}]
+[:button {:on {:click (fn [e] (js/console.log "Clicked!"))}}
+ "Click me"]
 ```
 
-### ❌ Common mistakes
-```clojure
-;; WRONG - dot instead of slash
-:event.target/value
+### Data-Driven (Testable, Serializable)
 
-;; WRONG - this is for internal use
-[:replicant/input-value]
+Event handlers as **data vectors** instead of functions:
+
+```clojure
+;; Handler is data, not a function
+[:input {:on {:input [[:update-text :event/target.value]]}}]
 ```
 
-## Required Middleware
-
-You MUST add `interpolate-actions` to resolve event placeholders:
+**Requires `set-dispatch!`** to process data handlers:
 
 ```clojure
-(defn interpolate-actions [event actions]
+(require '[replicant.dom :as r])
+
+(r/set-dispatch!
+ (fn [event-data handler-data]
+   (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+     (let [dom-event (:replicant/dom-event event-data)]
+       ;; handler-data is [[:update-text :event/target.value]]
+       (handle-actions dom-event handler-data)))))
+```
+
+## Event Placeholders (Action Enrichment)
+
+**Placeholders** inject runtime values into data-driven event handlers.
+
+### Built-in Placeholders
+
+Common placeholders you'll implement:
+
+- `:event/target.value` - Extract input value
+- `:event/target.checked` - Extract checkbox state
+- `:event/key` - Extract pressed key
+- `:event/prevent-default` - Call preventDefault()
+
+### Implementing Placeholders
+
+Create an `interpolate-actions` function to resolve placeholders:
+
+```clojure
+(defn interpolate-actions
+  "Replace event placeholders with actual values from DOM event"
+  [event actions]
   (clojure.walk/postwalk
    (fn [x]
      (case x
        :event/target.value (.. event -target -value)
        :event/target.checked (.. event -target -checked)
+       :event/key (.-key event)
+       :event/prevent-default (do (.preventDefault event) nil)
        x))
    actions))
 
@@ -35,19 +80,34 @@ You MUST add `interpolate-actions` to resolve event placeholders:
    (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
      (let [dom-event (:replicant/dom-event event-data)
            enriched-actions (interpolate-actions dom-event handler-data)]
-       (handle-actions event-data enriched-actions)))))
+       (handle-actions enriched-actions)))))
 ```
 
-## Common Event Placeholders
+**How it works:**
+```clojure
+;; Before interpolation (data):
+[[:update-text :event/target.value]]
 
-- `:event/target.value` - Input/select/textarea value
-- `:event/target.checked` - Checkbox checked state
-- `:event/key` - Keyboard key pressed
-- `:event/prevent-default` - Call preventDefault()
+;; After interpolation (with actual value):
+[[:update-text "Hello world"]]
+```
+
+### Common Mistakes
+
+```clojure
+;; ❌ WRONG - dot instead of slash
+:event.target/value
+
+;; ✅ CORRECT - slash separates namespace
+:event/target.value
+
+;; ❌ WRONG - this is an internal Replicant thing
+[:replicant/input-value]
+```
 
 ## Lifecycle Hooks
 
-Replicant provides lifecycle hooks similar to React's component lifecycle, but uses a different API.
+Replicant provides lifecycle hooks but uses a **completely different API from React**.
 
 ### ⚠️ NOT React's `:ref`
 
@@ -56,29 +116,35 @@ Replicant provides lifecycle hooks similar to React's component lifecycle, but u
 [:span {:ref (fn [elem] (.focus elem))}]
 
 ;; ✅ CORRECT - Use :replicant/on-mount or :replicant/on-render
-[:span {:replicant/on-render (fn [{:replicant/keys [node]}]
-                                (.focus node))}]
+[:span {:replicant/on-mount (fn [{:replicant/keys [node]}]
+                               (.focus node))}]
 ```
 
 ### Available Hooks
 
-- `:replicant/on-mount` - Called when element is first added to DOM
-- `:replicant/on-render` - Called on every render (mount and updates)
-- `:replicant/on-update` - Called only on updates (not initial mount)
-- `:replicant/on-unmount` - Called when element is removed from DOM
+- **`:replicant/on-mount`** - Called ONLY on initial render
+- **`:replicant/on-render`** - Called on EVERY render (mount, update, unmount)
+- **`:replicant/on-update`** - Called only on updates (NOT mount or unmount)
+- **`:replicant/on-unmount`** - Called ONLY when element is removed
 
-### Hook Parameters
+### Hook Event Data Map
 
 Lifecycle hooks receive a map with these keys:
 
 ```clojure
 {:replicant/trigger :replicant.trigger/life-cycle
- :replicant/life-cycle :replicant.life-cycle/mount  ; or :update, :unmount
+ :replicant/life-cycle <lifecycle-phase>  ; see below
  :replicant/node <DOM element>
- :replicant/remember (fn [memory] ...)}  ; For storing state
+ :replicant/remember <fn>  ; Store values for later retrieval
+ :replicant/memory <any>}  ; Previously stored value
 ```
 
-Always destructure `:replicant/keys [node]` to get the DOM element:
+**`:replicant/life-cycle` values:**
+- `:replicant.life-cycle/mount` - Initial render
+- `:replicant.life-cycle/update` - Subsequent updates
+- `:replicant.life-cycle/unmount` - Element removal
+
+**Always destructure** with `:replicant/keys`:
 
 ```clojure
 :replicant/on-mount (fn [{:replicant/keys [node]}]
@@ -86,46 +152,90 @@ Always destructure `:replicant/keys [node]` to get the DOM element:
   (.scrollIntoView node))
 ```
 
-### Required: Enable Lifecycle Hooks
+### 🐛 BUG: `mounting?` Does NOT Exist
 
-You MUST call `set-dispatch!` during app initialization to enable lifecycle hooks.
+**This is a bug in the current codebase:**
 
 ```clojure
-(require '[replicant.dom :as d])
+;; ❌ WRONG - mounting? doesn't exist in Replicant
+:replicant/on-render (fn [{:replicant/keys [node mounting?]}]
+  (when mounting? ...))
 
-(defn main []
-  ;; Enable lifecycle hooks
-  (d/set-dispatch!
-   (fn [event-data handler-data]
-     (cond
-       ;; Handle lifecycle hooks
-       (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
-       (when (fn? handler-data)
-         (handler-data event-data))
+;; ✅ CORRECT - Use :replicant/life-cycle
+:replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+  (when (= life-cycle :replicant.life-cycle/mount)
+    ...))
 
-       ;; Handle DOM events (optional - for data-driven event handlers)
-       (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (when (fn? handler-data)
-         (handler-data (:replicant/dom-event event-data))))))
-
-  ;; Rest of initialization...
-  )
+;; ✅ BETTER - Use :replicant/on-mount for mount-only logic
+:replicant/on-mount (fn [{:replicant/keys [node]}]
+  ...)
 ```
 
-### Example: Auto-focus contenteditable
+**Location of bug**: `src/components/block.cljs:516`
+
+### Memory: Storing State Across Renders
+
+Use `:replicant/remember` to store values, retrieve with `:replicant/memory`:
+
+```clojure
+[:div {:replicant/on-mount
+       (fn [{:replicant/keys [node remember]}]
+         ;; Create and store third-party lib instance
+         (let [chart (.createChart js/someLib node)]
+           (remember chart)))
+
+       :replicant/on-update
+       (fn [{:replicant/keys [memory]}]
+         ;; Retrieve stored chart instance
+         (.updateData memory new-data))
+
+       :replicant/on-unmount
+       (fn [{:replicant/keys [memory]}]
+         ;; Clean up stored instance
+         (.destroy memory))}]
+```
+
+Values are stored in a **WeakMap** associated with the DOM node.
+
+### Required: Enable Lifecycle Hooks
+
+You MUST call `set-dispatch!` to enable lifecycle hooks:
+
+```clojure
+(require '[replicant.dom :as r])
+
+(r/set-dispatch!
+ (fn [event-data handler-data]
+   (cond
+     ;; Handle lifecycle hooks (REQUIRED)
+     (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+     (when (fn? handler-data)
+       (handler-data event-data))
+
+     ;; Handle DOM events (optional - only if using data-driven handlers)
+     (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+     (when (fn? handler-data)
+       (handler-data (:replicant/dom-event event-data))))))
+```
+
+### Example: Auto-focus with Initial Content
 
 ```clojure
 [:span {:contentEditable true
-        :replicant/on-render (fn [{:replicant/keys [node]}]
-                               ;; Set initial content
-                               (when (empty? (.-textContent node))
-                                 (set! (.-textContent node) "Hello"))
+        :replicant/on-mount
+        (fn [{:replicant/keys [node]}]
+          ;; Set initial content ONLY on mount
+          (set! (.-textContent node) "Hello")
+          (.focus node))
 
-                               ;; Auto-focus for immediate typing
-                               (.focus node))}]
+        :replicant/on-render
+        (fn [{:replicant/keys [node life-cycle]}]
+          ;; Focus on every render, but don't reset content
+          (when-not (= life-cycle :replicant.life-cycle/unmount)
+            (.focus node)))}]
 ```
 
-**See**: `src/components/block.cljs` for real-world usage.
+**See**: `src/components/block.cljs` for real-world usage (but note the `mounting?` bug!).
 
 ---
 
@@ -274,51 +384,403 @@ Replicant's `:replicant/on-render` enables Logseq's mock-text technique:
 
 ## Testing Replicant Components
 
+Replicant's data-driven design makes testing **much easier** than traditional React testing.
+
+### Why Replicant Tests Are Better
+
+**Traditional React**:
+```javascript
+// Need JSDOM, enzyme, or @testing-library
+render(<MyComponent state={...} />)
+screen.getByRole('button').click()  // Requires DOM simulation
+```
+
+**Replicant**:
+```clojure
+;; Just call the function!
+(def hiccup (MyComponent {:state ...}))
+;; Inspect hiccup (it's data!)
+(is (= [:button ...] (find-element hiccup :button)))
+;; Extract actions (also data!)
+(def actions (select-actions hiccup :button [:on :click]))
+```
+
+### Three Testing Levels
+
+#### 1. View Tests (Unit)
+
+Test that components render correct hiccup:
+
+```clojure
+(deftest block-view-test
+  (let [db {:nodes {"a" {:type :block :props {:text "Hello"}}}}
+        hiccup (Block {:db db :block-id "a" :on-intent identity})]
+    (is (= "Hello" (extract-text hiccup))
+        "Block displays correct text")))
+```
+
+**Benefits**:
+- No browser required
+- Fast (milliseconds)
+- Precise assertions
+- Works in REPL
+
+#### 2. Action Extraction Tests
+
+Extract and verify data-driven event handlers:
+
+```clojure
+(deftest block-actions-test
+  (let [hiccup (Block {:db db :block-id "a" :on-intent identity})
+        input-actions (select-actions hiccup :.content-edit [:on :input])]
+    (is (= [[:update-content "a" :event/target.value]]
+           input-actions)
+        "Input dispatches correct action")))
+```
+
+**Benefits**:
+- Test event handlers without DOM
+- Verify action data structure
+- No mocking required
+
+#### 3. Integration Tests
+
+Test full render → action → update → re-render cycle:
+
+```clojure
+(deftest typing-integration-test
+  (let [db (create-test-db)
+        ;; 1. Render
+        view-1 (Block {:db db :block-id "a" :on-intent identity})
+        ;; 2. Extract action
+        actions (select-actions view-1 :.content-edit [:on :input])
+        ;; 3. Simulate typing (replace placeholder)
+        concrete-actions (interpolate-placeholders
+                          actions {:event/target.value "Hello"})
+        ;; 4. Apply intent
+        {:keys [ops]} (intent/apply-intent db concrete-actions)
+        db-2 (:db (tx/interpret db ops))
+        ;; 5. Re-render
+        view-2 (Block {:db db-2 :block-id "a" :on-intent identity})]
+    (is (= "Hello" (get-in db-2 [:nodes "a" :props :text])))
+    (is (= "Hello" (extract-text view-2)))))
+```
+
 ### REPL Component Testing
 
 ```clojure
-;; dev/repl/init.cljc
-(repl/test-component! 'components.block/Block
-  {:db (sample-db)
-   :block-id "a"
-   :depth 0
-   :on-intent (fn [intent]
-                (prn "Intent dispatched:" intent))})
+;; In REPL - test instantly!
+(require '[components.block :as block])
+
+(def db {:nodes {"a" {:type :block :props {:text "Test"}}}})
+
+(def view (block/Block {:db db :block-id "a" :on-intent prn}))
+
+;; Inspect hiccup
+(clojure.pprint/pprint view)
+
+;; Extract actions
+(select-actions view :.content-edit [:on :input])
+;; => [[:update-content "a" :event/target.value]]
 ```
 
-**What you can verify:**
-- Component renders without errors
-- Correct DOM structure
-- Intents dispatched on interactions
-- Props correctly passed down
+### E2E Testing with Playwright
 
-**What you can't verify:**
-- Actual cursor position (requires real browser)
-- getBoundingClientRect values (requires layout engine)
-- Keyboard events (can mock, but real test is better)
+For browser-specific behavior (cursor position, focus, keyboard):
 
-### E2E Testing with Chrome DevTools MCP
+```javascript
+// test/e2e/navigation.spec.js
+test('cursor position after navigation', async ({ page }) => {
+  await page.goto('/blocks.html');
+  await page.click('[data-block-id="a"]');
+  await page.press('[contenteditable]', 'ArrowDown');
+
+  const pos = await page.evaluate(() =>
+    window.getSelection().anchorOffset
+  );
+  expect(pos).toBe(6);
+});
+```
+
+**Use E2E for**:
+- Cursor positioning
+- Focus management
+- getBoundingClientRect
+- Keyboard navigation
+- Accessibility
+
+**Use unit tests for**:
+- Component rendering
+- Action dispatch
+- State updates
+- Business logic
+
+### 📖 Complete Testing Guide
+
+See **`docs/REPLICANT_TESTING.md`** for:
+- Detailed testing patterns
+- View test utilities
+- Action extraction helpers
+- Integration test examples
+- Comparison with our current approach
+- Gap analysis and recommendations
+
+### Current State
+
+**What we test well:**
+- ✅ Kernel operations (transaction, ops, schema)
+- ✅ Plugin intents (navigation, editing, selection)
+- ✅ E2E browser behavior (Playwright)
+
+**What's missing:**
+- ❌ Component/view unit tests
+- ❌ Action extraction from hiccup
+- ❌ Fast integration tests (render → action → update)
+
+**Recommendation**: Add view testing utilities and tests for critical components (Block, Sidebar). See `docs/REPLICANT_TESTING.md` for implementation guide.
+
+---
+
+## Troubleshooting & Common Pitfalls
+
+### Lifecycle Hooks Not Firing
+
+**Symptom:** `:replicant/on-mount` or `:replicant/on-render` do nothing.
+
+**Cause:** Forgot to call `set-dispatch!`
+
+**Fix:**
+```clojure
+(require '[replicant.dom :as r])
+
+(r/set-dispatch!
+ (fn [event-data handler-data]
+   (when (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+     (when (fn? handler-data)
+       (handler-data event-data)))))
+```
+
+### `mounting?` is `nil` or Undefined
+
+**Symptom:** Destructuring `mounting?` returns `nil`:
+```clojure
+:replicant/on-render (fn [{:replicant/keys [node mounting?]}]
+  (println mounting?) ;; => nil
+  ...)
+```
+
+**Cause:** **`mounting?` does not exist** in Replicant. This is a bug in `src/components/block.cljs:516`.
+
+**Fix:** Use `:replicant/life-cycle` instead:
+```clojure
+;; Option 1: Check lifecycle phase
+:replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+  (when (= life-cycle :replicant.life-cycle/mount)
+    ;; Mount-only logic
+    ...))
+
+;; Option 2: Use dedicated hook (better!)
+:replicant/on-mount (fn [{:replicant/keys [node]}]
+  ;; This only runs on mount
+  ...)
+```
+
+### Event Handlers Don't Work
+
+**Symptom:** Clicking buttons or typing in inputs does nothing.
+
+**Possible causes:**
+
+1. **Using data handlers without `set-dispatch!`**
+   ```clojure
+   ;; This won't work without set-dispatch!
+   [:button {:on {:click [[:do-something]]}}]
+   ```
+
+   **Fix:** Either use function handlers OR set up dispatch:
+   ```clojure
+   ;; Option 1: Function handler
+   [:button {:on {:click (fn [e] (do-something))}}]
+
+   ;; Option 2: Set up dispatch for data handlers
+   (r/set-dispatch! ...)
+   ```
+
+2. **Event bubbling prevented elsewhere**
+
+   Check for `.stopPropagation()` or `.preventDefault()` calls in parent elements.
+
+### Placeholders Not Being Replaced
+
+**Symptom:** `:event/target.value` appears literally in your action data instead of the actual value.
+
+**Cause:** `interpolate-actions` not called in dispatch handler.
+
+**Fix:**
+```clojure
+(r/set-dispatch!
+ (fn [event-data handler-data]
+   (when (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+     (let [dom-event (:replicant/dom-event event-data)
+           ;; MUST interpolate placeholders!
+           enriched-actions (interpolate-actions dom-event handler-data)]
+       (handle-actions enriched-actions)))))
+```
+
+### Component Re-renders Cause Infinite Loop
+
+**Symptom:** Browser freezes, React devtools shows thousands of renders.
+
+**Cause:** Dispatching intents from lifecycle hooks causes re-render, which triggers the hook again.
+
+**Fix:** Don't dispatch intents from lifecycle hooks. Only perform DOM operations:
 
 ```clojure
-;; test/e2e/navigation_test.cljs
-(deftest cursor-position-after-navigation
-  ;; Use chrome-devtools MCP
-  (mcp__chrome-devtools__click {:uid "block-a"})
-  (mcp__chrome-devtools__press_key {:key "ArrowDown"})
+;; ❌ BAD - causes infinite loop
+:replicant/on-render (fn [{:replicant/keys [node]}]
+  (on-intent {:type :update-something})) ;; Triggers re-render!
 
-  ;; Verify cursor position
-  (let [pos (mcp__chrome-devtools__evaluate_script
-              {:function "() => window.getSelection().anchorOffset"})]
-    (is (= 6 pos))))
+;; ✅ GOOD - only DOM operations
+:replicant/on-render (fn [{:replicant/keys [node]}]
+  (.focus node)
+  (.scrollIntoView node))
 ```
 
-**See:** `dev/specs/TESTING_STRATEGY_NAVIGATION.md` for full testing approach.
+For state updates triggered by mount, dispatch from event handlers or use `js/setTimeout`:
+
+```clojure
+:replicant/on-mount (fn [{:replicant/keys [node]}]
+  ;; Defer state update to next tick
+  (js/setTimeout #(on-intent {:type :init-component}) 0))
+```
+
+### contentEditable Loses Cursor Position
+
+**Symptom:** Cursor jumps to start/end when typing in contenteditable elements.
+
+**Cause:** Setting `.textContent` or `.innerHTML` on every render destroys cursor position.
+
+**Fix:** Only set content on mount, preserve cursor manually:
+
+```clojure
+[:span {:contentEditable true
+        :replicant/on-mount
+        (fn [{:replicant/keys [node]}]
+          ;; Set text ONLY on mount
+          (set! (.-textContent node) initial-text))
+
+        :replicant/on-render
+        (fn [{:replicant/keys [node life-cycle]}]
+          ;; Don't touch textContent on updates!
+          ;; Only manage focus/cursor
+          (when-not (= life-cycle :replicant.life-cycle/unmount)
+            (.focus node)))}]
+```
+
+### DOM Mutations Don't Persist
+
+**Symptom:** You change DOM attributes/styles in a lifecycle hook, but they disappear on next render.
+
+**Cause:** Replicant diffs and resets attributes based on hiccup data.
+
+**Fix:** Put the state in your hiccup data, not the DOM:
+
+```clojure
+;; ❌ BAD - Replicant will overwrite this
+:replicant/on-mount (fn [{:replicant/keys [node]}]
+  (.classList.add node "active"))
+
+;; ✅ GOOD - Derive class from data
+[:div {:class (when active? "active")}]
+```
+
+### Wrong Event Key: `:event.target/value` vs `:event/target.value`
+
+**Symptom:** Placeholder not replaced, shows up as literal keyword in actions.
+
+**Cause:** Wrong syntax - dot vs slash.
+
+```clojure
+;; ❌ WRONG
+:event.target/value
+
+;; ✅ CORRECT
+:event/target.value
+```
+
+**Remember:** Slash separates namespace from name, just like `clojure.string/join`.
+
+### Function vs Data Handler Confusion
+
+**Symptom:** TypeError: handler is not a function.
+
+**Cause:** Mixing function-based and data-based handlers without proper dispatch setup.
+
+```clojure
+;; Function handler - works immediately
+[:button {:on {:click (fn [e] ...)}}]
+
+;; Data handler - requires set-dispatch!
+[:button {:on {:click [[:action]]}}]
+```
+
+Make sure `set-dispatch!` handles your handler type correctly.
+
+---
+
+## Quick Reference Card
+
+### Lifecycle Hook Map Keys
+```clojure
+{:replicant/trigger :replicant.trigger/life-cycle
+ :replicant/life-cycle #{:replicant.life-cycle/mount
+                         :replicant.life-cycle/update
+                         :replicant.life-cycle/unmount}
+ :replicant/node <DOM-element>
+ :replicant/remember <fn>    ; Store value
+ :replicant/memory <any>}    ; Retrieve stored value
+```
+
+### Event Dispatch Map Keys
+```clojure
+{:replicant/trigger :replicant.trigger/dom-event
+ :replicant/dom-event <JS-event>
+ :replicant/node <DOM-element>}
+```
+
+### Common Placeholders
+```clojure
+:event/target.value     ; (.. event -target -value)
+:event/target.checked   ; (.. event -target -checked)
+:event/key              ; (.-key event)
+:event/prevent-default  ; (.preventDefault event)
+```
+
+### Required Setup
+```clojure
+(require '[replicant.dom :as r])
+
+;; MUST call this to enable hooks & data handlers
+(r/set-dispatch!
+ (fn [event-data handler-data]
+   (cond
+     (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+     (when (fn? handler-data) (handler-data event-data))
+
+     (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+     (let [enriched (interpolate-actions
+                      (:replicant/dom-event event-data)
+                      handler-data)]
+       (handle-actions enriched)))))
+```
 
 ---
 
 ## Reference
 
-- Docs: https://replicant.fun/event-handlers/
-- Example: `src/lab/app.cljs:49` (interpolate-actions)
-- Source: `~/Projects/best/replicant/src/replicant/core.cljc` (lifecycle implementation)
-- Our Usage: `src/components/block.cljs` (real-world patterns)
+- **Official Docs**: https://replicant.fun/
+- **Event Handlers**: https://replicant.fun/event-handlers/
+- **Lifecycle Hooks**: https://replicant.fun/life-cycle-hooks/
+- **API Docs**: https://cljdoc.org/d/no.cjohansen/replicant/
+- **Source Code**: `~/Projects/best/replicant/src/replicant/core.cljc`
+- **Example Usage**: `src/lab/app.cljs` (interpolate-actions), `src/components/block.cljs` (lifecycle hooks)

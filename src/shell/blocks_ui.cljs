@@ -152,10 +152,12 @@
                                    (assoc intent-with-focus :block-id editing?)
                                    intent-with-focus)
                   ;; Enrich format-selection intent with DOM selection data
-                  enriched-intent (if (and (map? intent-with-id)
-                                           (= (:type intent-with-id) :format-selection)
-                                           editing?
-                                           editable-el)
+                  enriched-intent (cond
+                                    ;; Format-selection: get DOM selection range
+                                    (and (map? intent-with-id)
+                                         (= (:type intent-with-id) :format-selection)
+                                         editing?
+                                         editable-el)
                                     (try
                                       (let [sel (.getSelection js/window)]
                                         (when (and sel (pos? (.-rangeCount sel)))
@@ -170,7 +172,24 @@
                                       (catch js/Error e
                                         (js/console.error "Selection read failed:" e)
                                         nil)) ;; Return nil if enrichment fails
-                                    intent-with-id)]
+
+                                    ;; Follow-link-under-cursor: inject cursor position
+                                    (and (map? intent-with-id)
+                                         (= (:type intent-with-id) :follow-link-under-cursor)
+                                         (= (:cursor-pos intent-with-id) :cursor-pos)
+                                         editing?
+                                         editable-el)
+                                    (try
+                                      (let [sel (.getSelection js/window)]
+                                        (when sel
+                                          (let [cursor-pos (.-anchorOffset sel)]
+                                            (assoc intent-with-id :cursor-pos cursor-pos))))
+                                      (catch js/Error e
+                                        (js/console.error "Cursor position read failed:" e)
+                                        nil))
+
+                                    ;; Default: no enrichment needed
+                                    :else intent-with-id)]
               (when enriched-intent ;; Only dispatch if enrichment succeeded
                 (cond
                 ;; Map intent: use directly (with injected block-id if needed)

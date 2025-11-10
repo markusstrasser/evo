@@ -82,12 +82,11 @@
           [:type [:= :insert-paired-char]]
           [:block-id :string]
           [:cursor-pos :int]
-          [:char :string]]
+          [:input-char :string]]
 
    :handler
-   (fn [db {:keys [block-id cursor-pos char] :as _intent}]
-     (let [input-char char
-           text (get-block-text db block-id)
+   (fn [db {:keys [block-id cursor-pos input-char] :as _intent}]
+     (let [text (get-block-text db block-id)
            next-char (when (< cursor-pos (count text))
                       (str (nth text cursor-pos)))
            closing-char (get pairs input-char)]
@@ -104,7 +103,7 @@
          ;; Opening char - insert both and position cursor between
          closing-char
          (let [new-text (str (subs text 0 cursor-pos)
-                            char
+                            input-char
                             closing-char
                             (subs text cursor-pos))]
            [{:op :update-node
@@ -113,12 +112,12 @@
             {:op :update-node
              :id const/session-ui-id
              :props {:editing-block-id block-id
-                     :cursor-position (+ cursor-pos (count char))}}])
+                     :cursor-position (+ cursor-pos (count input-char))}}])
 
          ;; Not a paired char - just insert
          :else
          (let [new-text (str (subs text 0 cursor-pos)
-                            char
+                            input-char
                             (subs text cursor-pos))]
            [{:op :update-node
              :id block-id
@@ -252,9 +251,10 @@
 ;; ── Smart Split (Unified Enter Key Behavior) ──────────────────────────────────
 
 (intent/register-intent! :smart-split
-  {:doc "Context-aware block splitting on Enter.
-         
+  {:doc "Context-aware block splitting on Enter (Logseq parity).
+
          Behaviors:
+         - Inside code fence (```) → insert newline (don't split block)
          - Empty list marker → unformat to plain block
          - Numbered list → increment number for new block
          - Checkbox → continue checkbox pattern
@@ -270,9 +270,21 @@
            before (subs text 0 cursor-pos)
            after (subs text cursor-pos)
            parent (get-in db [:derived :parent-of block-id])
-           new-id (str "block-" (random-uuid))]
-       
+           new-id (str "block-" (random-uuid))
+
+           ;; CRITICAL: Check if cursor is inside code fence (Logseq behavior)
+           code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)]
+
        (cond
+         ;; LOGSEQ PARITY: Inside code fence → insert newline (don't split)
+         code-block-ctx
+         (let [new-text (str before "\n" after)]
+           [{:op :update-node :id block-id :props {:text new-text}}
+            ;; Position cursor after newline
+            {:op :update-node
+             :id const/session-ui-id
+             :props {:cursor-position (inc cursor-pos)}}])
+
          ;; Empty list marker - just unformat
          (and (empty? after) (list-marker? before))
          [{:op :update-node :id block-id :props {:text ""}}]
@@ -283,8 +295,8 @@
 
          ;; Numbered list - increment
          (extract-list-number text)
-         (let [num (extract-list-number before)
-               new-text (str (inc num) ". " after)]
+         (let [num-value (extract-list-number before)
+               new-text (str (inc num-value) ". " after)]
            (when parent
              [{:op :update-node :id block-id :props {:text before}}
               {:op :create-node :id new-id :type :block :props {:text new-text}}
