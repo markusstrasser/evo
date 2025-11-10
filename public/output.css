@@ -235,6 +235,9 @@
   .inline-block {
     display: inline-block;
   }
+  .list-item {
+    display: list-item;
+  }
   .table {
     display: table;
   }
