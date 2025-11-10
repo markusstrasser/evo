@@ -1,5 +1,19 @@
 # Chrome DevTools MCP Gotchas
 
+> **Note:** For browser-based E2E testing, prefer **Playwright MCP** over Chrome DevTools MCP. See [PLAYWRIGHT_MCP_TESTING.md](./PLAYWRIGHT_MCP_TESTING.md) for comprehensive testing guide.
+>
+> Playwright MCP advantages:
+> - Standard E2E testing framework (better community support)
+> - Multi-browser support (Chromium, Firefox, WebKit)
+> - Accessibility-first snapshots (more stable than UIDs)
+> - No stale snapshot issues (built-in auto-waiting)
+> - Better for automated testing and CI/CD
+>
+> Use Chrome DevTools MCP for:
+> - Manual browser exploration
+> - One-off debugging tasks
+> - Quick verification of specific behaviors
+
 ## Stale Snapshot UIDs
 
 **Problem:** After page updates (DOM changes, navigation, etc), element UIDs become stale.
