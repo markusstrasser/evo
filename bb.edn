@@ -13,7 +13,7 @@
    check       {:doc "Lint + compile check (full quality gate)"
                 :task (do
                         (run 'lint)
-                        (shell "npx shadow-cljs compile :frontend"))}
+                        (shell "npx shadow-cljs compile :anki"))}
 
    test        {:doc "Run test suite"
                 :task (do
@@ -95,7 +95,7 @@
 
    ;; Development server
    dev         {:doc "Start shadow-cljs dev server + watch"
-                :task (shell "npx shadow-cljs watch :frontend")}
+                :task (shell "npx shadow-cljs watch :anki")}
 
    ;; Git hooks
    install-hooks {:doc "Install git pre-commit hooks"
@@ -128,6 +128,6 @@
                         (println "Setup:")
                         (println "  bb install-hooks   - Install git hooks\n")
                         (println "Skills (call directly):")
-                        (println "  skills/diagnostics/run.sh health")
-                        (println "  skills/code-research/run.sh ...")
-                        (println "  skills/session-memory/run.sh ..."))}}}
+                        (println "  .claude/skills/diagnostics/run.sh health")
+                        (println "  .claude/skills/code-research/run.sh ...")
+                        (println "  .claude/skills/session-memory/run.sh ..."))}}}

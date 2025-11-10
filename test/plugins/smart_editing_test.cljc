@@ -183,6 +183,122 @@
             db' (:db (tx/interpret db ops))]
         (is (= "Multiple [x] checkboxes [ ]" (get-in db' [:nodes "e" :props :text])))))))
 
+;; ── Paired Character Tests ────────────────────────────────────────────────────
+
+(deftest paired-char-insertion-test
+  (testing "Opening bracket auto-closes"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
+                                                  :block-id "a"
+                                                  :cursor-pos 5
+                                                  :char "["})
+          db' (:db (tx/interpret db ops))]
+      (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
+      (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Closing bracket skips over when next char matches"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello[]"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
+                                                  :block-id "a"
+                                                  :cursor-pos 6
+                                                  :char "]"})
+          db' (:db (tx/interpret db ops))]
+      ;; Should move cursor, not insert
+      (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
+      (is (= 7 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Non-paired char inserts normally"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
+                                                  :block-id "a"
+                                                  :cursor-pos 5
+                                                  :char "x"})
+          db' (:db (tx/interpret db ops))]
+      (is (= "hellox" (get-in db' [:nodes "a" :props :text])))
+      (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Parentheses auto-close"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text ""}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
+                                                  :block-id "a"
+                                                  :cursor-pos 0
+                                                  :char "("})
+          db' (:db (tx/interpret db ops))]
+      (is (= "()" (get-in db' [:nodes "a" :props :text])))
+      (is (= 1 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Markup pairs auto-close"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "text"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
+                                                  :block-id "a"
+                                                  :cursor-pos 0
+                                                  :char "**"})
+          db' (:db (tx/interpret db ops))]
+      (is (= "****text" (get-in db' [:nodes "a" :props :text])))
+      (is (= 2 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest paired-deletion-test
+  (testing "Backspace after [ deletes both [ and ]"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "[]"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
+                                                  :block-id "a"
+                                                  :cursor-pos 1})
+          db' (:db (tx/interpret db ops))]
+      (is (= "" (get-in db' [:nodes "a" :props :text])))
+      (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Backspace with no pair deletes one char"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
+                                                  :block-id "a"
+                                                  :cursor-pos 5})
+          db' (:db (tx/interpret db ops))]
+      (is (= "hell" (get-in db' [:nodes "a" :props :text])))
+      (is (= 4 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Backspace with markup pairs"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "****"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
+                                                  :block-id "a"
+                                                  :cursor-pos 2})
+          db' (:db (tx/interpret db ops))]
+      (is (= "" (get-in db' [:nodes "a" :props :text])))))
+
+  (testing "Backspace when next char doesn't match"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "[x"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
+                                                  :block-id "a"
+                                                  :cursor-pos 1})
+          db' (:db (tx/interpret db ops))]
+      (is (= "x" (get-in db' [:nodes "a" :props :text])))))
+
+  (testing "Backspace at position 0 does nothing"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "text"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
+                                                  :block-id "a"
+                                                  :cursor-pos 0})]
+      (is (empty? ops)))))
+
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 
 (deftest smart-editing-integration
