@@ -36,10 +36,10 @@ npm start
 ## Project Structure
 
 ```
-src/core/           # Pure kernel (db, ops, interpret, schema)
+src/core/           # Pure kernel (db, ops, interpret, schema, errors)
 src/shell/          # UI adapters (React components)
-test/               # Property-based tests
-dev/                # REPL helpers, fixtures, diagnostics
+test/               # Unit tests (property-based) + E2E tests (Playwright)
+dev/                # REPL helpers, fixtures, diagnostics, validation
 skills/             # Agent workflows (research, visual, debug, diagnostics)
 docs/               # Architecture, patterns, gotchas
 ```
@@ -66,7 +66,10 @@ docs/               # Architecture, patterns, gotchas
 3. Apply to canonical DB shape
 4. Re-derive indexes (children-by-parent, siblings, etc.)
 
-**Testing**: Property-based tests generate random operations, verify invariants hold
+**Testing**:
+- Unit tests: Property-based tests generate random operations, verify invariants hold
+- E2E tests: Playwright browser tests catch cursor jumping, a11y violations, visual bugs
+- Run: `bb test` (unit), `bb test-watch` (TDD), `bb e2e` (browser)
 
 **Debugging**: REPL-first workflow - reproduce in REPL, test fix, apply, verify (30s vs 5min)
 
