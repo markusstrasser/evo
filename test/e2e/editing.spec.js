@@ -7,11 +7,12 @@
 
 import { test, expect } from '@playwright/test';
 import { getCursorPosition, typeAndVerifyCursor } from './helpers/cursor.js';
+import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Text Editing', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[contenteditable="true"]');
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
   });
 
   test('typing advances cursor sequentially', async ({ page }) => {

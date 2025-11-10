@@ -7,11 +7,12 @@
 import { test, expect } from '@playwright/test';
 import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
 import { getAllBlocks } from './helpers/blocks.js';
+import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Block Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[contenteditable="true"]');
+    await page.goto('/blocks.html');
+    await enterEditModeAndClick(page);
   });
 
   test('arrow down preserves cursor column', async ({ page }) => {
