@@ -299,6 +299,130 @@
                                                   :cursor-pos 0})]
       (is (empty? ops)))))
 
+;; ── Context-Aware Enter Tests ──────────────────────────────────────────────────
+
+(deftest context-aware-enter-markup-test
+  (testing "Enter inside bold exits markup first"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "**hello world**"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 5})  ; After "**hel"
+          db' (:db (tx/interpret db ops))]
+      ;; Should move cursor to after **, not split
+      (is (= 15 (get-in db' [:nodes "session/ui" :props :cursor-position])))
+      ;; Text should be unchanged
+      (is (= "**hello world**" (get-in db' [:nodes "a" :props :text])))))
+
+  (testing "Enter after exiting markup creates new block"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "**bold**"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 8})  ; After closing **
+          db' (:db (tx/interpret db ops))]
+      ;; Should create new block
+      (is (= 2 (count (q/children db' :doc)))))))
+
+(deftest context-aware-enter-code-block-test
+  (testing "Enter inside code block inserts newline"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "```clojure\n(+ 1 2)\n```"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 18})  ; After "(+ 1 2)"
+          db' (:db (tx/interpret db ops))]
+      ;; Should insert newline, not create new block
+      (is (= "```clojure\n(+ 1 2)\n\n```" (get-in db' [:nodes "a" :props :text])))
+      (is (= 19 (get-in db' [:nodes "session/ui" :props :cursor-position])))
+      ;; No new block created
+      (is (= 1 (count (q/children db' :doc)))))))
+
+(deftest context-aware-enter-list-test
+  (testing "Enter on empty list unformats"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "- "}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 2})
+          db' (:db (tx/interpret db ops))]
+      (is (= "" (get-in db' [:nodes "a" :props :text])))
+      ;; No new block created
+      (is (= 1 (count (q/children db' :doc))))))
+
+  (testing "Enter on numbered list increments"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "1. First item"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 13})  ; At end
+          db' (:db (tx/interpret db ops))
+          children (q/children db' :doc)
+          new-block-id (second children)]
+      (is (= "1. First item" (get-in db' [:nodes "a" :props :text])))
+      (is (= "2. " (get-in db' [:nodes new-block-id :props :text])))
+      (is (= 3 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
+
+  (testing "Enter on simple list continues marker"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "- Item one"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 10})
+          db' (:db (tx/interpret db ops))
+          children (q/children db' :doc)
+          new-block-id (second children)]
+      (is (= "- Item one" (get-in db' [:nodes "a" :props :text])))
+      (is (= "- " (get-in db' [:nodes new-block-id :props :text])))
+      (is (= 2 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest context-aware-enter-checkbox-test
+  (testing "Enter on empty checkbox unformats"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "- [ ] "}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 6})
+          db' (:db (tx/interpret db ops))]
+      (is (= "" (get-in db' [:nodes "a" :props :text])))
+      (is (= 1 (count (q/children db' :doc))))))
+
+  (testing "Enter on checkbox continues pattern"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "- [ ] Task one"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 14})
+          db' (:db (tx/interpret db ops))
+          children (q/children db' :doc)
+          new-block-id (second children)]
+      (is (= "- [ ] Task one" (get-in db' [:nodes "a" :props :text])))
+      (is (= "- [ ] " (get-in db' [:nodes new-block-id :props :text])))
+      (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
+(deftest context-aware-enter-plain-text-test
+  (testing "Enter on plain text splits normally"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello world"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
+                                                  :block-id "a"
+                                                  :cursor-pos 5})
+          db' (:db (tx/interpret db ops))
+          children (q/children db' :doc)
+          new-block-id (second children)]
+      (is (= "hello" (get-in db' [:nodes "a" :props :text])))
+      (is (= " world" (get-in db' [:nodes new-block-id :props :text])))
+      (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 
 (deftest smart-editing-integration

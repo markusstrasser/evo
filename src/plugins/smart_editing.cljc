@@ -2,12 +2,14 @@
   "Smart editing behaviors: context-aware editing operations.
 
    Features:
+   - Context-aware Enter (markup, code blocks, refs, lists)
    - Merge with next block (Delete at end)
    - List formatting (auto-increment, empty list unformat)
    - Checkbox toggling
-   - Smart text manipulation (future: markup exit, code blocks)"
+   - Paired character handling"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
+            [plugins.context :as ctx]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
@@ -83,16 +85,17 @@
           [:char :string]]
 
    :handler
-   (fn [db {:keys [block-id cursor-pos char]}]
-     (let [text (get-block-text db block-id)
+   (fn [db {:keys [block-id cursor-pos char] :as _intent}]
+     (let [input-char char
+           text (get-block-text db block-id)
            next-char (when (< cursor-pos (count text))
                       (str (nth text cursor-pos)))
-           closing-char (get pairs char)]
+           closing-char (get pairs input-char)]
 
        (cond
          ;; Closing char and next char matches - skip over
-         (and (contains? (set (vals pairs)) char)
-              (= next-char char))
+         (and (contains? (set (vals pairs)) input-char)
+              (= next-char input-char))
          [{:op :update-node
            :id const/session-ui-id
            :props {:editing-block-id block-id
@@ -301,3 +304,143 @@
            [{:op :update-node :id block-id :props {:text before}}
             {:op :create-node :id new-id :type :block :props {:text after}}
             {:op :place :id new-id :under parent :at {:after block-id}}]))))})
+
+;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
+
+(intent/register-intent! :context-aware-enter
+  {:doc "Handle Enter key with full context awareness.
+
+         Uses plugins.context to detect cursor context and route to appropriate behavior:
+         - Inside markup (**, __, etc.) → Exit markup first, then split
+         - Inside code block → Insert newline (stay in block)
+         - Inside block-ref ((ref)) → Open ref in sidebar (no split)
+         - Inside page-ref [[page]] → Navigate to page (no split)
+         - Empty list item → Unformat (remove marker)
+         - List item with content → Continue list pattern
+         - Checkbox → Continue checkbox pattern
+         - Plain text → Normal split"
+
+   :spec [:map
+          [:type [:= :context-aware-enter]]
+          [:block-id :string]
+          [:cursor-pos :int]]
+
+   :handler
+   (fn [db {:keys [block-id cursor-pos]}]
+     (let [text (get-block-text db block-id)
+           context (ctx/context-at-cursor text cursor-pos)
+           parent (get-in db [:derived :parent-of block-id])]
+
+       (case (:type context)
+
+         ;; Inside markup - exit markup first (move cursor after closing marker)
+         :markup
+         (let [exit-pos (:end context)]
+           [{:op :update-node
+             :id const/session-ui-id
+             :props {:editing-block-id block-id
+                     :cursor-position exit-pos}}])
+
+         ;; Inside code block - insert newline (don't create new block)
+         :code-block
+         (let [new-text (str (subs text 0 cursor-pos)
+                            "\n"
+                            (subs text cursor-pos))]
+           [{:op :update-node
+             :id block-id
+             :props {:text new-text}}
+            {:op :update-node
+             :id const/session-ui-id
+             :props {:editing-block-id block-id
+                     :cursor-position (inc cursor-pos)}}])
+
+         ;; Inside block-ref - open in sidebar (TODO: implement sidebar)
+         :block-ref
+         [{:op :update-node
+           :id const/session-ui-id
+           :props {:sidebar-opened-ref (:uuid context)}}]
+
+         ;; Inside page-ref - navigate to page (TODO: implement page navigation)
+         :page-ref
+         [{:op :update-node
+           :id const/session-ui-id
+           :props {:navigate-to-page (:page-name context)}}]
+
+         ;; Checkbox - check for empty
+         :checkbox
+         (if (str/blank? (:content context))
+           ;; Empty checkbox - unformat
+           [{:op :update-node
+             :id block-id
+             :props {:text ""}}]
+           ;; Checkbox with content - continue pattern
+           (let [before (subs text 0 cursor-pos)
+                 after (subs text cursor-pos)
+                 new-id (str "block-" (random-uuid))
+                 ;; New block gets unchecked checkbox
+                 new-text (str "- [ ] " after)
+                 marker-len (count (:marker context))]
+             (when parent
+               [{:op :update-node :id block-id :props {:text before}}
+                {:op :create-node :id new-id :type :block :props {:text new-text}}
+                {:op :place :id new-id :under parent :at {:after block-id}}
+                {:op :update-node
+                 :id const/session-ui-id
+                 :props {:editing-block-id new-id
+                         :cursor-position 6}}])))  ; After "- [ ] "
+
+         ;; List item - check for empty
+         :list-item
+         (if (str/blank? (:content context))
+           ;; Empty list - unformat
+           [{:op :update-node
+             :id block-id
+             :props {:text ""}}]
+           ;; List with content - continue pattern
+           (let [before (subs text 0 cursor-pos)
+                 after (subs text cursor-pos)
+                 new-id (str "block-" (random-uuid))]
+             (when parent
+               (if (:numbered? context)
+                 ;; Numbered list - increment
+                 (let [new-number (inc (:number context))
+                       new-text (str new-number ". " after)]
+                   [{:op :update-node :id block-id :props {:text before}}
+                    {:op :create-node :id new-id :type :block :props {:text new-text}}
+                    {:op :place :id new-id :under parent :at {:after block-id}}
+                    {:op :update-node
+                     :id const/session-ui-id
+                     :props {:editing-block-id new-id
+                             :cursor-position (+ (count (str new-number)) 2)}}])
+                 ;; Simple list - continue with same marker
+                 (let [new-text (str (:marker context) after)]
+                   [{:op :update-node :id block-id :props {:text before}}
+                    {:op :create-node :id new-id :type :block :props {:text new-text}}
+                    {:op :place :id new-id :under parent :at {:after block-id}}
+                    {:op :update-node
+                     :id const/session-ui-id
+                     :props {:editing-block-id new-id
+                             :cursor-position (count (:marker context))}}])))))
+
+         ;; Plain text - normal split
+         :none
+         (let [before (subs text 0 cursor-pos)
+               after (subs text cursor-pos)
+               new-id (str "block-" (random-uuid))]
+           (when parent
+             [{:op :update-node :id block-id :props {:text before}}
+              {:op :create-node :id new-id :type :block :props {:text after}}
+              {:op :place :id new-id :under parent :at {:after block-id}}
+              {:op :update-node
+               :id const/session-ui-id
+               :props {:editing-block-id new-id
+                       :cursor-position 0}}]))
+
+         ;; Default (shouldn't happen) - normal split
+         (let [before (subs text 0 cursor-pos)
+               after (subs text cursor-pos)
+               new-id (str "block-" (random-uuid))]
+           (when parent
+             [{:op :update-node :id block-id :props {:text before}}
+              {:op :create-node :id new-id :type :block :props {:text after}}
+              {:op :place :id new-id :under parent :at {:after block-id}}])))))})
