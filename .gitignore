@@ -28,9 +28,10 @@ __pycache__/
 *-SUMMARY.md
 *-RESULTS.md
 
-# Playwright reports
+# Playwright reports and MCP server state
 playwright-report/
 test-results/
+.playwright-mcp/
 
 gemini-output
 repomix-output.xml
