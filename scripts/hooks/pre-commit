@@ -1,7 +1,38 @@
 #!/bin/bash
-# Pre-commit hook: Sync CLAUDE.md to AGENTS.md with warning header
+# Pre-commit hook: Quality checks and file syncing
 
-# Check if CLAUDE.md is being committed
+set -e  # Exit on first error
+
+# ── Check for shadowed core vars ─────────────────────────────────────────────
+
+# Only check Clojure/ClojureScript files being committed
+CLOJURE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(clj|cljs|cljc)$' || true)
+
+if [ -n "$CLOJURE_FILES" ]; then
+    echo "🔍 Checking for shadowed variables..."
+
+    # Run linter and check for shadowed var warnings
+    if bb lint 2>&1 | grep -q "Shadowed var:"; then
+        echo ""
+        echo "❌ Shadowed core variables detected!"
+        echo ""
+        echo "Fix by renaming variables to avoid shadowing clojure.core:"
+        echo "  • char → input-char, character"
+        echo "  • count → total-count, num-items"
+        echo "  • num → number, value"
+        echo "  • name → var-name, identifier"
+        echo ""
+        echo "See docs/CODING_GOTCHAS.md for details."
+        echo ""
+        echo "To bypass this check: git commit --no-verify"
+        exit 1
+    fi
+
+    echo "✓ No shadowed variables found"
+fi
+
+# ── Sync CLAUDE.md to AGENTS.md ──────────────────────────────────────────────
+
 if git diff --cached --name-only | grep -q "^CLAUDE.md$"; then
     echo "🔄 Syncing CLAUDE.md → AGENTS.md..."
 
