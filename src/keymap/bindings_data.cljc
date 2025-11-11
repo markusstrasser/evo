@@ -1,7 +1,8 @@
 (ns keymap.bindings-data)
 
 (def data
-  {:non-editing [[{:key "ArrowDown"} {:type :selection :mode :next}]
+  {:non-editing [[{:key "Escape"} {:type :selection :mode :clear}]
+                 [{:key "ArrowDown"} {:type :selection :mode :next}]
                  [{:key "ArrowUp"} {:type :selection :mode :prev}]
                  [{:key "ArrowDown" :alt true} {:type :selection :mode :next}]
                  [{:key "ArrowUp" :alt true} {:type :selection :mode :prev}]
@@ -50,4 +51,6 @@
                  [{:key "." :mod true} {:type :zoom-in}]
                  [{:key "," :mod true} {:type :zoom-out}]
                  ;; Smart editing
-                 [{:key "Enter" :mod true} {:type :toggle-checkbox}]]})
+                 [{:key "Enter" :mod true} {:type :toggle-checkbox}]
+                 ;; Follow link (Logseq parity)
+                 [{:key "o" :mod true} {:type :follow-link-under-cursor :block-id :editing-block-id :cursor-pos :cursor-pos}]]})

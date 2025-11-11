@@ -49,41 +49,43 @@
       result)))
 
 (defn outdent-ops
-  "Direct Outdenting (Logseq/Roam/Workflowy style):
+  "Logical Outdenting (Logseq default with :editor/logical-outdenting? true):
 
-   Moves node to be sibling of its parent, AND makes right siblings into children.
+   Moves node to LAST position under grandparent, leaving right siblings untouched.
 
-   Example:
+   This matches Logseq's logical outdenting behavior where the outdented block
+   moves to the bottom of the grandparent's children list.
+
+   Example (Logical Outdenting):
      Before:
-       - Parent
-         - A
-         - B ← outdent this
-         - C
-         - D
+       - Grandparent
+         - Parent
+           - A
+           - B ← outdent this
+           - C
+           - D
 
-     After (Direct Outdenting):
-       - Parent
-         - A
-       - B  ← outdented
-         - C  ← became child of B
-         - D  ← became child of B
+     After (Logical Outdenting):
+       - Grandparent
+         - Parent
+           - A
+           - C  ← B's right siblings stay under Parent
+           - D
+         - B    ← outdented to LAST position under Grandparent
+
+   Note: Direct outdenting (where B kidnaps C and D as children) can be added
+   via config flag when user preference plumbing exists.
 
    Prevents outdenting if grandparent is a root container (already at top level)."
   [db id]
   (let [p (q/parent-of db id)
         gp (when p (q/parent-of db p))
-        roots (set (:roots db const/roots))
-        right-siblings (when p (collect-right-siblings db id))]
+        roots (set (:roots db const/roots))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
-      (concat
-        ;; Move block up to grandparent level
-        [{:op :place :id id :under gp :at {:after p}}]
-
-        ;; NEW: Move right siblings to become children of outdented block (Direct Outdenting)
-        (mapv (fn [sibling-id]
-                {:op :place :id sibling-id :under id :at :last})
-              right-siblings))
+      ;; Logical outdenting: move to :last position under grandparent
+      ;; Right siblings stay under parent (not kidnapped)
+      [{:op :place :id id :under gp :at :last}]
       [])))
 
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
@@ -115,14 +117,21 @@
 
 (intent/register-intent! :create-and-enter-edit
   {:doc "Create new block after focus and immediately enter edit mode.
-   This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent."
+   This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent.
+   Clears selection to maintain edit/view mode mutual exclusivity."
    :spec [:map [:type [:= :create-and-enter-edit]]]
    :handler (fn [db _]
               (let [focus-id (q/focus db)
                     parent (q/parent-of db focus-id)
                     new-id (str "block-" (random-uuid))]
-                [{:op :create-node :id new-id :type :block :props {:text ""}}
+                [;; INVARIANT: Clear selection before entering edit mode
+                 {:op :update-node
+                  :id const/session-selection-id
+                  :props {:nodes #{} :focus nil :anchor nil}}
+                 ;; Create and place new block
+                 {:op :create-node :id new-id :type :block :props {:text ""}}
                  {:op :place :id new-id :under parent :at {:after focus-id}}
+                 ;; Enter edit mode on new block
                  {:op :update-node
                   :id const/session-ui-id
                   :props {:editing-block-id new-id}}]))})

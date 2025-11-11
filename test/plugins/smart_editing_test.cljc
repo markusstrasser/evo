@@ -193,7 +193,7 @@
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
                                                   :block-id "a"
                                                   :cursor-pos 5
-                                                  :char "["})
+                                                  :input-char "["})
           db' (:db (tx/interpret db ops))]
       (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
       (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -205,7 +205,7 @@
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
                                                   :block-id "a"
                                                   :cursor-pos 6
-                                                  :char "]"})
+                                                  :input-char "]"})
           db' (:db (tx/interpret db ops))]
       ;; Should move cursor, not insert
       (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
@@ -218,7 +218,7 @@
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
                                                   :block-id "a"
                                                   :cursor-pos 5
-                                                  :char "x"})
+                                                  :input-char "x"})
           db' (:db (tx/interpret db ops))]
       (is (= "hellox" (get-in db' [:nodes "a" :props :text])))
       (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -230,7 +230,7 @@
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
                                                   :block-id "a"
                                                   :cursor-pos 0
-                                                  :char "("})
+                                                  :input-char "("})
           db' (:db (tx/interpret db ops))]
       (is (= "()" (get-in db' [:nodes "a" :props :text])))
       (is (= 1 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -242,7 +242,7 @@
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
                                                   :block-id "a"
                                                   :cursor-pos 0
-                                                  :char "**"})
+                                                  :input-char "**"})
           db' (:db (tx/interpret db ops))]
       (is (= "****text" (get-in db' [:nodes "a" :props :text])))
       (is (= 2 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))

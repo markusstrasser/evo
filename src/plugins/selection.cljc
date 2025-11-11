@@ -145,7 +145,8 @@
                          [:type [:= :selection]]
                          [:mode [:= :all-in-view]]]]]
    :handler (fn [db {:keys [mode ids]}]
-              (let [state (get-selection-state db)
+              (let [is-editing? (tree/editing? db)
+                    state (get-selection-state db)
                     props (case mode
                             :replace (calc-select-props ids)
                             :extend (calc-extend-props db state ids)
@@ -179,6 +180,12 @@
                                           (when (seq all-blocks)
                                             (calc-select-props all-blocks))))]
                 (when props
-                  [{:op :update-node
-                    :id const/session-selection-id
-                    :props props}])))})
+                  (cond-> []
+                    ;; INVARIANT: Exit edit mode before applying selection
+                    is-editing? (conj {:op :update-node
+                                       :id const/session-ui-id
+                                       :props {:editing-block-id nil}})
+                    ;; Then apply the selection change
+                    true (conj {:op :update-node
+                                :id const/session-selection-id
+                                :props props})))))})

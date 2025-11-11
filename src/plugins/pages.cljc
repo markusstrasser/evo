@@ -7,7 +7,8 @@
    - Page creation and navigation"
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
-            [kernel.constants :as const]))
+            [kernel.constants :as const]
+            [plugins.context :as ctx]))
 
 ;; ── Query Helpers ─────────────────────────────────────────────────────────────
 
@@ -79,3 +80,52 @@
 (intent/register-intent! :navigate-to-page
   {:doc "Navigate to page by name (from page ref)"
    :handler handle-navigate-to-page})
+
+(intent/register-intent! :follow-link-under-cursor
+  {:doc "Follow link/reference under cursor (Cmd+O in Logseq).
+
+         Detects context at cursor and navigates accordingly:
+         - Page ref [[Page]] → switch to that page
+         - Block ref ((id)) → select/focus that block (TODO)
+         - No ref → no-op
+
+         Mirrors Logseq's Cmd+O behavior."
+   :spec [:map
+          [:type [:= :follow-link-under-cursor]]
+          [:block-id :string]
+          [:cursor-pos :int]]
+   :handler
+   (fn [db {:keys [block-id cursor-pos]}]
+     (let [text (get-in db [:nodes block-id :props :text] "")
+           context (ctx/context-at-cursor text cursor-pos)]
+
+       (case (:type context)
+         ;; Page reference → navigate to page
+         :page-ref
+         (let [page-name (:page-name context)]
+           (if-let [page-id (find-page-by-name db page-name)]
+             [{:op :update-node
+               :id const/session-ui-id
+               :props {:current-page page-id}}]
+             (do
+               #?(:cljs (js/console.warn (str "Page not found: " page-name))
+                  :clj (println (str "Page not found: " page-name)))
+               [])))
+
+         ;; Block reference → select/focus block
+         :block-ref
+         (let [block-uuid (:uuid context)]
+           ;; For now, just select the block. Future: could scroll to it
+           (if (get-in db [:nodes block-uuid])
+             [{:op :update-node
+               :id const/session-selection-id
+               :props {:nodes #{block-uuid}
+                       :focus block-uuid
+                       :anchor block-uuid}}]
+             (do
+               #?(:cljs (js/console.warn (str "Block not found: " block-uuid))
+                  :clj (println (str "Block not found: " block-uuid)))
+               [])))
+
+         ;; No reference under cursor → no-op
+         [])))})
