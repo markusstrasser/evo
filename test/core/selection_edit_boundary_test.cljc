@@ -51,7 +51,7 @@
               ":select must not modify :ui")))
 
       (testing ":toggle-selection intent"
-        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :selection :mode :toggle :idss "c"})]
+        (let [{db1 :db issues :issues} (api/dispatch db0 {:type :selection :mode :toggle :ids "c"})]
           (is (empty? issues) "No validation issues")
           (is (= initial-ui (:ui db1))
               ":toggle-selection must not modify :ui")))

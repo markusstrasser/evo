@@ -79,6 +79,66 @@ test.describe('Shift+Arrow Block Selection', () => {
 
     expect(selectedBlocks).toBeGreaterThan(0);
   });
+
+  test('Shift+Arrow extends TEXT selection within block (not block selection)', async ({ page }) => {
+    // LOGSEQ_SPEC §3 Rule 3: Shift+Arrow should extend text selection when NOT at boundary
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('This is a multiline block of text that wraps');
+
+    // Position cursor in middle of text
+    const blockId = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]').getAttribute('data-block-id');
+    });
+    await setCursorPosition(page, blockId, 8); // After "This is "
+    await page.waitForTimeout(100);
+
+    // Press Shift+ArrowRight several times to select text
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.keyboard.press('Shift+ArrowRight'); // Should select "a m"
+    await page.waitForTimeout(100);
+
+    // Verify TEXT selection exists (not block selection)
+    const { hasTextSelection, selectedText } = await page.evaluate(() => {
+      const sel = window.getSelection();
+      return {
+        hasTextSelection: sel && sel.rangeCount > 0 && sel.toString().length > 0,
+        selectedText: sel ? sel.toString() : ''
+      };
+    });
+
+    expect(hasTextSelection).toBe(true);
+    expect(selectedText.length).toBeGreaterThan(0);
+
+    // Verify NO block-level selection occurred
+    const blockSelectionCount = await page.evaluate(() => {
+      return document.querySelectorAll('.block[style*="background"]').length;
+    });
+    expect(blockSelectionCount).toBe(0); // Should NOT have block selection
+  });
+
+  test('Escape clears text selection', async ({ page }) => {
+    await page.click('[contenteditable="true"]');
+    await page.keyboard.type('Select this text');
+
+    // Select all text with Cmd+A
+    await page.keyboard.press('Meta+A');
+    await page.waitForTimeout(50);
+
+    // Verify selection exists
+    let selectedText = await page.evaluate(() => window.getSelection()?.toString());
+    expect(selectedText.length).toBeGreaterThan(0);
+
+    // Press Escape
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(50);
+
+    // Verify selection cleared and exited edit mode
+    const editingBlock = await page.evaluate(() => {
+      return document.querySelector('[contenteditable="true"]');
+    });
+    expect(editingBlock).toBeNull(); // Should exit edit mode
+  });
 });
 
 test.describe('Word Navigation', () => {

@@ -132,6 +132,16 @@
     (cond
       ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
 
+      ;; Skip Shift+Arrow when editing - let Block component handle text selection
+      ;; (LOGSEQ_SPEC §3 Rule 3: Shift+Arrow extends text selection within block)
+      (and intent-type
+           editing?
+           shift?
+           (contains? #{"ArrowUp" "ArrowDown"} key)
+           (not mod?) ;; Only plain Shift+Arrow, not Cmd+Shift+Arrow (move blocks)
+           (not (.-altKey e)))
+      nil ;; Let event bubble to Block component
+
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
