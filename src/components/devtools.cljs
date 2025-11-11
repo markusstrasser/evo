@@ -10,8 +10,8 @@
   "Single log entry with copy button that includes both ops and DOM diff."
   [{:keys [entry index current-page-id]}]
   (let [{:keys [intent timestamp hotkey]} entry
-        time (js/Date. timestamp)
-        time-str (.toLocaleTimeString time "en-US" #js {:hour "2-digit" :minute "2-digit" :second "2-digit"})]
+        timestamp-obj (js/Date. timestamp)
+        time-str (.toLocaleTimeString timestamp-obj "en-US" #js {:hour "2-digit" :minute "2-digit" :second "2-digit"})]
     [:div.log-entry
      {:style {:padding "10px"
               :margin-bottom "8px"
@@ -172,9 +172,8 @@
          "📋 Copy Last Diff"])]
 
      (if last-entry
-       (let [current-page (q/current-page db)
-             current-page (pages/current-page db)
-            state-before (devtools/format-state-snapshot (:db-before last-entry))
+       (let [current-page (pages/current-page db)
+             state-before (devtools/format-state-snapshot (:db-before last-entry))
              state-after (devtools/format-state-snapshot (:db-after last-entry))]
          [:div {:style {:display "grid"
                         :grid-template-columns "1fr 1fr"

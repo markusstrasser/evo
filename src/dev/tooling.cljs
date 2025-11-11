@@ -134,8 +134,8 @@
 (defn format-log-entry
   "Format a log entry as human-readable text with hotkey and ops."
   [{:keys [intent db-before db-after timestamp hotkey]}]
-  (let [time (js/Date. timestamp)
-        time-str (.toLocaleTimeString time)
+  (let [timestamp-obj (js/Date. timestamp)
+        time-str (.toLocaleTimeString timestamp-obj)
         ops-lines (extract-ops-from-intent intent)]
     (str "═══ " time-str " ═══\n"
          (when hotkey (str "Hotkey: " hotkey "\n"))

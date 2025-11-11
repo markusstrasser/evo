@@ -547,7 +547,9 @@
                                                      (.removeAllRanges sel)
                                                      (.addRange sel range)
                                                      ;; Mark this cursor-pos as applied
-                                                     (aset node "__lastAppliedCursorPos" cursor-pos))))
+                                                     (aset node "__lastAppliedCursorPos" cursor-pos)
+                                                     (on-intent {:type :clear-cursor-position})
+                                                     )))
                                                (catch js/Error e
                                                  (js/console.error "Cursor positioning failed:" e))))))
 
