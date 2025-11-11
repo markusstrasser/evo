@@ -10,9 +10,10 @@ This document spells out the exact end-user experience Evo must provide to match
   - `[F]` folded block (children hidden)
   - `[Z]` zoom root (only this subtree is rendered)
 - Inline markers:
-  - `|` caret position
-  - `«…»` highlighted text selection
-  - `⏎` newline within a block’s text
+- `|` caret position
+- `«…»` highlighted text selection
+- `⏎` newline within a block’s text
+- The `|` caret only appears in `Mode: Edit`. In view/select mode we show focus with `[*]` but never a caret.
 - **Action** line with hotkey (mac-style). Alt = Option, Ctrl = Control.
 - **After** state reflecting exactly what the user sees.
 - Optional **Notes** for state changes (cursor memory, session flags, etc.).
@@ -222,6 +223,8 @@ Mode: Edit
 2. [ ]  B  "Next"
 Notes: Browser extends text selection; no block selection.
 ```
+
+Implementation note: Ensure global shortcut handlers do not capture `Shift+Arrow` while editing unless the caret is on the first/last row. Logseq keeps the event inside the editor so the browser can extend the in-block selection; only boundary cases should dispatch block-range selection intents.
 
 ### 2.5 Cmd+A While Editing (select parent block)
 ```
