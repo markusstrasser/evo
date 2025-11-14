@@ -13,11 +13,13 @@
                  [{:key "Enter"} {:type :enter-edit-selected}]]
    :editing     [;; LOGSEQ PARITY: Escape → exit edit WITHOUT selecting block
                  [{:key "Escape"} {:type :exit-edit}]
+                 ;; LOGSEQ PARITY: Enter while editing → split block, create new below
+                 [{:key "Enter"} {:type :context-aware-enter :block-id :editing-block-id :cursor-pos :cursor-pos}]
+                 ;; LOGSEQ PARITY: Shift+Enter inserts literal newline (doesn't split block)
+                 [{:key "Enter" :shift true} {:type :insert-newline :block-id :editing-block-id :cursor-pos :cursor-pos}]
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace" :mod true} :merge-with-prev]
-                 ;; LOGSEQ PARITY: Shift+Enter inserts literal newline (doesn't split block)
-                 [{:key "Enter" :shift true} {:type :insert-newline :block-id :editing-block-id :cursor-pos :cursor-pos}]
                  ;; Text formatting (requires selection)
                  [{:key "b" :mod true} {:type :format-selection :marker "**"}]
                  [{:key "i" :mod true} {:type :format-selection :marker "__"}]
