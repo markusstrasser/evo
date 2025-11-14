@@ -166,6 +166,9 @@
   .collapse {
     visibility: collapse;
   }
+  .collapse\! {
+    visibility: collapse !important;
+  }
   .invisible {
     visibility: hidden;
   }

@@ -77,15 +77,10 @@
                                          :direction :down
                                          :block-id :editing-block-id
                                          :cursor-pos :cursor-pos}]
-                 ;; Left/Right at edges navigate to adjacent blocks
-                 [{:key "ArrowLeft"} {:type :navigate-to-adjacent
-                                      :direction :left
-                                      :block-id :editing-block-id
-                                      :cursor-pos :cursor-pos}]
-                 [{:key "ArrowRight"} {:type :navigate-to-adjacent
-                                       :direction :right
-                                       :block-id :editing-block-id
-                                       :cursor-pos :cursor-pos}]]
+                 ;; NOTE: ArrowLeft/Right are NOT bound here
+                 ;; Browser handles cursor movement within the block (default contenteditable behavior)
+                 ;; Navigation to adjacent blocks (at cursor edges) is handled at component level
+                 ]
    :global      [;; Multi-selection (works everywhere, including edit mode)
                  [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
                  [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
