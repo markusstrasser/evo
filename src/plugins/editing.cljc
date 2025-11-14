@@ -34,10 +34,41 @@
                                                :cursor-position cursor-at}}])})
 
 (intent/register-intent! :exit-edit
-                         {:doc "Exit edit mode. Ephemeral - not in undo/redo history."
+                         {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
                           :spec [:map [:type [:= :exit-edit]]]
                           :handler (fn [_db _intent]
-                                     [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}])})
+                                     [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil :cursor-position nil}}])})
+
+(intent/register-intent! :exit-edit-and-select
+                         {:doc "Exit edit mode and select the block (Logseq parity).
+                                This is the default Escape behavior in Logseq."
+                          :spec [:map [:type [:= :exit-edit-and-select]]]
+                          :handler (fn [db _intent]
+                                     (when-let [editing-block-id (get-in db [:nodes const/session-ui-id :props :editing-block-id])]
+                                       [{:op :update-node
+                                         :id const/session-ui-id
+                                         :props {:editing-block-id nil :cursor-position nil}}
+                                        {:op :update-node
+                                         :id const/session-selection-id
+                                         :props {:nodes #{editing-block-id}
+                                                 :focus editing-block-id
+                                                 :anchor editing-block-id}}]))})
+
+(intent/register-intent! :enter-edit-selected
+                         {:doc "Enter edit mode in selected block at end of text (Logseq parity).
+                                Does NOT create a new block."
+                          :spec [:map [:type [:= :enter-edit-selected]]]
+                          :handler (fn [db _intent]
+                                     (let [focused-block (get-in db [:nodes const/session-selection-id :props :focus])]
+                                       (when focused-block
+                                         (let [text-length (count (get-in db [:nodes focused-block :props :text] ""))]
+                                           [{:op :update-node
+                                             :id const/session-selection-id
+                                             :props {:nodes #{} :focus nil :anchor nil}}
+                                            {:op :update-node
+                                             :id const/session-ui-id
+                                             :props {:editing-block-id focused-block
+                                                     :cursor-position text-length}}]))))})
 
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."

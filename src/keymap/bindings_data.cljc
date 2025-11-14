@@ -9,8 +9,10 @@
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace"} :delete-selected]
-                 [{:key "Enter"} :create-and-enter-edit]]
-   :editing     [[{:key "Escape"} :exit-edit]
+                 ;; LOGSEQ PARITY: Enter on selected block → enter edit mode (don't create new block)
+                 [{:key "Enter"} {:type :enter-edit-selected}]]
+   :editing     [;; LOGSEQ PARITY: Escape → exit edit and select the block
+                 [{:key "Escape"} {:type :exit-edit-and-select}]
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace" :mod true} :merge-with-prev]
