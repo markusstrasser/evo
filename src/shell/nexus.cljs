@@ -14,7 +14,6 @@
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [nexus.action-log :as action-log]
             [kernel.api :as api]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
@@ -183,10 +182,9 @@
   (nxr/register-action! :editing/smart-split smart-split)
   (nxr/register-action! :editing/escape escape-edit)
 
-  ;; Dev observability: Install action log for Dataspex/DevTools
+  ;; Dev observability: Initialize window.__nexusLog array
   (when ^boolean goog.DEBUG
-    (set! js/window.__nexusLog #js [])
-    (action-log/inspect)))
+    (set! js/window.__nexusLog #js [])))
 
 ;; ── Dispatch Façade ───────────────────────────────────────────────────────────
 

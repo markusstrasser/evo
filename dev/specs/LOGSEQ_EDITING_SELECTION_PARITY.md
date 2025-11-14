@@ -31,17 +31,23 @@ This spec defines the target end-state: Logseq-compatible keyboard semantics wit
 - Global keymap continues to power non-editing shortcuts, but editing-context bindings that duplicate component logic are removed.
 
 ### 2.2 Requirements
-1. **Editing keypath ownership**
+1. **Adopt Nexus for action dispatch**
+   - Add `no.cjohansen/nexus` to `deps.edn` (done) and initialize a Nexus dispatcher inside `shell/blocks_ui.cljs`.
+   - Pipe DOM keyboard events into Nexus actions (`[:key/arrow-up {:editing? true ...}]`) so both global shortcuts and block-local handlers flow through the same queue.
+   - Provide adapters so components call `(nexus/dispatch! [:editing/navigate-up payload])` instead of invoking `handle-intent` directly. This becomes the single choke point for instrumentation/tests.
+2. **Editing keypath ownership**
    - Remove `Shift+Arrow`, `ArrowUp/Down`, and `Enter` bindings from `keymap/bindings_data.cljc`’s `:editing` context when those behaviors are handled inside `components/block.cljs`.
-   - `handle-global-keydown` must ignore those keys if `q/editing?` is true.
-2. **Replicant lifecycle usage**
+   - `handle-global-keydown` must ignore those keys if `q/editing?` is true; Nexus still receives the event from the component.
+3. **Replicant lifecycle usage**
    - `:replicant/on-render` guards for text updates must keep the `__lastAppliedCursorPos` check (documented in §4 below).
    - Mock-text updates use both element and text (`(update-mock-text! node text)`) to maintain coordinate parity.
-3. **Docs alignment**
-   - `docs/REPLICANT.md` must reflect the function-based event handlers actually used in Evo, describe the double-dispatch pitfall, and present the corrected lifecycle patterns.
+4. **Docs alignment**
+   - Update `docs/REPLICANT.md`, `CLAUDE.md`, and team onboarding docs to describe the Nexus-based dispatch pipeline and forbid the old dual-handler pattern.
 
 ### 2.3 Deliverables
+- Nexus bootstrap module (`src/shell/nexus.cljs` or similar) plus wiring from `shell/blocks_ui.cljs`.
 - Code change removing duplicate keymap bindings and enriching block handlers if any payload fields are missing.
+- Instrumented action log (behind `dev?` flag) so Playwright tests can assert number + shape of dispatched actions.
 - Documentation update (see §7) explaining the single-dispatch rule and the cursor-position guard.
 
 ---
@@ -137,9 +143,10 @@ Extend `session/selection` props:
 1. **State + helpers**
    - Add `:direction` to selection state, migrate existing code to preserve backwards compatibility (default to `nil`).
    - Split `calc-extend-props` into keyboard vs mouse variants.
-2. **Event handling**
+2. **Event handling / Nexus**
+   - Initialize a Nexus dispatcher (single atom) and expose helpers so components emit actions rather than calling `handle-intent` directly.
    - Remove redundant keymap bindings, consolidate editing key handling inside the block component.
-   - Ensure `handle-global-keydown` short-circuits Shift+Arrow when editing.
+   - Ensure `handle-global-keydown` short-circuits Shift+Arrow when editing while still routing all other keys through Nexus.
 3. **Visibility filtering**
    - Replace `:zoom-id` lookups with `q/zoom-root` or pass `visible-in-context?` to selection helpers.
 4. **Docs/tests**

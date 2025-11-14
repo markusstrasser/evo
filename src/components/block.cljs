@@ -126,18 +126,15 @@
         (.preventDefault e)
         (.collapseToStart selection))
 
-      ;; At first row - navigate to previous block with cursor memory
+      ;; At first row - navigate to previous block with cursor memory via Nexus
       (:first-row? cursor-pos)
       (do (.preventDefault e)
-          ;; NEW: Use cursor-memory navigation instead of simple :prev
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            (on-intent {:type :navigate-with-cursor-memory
-                        :direction :up
-                        :current-block-id block-id
-                        :current-text text-content
-                        :current-cursor-pos cursor-offset})))
+            ;; Emit Nexus action instead of intent
+            (on-intent [[:editing/navigate-up {:block-id block-id
+                                               :cursor-row :first}]])))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -152,18 +149,15 @@
         (.preventDefault e)
         (.collapseToEnd selection))
 
-      ;; At last row - navigate to next block with cursor memory
+      ;; At last row - navigate to next block with cursor memory via Nexus
       (:last-row? cursor-pos)
       (do (.preventDefault e)
-          ;; NEW: Use cursor-memory navigation instead of simple :next
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            (on-intent {:type :navigate-with-cursor-memory
-                        :direction :down
-                        :current-block-id block-id
-                        :current-text text-content
-                        :current-cursor-pos cursor-offset})))
+            ;; Emit Nexus action instead of intent
+            (on-intent [[:editing/navigate-down {:block-id block-id
+                                                 :cursor-row :last}]])))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -182,7 +176,9 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToStart sel)))
-      (on-intent {:type :selection :mode :extend-prev}))))
+      ;; Emit Nexus action instead of intent
+      (on-intent [[:selection/extend-prev {:block-id block-id
+                                           :direction :backward}]]))))
 
 (defn handle-shift-arrow-down [e db block-id on-intent]
   "Handle Shift+Down: text selection within block OR block selection at boundary.
@@ -198,7 +194,9 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToEnd sel)))
-      (on-intent {:type :selection :mode :extend-next}))))
+      ;; Emit Nexus action instead of intent
+      (on-intent [[:selection/extend-next {:block-id block-id
+                                           :direction :forward}]]))))
 
 (defn handle-arrow-left [e db block-id on-intent]
   "Handle left arrow key.
@@ -260,15 +258,14 @@
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
-    ;; Use :smart-split instead of :split-at-cursor for context-aware behavior
-    (on-intent {:type :smart-split
-                :block-id block-id
-                :cursor-pos cursor-pos})))
+    ;; Emit Nexus action instead of intent
+    (on-intent [[:editing/smart-split {:block-id block-id
+                                       :cursor-pos cursor-pos}]])))
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
-  ;; Just exit edit mode - element will unmount, view will mount
-  (on-intent {:type :exit-edit}))
+  ;; Emit Nexus action instead of intent
+  (on-intent [[:editing/escape {:block-id block-id}]]))
 
 (defn handle-backspace [e db block-id on-intent]
   (let [target (.-target e)

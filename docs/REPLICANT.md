@@ -33,6 +33,7 @@
 - **While editing**, arrow keys (including Shift+Arrow) and Enter are handled entirely inside `components/block.cljs`. The component reads DOM cursor data and dispatches intents with the correct payload.
 - The global keymap (`keymap/bindings_data.cljc`) must not bind those keys in the `:editing` context; double-dispatch causes cursor jumps and selection glitches.
 - If you add a new editing shortcut, either wire it through the component or document why it is safe to keep it in the global handler (e.g., when it never needs DOM data).
+- All component handlers should call the Nexus dispatcher (`shell.nexus/dispatch!`). That keeps instrumentation/testing simple and ensures exactly one action per DOM event.
 
 Event handlers as **data vectors** instead of functions:
 

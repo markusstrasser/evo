@@ -247,6 +247,9 @@
   .table {
     display: table;
   }
+  .shrink {
+    flex-shrink: 1;
+  }
   .grow {
     flex-grow: 1;
   }

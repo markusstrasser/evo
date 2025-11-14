@@ -4,6 +4,7 @@
 
   :dependencies
   [[no.cjohansen/replicant "2025.06.21"]
+   [no.cjohansen/nexus "2025.10.2"]
    [metosin/malli "0.19.1"]
    [medley "1.4.0"]
    [datascript "1.7.5"]
