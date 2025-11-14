@@ -15,6 +15,8 @@
 
 ## Event Handlers: Two Approaches
 
+> **Current Evo practice:** All production handlers are simple functions (see `components/block.cljs`). The data-driven pattern below is aspirational—use it only if you also wire the `set-dispatch!` plumbing.
+
 ### Function-Based (Simple, Direct)
 
 ```clojure
@@ -23,6 +25,14 @@
 ```
 
 ### Data-Driven (Testable, Serializable)
+
+*Optional / not yet enabled in the shipped UI.*
+
+### Editing Keys: Single Dispatcher Rule
+
+- **While editing**, arrow keys (including Shift+Arrow) and Enter are handled entirely inside `components/block.cljs`. The component reads DOM cursor data and dispatches intents with the correct payload.
+- The global keymap (`keymap/bindings_data.cljc`) must not bind those keys in the `:editing` context; double-dispatch causes cursor jumps and selection glitches.
+- If you add a new editing shortcut, either wire it through the component or document why it is safe to keep it in the global handler (e.g., when it never needs DOM data).
 
 Event handlers as **data vectors** instead of functions:
 
@@ -152,11 +162,9 @@ Lifecycle hooks receive a map with these keys:
   (.scrollIntoView node))
 ```
 
-### 🐛 BUG: `mounting?` Does NOT Exist (FIXED)
+### Historical Bug: `mounting?`
 
-**This was a bug in a previous version of the codebase, but has since been fixed.**
-
-The `src/components/block.cljs` file no longer uses the non-existent `mounting?` key. It now correctly uses `:replicant/life-cycle` to determine the lifecycle phase.
+Older versions of the block component destructured a `mounting?` flag that Replicant never provided. That code has been removed; the component now reads `:replicant/life-cycle` and uses `:replicant/on-mount` for mount-only work.
 
 ```clojure
 ;; ❌ PREVIOUSLY WRONG - mounting? doesn't exist in Replicant
@@ -173,7 +181,7 @@ The `src/components/block.cljs` file no longer uses the non-existent `mounting?`
   ...)
 ```
 
-**Location of bug**: `src/components/block.cljs:516` (FIXED)
+**Historical reference**: see `docs/VIEW_TESTING_SUMMARY.md` for the postmortem.
 
 ### Memory: Storing State Across Renders
 
@@ -237,7 +245,7 @@ You MUST call `set-dispatch!` to enable lifecycle hooks:
             (.focus node)))}]
 ```
 
-**See**: `src/components/block.cljs` for real-world usage (but note the `mounting?` bug!).
+**See**: `src/components/block.cljs` for the shipped implementation (includes the `:replicant/life-cycle` guard described below).
 
 ---
 
@@ -307,10 +315,10 @@ We use `:replicant/on-render` for **ephemeral DOM state only**:
                            (set-cursor-position! node cursor-pos))
 
                          ;; Update mock-text for boundary detection
-                         (update-mock-text! (.-textContent node)))}]
+                         (update-mock-text! node (.-textContent node)))}]
 ```
 
-**Key Insight:** Cursor position is stored in DB (`:cursor-position`), but **applying** it requires DOM manipulation in lifecycle hook.
+**Key Insight:** Cursor position is stored in DB (`:cursor-position`), but **applying** it requires DOM manipulation in lifecycle hook. To avoid reapplying the same hint on every render, store the last applied value on the DOM node (see `__lastAppliedCursorPos` in `components/block.cljs`).
 
 ### Pattern: Atoms for Component-Local State
 
@@ -349,9 +357,13 @@ Replicant's `:replicant/on-render` enables Logseq's mock-text technique:
                          :visibility "hidden"
                          :white-space "pre-wrap"}}]
 
-;; On every input, update mock-text
-(defn update-mock-text! [text]
+;; On every input, update mock-text to mirror the editing element's position/width
+(defn update-mock-text! [elem text]
   (when-let [mock-elem (js/document.getElementById "mock-text")]
+    (let [rect (.getBoundingClientRect elem)]
+      (set! (.. mock-elem -style -top) (str (.-top rect) "px"))
+      (set! (.. mock-elem -style -left) (str (.-left rect) "px"))
+      (set! (.. mock-elem -style -width) (str (.-width rect) "px")))
     (set! (.-innerHTML mock-elem) "")
     (doseq [[idx c] (map-indexed vector (seq text))]
       (let [span (.createElement js/document "span")]
@@ -562,30 +574,18 @@ See **`docs/REPLICANT_TESTING.md`** for:
        (handler-data event-data)))))
 ```
 
-### `mounting?` is `nil` or Undefined
+### `mounting?` (legacy helper)
 
-**Symptom:** Destructuring `mounting?` returns `nil`:
+If you ever see `{:replicant/keys [mounting?]}` in older code, replace it with:
 ```clojure
-:replicant/on-render (fn [{:replicant/keys [node mounting?]}]
-  (println mounting?) ;; => nil
-  ...)
-```
-
-**Cause:** **`mounting?` does not exist** in Replicant. This is a bug in `src/components/block.cljs:516`.
-
-**Fix:** Use `:replicant/life-cycle` instead:
-```clojure
-;; Option 1: Check lifecycle phase
 :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
   (when (= life-cycle :replicant.life-cycle/mount)
-    ;; Mount-only logic
     ...))
 
-;; Option 2: Use dedicated hook (better!)
 :replicant/on-mount (fn [{:replicant/keys [node]}]
-  ;; This only runs on mount
   ...)
 ```
+That keeps the modern API while honoring the intent of the historical snippet.
 
 ### Event Handlers Don't Work
 
