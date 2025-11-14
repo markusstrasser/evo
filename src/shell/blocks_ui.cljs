@@ -13,6 +13,9 @@
             [kernel.history :as H]
             [components.block :as block]
             [components.sidebar :as sidebar]
+            [components.devtools :as devtools]
+            [dev.tooling :as dev]
+            [shell.nexus :as nexus]
             [plugins.selection]
             [plugins.editing]
             [plugins.navigation] ;; Load to register navigation intents (cursor memory)
@@ -89,9 +92,13 @@
   [intent-map]
   (js/console.log "Intent:" (pr-str intent-map))
   (swap! !db (fn [db]
-               (let [{:keys [db issues]} (api/dispatch db intent-map)]
+               (let [db-before db
+                     {:keys [db issues]} (api/dispatch db intent-map)
+                     db-after db]
                  (when (seq issues)
                    (js/console.error "Intent validation failed:" (pr-str issues)))
+                 ;; Log to dev tools (captures before/after state)
+                 (dev/log-dispatch! intent-map db-before db-after)
                  db))))
 
 ;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
@@ -126,6 +133,16 @@
     (cond
       ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
 
+      ;; Skip Shift+Arrow when editing - let Block component handle text selection
+      ;; (LOGSEQ_SPEC §3 Rule 3: Shift+Arrow extends text selection within block)
+      (and intent-type
+           editing?
+           shift?
+           (contains? #{"ArrowUp" "ArrowDown"} key)
+           (not mod?) ;; Only plain Shift+Arrow, not Cmd+Shift+Arrow (move blocks)
+           (not (.-altKey e)))
+      nil ;; Let event bubble to Block component
+
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
@@ -152,10 +169,12 @@
                                    (assoc intent-with-focus :block-id editing?)
                                    intent-with-focus)
                   ;; Enrich format-selection intent with DOM selection data
-                  enriched-intent (if (and (map? intent-with-id)
-                                           (= (:type intent-with-id) :format-selection)
-                                           editing?
-                                           editable-el)
+                  enriched-intent (cond
+                                    ;; Format-selection: get DOM selection range
+                                    (and (map? intent-with-id)
+                                         (= (:type intent-with-id) :format-selection)
+                                         editing?
+                                         editable-el)
                                     (try
                                       (let [sel (.getSelection js/window)]
                                         (when (and sel (pos? (.-rangeCount sel)))
@@ -170,7 +189,24 @@
                                       (catch js/Error e
                                         (js/console.error "Selection read failed:" e)
                                         nil)) ;; Return nil if enrichment fails
-                                    intent-with-id)]
+
+                                    ;; Follow-link-under-cursor: inject cursor position
+                                    (and (map? intent-with-id)
+                                         (= (:type intent-with-id) :follow-link-under-cursor)
+                                         (= (:cursor-pos intent-with-id) :cursor-pos)
+                                         editing?
+                                         editable-el)
+                                    (try
+                                      (let [sel (.getSelection js/window)]
+                                        (when sel
+                                          (let [cursor-pos (.-anchorOffset sel)]
+                                            (assoc intent-with-id :cursor-pos cursor-pos))))
+                                      (catch js/Error e
+                                        (js/console.error "Cursor position read failed:" e)
+                                        nil))
+
+                                    ;; Default: no enrichment needed
+                                    :else intent-with-id)]
               (when enriched-intent ;; Only dispatch if enrichment succeeded
                 (cond
                 ;; Map intent: use directly (with injected block-id if needed)
@@ -217,20 +253,6 @@
                                :depth 0
                                :on-intent on-intent}))
                children))))
-
-(defn DebugPanel [db]
-  [:div.debug-panel
-   {:style {:margin-top "30px"
-            :padding "15px"
-            :background-color "#f8f9fa"
-            :border-radius "4px"
-            :font-family "monospace"
-            :font-size "12px"}}
-   [:div [:strong "Selection: "] (pr-str (q/selection db))]
-   [:div [:strong "Focus: "] (pr-str (q/focus db))]
-   [:div [:strong "Editing: "] (pr-str (q/editing-block-id db))]
-   [:div {:style {:margin-top "10px"}} [:strong "Can undo: "] (str (H/can-undo? db))]
-   [:div [:strong "Can redo: "] (str (H/can-redo? db))]])
 
 (defn HotkeysReference []
   [:div.hotkeys-footer
@@ -288,7 +310,13 @@
                :margin-left "220px" ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
-               :max-width "800px"}}
+               :max-width "800px"}
+       ;; Background click to clear selection (Logseq parity)
+       ;; Blocks call stopPropagation, so this only fires for empty background clicks
+       :on {:click (fn [e]
+                     ;; Only clear if not editing and clicking empty background
+                     (when-not (q/editing-block-id db)
+                       (handle-intent {:type :selection :mode :clear})))}}
 
       ;; Mock-text for cursor detection
       (MockText)
@@ -316,8 +344,8 @@
                        :color "rgb(156, 163, 175)"}}
          [:p "Select a page from the sidebar to begin"]])
 
-      ;; Debug info
-      (DebugPanel db)
+      ;; Dev tools with ops log and DOM diff
+      (devtools/DevToolsPanel {:db db})
 
       ;; Hotkeys reference
       (HotkeysReference)]]))
@@ -334,18 +362,28 @@
   ;; Initialize keyboard bindings (explicit, not side-effect)
   (bindings/reload!)
 
-  ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
+  ;; Initialize Nexus action pipeline
+  (nexus/init!)
+
+  ;; Enable lifecycle hooks + Nexus dispatch
+  ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
   (d/set-dispatch!
    (fn [event-data handler-data]
      (cond
-        ;; Handle lifecycle hooks
+       ;; Handle lifecycle hooks
        (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
        (when (fn? handler-data)
          (handler-data event-data))
 
-        ;; Handle DOM events (if we use data-driven events in the future)
+       ;; Handle DOM events via Nexus
        (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (when (fn? handler-data)
+       (cond
+         ;; Data-driven Nexus actions (preferred)
+         (vector? handler-data)
+         (nexus/dispatch! !db event-data handler-data)
+
+         ;; Legacy function-based handlers (temporary during migration)
+         (fn? handler-data)
          (handler-data (:replicant/dom-event event-data))))))
 
   ;; Set up global keyboard listener (Cmd+Z, etc)
@@ -374,7 +412,7 @@
                             (.addRange sel range)))
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
-            ;; Clear pending selection after applying
+                    ;; Clear pending selection after applying
                     (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
 
   (render!))

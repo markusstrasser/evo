@@ -62,28 +62,27 @@
     (is (= 2 (nav/get-target-cursor-pos "hi" 10 :down)))))
 
 (deftest get-target-cursor-pos-direction-test
-  (testing "Navigate up - use first line"
+  (testing "Navigate up - use LAST line (Logseq behavior)"
     ;; Target: "first line\nsecond line"
     ;; line-pos=5, direction=:up
-    ;; Should use first line: "first line" and place at position 5
-    (is (= 5 (nav/get-target-cursor-pos "first line\nsecond line" 5 :up))))
+    ;; LOGSEQ: UP uses LAST line: "second line"
+    ;; Position in last line = 5, absolute position = 11 (first line) + 1 (\n) + 5 = 16
+    (is (= 16 (nav/get-target-cursor-pos "first line\nsecond line" 5 :up))))
 
-  (testing "Navigate down - use last line"
+  (testing "Navigate down - use FIRST line (Logseq behavior)"
     ;; Target: "first line\nsecond line"
     ;; line-pos=5, direction=:down
-    ;; Should use last line: "second line"
-    ;; Position in last line = 5, absolute position = 11 (first line) + 1 (\n) + 5 = 17? 
-    ;; Wait, let me recalculate: "first line" = 10 chars, \n = 1, so start of second line is 11
-    ;; Position 5 in "second line" = 11 + 5 = 16
-    (is (= 16 (nav/get-target-cursor-pos "first line\nsecond line" 5 :down)))))
+    ;; LOGSEQ: DOWN uses FIRST line: "first line"
+    ;; Position 5 in "first line" = 5
+    (is (= 5 (nav/get-target-cursor-pos "first line\nsecond line" 5 :down)))))
 
 (deftest get-target-cursor-pos-multi-line-down-test
-  (testing "Navigate down to multi-line block - use last line"
+  (testing "Navigate down to multi-line block - use FIRST line (Logseq behavior)"
     ;; Target: "line 1\nline 2\nline 3"
     ;; line-pos=3, direction=:down
-    ;; Should use "line 3" (last line)
-    ;; Absolute position: "line 1\n" (7) + "line 2\n" (7) + 3 = 17
-    (is (= 17 (nav/get-target-cursor-pos "line 1\nline 2\nline 3" 3 :down)))))
+    ;; LOGSEQ: DOWN uses FIRST line: "line 1"
+    ;; Position 3 in "line 1" = 3
+    (is (= 3 (nav/get-target-cursor-pos "line 1\nline 2\nline 3" 3 :down)))))
 
 (deftest get-target-cursor-pos-empty-block-test
   (testing "Empty target block"
@@ -193,19 +192,23 @@
       (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
 
 (deftest navigate-no-sibling-throws-test
-  (testing "Arrow navigation with no sibling throws error"
+  (testing "Arrow navigation with no sibling returns no-op (Logseq behavior)"
     (let [db (-> (DB/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "only block"}}
                                 {:op :place :id "a" :under :doc :at :last}])
-                 :db)]
+                 :db)
+          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+                                          :direction :down
+                                          :current-block-id "a"
+                                          :current-text "only block"
+                                          :current-cursor-pos 5})]
 
-      ;; Should throw when trying to navigate down from last block
-      (is (thrown? #?(:clj Exception :cljs js/Error)
-                   (intent/apply-intent db {:type :navigate-with-cursor-memory
-                                      :direction :down
-                                      :current-block-id "a"
-                                      :current-text "only block"
-                                      :current-cursor-pos 5}))))))
+      ;; Should not throw, but return no-op that keeps cursor in place at boundary
+      (is (some? result))
+      ;; Should stay in same block
+      (is (= "a" (get-in result [:ops 0 :props :editing-block-id])))
+      ;; Cursor should be at end (going down with no target)
+      (is (= 10 (get-in result [:ops 0 :props :cursor-position]))))))
 
 (deftest navigate-multi-line-cursor-memory-test
   (testing "Navigate between multi-line blocks preserves column"
@@ -228,9 +231,9 @@
       ;; Line pos should be 3 (position within "line 3")
       (is (= 3 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
 
-      ;; Target cursor position: should land at position 3 in "baz" (last line of target)
-      ;; "foo\n" (4) + "bar\n" (4) + 3 = 11
-      (is (= :end (get-in (:ops result) [2 :props :cursor-position])))))) ; "baz" is only 3 chars, so :end
+      ;; Target cursor position: LOGSEQ behavior - going DOWN lands on FIRST line "foo"
+      ;; Position 3 in "foo" (which is only 3 chars) = numeric 3 (not :end keyword)
+      (is (= 3 (get-in (:ops result) [2 :props :cursor-position])))))) ; "foo" is 3 chars, position 3
 
 ;; ── Edge cases and integration tests ──────────────────────────────────────────
 

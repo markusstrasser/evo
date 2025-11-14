@@ -1,6 +1,7 @@
 {:paths   ["src" "test" "dev" "agent"]
  :deps
  {no.cjohansen/replicant                {:mvn/version "2025.06.21"}
+  no.cjohansen/nexus                    {:mvn/version "2025.10.2"}
   org.clojure/clojurescript             {:mvn/version "1.12.42"}
   metosin/malli                         {:mvn/version "0.19.1"}
   org.clojure/core.match                {:mvn/version "1.1.0"}
@@ -52,8 +53,6 @@
                              :exec-fn     kaocha.runner/exec-fn
                              :exec-args   {:color?     true
                                            :fail-fast? false}}}}
-
-
 
 
 

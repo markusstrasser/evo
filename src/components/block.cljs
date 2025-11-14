@@ -126,18 +126,15 @@
         (.preventDefault e)
         (.collapseToStart selection))
 
-      ;; At first row - navigate to previous block with cursor memory
+      ;; At first row - navigate to previous block with cursor memory via Nexus
       (:first-row? cursor-pos)
       (do (.preventDefault e)
-          ;; NEW: Use cursor-memory navigation instead of simple :prev
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            (on-intent {:type :navigate-with-cursor-memory
-                        :direction :up
-                        :current-block-id block-id
-                        :current-text text-content
-                        :current-cursor-pos cursor-offset})))
+            ;; Emit Nexus action instead of intent
+            (on-intent [[:editing/navigate-up {:block-id block-id
+                                               :cursor-row :first}]])))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -152,18 +149,15 @@
         (.preventDefault e)
         (.collapseToEnd selection))
 
-      ;; At last row - navigate to next block with cursor memory
+      ;; At last row - navigate to next block with cursor memory via Nexus
       (:last-row? cursor-pos)
       (do (.preventDefault e)
-          ;; NEW: Use cursor-memory navigation instead of simple :next
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            (on-intent {:type :navigate-with-cursor-memory
-                        :direction :down
-                        :current-block-id block-id
-                        :current-text text-content
-                        :current-cursor-pos cursor-offset})))
+            ;; Emit Nexus action instead of intent
+            (on-intent [[:editing/navigate-down {:block-id block-id
+                                                 :cursor-row :last}]])))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -171,24 +165,38 @@
 (defn handle-shift-arrow-up [e db block-id on-intent]
   "Handle Shift+Up: text selection within block OR block selection at boundary.
 
+   Logseq parity (§4.1):
    - NOT at first row → Let browser handle (text selection)
-   - At first row → Extend block selection upward"
+   - At first row → Collapse text selection to start, extend block selection upward"
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:first-row? cursor-pos)
       (.preventDefault e)
-      (on-intent {:type :selection :mode :extend-prev}))))
+      ;; Collapse text selection to start before extending block selection
+      (when-let [sel (.getSelection js/window)]
+        (when (and sel (pos? (.-rangeCount sel)))
+          (.collapseToStart sel)))
+      ;; Emit Nexus action instead of intent
+      (on-intent [[:selection/extend-prev {:block-id block-id
+                                           :direction :backward}]]))))
 
 (defn handle-shift-arrow-down [e db block-id on-intent]
   "Handle Shift+Down: text selection within block OR block selection at boundary.
 
+   Logseq parity (§4.1):
    - NOT at last row → Let browser handle (text selection)
-   - At last row → Extend block selection downward"
+   - At last row → Collapse text selection to end, extend block selection downward"
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:last-row? cursor-pos)
       (.preventDefault e)
-      (on-intent {:type :selection :mode :extend-next}))))
+      ;; Collapse text selection to end before extending block selection
+      (when-let [sel (.getSelection js/window)]
+        (when (and sel (pos? (.-rangeCount sel)))
+          (.collapseToEnd sel)))
+      ;; Emit Nexus action instead of intent
+      (on-intent [[:selection/extend-next {:block-id block-id
+                                           :direction :forward}]]))))
 
 (defn handle-arrow-left [e db block-id on-intent]
   "Handle left arrow key.
@@ -200,7 +208,7 @@
   (let [target (.-target e)
         selection (.getSelection js/window)
         at-start? (and (= (.-anchorOffset selection) 0)
-                      (= (.-anchorNode selection) (.-firstChild target)))]
+                       (= (.-anchorNode selection) (.-firstChild target)))]
     (cond
       ;; Has selection - collapse to start
       (has-text-selection?)
@@ -211,9 +219,9 @@
       at-start?
       (do (.preventDefault e)
           (on-intent {:type :navigate-to-adjacent
-                     :direction :up
-                     :current-block-id block-id
-                     :cursor-position :max}))  ; Enter previous at end
+                      :direction :up
+                      :current-block-id block-id
+                      :cursor-position :max})) ; Enter previous at end
 
       ;; Middle - let browser handle
       :else nil)))
@@ -239,9 +247,9 @@
       at-end?
       (do (.preventDefault e)
           (on-intent {:type :navigate-to-adjacent
-                     :direction :down
-                     :current-block-id block-id
-                     :cursor-position 0}))  ; Enter next at start
+                      :direction :down
+                      :current-block-id block-id
+                      :cursor-position 0})) ; Enter next at start
 
       ;; Middle - let browser handle
       :else nil)))
@@ -250,15 +258,14 @@
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
-    ;; Use :smart-split instead of :split-at-cursor for context-aware behavior
-    (on-intent {:type :smart-split
-                :block-id block-id
-                :cursor-pos cursor-pos})))
+    ;; Emit Nexus action instead of intent
+    (on-intent [[:editing/smart-split {:block-id block-id
+                                       :cursor-pos cursor-pos}]])))
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
-  ;; Just exit edit mode - element will unmount, view will mount
-  (on-intent {:type :exit-edit}))
+  ;; Emit Nexus action instead of intent
+  (on-intent [[:editing/escape {:block-id block-id}]]))
 
 (defn handle-backspace [e db block-id on-intent]
   (let [target (.-target e)
@@ -512,45 +519,57 @@
                     :min-width "1px"
                     :display "inline-block"}
             :data-block-id block-id
-            ;; Use :replicant/on-render which fires on every render, not just mount
-            :replicant/on-render (fn [{:replicant/keys [node mounting?]}]
-                                   (let [cursor-pos (q/cursor-position db)]
+            ;; CRITICAL: Add key to distinguish from .content-view span
+            ;; This ensures Replicant treats them as different elements during mode transitions
+            :key (str block-id "-edit")
+            ;; Focus and cursor positioning on every render
+            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+                                   ;; Don't run on unmount
+                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
+                                     (let [cursor-pos (q/cursor-position db)]
 
-                                     ;; Set text content ONLY on initial mount
-                                     ;; This ensures we show the raw syntax (((id))) not rendered text
-                                     (when mounting?
-                                       (set! (.-textContent node) text))
+                                       ;; CRITICAL FIX: Only set text content on MOUNT or when empty
+                                       ;; Setting textContent destroys cursor position, so avoid it during navigation
+                                       ;; This fixes the bug where cursor jumps to position 0 on down-arrow navigation
+                                       (when (or (= life-cycle :replicant.life-cycle/mount)
+                                                 (empty? (.-textContent node)))
+                                         (set! (.-textContent node) text))
 
-                                     ;; Focus the element
-                                     (.focus node)
+                                       ;; Apply cursor position ONCE per cursor-pos value
+                                       ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
+                                       ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
+                                       (if cursor-pos
+                                         (let [last-applied (aget node "__lastAppliedCursorPos")]
+                                           (when (not= cursor-pos last-applied)
+                                             (try
+                                               (let [range (.createRange js/document)
+                                                     sel (.getSelection js/window)
+                                                     text-node (.-firstChild node)]
+                                                 ;; Position cursor in the text node
+                                                 (when (and text-node (= (.-nodeType text-node) 3))
+                                                   (let [text-length (.-length text-node)
+                                                         pos (cond
+                                                               (= cursor-pos :start) 0
+                                                               (= cursor-pos :end) text-length
+                                                               (number? cursor-pos) (min cursor-pos text-length)
+                                                               :else text-length)]
+                                                     (.setStart range text-node pos)
+                                                     (.setEnd range text-node pos)
+                                                     (.removeAllRanges sel)
+                                                     (.addRange sel range)
+                                                     ;; Mark this cursor-pos as applied
+                                                     (aset node "__lastAppliedCursorPos" cursor-pos)
+                                                     ;; Focus AFTER setting cursor to preserve position
+                                                     (.focus node)
+                                                     ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
+                                                     ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
+                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))))
+                                               (catch js/Error e
+                                                 (js/console.error "Cursor positioning failed:" e)))))
+                                         ;; No cursor-pos specified, just focus normally
+                                         (.focus node))
 
-                                     ;; Apply cursor position ONCE per cursor-pos value
-                                     ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
-                                     (when cursor-pos
-                                       (let [last-applied (aget node "__lastAppliedCursorPos")]
-                                         (when (not= cursor-pos last-applied)
-                                           (try
-                                             (let [range (.createRange js/document)
-                                                   sel (.getSelection js/window)
-                                                   text-node (.-firstChild node)]
-                                               ;; Position cursor in the text node
-                                               (when (and text-node (= (.-nodeType text-node) 3))
-                                                 (let [text-length (.-length text-node)
-                                                       pos (cond
-                                                             (= cursor-pos :start) 0
-                                                             (= cursor-pos :end) text-length
-                                                             (number? cursor-pos) (min cursor-pos text-length)
-                                                             :else text-length)]
-                                                   (.setStart range text-node pos)
-                                                   (.setEnd range text-node pos)
-                                                   (.removeAllRanges sel)
-                                                   (.addRange sel range)
-                                                   ;; Mark this cursor-pos as applied
-                                                   (aset node "__lastAppliedCursorPos" cursor-pos))))
-                                             (catch js/Error e
-                                               (js/console.error "Cursor positioning failed:" e))))))
-
-                                     (update-mock-text! node (.-textContent node))))
+                                       (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
                           (let [target (.-target e)
                                 new-text (.-textContent target)]
@@ -558,9 +577,15 @@
                             (on-intent {:type :update-content
                                         :block-id block-id
                                         :text new-text})))
-                 :blur (fn [_e]
+                 :blur (fn [e]
                          ;; Only exit on blur if not already exiting via Escape
                          (when-not @exiting-edit?
+                           ;; CRITICAL: Capture final text from contenteditable before exiting
+                           ;; This prevents race conditions where the last input event hasn't fired
+                           (let [final-text (.-textContent (.-target e))]
+                             (on-intent {:type :update-content
+                                         :block-id block-id
+                                         :text final-text}))
                            (on-intent {:type :exit-edit})))
                  :keydown (fn [e]
                             (when (= (.-key e) "Escape")
@@ -571,17 +596,19 @@
                     :display "inline-block"
                     :cursor "text"}
             :data-block-id block-id
+            ;; CRITICAL: Use textContent for simple text rendering
+            ;; This avoids Replicant's child reconciliation issues that cause duplication
+            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
+                                     ;; CRITICAL: Directly set textContent to replace ALL content
+                                     ;; This mirrors the approach in .content-edit and prevents duplication
+                                     (set! (.-textContent node) (or text ""))))
             :on {:click (fn [e]
                           (.stopPropagation e)
                           ;; First click = select, second click (when focused) = enter edit mode
                           (if focus?
                             (on-intent {:type :enter-edit :block-id block-id})
-                            (on-intent {:type :selection :mode :replace :ids block-id})))}}
-           ;; Render text with block references, embeds, and page refs
-           (render-text-with-refs db text
-                                  (conj embed-set block-id)
-                                  embed-depth
-                                  on-intent)])
+                            (on-intent {:type :selection :mode :replace :ids block-id})))}}])
 
         children-el
         (when (seq children)
