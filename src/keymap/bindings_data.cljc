@@ -11,8 +11,8 @@
                  [{:key "Backspace"} :delete-selected]
                  ;; LOGSEQ PARITY: Enter on selected block → enter edit mode (don't create new block)
                  [{:key "Enter"} {:type :enter-edit-selected}]]
-   :editing     [;; LOGSEQ PARITY: Escape → exit edit and select the block
-                 [{:key "Escape"} {:type :exit-edit-and-select}]
+   :editing     [;; LOGSEQ PARITY: Escape → exit edit WITHOUT selecting block
+                 [{:key "Escape"} {:type :exit-edit}]
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
                  [{:key "Backspace" :mod true} :merge-with-prev]
