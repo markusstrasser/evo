@@ -131,11 +131,18 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 ### 5.2 Move Up/Down
 
 - `Alt+Shift+ArrowUp/Down` reorder siblings while preserving selection order (stable move).
-- When editing, dedicated intents (`:move-block-up-while-editing`) perform same structural move without exiting edit mode.
+- **Climb semantics:** when a block is the first child and the user presses `Mod/Alt+Shift+Up`, Logseq “climbs” it out—moving it to become the previous sibling of its parent. Likewise, pressing `Mod/Alt+Shift+Down` on the last child pushes it into the next visible sibling chain. The behavior is implemented in `frontend.handler.editor/move-up-down` + `outliner-op/move-blocks-up-down!` and covered by `test-move-blocks-up-down`.
+- When editing, dedicated intents (`:move-block-up-while-editing`) perform the same structural move without exiting edit mode.
 
 ### 5.3 Delete Selected
 
 - Moves selected blocks to `const/root-trash`. Children are moved with the parent (same as Logseq).
+
+### 5.4 Drag & Drop (Mouse)
+
+- Logseq exposes drag handles on blocks. Dropping without modifiers performs the same structural move as `move-blocks`. Holding **Alt** during drop inserts a block reference instead of moving the source (`frontend.handler.dnd/move-blocks` checks `event.altKey` and calls `ref/->block-ref`).
+- Dragging into the top/bottom “hit zones” reuses the same “climb” semantics described above—dropping at the top of a block with Alt released moves the dragged block before the target’s parent when appropriate.
+- Evo must mirror both behaviors when DnD support lands.
 
 ---
 

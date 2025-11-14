@@ -67,123 +67,123 @@
    "(" ")"
    "{" "}"
    "\"" "\""
-   "**" "**"    ; Bold
-   "__" "__"    ; Italic
-   "~~" "~~"    ; Strikethrough
-   "^^" "^^"})  ; Highlight
+   "**" "**" ; Bold
+   "__" "__" ; Italic
+   "~~" "~~" ; Strikethrough
+   "^^" "^^"}) ; Highlight
 
 (intent/register-intent! :insert-paired-char
-  {:doc "Insert character with auto-closing pair.
+                         {:doc "Insert character with auto-closing pair.
 
          If opening char typed, insert both and position cursor between.
          If closing char typed and next char matches, skip over it instead."
 
-   :spec [:map
-          [:type [:= :insert-paired-char]]
-          [:block-id :string]
-          [:cursor-pos :int]
-          [:input-char :string]]
+                          :spec [:map
+                                 [:type [:= :insert-paired-char]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]
+                                 [:input-char :string]]
 
-   :handler
-   (fn [db {:keys [block-id cursor-pos input-char] :as _intent}]
-     (let [text (get-block-text db block-id)
-           next-char (when (< cursor-pos (count text))
-                      (str (nth text cursor-pos)))
-           closing-char (get pairs input-char)]
+                          :handler
+                          (fn [db {:keys [block-id cursor-pos input-char] :as _intent}]
+                            (let [text (get-block-text db block-id)
+                                  next-char (when (< cursor-pos (count text))
+                                              (str (nth text cursor-pos)))
+                                  closing-char (get pairs input-char)]
 
-       (cond
+                              (cond
          ;; Closing char and next char matches - skip over
-         (and (contains? (set (vals pairs)) input-char)
-              (= next-char input-char))
-         [{:op :update-node
-           :id const/session-ui-id
-           :props {:editing-block-id block-id
-                   :cursor-position (inc cursor-pos)}}]
+                                (and (contains? (set (vals pairs)) input-char)
+                                     (= next-char input-char))
+                                [{:op :update-node
+                                  :id const/session-ui-id
+                                  :props {:editing-block-id block-id
+                                          :cursor-position (inc cursor-pos)}}]
 
          ;; Opening char - insert both and position cursor between
-         closing-char
-         (let [new-text (str (subs text 0 cursor-pos)
-                            input-char
-                            closing-char
-                            (subs text cursor-pos))]
-           [{:op :update-node
-             :id block-id
-             :props {:text new-text}}
-            {:op :update-node
-             :id const/session-ui-id
-             :props {:editing-block-id block-id
-                     :cursor-position (+ cursor-pos (count input-char))}}])
+                                closing-char
+                                (let [new-text (str (subs text 0 cursor-pos)
+                                                    input-char
+                                                    closing-char
+                                                    (subs text cursor-pos))]
+                                  [{:op :update-node
+                                    :id block-id
+                                    :props {:text new-text}}
+                                   {:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id block-id
+                                            :cursor-position (+ cursor-pos (count input-char))}}])
 
          ;; Not a paired char - just insert
-         :else
-         (let [new-text (str (subs text 0 cursor-pos)
-                            input-char
-                            (subs text cursor-pos))]
-           [{:op :update-node
-             :id block-id
-             :props {:text new-text}}
-            {:op :update-node
-             :id const/session-ui-id
-             :props {:editing-block-id block-id
-                     :cursor-position (+ cursor-pos (count input-char))}}]))))})
+                                :else
+                                (let [new-text (str (subs text 0 cursor-pos)
+                                                    input-char
+                                                    (subs text cursor-pos))]
+                                  [{:op :update-node
+                                    :id block-id
+                                    :props {:text new-text}}
+                                   {:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id block-id
+                                            :cursor-position (+ cursor-pos (count input-char))}}]))))})
 
 (intent/register-intent! :delete-with-pair-check
-  {:doc "Delete character, removing paired closing char if present.
+                         {:doc "Delete character, removing paired closing char if present.
 
          If cursor is after opening char and before closing char,
          delete both (e.g., [|] becomes empty).
 
          Otherwise, normal backspace behavior."
 
-   :spec [:map
-          [:type [:= :delete-with-pair-check]]
-          [:block-id :string]
-          [:cursor-pos :int]]
+                          :spec [:map
+                                 [:type [:= :delete-with-pair-check]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]]
 
-   :handler
-   (fn [db {:keys [block-id cursor-pos]}]
-     (when (pos? cursor-pos)
-       (let [text (get-block-text db block-id)
+                          :handler
+                          (fn [db {:keys [block-id cursor-pos]}]
+                            (when (pos? cursor-pos)
+                              (let [text (get-block-text db block-id)
              ;; Check for matching pairs - try multi-char first, then single-char
              ;; Sort pairs by length descending so we check multi-char pairs first
-             pair-match (some (fn [[opening closing]]
-                               (let [open-len (count opening)
-                                     close-len (count closing)
-                                     start-pos (- cursor-pos open-len)
-                                     end-pos cursor-pos]
-                                 (when (and (>= start-pos 0)
-                                           (<= (+ cursor-pos close-len) (count text))
-                                           (= (subs text start-pos end-pos) opening)
-                                           (= (subs text cursor-pos (+ cursor-pos close-len)) closing))
-                                   {:opening opening
-                                    :closing closing
-                                    :open-len open-len
-                                    :close-len close-len})))
-                             (sort-by (comp - count key) pairs))]  ; Sort by key length descending
+                                    pair-match (some (fn [[opening closing]]
+                                                       (let [open-len (count opening)
+                                                             close-len (count closing)
+                                                             start-pos (- cursor-pos open-len)
+                                                             end-pos cursor-pos]
+                                                         (when (and (>= start-pos 0)
+                                                                    (<= (+ cursor-pos close-len) (count text))
+                                                                    (= (subs text start-pos end-pos) opening)
+                                                                    (= (subs text cursor-pos (+ cursor-pos close-len)) closing))
+                                                           {:opening opening
+                                                            :closing closing
+                                                            :open-len open-len
+                                                            :close-len close-len})))
+                                                     (sort-by (comp - count key) pairs))] ; Sort by key length descending
 
-         (if pair-match
+                                (if pair-match
            ;; Delete both pair characters
-           (let [{:keys [open-len close-len]} pair-match
-                 new-text (str (subs text 0 (- cursor-pos open-len))
-                              (subs text (+ cursor-pos close-len)))]
-             [{:op :update-node
-               :id block-id
-               :props {:text new-text}}
-              {:op :update-node
-               :id const/session-ui-id
-               :props {:editing-block-id block-id
-                       :cursor-position (- cursor-pos open-len)}}])
+                                  (let [{:keys [open-len close-len]} pair-match
+                                        new-text (str (subs text 0 (- cursor-pos open-len))
+                                                      (subs text (+ cursor-pos close-len)))]
+                                    [{:op :update-node
+                                      :id block-id
+                                      :props {:text new-text}}
+                                     {:op :update-node
+                                      :id const/session-ui-id
+                                      :props {:editing-block-id block-id
+                                              :cursor-position (- cursor-pos open-len)}}])
 
            ;; Normal backspace - delete one char
-           (let [new-text (str (subs text 0 (dec cursor-pos))
-                              (subs text cursor-pos))]
-             [{:op :update-node
-               :id block-id
-               :props {:text new-text}}
-              {:op :update-node
-               :id const/session-ui-id
-               :props {:editing-block-id block-id
-                       :cursor-position (dec cursor-pos)}}])))))})
+                                  (let [new-text (str (subs text 0 (dec cursor-pos))
+                                                      (subs text cursor-pos))]
+                                    [{:op :update-node
+                                      :id block-id
+                                      :props {:text new-text}}
+                                     {:op :update-node
+                                      :id const/session-ui-id
+                                      :props {:editing-block-id block-id
+                                              :cursor-position (dec cursor-pos)}}])))))})
 
 ;; ── Merge Operations ──────────────────────────────────────────────────────────
 
@@ -251,7 +251,7 @@
 ;; ── Smart Split (Unified Enter Key Behavior) ──────────────────────────────────
 
 (intent/register-intent! :smart-split
-  {:doc "Context-aware block splitting on Enter (Logseq parity).
+                         {:doc "Context-aware block splitting on Enter (Logseq parity).
 
          Behaviors:
          - Inside code fence (```) → insert newline (don't split block)
@@ -260,67 +260,67 @@
          - Checkbox → continue checkbox pattern
          - Empty checkbox → unformat
          - Otherwise → simple split"
-   :spec [:map
-          [:type [:= :smart-split]]
-          [:block-id :string]
-          [:cursor-pos :int]]
-   :handler
-   (fn [db {:keys [block-id cursor-pos]}]
-     (let [text (get-block-text db block-id)
-           before (subs text 0 cursor-pos)
-           after (subs text cursor-pos)
-           parent (get-in db [:derived :parent-of block-id])
-           new-id (str "block-" (random-uuid))
+                          :spec [:map
+                                 [:type [:= :smart-split]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]]
+                          :handler
+                          (fn [db {:keys [block-id cursor-pos]}]
+                            (let [text (get-block-text db block-id)
+                                  before (subs text 0 cursor-pos)
+                                  after (subs text cursor-pos)
+                                  parent (get-in db [:derived :parent-of block-id])
+                                  new-id (str "block-" (random-uuid))
 
            ;; CRITICAL: Check if cursor is inside code fence (Logseq behavior)
-           code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)]
+                                  code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)]
 
-       (cond
+                              (cond
          ;; LOGSEQ PARITY: Inside code fence → insert newline (don't split)
-         code-block-ctx
-         (let [new-text (str before "\n" after)]
-           [{:op :update-node :id block-id :props {:text new-text}}
+                                code-block-ctx
+                                (let [new-text (str before "\n" after)]
+                                  [{:op :update-node :id block-id :props {:text new-text}}
             ;; Position cursor after newline
-            {:op :update-node
-             :id const/session-ui-id
-             :props {:cursor-position (inc cursor-pos)}}])
+                                   {:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:cursor-position (inc cursor-pos)}}])
 
          ;; Empty list marker - just unformat
-         (and (empty? after) (list-marker? before))
-         [{:op :update-node :id block-id :props {:text ""}}]
+                                (and (empty? after) (list-marker? before))
+                                [{:op :update-node :id block-id :props {:text ""}}]
 
          ;; Empty checkbox - unformat
-         (and (empty? after) (empty-checkbox? before))
-         [{:op :update-node :id block-id :props {:text ""}}]
+                                (and (empty? after) (empty-checkbox? before))
+                                [{:op :update-node :id block-id :props {:text ""}}]
 
          ;; Numbered list - increment
-         (extract-list-number text)
-         (let [num-value (extract-list-number before)
-               new-text (str (inc num-value) ". " after)]
-           (when parent
-             [{:op :update-node :id block-id :props {:text before}}
-              {:op :create-node :id new-id :type :block :props {:text new-text}}
-              {:op :place :id new-id :under parent :at {:after block-id}}]))
+                                (extract-list-number text)
+                                (let [num-value (extract-list-number before)
+                                      new-text (str (inc num-value) ". " after)]
+                                  (when parent
+                                    [{:op :update-node :id block-id :props {:text before}}
+                                     {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                     {:op :place :id new-id :under parent :at {:after block-id}}]))
 
          ;; Checkbox - continue pattern
-         (checkbox-pattern? text)
-         (let [new-text (str "[ ] " after)]
-           (when parent
-             [{:op :update-node :id block-id :props {:text before}}
-              {:op :create-node :id new-id :type :block :props {:text new-text}}
-              {:op :place :id new-id :under parent :at {:after block-id}}]))
+                                (checkbox-pattern? text)
+                                (let [new-text (str "[ ] " after)]
+                                  (when parent
+                                    [{:op :update-node :id block-id :props {:text before}}
+                                     {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                     {:op :place :id new-id :under parent :at {:after block-id}}]))
 
          ;; Default split
-         :else
-         (when parent
-           [{:op :update-node :id block-id :props {:text before}}
-            {:op :create-node :id new-id :type :block :props {:text after}}
-            {:op :place :id new-id :under parent :at {:after block-id}}]))))})
+                                :else
+                                (when parent
+                                  [{:op :update-node :id block-id :props {:text before}}
+                                   {:op :create-node :id new-id :type :block :props {:text after}}
+                                   {:op :place :id new-id :under parent :at {:after block-id}}]))))})
 
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
 
 (intent/register-intent! :context-aware-enter
-  {:doc "Handle Enter key with full context awareness.
+                         {:doc "Handle Enter key with full context awareness.
 
          Uses plugins.context to detect cursor context and route to appropriate behavior:
          - Inside markup (**, __, etc.) → Exit markup first, then split
@@ -332,137 +332,147 @@
          - Checkbox → Continue checkbox pattern
          - Plain text → Normal split"
 
-   :spec [:map
-          [:type [:= :context-aware-enter]]
-          [:block-id :string]
-          [:cursor-pos :int]]
+                          :spec [:map
+                                 [:type [:= :context-aware-enter]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]]
 
-   :handler
-   (fn [db {:keys [block-id cursor-pos]}]
-     (let [text (get-block-text db block-id)
-           context (ctx/context-at-cursor text cursor-pos)
-           parent (get-in db [:derived :parent-of block-id])]
+                          :handler
+                          (fn [db {:keys [block-id cursor-pos]}]
+                            (let [text (get-block-text db block-id)
+                                  context (ctx/context-at-cursor text cursor-pos)
+                                  parent (get-in db [:derived :parent-of block-id])]
 
-       (case (:type context)
+                              (case (:type context)
 
          ;; Inside markup - exit markup first (move cursor after closing marker)
-         :markup
-         (let [exit-pos (:end context)]
-           [{:op :update-node
-             :id const/session-ui-id
-             :props {:editing-block-id block-id
-                     :cursor-position exit-pos}}])
+                                :markup
+                                (let [exit-pos (:end context)]
+                                  [{:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id block-id
+                                            :cursor-position exit-pos}}])
 
          ;; Inside code block - insert newline (don't create new block)
-         :code-block
-         (let [new-text (str (subs text 0 cursor-pos)
-                            "\n"
-                            (subs text cursor-pos))]
-           [{:op :update-node
-             :id block-id
-             :props {:text new-text}}
-            {:op :update-node
-             :id const/session-ui-id
-             :props {:editing-block-id block-id
-                     :cursor-position (inc cursor-pos)}}])
+                                :code-block
+                                (let [new-text (str (subs text 0 cursor-pos)
+                                                    "\n"
+                                                    (subs text cursor-pos))]
+                                  [{:op :update-node
+                                    :id block-id
+                                    :props {:text new-text}}
+                                   {:op :update-node
+                                    :id const/session-ui-id
+                                    :props {:editing-block-id block-id
+                                            :cursor-position (inc cursor-pos)}}])
 
          ;; Inside block-ref - open in sidebar (TODO: implement sidebar)
-         :block-ref
-         [{:op :update-node
-           :id const/session-ui-id
-           :props {:sidebar-opened-ref (:uuid context)}}]
+                                :block-ref
+                                [{:op :update-node
+                                  :id const/session-ui-id
+                                  :props {:sidebar-opened-ref (:uuid context)}}]
 
          ;; Inside page-ref - navigate to page (TODO: implement page navigation)
-         :page-ref
-         [{:op :update-node
-           :id const/session-ui-id
-           :props {:navigate-to-page (:page-name context)}}]
+                                :page-ref
+                                [{:op :update-node
+                                  :id const/session-ui-id
+                                  :props {:navigate-to-page (:page-name context)}}]
 
          ;; Checkbox - check for empty
-         :checkbox
-         (if (str/blank? (:content context))
+                                :checkbox
+                                (if (str/blank? (:content context))
            ;; Empty checkbox - unformat
-           [{:op :update-node
-             :id block-id
-             :props {:text ""}}]
+                                  [{:op :update-node
+                                    :id block-id
+                                    :props {:text ""}}]
            ;; Checkbox with content - continue pattern
-           (let [before (subs text 0 cursor-pos)
-                 after (subs text cursor-pos)
-                 new-id (str "block-" (random-uuid))
+                                  (let [before (subs text 0 cursor-pos)
+                                        after (subs text cursor-pos)
+                                        new-id (str "block-" (random-uuid))
                  ;; New block gets unchecked checkbox
-                 new-text (str "- [ ] " after)
-                 marker-len (count (:marker context))]
-             (when parent
-               [{:op :update-node :id block-id :props {:text before}}
-                {:op :create-node :id new-id :type :block :props {:text new-text}}
-                {:op :place :id new-id :under parent :at {:after block-id}}
-                {:op :update-node
-                 :id const/session-ui-id
-                 :props {:editing-block-id new-id
-                         :cursor-position 6}}])))  ; After "- [ ] "
+                                        new-text (str "- [ ] " after)
+                                        marker-len (count (:marker context))]
+                                    (when parent
+                                      [{:op :update-node :id block-id :props {:text before}}
+                                       {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                       {:op :place :id new-id :under parent :at {:after block-id}}
+                                       {:op :update-node
+                                        :id const/session-ui-id
+                                        :props {:editing-block-id new-id
+                                                :cursor-position 6}}]))) ; After "- [ ] "
 
-         ;; List item - check for empty
-         :list-item
-         (if (str/blank? (:content context))
-           ;; Empty list - unformat
-           [{:op :update-node
-             :id block-id
-             :props {:text ""}}]
+;; List item - check for empty
+                                :list-item
+                                (if (str/blank? (:content context))
+           ;; LOGSEQ PARITY: Empty list - unformat AND create peer block in one keystroke
+           ;; This matches Logseq's behavior where Enter on empty list item does two things:
+           ;; 1. Removes the list marker from current block
+           ;; 2. Creates a new empty peer block after the parent
+                                  (let [grandparent (when parent (get-in db [:derived :parent-of parent]))
+                                        new-id (str "block-" (random-uuid))]
+                                    (when grandparent
+                                      [{:op :update-node :id block-id :props {:text ""}}
+                                       {:op :create-node :id new-id :type :block :props {:text ""}}
+                                       {:op :place :id new-id :under grandparent :at {:after parent}}
+                                       {:op :update-node
+                                        :id const/session-ui-id
+                                        :props {:editing-block-id new-id
+                                                :cursor-position 0}}]))
            ;; List with content - continue pattern
-           (let [before (subs text 0 cursor-pos)
-                 after (subs text cursor-pos)
-                 new-id (str "block-" (random-uuid))]
-             (when parent
-               (if (:numbered? context)
+                                  (let [before (subs text 0 cursor-pos)
+                                        after (subs text cursor-pos)
+                                        new-id (str "block-" (random-uuid))]
+                                    (when parent
+                                      (if (:numbered? context)
                  ;; Numbered list - increment
-                 (let [new-number (inc (:number context))
-                       new-text (str new-number ". " after)]
-                   [{:op :update-node :id block-id :props {:text before}}
-                    {:op :create-node :id new-id :type :block :props {:text new-text}}
-                    {:op :place :id new-id :under parent :at {:after block-id}}
-                    {:op :update-node
-                     :id const/session-ui-id
-                     :props {:editing-block-id new-id
-                             :cursor-position (+ (count (str new-number)) 2)}}])
+                                        (let [new-number (inc (:number context))
+                                              new-text (str new-number ". " after)]
+                                          [{:op :update-node :id block-id :props {:text before}}
+                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}
+                                           {:op :update-node
+                                            :id const/session-ui-id
+                                            :props {:editing-block-id new-id
+                                                    :cursor-position (+ (count (str new-number)) 2)}}])
                  ;; Simple list - continue with same marker
-                 (let [new-text (str (:marker context) after)]
-                   [{:op :update-node :id block-id :props {:text before}}
-                    {:op :create-node :id new-id :type :block :props {:text new-text}}
-                    {:op :place :id new-id :under parent :at {:after block-id}}
-                    {:op :update-node
-                     :id const/session-ui-id
-                     :props {:editing-block-id new-id
-                             :cursor-position (count (:marker context))}}])))))
+                                        (let [new-text (str (:marker context) after)]
+                                          [{:op :update-node :id block-id :props {:text before}}
+                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}
+                                           {:op :update-node
+                                            :id const/session-ui-id
+                                            :props {:editing-block-id new-id
+                                                    :cursor-position (count (:marker context))}}])))))
 
          ;; Plain text - check if cursor at position 0 (Logseq parity)
-         :none
-         (let [before (subs text 0 cursor-pos)
-               after (subs text cursor-pos)
-               new-id (str "block-" (random-uuid))]
-           (when parent
-             (if (zero? cursor-pos)
+                                :none
+                                (let [before (subs text 0 cursor-pos)
+                                      after (subs text cursor-pos)
+                                      new-id (str "block-" (random-uuid))]
+                                  (when parent
+                                    (if (zero? cursor-pos)
                ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
-               [{:op :create-node :id new-id :type :block :props {:text ""}}
-                {:op :place :id new-id :under parent :at {:before block-id}}
-                {:op :update-node
-                 :id const/session-ui-id
-                 :props {:editing-block-id block-id
-                         :cursor-position 0}}]
+                                      [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                       {:op :place :id new-id :under parent :at {:before block-id}}
+                                       {:op :update-node
+                                        :id const/session-ui-id
+                                        :props {:editing-block-id block-id
+                                                :cursor-position 0}}]
                ;; Normal split - create block BELOW
-               [{:op :update-node :id block-id :props {:text before}}
+                                      [{:op :update-node :id block-id :props {:text before}}
                 ;; LOGSEQ PARITY: Left-trim second block text
-                {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
-                {:op :place :id new-id :under parent :at {:after block-id}}
-                {:op :update-node
-                 :id const/session-ui-id
-                 :props {:editing-block-id new-id
-                         :cursor-position 0}}])))
+                                       {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
+                                       {:op :place :id new-id :under parent :at {:after block-id}}
+                                       {:op :update-node
+                                        :id const/session-ui-id
+                                        :props {:editing-block-id new-id
+                                                :cursor-position 0}}])))
 
          ;; Default (shouldn't happen) - normal split
-         (let [before (subs text 0 cursor-pos)
-               after (subs text cursor-pos)
-               new-id (str "block-" (random-uuid))]
-           (when parent
-             [{:op :update-node :id block-id :props {:text before}}
-              {:op :create-node :id new-id :type :block :props {:text after}}
-              {:op :place :id new-id :under parent :at {:after block-id}}])))))})
+                                (let [before (subs text 0 cursor-pos)
+                                      after (subs text cursor-pos)
+                                      new-id (str "block-" (random-uuid))]
+                                  (when parent
+                                    [{:op :update-node :id block-id :props {:text before}}
+                                     {:op :create-node :id new-id :type :block :props {:text after}}
+                                     {:op :place :id new-id :under parent :at {:after block-id}}])))))})

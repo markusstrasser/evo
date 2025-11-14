@@ -342,17 +342,28 @@
       (is (= 1 (count (q/children db' :doc)))))))
 
 (deftest context-aware-enter-list-test
-  (testing "Enter on empty list unformats"
+  (testing "LOGSEQ PARITY: Enter on empty list unformats AND creates peer block"
     (let [db (:db (tx/interpret (db/empty-db)
-                                [{:op :create-node :id "a" :type :block :props {:text "- "}}
-                                 {:op :place :id "a" :under :doc :at :last}]))
+                                [{:op :create-node :id "parent" :type :block :props {:text "Parent"}}
+                                 {:op :create-node :id "child" :type :block :props {:text "- "}}
+                                 {:op :place :id "parent" :under :doc :at :last}
+                                 {:op :place :id "child" :under "parent" :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                 :block-id "a"
+                                                 :block-id "child"
                                                  :cursor-pos 2})
           db' (:db (tx/interpret db ops))]
-      (is (= "" (get-in db' [:nodes "a" :props :text])))
-      ;; No new block created
-      (is (= 1 (count (q/children db' :doc))))))
+      ;; Current block should be unformatted
+      (is (= "" (get-in db' [:nodes "child" :props :text])))
+      ;; New peer block should be created after parent
+      (is (= 2 (count (q/children db' :doc)))
+          "Should have parent + new peer block at doc level")
+      (let [doc-children (q/children db' :doc)
+            new-peer-id (second doc-children)]
+        (is (= "parent" (first doc-children)))
+        (is (= "" (get-in db' [:nodes new-peer-id :props :text])))
+        ;; Cursor should be in new peer block
+        (is (= new-peer-id (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+        (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
 
   (testing "Enter on numbered list increments"
     (let [db (:db (tx/interpret (db/empty-db)
