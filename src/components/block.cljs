@@ -171,23 +171,33 @@
 (defn handle-shift-arrow-up [e db block-id on-intent]
   "Handle Shift+Up: text selection within block OR block selection at boundary.
 
+   Logseq parity (§4.1):
    - NOT at first row → Let browser handle (text selection)
-   - At first row → Extend block selection upward"
+   - At first row → Collapse text selection to start, extend block selection upward"
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:first-row? cursor-pos)
       (.preventDefault e)
+      ;; Collapse text selection to start before extending block selection
+      (when-let [sel (.getSelection js/window)]
+        (when (and sel (pos? (.-rangeCount sel)))
+          (.collapseToStart sel)))
       (on-intent {:type :selection :mode :extend-prev}))))
 
 (defn handle-shift-arrow-down [e db block-id on-intent]
   "Handle Shift+Down: text selection within block OR block selection at boundary.
 
+   Logseq parity (§4.1):
    - NOT at last row → Let browser handle (text selection)
-   - At last row → Extend block selection downward"
+   - At last row → Collapse text selection to end, extend block selection downward"
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:last-row? cursor-pos)
       (.preventDefault e)
+      ;; Collapse text selection to end before extending block selection
+      (when-let [sel (.getSelection js/window)]
+        (when (and sel (pos? (.-rangeCount sel)))
+          (.collapseToEnd sel)))
       (on-intent {:type :selection :mode :extend-next}))))
 
 (defn handle-arrow-left [e db block-id on-intent]
