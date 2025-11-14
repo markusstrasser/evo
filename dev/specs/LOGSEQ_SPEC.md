@@ -75,6 +75,9 @@ Any Evo implementation must mutate these nodes exactly as Logseq does to avoid u
 ### 2.2 Vertical Navigation in View Mode
 
 - `ArrowUp/ArrowDown` when not editing move `:focus` through visible siblings, skipping folded subtrees and respecting zoom root.
+- **When no block is focused** (e.g., after Escape clears selection):
+  - `ArrowDown` selects the **first** visible block in the current page/zoom
+  - `ArrowUp` selects the **last** visible block in the current page/zoom
 - `Shift+Arrow` extends the range selection: anchor remains first selected block, focus becomes next visible sibling, range includes all blocks between anchor and focus in document order.
 - Selection operations never modify `session/ui`.
 
@@ -121,8 +124,8 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 ### 5.1 Indent/Outdent
 
 - `Tab` (`:indent-selected`) moves active block/selection under previous visible sibling. Outdent behavior depends on `:editor/logical-outdenting?` (assumed `true` for this spec):
-  - Block moves to bottom of grandparent’s children list.
-  - Right siblings remain under original parent (no “kidnapping”).
+  - Block moves to position immediately AFTER its parent (becomes sibling of parent).
+  - Right siblings remain under original parent (no "kidnapping").
   - Outdenting is prevented when parent is a root (`:doc`, `:journal`).
 
 ### 5.2 Move Up/Down

@@ -67,16 +67,34 @@
     :next tree/next-sibling
     :prev tree/prev-sibling))
 
+(defn- get-first-last-visible-block
+  "Get the first or last visible block in the current page/zoom.
+   direction: :next (first) or :prev (last)"
+  [db direction]
+  (let [root-id (or (get-in db [:nodes const/session-ui-id :props :zoom-id])
+                    (get-in db [:nodes const/session-ui-id :props :current-page]))
+        children (when root-id (tree/children db root-id))]
+    (when (seq children)
+      (case direction
+        :next (first children)   ; Down arrow → first block
+        :prev (last children))))) ; Up arrow → last block
+
 (defn- calc-navigate-props
   "Pure: calculate props for navigating in a direction.
    direction: :next or :prev
-   extend?: if true, extends selection; if false, replaces selection"
+   extend?: if true, extends selection; if false, replaces selection
+
+   Logseq parity: When no block is focused, select first/last visible block."
   [db state direction extend?]
-  (when-let [current (tree/focus db)]
+  (if-let [current (tree/focus db)]
+    ;; Normal case: navigate from current focus
     (when-let [sibling-id ((get-sibling-fn direction) db current)]
       (if extend?
         (calc-extend-props db state sibling-id)
-        (calc-select-props sibling-id)))))
+        (calc-select-props sibling-id)))
+    ;; Edge case: no focus (after Escape) → select first/last block
+    (when-let [first-or-last (get-first-last-visible-block db direction)]
+      (calc-select-props first-or-last))))
 
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
 

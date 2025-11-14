@@ -51,10 +51,11 @@
 (defn outdent-ops
   "Logical Outdenting (Logseq default with :editor/logical-outdenting? true):
 
-   Moves node to LAST position under grandparent, leaving right siblings untouched.
+   Moves node to position RIGHT AFTER its parent (as a sibling of parent),
+   leaving right siblings untouched under the original parent.
 
    This matches Logseq's logical outdenting behavior where the outdented block
-   moves to the bottom of the grandparent's children list.
+   becomes a sibling of its parent, positioned immediately after it.
 
    Example (Logical Outdenting):
      Before:
@@ -71,7 +72,7 @@
            - A
            - C  ← B's right siblings stay under Parent
            - D
-         - B    ← outdented to LAST position under Grandparent
+         - B    ← outdented to position RIGHT AFTER Parent (sibling of Parent)
 
    Note: Direct outdenting (where B kidnaps C and D as children) can be added
    via config flag when user preference plumbing exists.
@@ -83,9 +84,9 @@
         roots (set (:roots db const/roots))]
     ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
     (if (and p gp (not (contains? roots gp)))
-      ;; Logical outdenting: move to :last position under grandparent
+      ;; Logical outdenting: move to position RIGHT AFTER parent (as sibling of parent)
       ;; Right siblings stay under parent (not kidnapped)
-      [{:op :place :id id :under gp :at :last}]
+      [{:op :place :id id :under gp :at {:after p}}]
       [])))
 
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
