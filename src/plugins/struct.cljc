@@ -17,7 +17,6 @@
             [kernel.position :as pos]
             [kernel.db :as db]))
 
-
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
 (defn delete-ops
@@ -92,50 +91,50 @@
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
 
 (intent/register-intent! :delete
-  {:doc "Delete node by moving to :trash."
-   :spec [:map [:type [:= :delete]] [:id :string]]
-   :handler (fn [db {:keys [id]}]
-              (delete-ops db id))})
+                         {:doc "Delete node by moving to :trash."
+                          :spec [:map [:type [:= :delete]] [:id :string]]
+                          :handler (fn [db {:keys [id]}]
+                                     (delete-ops db id))})
 
 (intent/register-intent! :indent
-  {:doc "Indent node under previous sibling."
-   :spec [:map [:type [:= :indent]] [:id :string]]
-   :handler (fn [db {:keys [id]}]
-              (indent-ops db id))})
+                         {:doc "Indent node under previous sibling."
+                          :spec [:map [:type [:= :indent]] [:id :string]]
+                          :handler (fn [db {:keys [id]}]
+                                     (indent-ops db id))})
 
 (intent/register-intent! :outdent
-  {:doc "Outdent node to be sibling of parent."
-   :spec [:map [:type [:= :outdent]] [:id :string]]
-   :handler (fn [db {:keys [id]}]
-              (outdent-ops db id))})
+                         {:doc "Outdent node to be sibling of parent."
+                          :spec [:map [:type [:= :outdent]] [:id :string]]
+                          :handler (fn [db {:keys [id]}]
+                                     (outdent-ops db id))})
 
 (intent/register-intent! :create-and-place
-  {:doc "Create new block and place it under parent."
-   :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string] [:after {:optional true} :string]]
-   :handler (fn [_db {:keys [id parent after]}]
-              [{:op :create-node :id id :type :block :props {:text ""}}
-               {:op :place :id id :under parent :at (if after {:after after} :last)}])})
+                         {:doc "Create new block and place it under parent."
+                          :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string] [:after {:optional true} :string]]
+                          :handler (fn [_db {:keys [id parent after]}]
+                                     [{:op :create-node :id id :type :block :props {:text ""}}
+                                      {:op :place :id id :under parent :at (if after {:after after} :last)}])})
 
 (intent/register-intent! :create-and-enter-edit
-  {:doc "Create new block after focus and immediately enter edit mode.
+                         {:doc "Create new block after focus and immediately enter edit mode.
    This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent.
    Clears selection to maintain edit/view mode mutual exclusivity."
-   :spec [:map [:type [:= :create-and-enter-edit]]]
-   :handler (fn [db _]
-              (let [focus-id (q/focus db)
-                    parent (q/parent-of db focus-id)
-                    new-id (str "block-" (random-uuid))]
-                [;; INVARIANT: Clear selection before entering edit mode
-                 {:op :update-node
-                  :id const/session-selection-id
-                  :props {:nodes #{} :focus nil :anchor nil}}
+                          :spec [:map [:type [:= :create-and-enter-edit]]]
+                          :handler (fn [db _]
+                                     (let [focus-id (q/focus db)
+                                           parent (q/parent-of db focus-id)
+                                           new-id (str "block-" (random-uuid))]
+                                       [;; INVARIANT: Clear selection before entering edit mode
+                                        {:op :update-node
+                                         :id const/session-selection-id
+                                         :props {:nodes #{} :focus nil :anchor nil}}
                  ;; Create and place new block
-                 {:op :create-node :id new-id :type :block :props {:text ""}}
-                 {:op :place :id new-id :under parent :at {:after focus-id}}
+                                        {:op :create-node :id new-id :type :block :props {:text ""}}
+                                        {:op :place :id new-id :under parent :at {:after focus-id}}
                  ;; Enter edit mode on new block
-                 {:op :update-node
-                  :id const/session-ui-id
-                  :props {:editing-block-id new-id}}]))})
+                                        {:op :update-node
+                                         :id const/session-ui-id
+                                         :props {:editing-block-id new-id}}]))})
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
@@ -173,61 +172,143 @@
            parent))))
 
 (defn- move-selected-up-ops
+  "Move selected nodes up one sibling position.
+   
+   Logseq climb semantics: When selection is at first-child position (no previous sibling),
+   'climb out' by re-parenting under grandparent, positioned immediately before parent.
+   
+   Example:
+     Before (first-child climb):
+       - Grandparent
+         - Parent
+           - A ← move up (first child, no prev sibling)
+           - B
+     
+     After:
+       - Grandparent
+         - A    ← climbed out, now sibling of Parent (before Parent)
+         - Parent
+           - B
+   
+   Multi-select: All selected nodes climb together, preserving their relative order.
+   
+   Boundary: Cannot climb if parent is a direct child of a root (already at top level)."
   [db]
   (let [targets (active-targets db)
         first-id (first targets)
         parent (same-parent? db targets)
         prev (when first-id (q/prev-sibling db first-id))
         before-prev (when prev (q/prev-sibling db prev))]
-    (if (and parent prev)
+    (cond
+      ;; Normal case: has previous sibling, move before it
+      (and parent prev)
       (intent/intent->ops db {:type :move
                               :selection targets
                               :parent parent
                               :anchor (if before-prev {:after before-prev} :first)})
-      [])))
+
+      ;; Climb case: first child with no prev sibling
+      ;; Re-parent under grandparent, place before parent
+      (and parent (not prev) first-id)
+      (let [grandparent (q/parent-of db parent)
+            roots (set (:roots db const/roots))]
+        ;; Can climb if grandparent exists and parent is NOT a root
+        ;; (This allows climbing TO doc level, but not FROM doc level)
+        (if (and grandparent (not (contains? roots parent)))
+          ;; Can climb: move to grandparent level, positioned before parent
+          (let [parent-prev (q/prev-sibling db parent)]
+            (intent/intent->ops db {:type :move
+                                    :selection targets
+                                    :parent grandparent
+                                    :anchor (if parent-prev {:after parent-prev} :first)}))
+          ;; Can't climb: parent is a root-level node
+          []))
+
+      ;; No valid move
+      :else [])))
 
 (defn- move-selected-down-ops
+  "Move selected nodes down one sibling position.
+   
+   Logseq climb semantics: When selection is at last-child position (no next sibling),
+   'descend' by re-parenting under the next sibling of parent, positioned as first child.
+   
+   Example:
+     Before (last-child descend):
+       - Grandparent
+         - Parent
+           - A
+           - B ← move down (last child, no next sibling)
+         - Uncle (parent's next sibling)
+           - C
+     
+     After:
+       - Grandparent
+         - Parent
+           - A
+         - Uncle
+           - B    ← descended into Uncle, now first child
+           - C
+   
+   Multi-select: All selected nodes descend together, preserving their relative order."
   [db]
   (let [targets (active-targets db)
         last-id (last targets)
         parent (same-parent? db targets)
         next (when last-id (get-in db [:derived :next-id-of last-id]))]
-    (if (and parent next)
+    (cond
+      ;; Normal case: has next sibling, move after it
+      (and parent next)
       (intent/intent->ops db {:type :move
                               :selection targets
                               :parent parent
                               :anchor {:after next}})
-      [])))
+
+      ;; Descend case: last child with no next sibling
+      ;; Re-parent under parent's next sibling (if it exists), placed as first child
+      (and parent (not next) last-id)
+      (let [parent-next (q/next-sibling db parent)]
+        (if parent-next
+          ;; Can descend: move into parent's next sibling as first child
+          (intent/intent->ops db {:type :move
+                                  :selection targets
+                                  :parent parent-next
+                                  :anchor :first})
+          ;; Can't descend: no next sibling of parent
+          []))
+
+      ;; No valid move
+      :else [])))
 
 (intent/register-intent! :delete-selected
-  {:doc "Delete all selected nodes (or editing block if no selection)."
-   :spec [:map [:type [:= :delete-selected]]]
-   :handler (fn [db _]
-              (apply-to-active-targets db delete-ops))})
+                         {:doc "Delete all selected nodes (or editing block if no selection)."
+                          :spec [:map [:type [:= :delete-selected]]]
+                          :handler (fn [db _]
+                                     (apply-to-active-targets db delete-ops))})
 
 (intent/register-intent! :indent-selected
-  {:doc "Indent all selected nodes (or editing block if no selection)."
-   :spec [:map [:type [:= :indent-selected]]]
-   :handler (fn [db _]
-              (apply-to-active-targets db indent-ops))})
+                         {:doc "Indent all selected nodes (or editing block if no selection)."
+                          :spec [:map [:type [:= :indent-selected]]]
+                          :handler (fn [db _]
+                                     (apply-to-active-targets db indent-ops))})
 
 (intent/register-intent! :outdent-selected
-  {:doc "Outdent all selected nodes (or editing block if no selection)."
-   :spec [:map [:type [:= :outdent-selected]]]
-   :handler (fn [db _]
-              (apply-to-active-targets db outdent-ops))})
+                         {:doc "Outdent all selected nodes (or editing block if no selection)."
+                          :spec [:map [:type [:= :outdent-selected]]]
+                          :handler (fn [db _]
+                                     (apply-to-active-targets db outdent-ops))})
 
 (intent/register-intent! :move-selected-up
-  {:doc "Move selected nodes up one sibling position."
-   :spec [:map [:type [:= :move-selected-up]]]
-   :handler (fn [db _]
-              (move-selected-up-ops db))})
+                         {:doc "Move selected nodes up one sibling position."
+                          :spec [:map [:type [:= :move-selected-up]]]
+                          :handler (fn [db _]
+                                     (move-selected-up-ops db))})
 
 (intent/register-intent! :move-selected-down
-  {:doc "Move selected nodes down one sibling position."
-   :spec [:map [:type [:= :move-selected-down]]]
-   :handler (fn [db _]
-              (move-selected-down-ops db))})
+                         {:doc "Move selected nodes down one sibling position."
+                          :spec [:map [:type [:= :move-selected-down]]]
+                          :handler (fn [db _]
+                                     (move-selected-down-ops db))})
 
 ;; ── Movement/Reordering (merged from plugins.permute) ────────────────────────
 
@@ -260,7 +341,6 @@
         safe-idx (min target-idx (count kids-without-selection))
         [head tail] (split-at safe-idx kids-without-selection)]
     (vec (concat head selection tail))))
-
 
 (defn lower-reorder
   "Lower a :move intent to a minimal sequence of :place operations.
@@ -299,7 +379,6 @@
                     selection)]
     ops))
 
-
 (defn- find-missing-nodes
   "Return vector of selection IDs that don't exist in db."
   [db selection]
@@ -311,7 +390,7 @@
    A cycle occurs when parent is a descendant of any selected node.
    Short-circuits on first cycle found."
   [db selection parent]
-  (and (string? parent)  ; Keywords (roots) can't be descendants
+  (and (string? parent) ; Keywords (roots) can't be descendants
        (some #(db/descendant-of? db % parent) selection)))
 
 (defn validate-move-intent
@@ -357,24 +436,24 @@
     {:ops (lower-reorder db intent)}))
 
 (intent/register-intent! :move
-  {:doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
-   :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
-   :handler (fn [db intent]
-              (:ops (lower-move db intent)))})
+                         {:doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
+                          :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
+                          :handler (fn [db intent]
+                                     (:ops (lower-move db intent)))})
 
 ;; ── Move While Editing ────────────────────────────────────────────────────────
 
 (intent/register-intent! :move-block-up-while-editing
-  {:doc "Move current editing block up, preserving edit mode."
-   :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+                         {:doc "Move current editing block up, preserving edit mode."
+                          :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
+                          :handler (fn [db {:keys [block-id]}]
               ;; Use existing move-selected-up logic but don't exit edit mode
               ;; Just return the structural move ops
-              (move-selected-up-ops db))})
+                                     (move-selected-up-ops db))})
 
 (intent/register-intent! :move-block-down-while-editing
-  {:doc "Move current editing block down, preserving edit mode."
-   :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+                         {:doc "Move current editing block down, preserving edit mode."
+                          :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
+                          :handler (fn [db {:keys [block-id]}]
               ;; Use existing move-selected-down logic
-              (move-selected-down-ops db))})
+                                     (move-selected-down-ops db))})

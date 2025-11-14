@@ -108,7 +108,7 @@ Any Evo implementation must mutate these nodes exactly as Logseq does to avoid u
 
 | Action | Behavior | Notes |
 |--------|----------|-------|
-| `Enter` | Dispatch `:smart-split` (context-aware). Splits block unless inside code fence / markdown structure where newline is expected. | Mirrors Logseq’s smart editing plugin. |
+| `Enter` | Dispatch `:smart-split` (context-aware). Splits block unless inside code fence / markdown structure where newline is expected. **Empty list items are a single-step “unformat + create peer”**: when the caret sits on a bullet/number that has no content, Logseq removes the list marker *and* inserts a sibling block at the parent level in the same keypress (see `frontend.handler.editor/keydown-new-block`, branch `thingatpt/list-item`). | Mirrors Logseq’s smart editing plugin. |
 | `Shift+Enter` | Insert literal newline inside block (no new block). | Handled by keymap + smart editing.
 | `Backspace` | - With selection: delete selection.  - At start of block: merge into previous sibling, re-parent children onto previous block, place caret at boundary.  - Empty block: delete block and move focus to previous sibling. | Matches `handler/editor.cljs:keydown-backspace-handler`.
 | `Delete` | At end of block: merge with next block, prioritising first child then next sibling. Re-parent children accordingly. |
