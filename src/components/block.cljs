@@ -512,6 +512,9 @@
                     :min-width "1px"
                     :display "inline-block"}
             :data-block-id block-id
+            ;; CRITICAL: Add key to distinguish from .content-view span
+            ;; This ensures Replicant treats them as different elements during mode transitions
+            :key (str block-id "-edit")
             ;; Focus and cursor positioning on every render
             :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
                                    ;; Don't run on unmount
@@ -525,12 +528,10 @@
                                                  (not= (.-textContent node) text))
                                          (set! (.-textContent node) text))
 
-                                       ;; Focus the element
-                                       (.focus node)
-
                                        ;; Apply cursor position ONCE per cursor-pos value
+                                       ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
                                        ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
-                                       (when cursor-pos
+                                       (if cursor-pos
                                          (let [last-applied (aget node "__lastAppliedCursorPos")]
                                            (when (not= cursor-pos last-applied)
                                              (try
@@ -551,10 +552,16 @@
                                                      (.addRange sel range)
                                                      ;; Mark this cursor-pos as applied
                                                      (aset node "__lastAppliedCursorPos" cursor-pos)
-                                                     (on-intent {:type :clear-cursor-position})
+                                                     ;; Focus AFTER setting cursor to preserve position
+                                                     (.focus node)
+                                                     ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
+                                                     ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
+                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0)
                                                      )))
                                                (catch js/Error e
-                                                 (js/console.error "Cursor positioning failed:" e))))))
+                                                 (js/console.error "Cursor positioning failed:" e)))))
+                                         ;; No cursor-pos specified, just focus normally
+                                         (.focus node))
 
                                        (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
@@ -583,17 +590,19 @@
                     :display "inline-block"
                     :cursor "text"}
             :data-block-id block-id
+            ;; CRITICAL: Use textContent for simple text rendering
+            ;; This avoids Replicant's child reconciliation issues that cause duplication
+            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
+                                     ;; CRITICAL: Directly set textContent to replace ALL content
+                                     ;; This mirrors the approach in .content-edit and prevents duplication
+                                     (set! (.-textContent node) (or text ""))))
             :on {:click (fn [e]
                           (.stopPropagation e)
                           ;; First click = select, second click (when focused) = enter edit mode
                           (if focus?
                             (on-intent {:type :enter-edit :block-id block-id})
-                            (on-intent {:type :selection :mode :replace :ids block-id})))}}
-           ;; Render text with block references, embeds, and page refs
-           (render-text-with-refs db text
-                                  (conj embed-set block-id)
-                                  embed-depth
-                                  on-intent)])
+                            (on-intent {:type :selection :mode :replace :ids block-id})))}}])
 
         children-el
         (when (seq children)
