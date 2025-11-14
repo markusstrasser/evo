@@ -512,15 +512,18 @@
                     :min-width "1px"
                     :display "inline-block"}
             :data-block-id block-id
-            ;; Set text content ONLY on mount (not on every render)
-            ;; This ensures we show the raw syntax (((id))) not rendered text
-            :replicant/on-mount (fn [{:replicant/keys [node]}]
-                                  (set! (.-textContent node) text))
             ;; Focus and cursor positioning on every render
             :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
                                    ;; Don't run on unmount
                                    (when-not (= life-cycle :replicant.life-cycle/unmount)
                                      (let [cursor-pos (q/cursor-position db)]
+
+                                       ;; CRITICAL: Set text content when transitioning INTO edit mode
+                                       ;; We check if the text content is empty OR different from state
+                                       ;; This handles both: (1) initial mount, (2) transition from non-editing to editing
+                                       (when (or (empty? (.-textContent node))
+                                                 (not= (.-textContent node) text))
+                                         (set! (.-textContent node) text))
 
                                        ;; Focus the element
                                        (.focus node)
