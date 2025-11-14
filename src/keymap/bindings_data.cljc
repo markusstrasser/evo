@@ -1,39 +1,91 @@
 (ns keymap.bindings-data)
 
+;; Logseq Keymap Reference: dev/specs/LOGSEQ_KEYMAP_MACOS.md
+;; This keymap mirrors Logseq's macOS shortcuts for basic editing/navigation
+
 (def data
-  {:non-editing [[{:key "Escape"} {:type :selection :mode :clear}]
+  {:non-editing [;; Navigation
+                 [{:key "Escape"} {:type :selection :mode :clear}]
                  [{:key "ArrowDown"} {:type :selection :mode :next}]
                  [{:key "ArrowUp"} {:type :selection :mode :prev}]
+                 ;; Block selection (Alt+Up/Down)
                  [{:key "ArrowDown" :alt true} {:type :selection :mode :next}]
                  [{:key "ArrowUp" :alt true} {:type :selection :mode :prev}]
+                 ;; Indent/Outdent
                  [{:key "Tab"} :indent-selected]
                  [{:key "Tab" :shift true} :outdent-selected]
+                 ;; Delete selected blocks
                  [{:key "Backspace"} :delete-selected]
-                 ;; LOGSEQ PARITY: Enter on selected block → enter edit mode (don't create new block)
+                 [{:key "Delete"} :delete-selected]
+                 ;; Enter on selected block → enter edit mode at END (Logseq parity)
                  [{:key "Enter"} {:type :enter-edit-selected}]]
-   :editing     [;; LOGSEQ PARITY: Escape → exit edit WITHOUT selecting block
+
+   :editing     [;; === Core Editing ===
+                 ;; Escape → exit edit WITHOUT selecting block (Logseq parity)
                  [{:key "Escape"} {:type :exit-edit}]
-                 ;; LOGSEQ PARITY: Enter while editing → split block, create new below
+
+                 ;; Enter while editing → create new block below (Logseq parity)
                  [{:key "Enter"} {:type :context-aware-enter :block-id :editing-block-id :cursor-pos :cursor-pos}]
-                 ;; LOGSEQ PARITY: Shift+Enter inserts literal newline (doesn't split block)
+
+                 ;; Shift+Enter → literal newline (Logseq parity)
                  [{:key "Enter" :shift true} {:type :insert-newline :block-id :editing-block-id :cursor-pos :cursor-pos}]
-                 [{:key "Tab"} :indent-selected]
-                 [{:key "Tab" :shift true} :outdent-selected]
-                 [{:key "Backspace" :mod true} :merge-with-prev]
-                 ;; Text formatting (requires selection)
+
+                 ;; NOTE: Backspace/Delete are NOT bound here - handled by contenteditable + component logic
+                 ;; Special cases (merge at position 0) are handled in the block editor component
+
+                 ;; === Text Formatting ===
                  [{:key "b" :mod true} {:type :format-selection :marker "**"}]
                  [{:key "i" :mod true} {:type :format-selection :marker "__"}]
                  [{:key "h" :shift true :mod true} {:type :format-selection :marker "^^"}]
                  [{:key "s" :shift true :mod true} {:type :format-selection :marker "~~"}]
-                 ;; Word navigation (Emacs-style)
+
+                 ;; === Indent/Outdent ===
+                 [{:key "Tab"} :indent-selected]
+                 [{:key "Tab" :shift true} :outdent-selected]
+
+                 ;; === Word Navigation (Emacs-style, macOS) ===
                  [{:key "f" :ctrl true :shift true} {:type :move-cursor-forward-word :block-id :editing-block-id}]
                  [{:key "b" :ctrl true :shift true} {:type :move-cursor-backward-word :block-id :editing-block-id}]
-                 ;; Kill commands (Emacs-style)
-                 [{:key "l" :mod true} {:type :clear-block-content :block-id :editing-block-id}]
-                 [{:key "u" :mod true} {:type :kill-to-beginning :block-id :editing-block-id}]
-                 [{:key "k" :mod true} {:type :kill-to-end :block-id :editing-block-id}]
-                 [{:key "Delete" :mod true} {:type :kill-word-forward :block-id :editing-block-id}]
-                 [{:key "Delete" :alt true} {:type :kill-word-backward :block-id :editing-block-id}]]
+
+                 ;; === Kill Commands (Emacs-style, macOS) ===
+                 ;; Ctrl+L → clear entire block
+                 [{:key "l" :ctrl true} {:type :clear-block-content :block-id :editing-block-id}]
+                 ;; Ctrl+U → kill from cursor to beginning
+                 [{:key "u" :ctrl true} {:type :kill-to-beginning :block-id :editing-block-id}]
+                 ;; Ctrl+W → kill word forward
+                 [{:key "w" :ctrl true} {:type :kill-word-forward :block-id :editing-block-id}]
+                 ;; Note: Ctrl+K (kill to end) is NOT bound on macOS in Logseq
+                 ;; Note: Alt+W (kill word backward) is NOT bound on macOS in Logseq
+
+                 ;; === Navigation within Editing (Arrow keys) ===
+                 ;; Up/Down navigate to blocks above/below when at edge (Logseq parity)
+                 ;; These intents check cursor position and navigate if at start/end
+                 [{:key "ArrowUp"} {:type :navigate-with-cursor-memory
+                                    :direction :up
+                                    :block-id :editing-block-id
+                                    :cursor-pos :cursor-pos}]
+                 [{:key "ArrowDown"} {:type :navigate-with-cursor-memory
+                                      :direction :down
+                                      :block-id :editing-block-id
+                                      :cursor-pos :cursor-pos}]
+                 ;; Ctrl+P/N as Up/Down aliases (Emacs-style)
+                 [{:key "p" :ctrl true} {:type :navigate-with-cursor-memory
+                                         :direction :up
+                                         :block-id :editing-block-id
+                                         :cursor-pos :cursor-pos}]
+                 [{:key "n" :ctrl true} {:type :navigate-with-cursor-memory
+                                         :direction :down
+                                         :block-id :editing-block-id
+                                         :cursor-pos :cursor-pos}]
+                 ;; Left/Right at edges navigate to adjacent blocks
+                 [{:key "ArrowLeft"} {:type :navigate-to-adjacent
+                                      :direction :left
+                                      :block-id :editing-block-id
+                                      :cursor-pos :cursor-pos}]
+                 [{:key "ArrowRight"} {:type :navigate-to-adjacent
+                                       :direction :right
+                                       :block-id :editing-block-id
+                                       :cursor-pos :cursor-pos}]]
    :global      [;; Multi-selection (works everywhere, including edit mode)
                  [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
                  [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
