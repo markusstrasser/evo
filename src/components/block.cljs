@@ -200,7 +200,7 @@
   (let [target (.-target e)
         selection (.getSelection js/window)
         at-start? (and (= (.-anchorOffset selection) 0)
-                      (= (.-anchorNode selection) (.-firstChild target)))]
+                       (= (.-anchorNode selection) (.-firstChild target)))]
     (cond
       ;; Has selection - collapse to start
       (has-text-selection?)
@@ -211,9 +211,9 @@
       at-start?
       (do (.preventDefault e)
           (on-intent {:type :navigate-to-adjacent
-                     :direction :up
-                     :current-block-id block-id
-                     :cursor-position :max}))  ; Enter previous at end
+                      :direction :up
+                      :current-block-id block-id
+                      :cursor-position :max})) ; Enter previous at end
 
       ;; Middle - let browser handle
       :else nil)))
@@ -239,9 +239,9 @@
       at-end?
       (do (.preventDefault e)
           (on-intent {:type :navigate-to-adjacent
-                     :direction :down
-                     :current-block-id block-id
-                     :cursor-position 0}))  ; Enter next at start
+                      :direction :down
+                      :current-block-id block-id
+                      :cursor-position 0})) ; Enter next at start
 
       ;; Middle - let browser handle
       :else nil)))
@@ -521,11 +521,11 @@
                                    (when-not (= life-cycle :replicant.life-cycle/unmount)
                                      (let [cursor-pos (q/cursor-position db)]
 
-                                       ;; CRITICAL: Set text content when transitioning INTO edit mode
-                                       ;; We check if the text content is empty OR different from state
-                                       ;; This handles both: (1) initial mount, (2) transition from non-editing to editing
-                                       (when (or (empty? (.-textContent node))
-                                                 (not= (.-textContent node) text))
+                                       ;; CRITICAL FIX: Only set text content on MOUNT or when empty
+                                       ;; Setting textContent destroys cursor position, so avoid it during navigation
+                                       ;; This fixes the bug where cursor jumps to position 0 on down-arrow navigation
+                                       (when (or (= life-cycle :replicant.life-cycle/mount)
+                                                 (empty? (.-textContent node)))
                                          (set! (.-textContent node) text))
 
                                        ;; Apply cursor position ONCE per cursor-pos value
@@ -556,8 +556,7 @@
                                                      (.focus node)
                                                      ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
                                                      ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
-                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0)
-                                                     )))
+                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))))
                                                (catch js/Error e
                                                  (js/console.error "Cursor positioning failed:" e)))))
                                          ;; No cursor-pos specified, just focus normally
@@ -578,8 +577,8 @@
                            ;; This prevents race conditions where the last input event hasn't fired
                            (let [final-text (.-textContent (.-target e))]
                              (on-intent {:type :update-content
-                                        :block-id block-id
-                                        :text final-text}))
+                                         :block-id block-id
+                                         :text final-text}))
                            (on-intent {:type :exit-edit})))
                  :keydown (fn [e]
                             (when (= (.-key e) "Escape")
