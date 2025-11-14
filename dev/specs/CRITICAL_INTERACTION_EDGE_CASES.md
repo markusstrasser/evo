@@ -20,7 +20,10 @@ After:
 
 **Why critical**: Users expect this for inserting thoughts above current line.
 
-**Evo status**: 🔍 CHECK
+**Evo status**: ✅ IMPLEMENTED (smart_editing.cljc:443-450)
+- Checks `(zero? cursor-pos)` before split
+- Creates empty block with `:at {:before block-id}`
+- Cursor stays in original block at position 0
 
 ---
 
@@ -35,22 +38,27 @@ After:  Hello
 
 **Implementation**: `string/triml` on second block text
 
-**Evo status**: 🔍 CHECK
+**Evo status**: ✅ IMPLEMENTED (smart_editing.cljc:454)
+- Applies `str/triml` to second block text
+- Prevents unwanted leading spaces in new block
 
 ---
 
 ### ✅ Backspace at Start → Cursor at Join Point (UTF-8 Aware)
-**Behavior**: When merging blocks, cursor positions at the join point using **UTF-8 byte length**.
+**Behavior**: When merging blocks, cursor positions at the join point using **UTF-16 code units** (browser standard).
 
 ```
 Before: Hello
         |World   (cursor at 0 in "World")
-After:  Hello|World   (cursor at byte position after "Hello")
+After:  Hello|World   (cursor at UTF-16 position after "Hello")
 ```
 
-**Critical detail**: Uses `(gobj/get (utf8/encode original-content) "length")` for emoji/multi-byte chars
+**Critical detail**: Uses `(.-length prev-text)` for JavaScript UTF-16 code units (browser cursor positioning standard)
 
-**Evo status**: 🔍 CHECK - are we UTF-8 aware?
+**Evo status**: ✅ IMPLEMENTED (editing.cljc:77-78)
+- Uses `(.-length prev-text)` in ClojureScript
+- Falls back to `(count prev-text)` in Clojure
+- Correctly handles emoji/multi-byte characters via UTF-16 encoding
 
 ---
 
@@ -122,7 +130,11 @@ After:  Hello
         |World    (same block, contains literal newline)
 ```
 
-**Evo status**: 🔍 CHECK
+**Evo status**: ✅ IMPLEMENTED (editing.cljc:64-77, bindings_data.cljc:18)
+- New `:insert-newline` intent
+- Inserts `\n` character at cursor position
+- Cursor moves to position after newline
+- Bound to Shift+Enter in editing mode
 
 ---
 
@@ -162,22 +174,26 @@ After:  |       (both [ and ] deleted)
 
 **Implementation**: Checks for paired delimiters
 
-**Evo status**: 🔍 CHECK - not implemented
+**Evo status**: ✅ ALREADY IMPLEMENTED (smart_editing.cljc:130-186)
+- Intent `:delete-with-pair-check` handles paired deletion
+- Supports single-char pairs: `[]`, `()`, `{}`, `""`
+- Supports multi-char pairs: `**`, `__`, `^^`, `~~`, ``` `` ```
+- Sorts pairs by length (multi-char first) to avoid conflicts
 
 ---
 
 ## Testing Priority Matrix
 
-| Feature | User Impact | Implementation Complexity | Priority |
-|---------|-------------|--------------------------|----------|
-| Enter at 0 → block above | High | Low | **P0** |
-| Backspace merge cursor position | High | Medium (UTF-8) | **P0** |
-| Column position memory | High | Low (already done!) | ✅ |
-| Left-trim on split | Medium | Low | **P1** |
-| Paired deletion | Medium | Medium | **P1** |
-| Shift+Enter newline | Medium | Low | **P1** |
-| Async char buffering | Low | High | **P2** |
-| Selection direction tracking | Low | Medium | **P2** |
+| Feature | User Impact | Implementation Complexity | Status |
+|---------|-------------|--------------------------|--------|
+| Enter at 0 → block above | High | Low | ✅ DONE |
+| Backspace merge cursor position | High | Medium (UTF-16) | ✅ DONE |
+| Column position memory | High | Low | ✅ DONE |
+| Left-trim on split | Medium | Low | ✅ DONE |
+| Paired deletion | Medium | Medium | ✅ DONE |
+| Shift+Enter newline | Medium | Low | ✅ DONE |
+| Async char buffering | Low | High | 🔍 CHECK |
+| Selection direction tracking | Low | Medium | 🔍 CHECK |
 
 ---
 
