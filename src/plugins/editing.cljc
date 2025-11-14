@@ -19,19 +19,56 @@
 
 (intent/register-intent! :enter-edit
                          {:doc "Enter edit mode for a block. Ephemeral - not in undo/redo history.
-         Optional :cursor-at can be :start or :end to position cursor."
+         Optional :cursor-at can be :start or :end to position cursor.
+         Clears selection to maintain edit/view mode mutual exclusivity."
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
                           :handler (fn [_db {:keys [block-id cursor-at]}]
-                                     [{:op :update-node
+                                     [;; INVARIANT: Clear selection before entering edit mode
+                                      {:op :update-node
+                                       :id const/session-selection-id
+                                       :props {:nodes #{} :focus nil :anchor nil}}
+                                      ;; Then set editing-block-id
+                                      {:op :update-node
                                        :id const/session-ui-id
                                        :props {:editing-block-id block-id
                                                :cursor-position cursor-at}}])})
 
 (intent/register-intent! :exit-edit
-                         {:doc "Exit edit mode. Ephemeral - not in undo/redo history."
+                         {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
                           :spec [:map [:type [:= :exit-edit]]]
                           :handler (fn [_db _intent]
-                                     [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil}}])})
+                                     [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil :cursor-position nil}}])})
+
+(intent/register-intent! :exit-edit-and-select
+                         {:doc "Exit edit mode and select the block (Logseq parity).
+                                This is the default Escape behavior in Logseq."
+                          :spec [:map [:type [:= :exit-edit-and-select]]]
+                          :handler (fn [db _intent]
+                                     (when-let [editing-block-id (get-in db [:nodes const/session-ui-id :props :editing-block-id])]
+                                       [{:op :update-node
+                                         :id const/session-ui-id
+                                         :props {:editing-block-id nil :cursor-position nil}}
+                                        {:op :update-node
+                                         :id const/session-selection-id
+                                         :props {:nodes #{editing-block-id}
+                                                 :focus editing-block-id
+                                                 :anchor editing-block-id}}]))})
+
+(intent/register-intent! :enter-edit-selected
+                         {:doc "Enter edit mode in selected block at end of text (Logseq parity).
+                                Does NOT create a new block."
+                          :spec [:map [:type [:= :enter-edit-selected]]]
+                          :handler (fn [db _intent]
+                                     (let [focused-block (get-in db [:nodes const/session-selection-id :props :focus])]
+                                       (when focused-block
+                                         (let [text-length (count (get-in db [:nodes focused-block :props :text] ""))]
+                                           [{:op :update-node
+                                             :id const/session-selection-id
+                                             :props {:nodes #{} :focus nil :anchor nil}}
+                                            {:op :update-node
+                                             :id const/session-ui-id
+                                             :props {:editing-block-id focused-block
+                                                     :cursor-position text-length}}]))))})
 
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
@@ -55,6 +92,21 @@
                           :handler (fn [_db {:keys [block-id text]}]
                                      [{:op :update-node :id block-id :props {:text text}}])})
 
+(intent/register-intent! :insert-newline
+                         {:doc "Insert a literal newline character at cursor position (Shift+Enter).
+                                LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text."
+                          :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
+                          :handler (fn [db {:keys [block-id cursor-pos]}]
+                                     (let [text (get-block-text db block-id)
+                                           new-text (str (subs text 0 cursor-pos)
+                                                        "\n"
+                                                        (subs text cursor-pos))]
+                                       [{:op :update-node :id block-id :props {:text new-text}}
+                                        {:op :update-node
+                                         :id const/session-ui-id
+                                         :props {:editing-block-id block-id
+                                                 :cursor-position (inc cursor-pos)}}]))})
+
 (intent/register-intent! :merge-with-prev
                          {:doc "Merge block with previous sibling, placing cursor at merge point.
 
@@ -65,8 +117,11 @@
                                            prev-text (get-block-text db prev-id)
                                            curr-text (get-block-text db block-id)
                                            merged-text (str prev-text curr-text)
-                    ;; KEY: Calculate where cursor should land (end of prev text)
-                                           cursor-at (count prev-text)
+                    ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
+                    ;; NOTE: In browsers, cursor position is based on UTF-16 code units, not graphemes
+                    ;; Multi-byte characters (emoji) will naturally be handled correctly by .length
+                                           cursor-at #?(:cljs (.-length prev-text)
+                                                       :clj (count prev-text))
 
                     ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]

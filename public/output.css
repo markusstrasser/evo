@@ -166,6 +166,9 @@
   .collapse {
     visibility: collapse;
   }
+  .collapse\! {
+    visibility: collapse !important;
+  }
   .invisible {
     visibility: hidden;
   }
@@ -217,6 +220,9 @@
   .block {
     display: block;
   }
+  .block\! {
+    display: block !important;
+  }
   .contents {
     display: contents;
   }
@@ -240,6 +246,9 @@
   }
   .table {
     display: table;
+  }
+  .shrink {
+    flex-shrink: 1;
   }
   .grow {
     flex-grow: 1;
@@ -291,9 +300,6 @@
     transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
-  .\[repl\:1\] {
-    repl: 1;
   }
 }
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");

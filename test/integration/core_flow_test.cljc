@@ -65,17 +65,23 @@
           ":at-start should be canonicalized to :first by interpreter"))))
 
 (deftest undo-redo-roundtrip
-  (testing "Undo/redo preserves state correctly"
+  (testing "Undo/redo preserves state correctly with structural changes"
+    ;; Selection operations are ephemeral (don't enter history).
+    ;; Test undo/redo with actual structural changes (text updates, moves, etc.)
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
-          {:keys [db]} (api/dispatch db {:type :selection :mode :replace :ids "b"})
+          ;; Structural change 1: update text of block "a"
+          {:keys [db]} (api/dispatch db0 {:type :update-content :block-id "a" :text "Updated A"})
+          ;; Structural change 2: update text of block "b"
+          {:keys [db]} (api/dispatch db {:type :update-content :block-id "b" :text "Updated B"})
           db-undone (H/undo db)
           db-redone (H/redo db-undone)]
-      (is (= "a" (q/focus db-undone))
-          "Undo should restore previous selection")
-      (is (= "b" (q/focus db-redone))
+      (is (= "Updated A" (get-in db-undone [:nodes "a" :props :text]))
+          "Undo should restore state before second update (first update still applied)")
+      (is (= "B" (get-in db-undone [:nodes "b" :props :text]))
+          "Undo should restore original text of block b")
+      (is (= "Updated B" (get-in db-redone [:nodes "b" :props :text]))
           "Redo should restore forward state")
-      (is (= (q/focus db) (q/focus db-redone))
+      (is (= (get-in db [:nodes "b" :props :text]) (get-in db-redone [:nodes "b" :props :text]))
           "Redo should match original state"))))
 
 (deftest multi-select-move
