@@ -5,7 +5,7 @@
             [kernel.transaction :as tx]
             [kernel.query :as q]
             [kernel.intent :as intent]
-            [plugins.smart-editing]))  ;; Load to register intents
+            [plugins.smart-editing])) ;; Load to register intents
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
 
@@ -191,9 +191,9 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "hello"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
-                                                  :block-id "a"
-                                                  :cursor-pos 5
-                                                  :input-char "["})
+                                                 :block-id "a"
+                                                 :cursor-pos 5
+                                                 :input-char "["})
           db' (:db (tx/interpret db ops))]
       (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
       (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -203,9 +203,9 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "hello[]"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
-                                                  :block-id "a"
-                                                  :cursor-pos 6
-                                                  :input-char "]"})
+                                                 :block-id "a"
+                                                 :cursor-pos 6
+                                                 :input-char "]"})
           db' (:db (tx/interpret db ops))]
       ;; Should move cursor, not insert
       (is (= "hello[]" (get-in db' [:nodes "a" :props :text])))
@@ -216,9 +216,9 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "hello"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
-                                                  :block-id "a"
-                                                  :cursor-pos 5
-                                                  :input-char "x"})
+                                                 :block-id "a"
+                                                 :cursor-pos 5
+                                                 :input-char "x"})
           db' (:db (tx/interpret db ops))]
       (is (= "hellox" (get-in db' [:nodes "a" :props :text])))
       (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -228,9 +228,9 @@
                                 [{:op :create-node :id "a" :type :block :props {:text ""}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
-                                                  :block-id "a"
-                                                  :cursor-pos 0
-                                                  :input-char "("})
+                                                 :block-id "a"
+                                                 :cursor-pos 0
+                                                 :input-char "("})
           db' (:db (tx/interpret db ops))]
       (is (= "()" (get-in db' [:nodes "a" :props :text])))
       (is (= 1 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -240,9 +240,9 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "text"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :insert-paired-char
-                                                  :block-id "a"
-                                                  :cursor-pos 0
-                                                  :input-char "**"})
+                                                 :block-id "a"
+                                                 :cursor-pos 0
+                                                 :input-char "**"})
           db' (:db (tx/interpret db ops))]
       (is (= "****text" (get-in db' [:nodes "a" :props :text])))
       (is (= 2 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
@@ -253,8 +253,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "[]"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
-                                                  :block-id "a"
-                                                  :cursor-pos 1})
+                                                 :block-id "a"
+                                                 :cursor-pos 1})
           db' (:db (tx/interpret db ops))]
       (is (= "" (get-in db' [:nodes "a" :props :text])))
       (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -264,8 +264,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "hello"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
-                                                  :block-id "a"
-                                                  :cursor-pos 5})
+                                                 :block-id "a"
+                                                 :cursor-pos 5})
           db' (:db (tx/interpret db ops))]
       (is (= "hell" (get-in db' [:nodes "a" :props :text])))
       (is (= 4 (get-in db' [:nodes "session/ui" :props :cursor-position])))))
@@ -275,8 +275,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "****"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
-                                                  :block-id "a"
-                                                  :cursor-pos 2})
+                                                 :block-id "a"
+                                                 :cursor-pos 2})
           db' (:db (tx/interpret db ops))]
       (is (= "" (get-in db' [:nodes "a" :props :text])))))
 
@@ -285,8 +285,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "[x"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
-                                                  :block-id "a"
-                                                  :cursor-pos 1})
+                                                 :block-id "a"
+                                                 :cursor-pos 1})
           db' (:db (tx/interpret db ops))]
       (is (= "x" (get-in db' [:nodes "a" :props :text])))))
 
@@ -295,8 +295,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "text"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :delete-with-pair-check
-                                                  :block-id "a"
-                                                  :cursor-pos 0})]
+                                                 :block-id "a"
+                                                 :cursor-pos 0})]
       (is (empty? ops)))))
 
 ;; ── Context-Aware Enter Tests ──────────────────────────────────────────────────
@@ -307,8 +307,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "**hello world**"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 5})  ; After "**hel"
+                                                 :block-id "a"
+                                                 :cursor-pos 5}) ; After "**hel"
           db' (:db (tx/interpret db ops))]
       ;; Should move cursor to after **, not split
       (is (= 15 (get-in db' [:nodes "session/ui" :props :cursor-position])))
@@ -320,8 +320,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "**bold**"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 8})  ; After closing **
+                                                 :block-id "a"
+                                                 :cursor-pos 8}) ; After closing **
           db' (:db (tx/interpret db ops))]
       ;; Should create new block
       (is (= 2 (count (q/children db' :doc)))))))
@@ -332,8 +332,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "```clojure\n(+ 1 2)\n```"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 18})  ; After "(+ 1 2)"
+                                                 :block-id "a"
+                                                 :cursor-pos 18}) ; After "(+ 1 2)"
           db' (:db (tx/interpret db ops))]
       ;; Should insert newline, not create new block
       (is (= "```clojure\n(+ 1 2)\n\n```" (get-in db' [:nodes "a" :props :text])))
@@ -347,8 +347,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "- "}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 2})
+                                                 :block-id "a"
+                                                 :cursor-pos 2})
           db' (:db (tx/interpret db ops))]
       (is (= "" (get-in db' [:nodes "a" :props :text])))
       ;; No new block created
@@ -359,8 +359,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "1. First item"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 13})  ; At end
+                                                 :block-id "a"
+                                                 :cursor-pos 13}) ; At end
           db' (:db (tx/interpret db ops))
           children (q/children db' :doc)
           new-block-id (second children)]
@@ -373,8 +373,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "- Item one"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 10})
+                                                 :block-id "a"
+                                                 :cursor-pos 10})
           db' (:db (tx/interpret db ops))
           children (q/children db' :doc)
           new-block-id (second children)]
@@ -388,8 +388,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "- [ ] "}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 6})
+                                                 :block-id "a"
+                                                 :cursor-pos 6})
           db' (:db (tx/interpret db ops))]
       (is (= "" (get-in db' [:nodes "a" :props :text])))
       (is (= 1 (count (q/children db' :doc))))))
@@ -399,8 +399,8 @@
                                 [{:op :create-node :id "a" :type :block :props {:text "- [ ] Task one"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 14})
+                                                 :block-id "a"
+                                                 :cursor-pos 14})
           db' (:db (tx/interpret db ops))
           children (q/children db' :doc)
           new-block-id (second children)]
@@ -409,18 +409,20 @@
       (is (= 6 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
 
 (deftest context-aware-enter-plain-text-test
-  (testing "Enter on plain text splits normally"
+  (testing "Enter on plain text splits normally (Logseq parity: trim left)"
     (let [db (:db (tx/interpret (db/empty-db)
                                 [{:op :create-node :id "a" :type :block :props {:text "hello world"}}
                                  {:op :place :id "a" :under :doc :at :last}]))
           {:keys [ops]} (intent/apply-intent db {:type :context-aware-enter
-                                                  :block-id "a"
-                                                  :cursor-pos 5})
+                                                 :block-id "a"
+                                                 :cursor-pos 5})
           db' (:db (tx/interpret db ops))
           children (q/children db' :doc)
           new-block-id (second children)]
       (is (= "hello" (get-in db' [:nodes "a" :props :text])))
-      (is (= " world" (get-in db' [:nodes new-block-id :props :text])))
+      ;; LOGSEQ PARITY: Second block text is left-trimmed
+      (is (= "world" (get-in db' [:nodes new-block-id :props :text]))
+          "Second block should have leading whitespace trimmed (Logseq parity)")
       (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
 
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
