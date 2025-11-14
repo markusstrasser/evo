@@ -61,6 +61,21 @@
                           :handler (fn [_db {:keys [block-id text]}]
                                      [{:op :update-node :id block-id :props {:text text}}])})
 
+(intent/register-intent! :insert-newline
+                         {:doc "Insert a literal newline character at cursor position (Shift+Enter).
+                                LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text."
+                          :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
+                          :handler (fn [db {:keys [block-id cursor-pos]}]
+                                     (let [text (get-block-text db block-id)
+                                           new-text (str (subs text 0 cursor-pos)
+                                                        "\n"
+                                                        (subs text cursor-pos))]
+                                       [{:op :update-node :id block-id :props {:text new-text}}
+                                        {:op :update-node
+                                         :id const/session-ui-id
+                                         :props {:editing-block-id block-id
+                                                 :cursor-position (inc cursor-pos)}}]))})
+
 (intent/register-intent! :merge-with-prev
                          {:doc "Merge block with previous sibling, placing cursor at merge point.
 
@@ -71,8 +86,11 @@
                                            prev-text (get-block-text db prev-id)
                                            curr-text (get-block-text db block-id)
                                            merged-text (str prev-text curr-text)
-                    ;; KEY: Calculate where cursor should land (end of prev text)
-                                           cursor-at (count prev-text)
+                    ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
+                    ;; NOTE: In browsers, cursor position is based on UTF-16 code units, not graphemes
+                    ;; Multi-byte characters (emoji) will naturally be handled correctly by .length
+                                           cursor-at #?(:cljs (.-length prev-text)
+                                                       :clj (count prev-text))
 
                     ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]

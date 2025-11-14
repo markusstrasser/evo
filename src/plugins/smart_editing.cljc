@@ -434,19 +434,29 @@
                      :props {:editing-block-id new-id
                              :cursor-position (count (:marker context))}}])))))
 
-         ;; Plain text - normal split
+         ;; Plain text - check if cursor at position 0 (Logseq parity)
          :none
          (let [before (subs text 0 cursor-pos)
                after (subs text cursor-pos)
                new-id (str "block-" (random-uuid))]
            (when parent
-             [{:op :update-node :id block-id :props {:text before}}
-              {:op :create-node :id new-id :type :block :props {:text after}}
-              {:op :place :id new-id :under parent :at {:after block-id}}
-              {:op :update-node
-               :id const/session-ui-id
-               :props {:editing-block-id new-id
-                       :cursor-position 0}}]))
+             (if (zero? cursor-pos)
+               ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
+               [{:op :create-node :id new-id :type :block :props {:text ""}}
+                {:op :place :id new-id :under parent :at {:before block-id}}
+                {:op :update-node
+                 :id const/session-ui-id
+                 :props {:editing-block-id block-id
+                         :cursor-position 0}}]
+               ;; Normal split - create block BELOW
+               [{:op :update-node :id block-id :props {:text before}}
+                ;; LOGSEQ PARITY: Left-trim second block text
+                {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
+                {:op :place :id new-id :under parent :at {:after block-id}}
+                {:op :update-node
+                 :id const/session-ui-id
+                 :props {:editing-block-id new-id
+                         :cursor-position 0}}])))
 
          ;; Default (shouldn't happen) - normal split
          (let [before (subs text 0 cursor-pos)
