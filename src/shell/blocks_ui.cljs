@@ -15,6 +15,7 @@
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
             [dev.tooling :as dev]
+            [shell.nexus :as nexus]
             [plugins.selection]
             [plugins.editing]
             [plugins.navigation] ;; Load to register navigation intents (cursor memory)
@@ -253,7 +254,6 @@
                                :on-intent on-intent}))
                children))))
 
-
 (defn HotkeysReference []
   [:div.hotkeys-footer
    {:style {:margin-top "30px"
@@ -362,18 +362,28 @@
   ;; Initialize keyboard bindings (explicit, not side-effect)
   (bindings/reload!)
 
-  ;; Enable lifecycle hooks (required for :replicant/on-mount to work)
+  ;; Initialize Nexus action pipeline
+  (nexus/init!)
+
+  ;; Enable lifecycle hooks + Nexus dispatch
+  ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
   (d/set-dispatch!
    (fn [event-data handler-data]
      (cond
-        ;; Handle lifecycle hooks
+       ;; Handle lifecycle hooks
        (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
        (when (fn? handler-data)
          (handler-data event-data))
 
-        ;; Handle DOM events (if we use data-driven events in the future)
+       ;; Handle DOM events via Nexus
        (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (when (fn? handler-data)
+       (cond
+         ;; Data-driven Nexus actions (preferred)
+         (vector? handler-data)
+         (nexus/dispatch! !db event-data handler-data)
+
+         ;; Legacy function-based handlers (temporary during migration)
+         (fn? handler-data)
          (handler-data (:replicant/dom-event event-data))))))
 
   ;; Set up global keyboard listener (Cmd+Z, etc)
@@ -402,7 +412,7 @@
                             (.addRange sel range)))
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
-            ;; Clear pending selection after applying
+                    ;; Clear pending selection after applying
                     (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
 
   (render!))
