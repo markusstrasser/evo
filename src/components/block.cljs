@@ -114,6 +114,16 @@
          (not (.-isCollapsed selection))
          (> (.-rangeCount selection) 0))))
 
+(defn- ensure-block-selected!
+  "Ensure the given block is the active selection anchor/focus before extending.
+
+   When exiting edit mode via Shift+Arrow at a boundary, selection state is empty.
+   We seed it with the editing block so :selection :mode :extend-*
+   has the same anchor Logseq uses."
+  [db block-id on-intent]
+  (when-not (q/selected? db block-id)
+    (on-intent {:type :selection :mode :replace :ids block-id})))
+
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-arrow-up [e db block-id on-intent]
@@ -182,9 +192,7 @@
           (.collapseToStart sel)))
       ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
       ;; This prevents jumping to page top when extending from editing mode
-      (let [has-focus? (q/focus db)]
-        (when-not has-focus?
-          (on-intent {:type :selection :mode :replace :ids block-id})))
+      (ensure-block-selected! db block-id on-intent)
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-prev}))))
 
@@ -204,9 +212,7 @@
           (.collapseToEnd sel)))
       ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
       ;; This prevents jumping to page bottom when extending from editing mode
-      (let [has-focus? (q/focus db)]
-        (when-not has-focus?
-          (on-intent {:type :selection :mode :replace :ids block-id})))
+      (ensure-block-selected! db block-id on-intent)
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-next}))))
 
