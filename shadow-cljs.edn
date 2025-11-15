@@ -9,6 +9,7 @@
    [medley "1.4.0"]
    [datascript "1.7.5"]
    [binaryage/devtools "1.0.7"]
+   [no.cjohansen/dataspex "2025.10.2"]
    [com.rpl/specter "1.1.5"]
    [org.clojure/core.match "1.1.0"]
    [hiccup/hiccup "2.0.0"]

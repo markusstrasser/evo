@@ -2,57 +2,11 @@
 <html>
 <head>
     <meta charset="utf-8"/>
-    <title>Evolver</title>
-    <style>
-        .node { display: block; margin-left: 20px; padding: 2px 4px; border-left: 2px solid #ccc; }
-        .selected { background-color: lightblue; border-left-color: blue; }
-        .collapsed { opacity: 0.6; }
-        .collapsed::before { content: "▶ "; }
-        .referenced { border-left-color: orange; font-weight: bold; }
-        .referencer-highlighted { background-color: #fff3cd; border-left-color: #ffc107; }
-        .tree { font-family: monospace; }
-        .controls { margin-top: 20px; }
-        .app { max-width: 800px; margin: 0 auto; padding: 20px; }
-
-        .error-boundary { background-color: #ffebee; border: 1px solid #f44336; padding: 10px; margin: 10px 0; border-radius: 4px; }
-        .error-boundary h3 { color: #c62828; margin-top: 0; }
-
-        .log-history { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
-        .log-history h3 { margin-bottom: 10px; }
-        .log-entries { max-height: 200px; overflow-y: auto; }
-        .log-entry { padding: 4px; margin: 2px 0; border-radius: 2px; font-family: monospace; font-size: 12px; }
-        .log-entry.debug { background-color: #e3f2fd; }
-        .log-entry.info { background-color: #f3e5f5; }
-        .log-entry.warn { background-color: #fff3e0; }
-        .log-entry.error { background-color: #ffebee; color: #c62828; }
-        .log-timestamp { color: #666; margin-right: 8px; }
-        .log-level { font-weight: bold; margin-right: 8px; text-transform: uppercase; }
-        .log-message { flex: 1; }
-
-        button { margin: 0 5px 5px 0; padding: 5px 10px; }
-        .controls button:first-child { margin-left: 0; }
-
-        .references-section { margin-left: 20px; margin-top: 5px; padding: 5px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }
-        .references-header { font-weight: bold; color: #495057; margin-bottom: 5px; }
-        .reference-item { padding: 2px 4px; margin: 2px 0; background-color: #e9ecef; border-radius: 2px; cursor: pointer; }
-        .reference-item:hover { background-color: #dee2e6; }
-
-        /* Hotkey Legend Styles */
-        .hotkeys-footer { margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }
-        .hotkeys-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .hotkeys-header h4 { margin: 0; color: #495057; }
-        .hotkeys-hint { color: #6c757d; font-size: 14px; font-style: italic; }
-        .hotkeys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .hotkey-group h5 { margin: 0 0 10px 0; color: #495057; font-size: 16px; border-bottom: 1px solid #dee2e6; padding-bottom: 5px; }
-        .hotkey-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 6px 8px; background-color: white; border-radius: 4px; border: 1px solid #e9ecef; }
-        .hotkey-desc { color: #495057; font-size: 14px; }
-        .hotkey-keys { display: flex; align-items: center; gap: 2px; }
-        .hotkey-keys kbd { background-color: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px; font-family: monospace; min-width: 20px; text-align: center; }
-        .key-separator { color: #6c757d; font-size: 12px; }
-    </style>
+    <title>Blocks UI - Architectural Demo</title>
+    <link href="/output.css" rel="stylesheet">
 </head>
 <body>
 <div id="root"></div>
-<script src="/js/main.js"></script>
+<script src="/js/blocks-ui/main.js"></script>
 </body>
 </html>

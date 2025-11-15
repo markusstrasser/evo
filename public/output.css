@@ -10,8 +10,6 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
-    --color-purple-start: #667eea;
-    --color-purple-end: #764ba2;
   }
 }
 @layer base {
@@ -274,6 +272,9 @@
   .lowercase {
     text-transform: lowercase;
   }
+  .uppercase {
+    text-transform: uppercase;
+  }
   .italic {
     font-style: italic;
   }
@@ -308,11 +309,9 @@
 }
 body {
   font-family: var(--font-sans);
-  background: linear-gradient(135deg, var(--color-purple-start) 0%, var(--color-purple-end) 100%);
   min-height: 100vh;
-  margin: 0 auto;
-  max-width: 900px;
-  padding: 24px;
+  margin: 0;
+  padding: 0;
 }
 .anki-app {
   background: white;

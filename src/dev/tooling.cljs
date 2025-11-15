@@ -8,7 +8,8 @@
    - REPL access to logs"
   (:require [kernel.query :as q]
             [plugins.pages :as pages]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [cljs.pprint]))
 
 ;; ── State Log (Ring Buffer) ──────────────────────────────────────────────────
 
@@ -53,7 +54,11 @@
 
 (defn format-state-snapshot
   "Format DB state as human-readable snapshot using DSL notation.
-   Shows: mode (E/V), tree structure, selection, cursor position."
+   Shows: mode (E/V), tree structure, selection, cursor position.
+
+   Follows notation from docs/VISUAL_DSL_COMMUNICATION.md:
+   - Edit mode: Shows |text for editing block (cursor pos not tracked in DB)
+   - View mode: Shows -*text for selected, ^ for anchor, ~ for focus"
   [db]
   (let [editing-id (q/editing-block-id db)
         selection (q/selection db)
@@ -67,25 +72,39 @@
                             children (get-in db [:children-by-parent id] [])
                             text (get-in node [:props :text] "")
                             selected? (contains? selection id)
-                            is-focus? (= id focus)
-                            is-anchor? (= id anchor)
+                            is-focus (= id focus)
+                            is-anchor (= id anchor)
                             is-editing? (= id editing-id)
 
                             indent (str/join (repeat depth "  "))
+
+                            ;; In edit mode, show |text to indicate editing (exact cursor pos not in DB)
+                            ;; In view mode, show selection markers
+                            display-text (cond
+                                          is-editing? (str "|" (or text id))
+                                          (not (str/blank? text)) text
+                                          :else id)
+
                             prefix (cond
                                      selected? (str indent "-*")
                                      :else (str indent "-"))
+
+                            ;; Anchor and focus markers (view mode only)
                             suffix (cond
-                                     is-editing? " ←E"
-                                     is-focus? " ←~"
-                                     is-anchor? " ←^"
+                                     ;; Both anchor and focus (single block selected)
+                                     (and is-anchor is-focus) " ^~"
+                                     ;; Just anchor
+                                     is-anchor " ^"
+                                     ;; Just focus
+                                     is-focus " ~"
+                                     ;; Nothing
                                      :else "")
 
-                            line (str prefix " " (or text id) suffix "\n")]
+                            line (str prefix " " display-text suffix "\n")]
                         (str line
                              (str/join (map #(format-node % (inc depth)) children)))))]
 
-    (str (if editing-id ":E (edit mode)\n" ":V (view mode)\n")
+    (str (if editing-id ":E\n" ":V\n")
          (when current-page
            (format-node current-page 0)))))
 

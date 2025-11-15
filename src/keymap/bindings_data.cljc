@@ -24,11 +24,10 @@
                  ;; Escape → exit edit WITHOUT selecting block (Logseq parity)
              [{:key "Escape"} {:type :exit-edit}]
 
-                 ;; Enter while editing → create new block below (Logseq parity)
-             [{:key "Enter"} {:type :context-aware-enter :block-id :editing-block-id :cursor-pos :cursor-pos}]
-
-                 ;; Shift+Enter → literal newline (Logseq parity)
-             [{:key "Enter" :shift true} {:type :insert-newline :block-id :editing-block-id :cursor-pos :cursor-pos}]
+                 ;; NOTE: Enter/Shift+Enter are NOT bound in keymap
+                 ;; They MUST be handled by Block component which provides correct cursor position context
+                 ;; Enter → context-aware block split/creation (dispatched via Nexus)
+                 ;; Shift+Enter → literal newline (dispatched via Nexus)
 
                  ;; NOTE: Backspace/Delete are NOT bound here - handled by contenteditable + component logic
                  ;; Special cases (merge at position 0) are handled in the block editor component
@@ -58,34 +57,19 @@
                  ;; Note: Alt+W (kill word backward) is NOT bound on macOS in Logseq
 
                  ;; === Navigation within Editing (Arrow keys) ===
-                 ;; Up/Down navigate to blocks above/below when at edge (Logseq parity)
-                 ;; These intents check cursor position and navigate if at start/end
-             [{:key "ArrowUp"} {:type :navigate-with-cursor-memory
-                                :direction :up
-                                :block-id :editing-block-id
-                                :cursor-pos :cursor-pos}]
-             [{:key "ArrowDown"} {:type :navigate-with-cursor-memory
-                                  :direction :down
-                                  :block-id :editing-block-id
-                                  :cursor-pos :cursor-pos}]
-                 ;; Ctrl+P/N as Up/Down aliases (Emacs-style)
-             [{:key "p" :ctrl true} {:type :navigate-with-cursor-memory
-                                     :direction :up
-                                     :block-id :editing-block-id
-                                     :cursor-pos :cursor-pos}]
-             [{:key "n" :ctrl true} {:type :navigate-with-cursor-memory
-                                     :direction :down
-                                     :block-id :editing-block-id
-                                     :cursor-pos :cursor-pos}]
-                 ;; NOTE: ArrowLeft/Right are NOT bound here
+                 ;; NOTE: ArrowUp/ArrowDown are NOT bound in keymap
+                 ;; They MUST be handled by Block component which detects cursor row position
+                 ;; and dispatches Nexus actions with proper context (text content, cursor offset)
+                 ;;
+                 ;; NOTE: ArrowLeft/Right are also NOT bound here
                  ;; Browser handles cursor movement within the block (default contenteditable behavior)
                  ;; Navigation to adjacent blocks (at cursor edges) is handled at component level
              ]
-   :global [;; NOTE: Shift+Arrow removed - handled by Block component (LOGSEQ_EDITING_SELECTION_PARITY.md §4.2)
-            ;; The component owns Shift+Arrow for cursor boundary detection while editing.
-            ;; This prevents double-dispatch and enables proper text selection → block selection handoff.
-
-            ;; Selection operations
+   :global [;; Selection operations (view mode)
+            ;; NOTE: Shift+Arrow for edit mode handled by Block component (LOGSEQ_EDITING_SELECTION_PARITY.md §4.2)
+            ;; These bindings fire in view mode only (global keydown skips when editing)
+            [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
+            [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
             [{:key "a" :shift true :mod true} {:type :selection :mode :all-in-view}]
             [{:key "a" :mod true} {:type :selection :mode :parent}]
                  ;; Undo/Redo

@@ -1,0 +1,4 @@
+Usage: llmx [OPTIONS] [PROMPT]...
+Try 'llmx --help' for help.
+
+Error: No such option: --system (Possible options: --no-stream, --stream)
