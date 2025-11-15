@@ -112,6 +112,29 @@
   [db]
   (get-in db [:nodes const/session-ui-id :props :zoom-root]))
 
+(defn current-page
+  "Get ID of the currently active page from session/ui state.
+   Returns nil if no page is selected.
+   Ephemeral state - not recorded in history."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :current-page]))
+
+(defn active-outline-root
+  "Get the active outline root for navigation and rendering.
+   
+   LOGSEQ PARITY: Determines which subtree is 'visible' for navigation.
+   Priority order:
+   1. Zoom root (when zoomed into a block)
+   2. Current page (when a page is selected)
+   3. Document root (fallback)
+   
+   This ensures navigation stays within the rendered outline, preventing
+   arrow keys from jumping across pages or into hidden subtrees."
+  [db]
+  (or (zoom-root db)
+      (current-page db)
+      :doc))
+
 (defn zoom-level
   "Get current zoom level (0 = root, 1+ = zoomed in).
    Ephemeral state - not recorded in history."
@@ -179,6 +202,7 @@
    - Siblings in order
    - Respects folding (collapsed children excluded)
    - Respects zoom (only blocks under zoom root)
+   - Respects current page (only blocks on active page when not zoomed)
    
    Example tree:
      A
@@ -190,7 +214,7 @@
    DOM order: [A, A1, A2, B, B1]
    (NOT sibling order: [A, B] or depth-first: [A1, A2, A, B1, B])"
   [db]
-  (let [zoom-root (or (zoom-root db) :doc)
+  (let [root (active-outline-root db)
         folded (folded-set db)
 
         ;; Pre-order traversal: parent, then children (if not folded)
@@ -202,8 +226,37 @@
                              (when (seq child-ids)
                                (mapcat traverse child-ids))))))]
 
-    ;; Start from zoom root's children (or doc's children if no zoom)
-    (vec (mapcat traverse (children db zoom-root)))))
+    ;; Start from active outline root's children
+    ;; (zoom root, current page, or doc root)
+    (vec (mapcat traverse (children db root)))))
+
+(defn next-block-dom-order
+  "Get the next block in DOM/visual order (pre-order traversal).
+   
+   LOGSEQ PARITY: This matches Logseq's navigation which uses
+   get-next-block-non-collapsed to traverse in DOM order, respecting
+   fold state, zoom, and current page boundaries.
+   
+   Returns nil if at last visible block."
+  [db current-id]
+  (let [all-blocks (visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks current-id)]
+    (when (>= idx 0)
+      (get all-blocks (inc idx)))))
+
+(defn prev-block-dom-order
+  "Get the previous block in DOM/visual order (pre-order traversal).
+   
+   LOGSEQ PARITY: This matches Logseq's navigation which uses
+   get-prev-block-non-collapsed to traverse in DOM order, respecting
+   fold state, zoom, and current page boundaries.
+   
+   Returns nil if at first visible block."
+  [db current-id]
+  (let [all-blocks (visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks current-id)]
+    (when (> idx 0)
+      (get all-blocks (dec idx)))))
 
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
@@ -221,3 +274,21 @@
              (map id-by-pre)
              (remove nil?)
              set)))))
+
+(defn visible-range
+  "Return set of visible block IDs between a and b (inclusive) in DOM order.
+   
+   LOGSEQ PARITY: Unlike doc-range, this respects:
+   - Fold state (excludes folded descendants)
+   - Zoom/page boundaries (only blocks in active outline)
+   
+   Used for Shift+Click range selection to prevent selecting hidden blocks.
+   Returns empty set if either node is not visible in current context."
+  [db a b]
+  (let [visible (visible-blocks-in-dom-order db)
+        a-idx (.indexOf visible a)
+        b-idx (.indexOf visible b)]
+    (if (and (>= a-idx 0) (>= b-idx 0))
+      (let [[start end] (if (<= a-idx b-idx) [a-idx b-idx] [b-idx a-idx])]
+        (set (subvec visible start (inc end))))
+      #{})))

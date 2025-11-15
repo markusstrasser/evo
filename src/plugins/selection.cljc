@@ -38,7 +38,7 @@
         anchor (:anchor current-state)
         single-id? (= 1 (count ids-vec))
         range-mode? (and anchor single-id?)
-        range-set (when range-mode? (tree/doc-range db anchor new-focus))
+        range-set (when range-mode? (tree/visible-range db anchor new-focus))
         new-nodes (or range-set (set/union (:nodes current-state) (set ids-vec)))]
     {:nodes new-nodes
      :focus new-focus
@@ -60,41 +60,17 @@
   []
   {:nodes #{} :focus nil :anchor nil})
 
-(defn- next-block-dom-order
-  "Get the next block in DOM/visual order (pre-order traversal).
-   
-   LOGSEQ PARITY: This matches Logseq's navigation which uses
-   get-next-block-non-collapsed to traverse in DOM order.
-   
-   Returns nil if at last block."
-  [db current-id]
-  (let [all-blocks (tree/visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks current-id)]
-    (when (>= idx 0)
-      (get all-blocks (inc idx)))))
-
-(defn- prev-block-dom-order
-  "Get the previous block in DOM/visual order (pre-order traversal).
-   
-   LOGSEQ PARITY: This matches Logseq's navigation which uses
-   get-prev-block-non-collapsed to traverse in DOM order.
-   
-   Returns nil if at first block."
-  [db current-id]
-  (let [all-blocks (tree/visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks current-id)]
-    (when (> idx 0)
-      (get all-blocks (dec idx)))))
-
 (defn- get-dom-nav-fn
   "Return the DOM order navigation function for the given direction.
    
    CRITICAL: Uses DOM order (pre-order traversal), NOT sibling order.
-   This ensures selection includes children, not just siblings."
+   This ensures selection includes children, not just siblings.
+   
+   Uses public helpers from kernel.query (moved from private versions here)."
   [direction]
   (case direction
-    :next next-block-dom-order
-    :prev prev-block-dom-order))
+    :next tree/next-block-dom-order
+    :prev tree/prev-block-dom-order))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.

@@ -180,6 +180,11 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToStart sel)))
+      ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
+      ;; This prevents jumping to page top when extending from editing mode
+      (let [has-focus? (q/focus db)]
+        (when-not has-focus?
+          (on-intent {:type :selection :mode :replace :ids block-id})))
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-prev}))))
 
@@ -197,6 +202,11 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToEnd sel)))
+      ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
+      ;; This prevents jumping to page bottom when extending from editing mode
+      (let [has-focus? (q/focus db)]
+        (when-not has-focus?
+          (on-intent {:type :selection :mode :replace :ids block-id})))
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-next}))))
 

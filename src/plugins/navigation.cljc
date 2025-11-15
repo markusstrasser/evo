@@ -259,8 +259,8 @@
                           :handler
                           (fn [db {:keys [direction current-block-id cursor-position]}]
                             (let [target-id (case direction
-                                              :up (get-in db [:derived :prev-id-of current-block-id])
-                                              :down (get-in db [:derived :next-id-of current-block-id]))]
+                                              :up (q/prev-block-dom-order db current-block-id)
+                                              :down (q/next-block-dom-order db current-block-id))]
                               (when target-id
                                 (let [target-text (get-block-text db target-id)
                                       actual-pos (if (= cursor-position :max)
