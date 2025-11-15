@@ -23,3 +23,21 @@ Historic research notes and superseded specs live under `archive/` (and `later/`
 4. Write tests that exercise the scenarios called out in the spec (view tests, intent tests, integration tests, and Playwright where applicable).
 
 Keeping these two files current ensures every future agent works from the same ground truth.
+
+## Spec Inventory (2025-11-15)
+
+| File | Role | Next Action |
+|------|------|-------------|
+| `LOGSEQ_SPEC.md` | Context-free Logseq reference | Keep as canonical truth source. Update only after re-verifying behavior in `~/Projects/best/logseq`. |
+| `LOGSEQ_KEYMAP_MACOS.md` | Context-free keymap extract | Keep updated when Logseq’s `modules/shortcut/config.cljs` changes. |
+| `dev/logseq-interaction-edge-cases.md` | Context-free research notes | Lives in `dev/`. Keep for citations; sync sections into `LOGSEQ_SPEC.md` when new behavior is confirmed. |
+| `LOGSEQ_PARITY.md` | Gap tracker for Evo | **Out-of-date** (claims zero gaps). Sync with `LOGSEQ_PARITY_REGRESSIONS.md` and current code so readers see the real backlog. |
+| `LOGSEQ_PARITY_REGRESSIONS.md` | Active TODO spec | Implements page-scoped navigation, DOM-order left/right, visibility-safe Shift+Click, and Shift+Arrow seeding. Drive current work from here. |
+| `LOGSEQ_EDITING_SELECTION_PARITY.md` | Active TODO spec (partially implemented) | Cursor/selection dispatcher work mostly landed, but doc-range + Shift+Click coverage still open. Merge overlapping requirements with `LOGSEQ_PARITY_REGRESSIONS.md` once implemented. |
+| `PLUGIN_THICK_THIN_PARITY.md` | Active TODO spec | Tracks move climb semantics, empty list Enter, and drag/drop parity. Needs Logseq verification links before implementation continues. |
+| `KEYMAP_ALIGNMENT.md` | Implementation log (+ remaining shortcuts) | Serves as TODO list for missing copy/paste/link shortcuts. Archive once those bindings ship and `LOGSEQ_PARITY.md` records the closure. |
+| `later/AUTOCOMPLETE_SPEC.md` | Deferred idea | Not tied to parity; leave parked until autocomplete becomes a priority. |
+
+### Recently archived
+- `EDGE_CASES.md` → moved to `archive/EDGE_CASES.md` (content now covered by `LOGSEQ_SPEC.md` + regressions doc).
+- `CURSOR_BEHAVIOR.md` → moved to `archive/CURSOR_BEHAVIOR.md` (cursor lifecycle captured in `LOGSEQ_SPEC.md` §2–4).
