@@ -165,8 +165,45 @@
   (let [children-by-parent (:children-by-parent db)
         get-children (partial get-child-ids children-by-parent)]
     (->> (tree-seq (comp seq get-children) get-children parent)
-         (rest)  ;; Remove the parent itself
+         (rest) ;; Remove the parent itself
          vec)))
+
+(defn visible-blocks-in-dom-order
+  "Get all visible blocks in DOM/visual order (pre-order traversal).
+   
+   LOGSEQ PARITY: This matches Logseq's `get-blocks-noncollapse` which returns
+   all visible .ls-block elements in the order they appear in the DOM.
+   
+   DOM order = pre-order traversal order:
+   - Parent comes before its children
+   - Siblings in order
+   - Respects folding (collapsed children excluded)
+   - Respects zoom (only blocks under zoom root)
+   
+   Example tree:
+     A
+       A1
+       A2
+     B
+       B1
+   
+   DOM order: [A, A1, A2, B, B1]
+   (NOT sibling order: [A, B] or depth-first: [A1, A2, A, B1, B])"
+  [db]
+  (let [zoom-root (or (zoom-root db) :doc)
+        folded (folded-set db)
+
+        ;; Pre-order traversal: parent, then children (if not folded)
+        traverse (fn traverse [node-id]
+                   (when node-id
+                     (let [is-folded (contains? folded node-id)
+                           child-ids (when-not is-folded (children db node-id))]
+                       (cons node-id
+                             (when (seq child-ids)
+                               (mapcat traverse child-ids))))))]
+
+    ;; Start from zoom root's children (or doc's children if no zoom)
+    (vec (mapcat traverse (children db zoom-root)))))
 
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
