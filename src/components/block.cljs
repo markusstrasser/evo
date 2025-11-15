@@ -132,8 +132,10 @@
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            ;; Emit Nexus action instead of intent
+            ;; Emit Nexus action with required parameters
             (on-intent [[:editing/navigate-up {:block-id block-id
+                                               :current-text text-content
+                                               :current-cursor-pos cursor-offset
                                                :cursor-row :first}]])))
 
       ;; Otherwise - let browser handle cursor movement
@@ -155,8 +157,10 @@
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            ;; Emit Nexus action instead of intent
+            ;; Emit Nexus action with required parameters
             (on-intent [[:editing/navigate-down {:block-id block-id
+                                                 :current-text text-content
+                                                 :current-cursor-pos cursor-offset
                                                  :cursor-row :last}]])))
 
       ;; Otherwise - let browser handle cursor movement
@@ -528,12 +532,15 @@
                                    (when-not (= life-cycle :replicant.life-cycle/unmount)
                                      (let [cursor-pos (q/cursor-position db)]
 
-                                       ;; CRITICAL FIX: Only set text content on MOUNT or when empty
-                                       ;; Setting textContent destroys cursor position, so avoid it during navigation
-                                       ;; This fixes the bug where cursor jumps to position 0 on down-arrow navigation
+                                       ;; CRITICAL: Uncontrolled component pattern (like Logseq)
+                                       ;; Set textContent ONLY on mount OR when empty, not on every render
+                                       ;; Read text from node's data attribute to get correct block-id
                                        (when (or (= life-cycle :replicant.life-cycle/mount)
-                                                 (empty? (.-textContent node)))
-                                         (set! (.-textContent node) text))
+                                                 (and (empty? (.-textContent node))
+                                                      (not cursor-pos)))
+                                         (let [node-block-id (aget node "dataset" "blockId")
+                                               current-text (get-in db [:nodes node-block-id :props :text] "")]
+                                           (set! (.-textContent node) current-text)))
 
                                        ;; Apply cursor position ONCE per cursor-pos value
                                        ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
@@ -596,13 +603,11 @@
                     :display "inline-block"
                     :cursor "text"}
             :data-block-id block-id
-            ;; CRITICAL: Use textContent for simple text rendering
-            ;; This avoids Replicant's child reconciliation issues that cause duplication
-            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
-                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
-                                     ;; CRITICAL: Directly set textContent to replace ALL content
-                                     ;; This mirrors the approach in .content-edit and prevents duplication
-                                     (set! (.-textContent node) (or text ""))))
+            ;; CRITICAL: Add key for consistent reconciliation with edit mode
+            :key (str block-id "-view")
+            ;; CRITICAL: Uncontrolled component - set textContent via lifecycle hook
+            :replicant/on-render (fn [{:replicant/keys [node]}]
+                                   (set! (.-textContent node) (or text "")))
             :on {:click (fn [e]
                           (.stopPropagation e)
                           ;; First click = select, second click (when focused) = enter edit mode
