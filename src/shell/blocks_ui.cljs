@@ -14,7 +14,6 @@
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
-            [components.devtools-simple :as devtools-simple]
             [dataspex.core :as dataspex]
             [dev.tooling :as dev]
             [shell.nexus :as nexus]
@@ -360,7 +359,7 @@
          [:p "Select a page from the sidebar to begin"]])
 
       ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
-      (devtools-simple/DevToolsPanel {:db db})
+      (devtools/DevToolsPanel {:db db})
 
       ;; Hotkeys reference
       (HotkeysReference)]]))
