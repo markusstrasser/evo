@@ -14,6 +14,8 @@
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
+            [components.devtools-simple :as devtools-simple]
+            [dataspex.core :as dataspex]
             [dev.tooling :as dev]
             [shell.nexus :as nexus]
             [plugins.selection]
@@ -85,21 +87,34 @@
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
 (defn handle-intent
-  "Single intent dispatcher - uses unified API façade.
+  "Single intent dispatcher - handles both intent maps and Nexus action vectors.
 
    This is the ONLY place intents are dispatched.
-   Components just call (on-intent {:type ...})."
-  [intent-map]
-  (js/console.log "Intent:" (pr-str intent-map))
-  (swap! !db (fn [db]
-               (let [db-before db
-                     {:keys [db issues]} (api/dispatch db intent-map)
-                     db-after db]
-                 (when (seq issues)
-                   (js/console.error "Intent validation failed:" (pr-str issues)))
-                 ;; Log to dev tools (captures before/after state)
-                 (dev/log-dispatch! intent-map db-before db-after)
-                 db))))
+   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions."
+  [intent-or-actions]
+  (cond
+    ;; Nexus action vector: dispatch through Nexus
+    (vector? intent-or-actions)
+    (nexus/dispatch! !db {} intent-or-actions)
+
+    ;; Intent map: dispatch directly through kernel
+    (map? intent-or-actions)
+    (do
+      (js/console.log "Intent:" (pr-str intent-or-actions))
+      (swap! !db (fn [db]
+                   (let [db-before db
+                         {:keys [db issues]} (api/dispatch db intent-or-actions)
+                         db-after db
+                         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-or-actions)))]
+                     (when (seq issues)
+                       (js/console.error "Intent validation failed:" (pr-str issues)))
+                     (when should-log?
+                       (dev/log-dispatch! intent-or-actions db-before db-after))
+                     db))))
+
+    ;; Keyword: wrap in :type map
+    :else
+    (handle-intent {:type intent-or-actions})))
 
 ;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
 
@@ -344,8 +359,8 @@
                        :color "rgb(156, 163, 175)"}}
          [:p "Select a page from the sidebar to begin"]])
 
-      ;; Dev tools with ops log and DOM diff
-      (devtools/DevToolsPanel {:db db})
+      ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
+      (devtools-simple/DevToolsPanel {:db db})
 
       ;; Hotkeys reference
       (HotkeysReference)]]))
@@ -391,6 +406,9 @@
 
   ;; Set up auto-render on state changes
   (add-watch !db :render (fn [_ _ _ _] (render!)))
+
+  ;; Initialize Dataspex for DB inspection
+  (dataspex/inspect "App DB" !db {:track-changes? true})
 
   ;; Apply text selection effects from formatting operations
   (add-watch !db :text-selection-effects

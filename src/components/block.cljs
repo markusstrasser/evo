@@ -548,7 +548,7 @@
                                                (let [range (.createRange js/document)
                                                      sel (.getSelection js/window)
                                                      text-node (.-firstChild node)]
-                                                 ;; Position cursor in the text node
+                                                 ;; Position cursor in the text node (only if text node exists)
                                                  (when (and text-node (= (.-nodeType text-node) 3))
                                                    (let [text-length (.-length text-node)
                                                          pos (cond
@@ -562,13 +562,13 @@
                                                      (.addRange sel range)
                                                      ;; Mark this cursor-pos as applied
                                                      (aset node "__lastAppliedCursorPos" cursor-pos)
-                                                     ;; Focus AFTER setting cursor to preserve position
-                                                     (.focus node)
                                                      ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
                                                      ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
                                                      (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))))
                                                (catch js/Error e
-                                                 (js/console.error "Cursor positioning failed:" e)))))
+                                                 (js/console.error "Cursor positioning failed:" e))))
+                                           ;; CRITICAL FIX: Always focus, even for empty blocks with no text node
+                                           (.focus node))
                                          ;; No cursor-pos specified, just focus normally
                                          (.focus node))
 

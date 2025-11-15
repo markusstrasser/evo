@@ -3,10 +3,14 @@
   "version": "0.0.1",
   "scripts": {
     "start": "npm run dev",
-    "dev": "concurrently --kill-others-on-fail \"npm run watch:cljs\" \"npm run watch:css\"",
-    "watch:cljs": "npx shadow-cljs watch anki",
+    "clean": "npx shadow-cljs clean && bb clean",
+    "dev": "npm run clean && concurrently --kill-others-on-fail --names \"CLJS,CSS\" --prefix-colors \"blue,green\" \"npm run watch:cljs\" \"npm run watch:css\"",
+    "dev:fast": "concurrently --kill-others-on-fail --names \"CLJS,CSS\" --prefix-colors \"blue,green\" \"npm run watch:cljs\" \"npm run watch:css\"",
+    "watch": "npm run dev:fast",
+    "watch:cljs": "npx shadow-cljs watch anki blocks-ui",
     "watch:css": "tailwindcss -i input.css -o public/output.css --watch",
-    "build": "npx shadow-cljs clean && npx shadow-cljs release anki && tailwindcss -i input.css -o public/output.css --minify",
+    "compile": "npx shadow-cljs compile blocks-ui",
+    "build": "npm run clean && npx shadow-cljs release anki blocks-ui && tailwindcss -i input.css -o public/output.css --minify",
     "kb:thin": "uv run ~/Projects/best/thin_repos.py"
   },
   "devDependencies": {

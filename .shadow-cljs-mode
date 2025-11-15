@@ -1,0 +1,8 @@
+# Shadow-CLJS Mode Configuration
+#
+# This file forces watch mode for development.
+# NEVER use compile mode - it creates stale output errors.
+#
+# Use: npm start (always)
+# Avoid: npx shadow-cljs compile (never)
+watch

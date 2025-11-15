@@ -1,33 +1,39 @@
 (ns shell.nexus
   "Nexus action pipeline for Evo.
-   
+
    All DOM events → Nexus actions → Effects → Kernel intents.
-   
+
    Architecture:
    - Actions: Pure reducers that return effect lists
    - Effects: Side-effect wrappers (dispatch intents, log, etc.)
    - Placeholders: Late-bound DOM data (selection offsets, caret position)
-   
+
    Usage:
      (dispatch! [:editing/navigate-up {:block-id \"abc\"}])
-   
+
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [kernel.api :as api]))
+            [kernel.api :as api]
+            [dev.tooling :as dev]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
 
 (defn dispatch-intent
   "Effect that dispatches kernel intents.
-   
+
    Temporary wrapper around handle-intent during migration.
    Later this will call api/dispatch directly."
   [_ !db intent-map]
   (let [db-before @!db
-        {:keys [db issues]} (api/dispatch db-before intent-map)]
+        {:keys [db issues]} (api/dispatch db-before intent-map)
+        db-after db
+        should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
+    ;; Log to devtools (same as blocks_ui/handle-intent)
+    (when should-log?
+      (dev/log-dispatch! intent-map db-before db-after))
     (reset! !db db)))
 
 (defn log-devtools
@@ -92,24 +98,26 @@
 
 (defn navigate-up
   "Action: Navigate cursor up from current block.
-   
+
    Dispatches :navigate-with-cursor-memory intent."
-  [state {:keys [block-id cursor-row]}]
+  [state {:keys [block-id current-text current-cursor-pos cursor-row]}]
   [[:effects/dispatch-intent {:type :navigate-with-cursor-memory
-                              :block-id block-id
-                              :direction :up
-                              :cursor-row cursor-row}]
+                              :current-block-id block-id
+                              :current-text current-text
+                              :current-cursor-pos current-cursor-pos
+                              :direction :up}]
    [:effects/log-devtools {:action :editing/navigate-up
                            :block-id block-id
                            :cursor-row cursor-row}]])
 
 (defn navigate-down
   "Action: Navigate cursor down from current block."
-  [state {:keys [block-id cursor-row]}]
+  [state {:keys [block-id current-text current-cursor-pos cursor-row]}]
   [[:effects/dispatch-intent {:type :navigate-with-cursor-memory
-                              :block-id block-id
-                              :direction :down
-                              :cursor-row cursor-row}]
+                              :current-block-id block-id
+                              :current-text current-text
+                              :current-cursor-pos current-cursor-pos
+                              :direction :down}]
    [:effects/log-devtools {:action :editing/navigate-down
                            :block-id block-id
                            :cursor-row cursor-row}]])
@@ -137,7 +145,7 @@
 (defn smart-split
   "Action: Smart split block (Enter key)."
   [state {:keys [block-id cursor-pos]}]
-  [[:effects/dispatch-intent {:type :smart-split
+  [[:effects/dispatch-intent {:type :context-aware-enter
                               :block-id block-id
                               :cursor-pos cursor-pos}]
    [:effects/log-devtools {:action :editing/smart-split

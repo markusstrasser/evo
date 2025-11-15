@@ -25,13 +25,16 @@ Not: Theorize → Propose → Analyze → Repeat
 ## Quick Start
 
 ```bash
-# Start dev server
 npm install
-npm start
+npm start              # ALWAYS use this (prevents stale output errors)
 
-# Connect to REPL
-# See: dev/repl/init.clj
+# Wait for: [CLJS] Build completed
+# Then open: http://localhost:8080/blocks.html
 ```
+
+**Important**: `npm start` runs **watch mode** which prevents "stale output" errors. Never use `npx shadow-cljs compile` directly.
+
+See [START_HERE.md](START_HERE.md) for troubleshooting.
 
 ## Project Structure
 
