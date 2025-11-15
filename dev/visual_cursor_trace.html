@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Visual Cursor Tracer</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    #chart {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+    }
+    #status {
+      padding: 10px;
+      background: #2d2d30;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .error { color: #f48771; }
+    .success { color: #89d185; }
+    canvas {
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1177bb;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 Visual Cursor Position Tracer</h1>
+
+  <div id="status">
+    Status: <span id="status-text">Ready</span>
+  </div>
+
+  <div>
+    <button onclick="startTracing()">▶ Start Tracing</button>
+    <button onclick="stopTracing()">⏹ Stop</button>
+    <button onclick="clearTrace()">🗑 Clear</button>
+  </div>
+
+  <div id="chart">
+    <canvas id="cursor-graph" width="800" height="400"></canvas>
+  </div>
+
+  <div id="analysis"></div>
+
+  <script>
+    const canvas = document.getElementById('cursor-graph');
+    const ctx = canvas.getContext('2d');
+    let tracing = false;
+    let positions = [];
+    let traceInterval = null;
+
+    function startTracing() {
+      positions = [];
+      tracing = true;
+      document.getElementById('status-text').textContent = 'Recording...';
+      document.getElementById('status-text').className = 'success';
+
+      // Open main app in popup
+      const appWindow = window.open('http://localhost:8080', 'app',
+        'width=800,height=600');
+
+      // Poll cursor position
+      traceInterval = setInterval(() => {
+        if (!tracing) return;
+
+        try {
+          const sel = appWindow.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const pos = sel.getRangeAt(0).startOffset;
+            const timestamp = Date.now();
+
+            positions.push({
+              position: pos,
+              time: timestamp,
+              text: appWindow.document.activeElement?.textContent || ''
+            });
+
+            drawGraph();
+            analyzePositions();
+          }
+        } catch (e) {
+          // Can't access popup (CORS or closed)
+          console.error('Cannot access popup:', e);
+        }
+      }, 50); // Poll every 50ms
+    }
+
+    function stopTracing() {
+      tracing = false;
+      if (traceInterval) {
+        clearInterval(traceInterval);
+        traceInterval = null;
+      }
+      document.getElementById('status-text').textContent = 'Stopped';
+      document.getElementById('status-text').className = '';
+    }
+
+    function clearTrace() {
+      positions = [];
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      document.getElementById('analysis').innerHTML = '';
+      document.getElementById('status-text').textContent = 'Ready';
+    }
+
+    function drawGraph() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (positions.length === 0) return;
+
+      const maxPos = Math.max(...positions.map(p => p.position), 10);
+      const scaleY = (canvas.height - 40) / maxPos;
+      const scaleX = (canvas.width - 40) / Math.max(positions.length, 10);
+
+      // Draw axes
+      ctx.strokeStyle = '#999';
+      ctx.beginPath();
+      ctx.moveTo(30, 10);
+      ctx.lineTo(30, canvas.height - 30);
+      ctx.lineTo(canvas.width - 10, canvas.height - 30);
+      ctx.stroke();
+
+      // Draw grid
+      ctx.strokeStyle = '#eee';
+      for (let i = 0; i <= maxPos; i += Math.max(1, Math.floor(maxPos / 10))) {
+        const y = canvas.height - 30 - (i * scaleY);
+        ctx.beginPath();
+        ctx.moveTo(30, y);
+        ctx.lineTo(canvas.width - 10, y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#666';
+        ctx.fillText(i.toString(), 5, y + 4);
+      }
+
+      // Draw cursor position line
+      ctx.strokeStyle = '#0e639c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      positions.forEach((p, i) => {
+        const x = 30 + (i * scaleX);
+        const y = canvas.height - 30 - (p.position * scaleY);
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+
+        // Mark resets (cursor goes down)
+        if (i > 0 && p.position < positions[i - 1].position - 1) {
+          ctx.fillStyle = '#f48771';
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      ctx.stroke();
+
+      // Draw points
+      positions.forEach((p, i) => {
+        const x = 30 + (i * scaleX);
+        const y = canvas.height - 30 - (p.position * scaleY);
+
+        ctx.fillStyle = '#0e639c';
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Label
+      ctx.fillStyle = '#333';
+      ctx.fillText('Cursor Position Over Time', 40, 20);
+      ctx.fillText('Time →', canvas.width - 60, canvas.height - 10);
+      ctx.save();
+      ctx.translate(10, canvas.height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Position ↑', 0, 0);
+      ctx.restore();
+    }
+
+    function analyzePositions() {
+      if (positions.length < 2) return;
+
+      const resets = [];
+      const jumps = [];
+
+      for (let i = 1; i < positions.length; i++) {
+        const prev = positions[i - 1];
+        const curr = positions[i];
+        const diff = curr.position - prev.position;
+
+        // Detect reset to 0
+        if (diff < -1) {
+          resets.push({ from: prev.position, to: curr.position, time: curr.time });
+        }
+
+        // Detect large jumps
+        if (Math.abs(diff) > 5) {
+          jumps.push({ from: prev.position, to: curr.position, diff, time: curr.time });
+        }
+      }
+
+      const isMonotonic = positions.every((p, i) =>
+        i === 0 || p.position >= positions[i - 1].position
+      );
+
+      let html = '<h3>Analysis:</h3>';
+      html += `<p>Total samples: ${positions.length}</p>`;
+      html += `<p>Monotonic increasing: <span class="${isMonotonic ? 'success' : 'error'}">${isMonotonic ? 'YES ✓' : 'NO ✗'}</span></p>`;
+
+      if (resets.length > 0) {
+        html += `<p class="error">🚨 Cursor resets detected: ${resets.length}</p>`;
+        html += '<ul>';
+        resets.forEach(r => {
+          html += `<li>Reset from ${r.from} → ${r.to} at ${new Date(r.time).toLocaleTimeString()}</li>`;
+        });
+        html += '</ul>';
+      } else {
+        html += '<p class="success">✓ No cursor resets detected</p>';
+      }
+
+      if (jumps.length > 0) {
+        html += `<p>Large jumps: ${jumps.length}</p>`;
+        html += '<ul>';
+        jumps.slice(0, 5).forEach(j => {
+          html += `<li>Jump ${j.from} → ${j.to} (Δ${j.diff})</li>`;
+        });
+        html += '</ul>';
+      }
+
+      // Show final state
+      const last = positions[positions.length - 1];
+      html += `<p>Final cursor position: ${last.position}</p>`;
+      html += `<p>Final text length: ${last.text.length}</p>`;
+
+      document.getElementById('analysis').innerHTML = html;
+    }
+
+    // Instructions
+    console.log(`
+📊 Visual Cursor Tracer
+
+1. Click "Start Tracing"
+2. App opens in popup
+3. Type in the contenteditable
+4. Watch cursor position graph in real-time
+5. Resets appear as red dots
+6. Analysis shows if cursor is monotonic increasing
+
+Use this to visually verify cursor preservation!
+    `);
+  </script>
+</body>
+</html>
