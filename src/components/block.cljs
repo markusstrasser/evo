@@ -180,9 +180,8 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToStart sel)))
-      ;; Emit Nexus action instead of intent
-      (on-intent [[:selection/extend-prev {:block-id block-id
-                                           :direction :backward}]]))))
+      ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
+      (on-intent {:type :selection :mode :extend-prev}))))
 
 (defn handle-shift-arrow-down [e db block-id on-intent]
   "Handle Shift+Down: text selection within block OR block selection at boundary.
@@ -198,9 +197,8 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToEnd sel)))
-      ;; Emit Nexus action instead of intent
-      (on-intent [[:selection/extend-next {:block-id block-id
-                                           :direction :forward}]]))))
+      ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
+      (on-intent {:type :selection :mode :extend-next}))))
 
 (defn handle-arrow-left [e db block-id on-intent]
   "Handle left arrow key.
@@ -304,15 +302,85 @@
    - Arrow keys with cursor boundary detection for seamless navigation
    - Shift+Arrow for text selection OR block selection at boundaries
    - Enter to create new blocks
-   - Escape to exit edit mode
+   - Shift+Enter to insert literal newline (Logseq parity)
+   - Emacs navigation: Ctrl+A/E (line), Alt+A/E (block)
+   - Escape to exit mode
    - Backspace for delete/merge at cursor boundaries (within text)
    - Tab/Shift+Tab for indent/outdent while editing"
   (let [key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         alt? (.-altKey e)
-        ctrl? (.-ctrlKey e)]
+        ctrl? (.-ctrlKey e)
+        target (.-target e)]
     (cond
+      ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
+      ;; Ctrl+A - Move to beginning of current line
+      (and (= key "a") ctrl? (not shift?) (not alt?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)
+                ;; Find start of current line (search backward for \n)
+                line-start (loop [pos (dec cursor-pos)]
+                             (cond
+                               (< pos 0) 0
+                               (= (nth text-content pos) \newline) (inc pos)
+                               :else (recur (dec pos))))]
+            (when-let [text-node (.-firstChild target)]
+              (let [range (.createRange js/document)
+                    sel (.getSelection js/window)]
+                (.setStart range text-node line-start)
+                (.setEnd range text-node line-start)
+                (.removeAllRanges sel)
+                (.addRange sel range)))))
+
+      ;; Ctrl+E - Move to end of current line
+      (and (= key "e") ctrl? (not shift?) (not alt?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)
+                text-length (count text-content)
+                ;; Find end of current line (search forward for \n)
+                line-end (loop [pos cursor-pos]
+                           (cond
+                             (>= pos text-length) text-length
+                             (= (nth text-content pos) \newline) pos
+                             :else (recur (inc pos))))]
+            (when-let [text-node (.-firstChild target)]
+              (let [range (.createRange js/document)
+                    sel (.getSelection js/window)]
+                (.setStart range text-node line-end)
+                (.setEnd range text-node line-end)
+                (.removeAllRanges sel)
+                (.addRange sel range)))))
+
+      ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
+      ;; Alt+A - Move to beginning of block
+      (and (= key "a") alt? (not shift?) (not ctrl?))
+      (do (.preventDefault e)
+          (when-let [text-node (.-firstChild target)]
+            (let [range (.createRange js/document)
+                  sel (.getSelection js/window)]
+              (.setStart range text-node 0)
+              (.setEnd range text-node 0)
+              (.removeAllRanges sel)
+              (.addRange sel range))))
+
+      ;; Alt+E - Move to end of block
+      (and (= key "e") alt? (not shift?) (not ctrl?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                text-length (count text-content)]
+            (when-let [text-node (.-firstChild target)]
+              (let [range (.createRange js/document)
+                    sel (.getSelection js/window)]
+                (.setStart range text-node text-length)
+                (.setEnd range text-node text-length)
+                (.removeAllRanges sel)
+                (.addRange sel range)))))
+
       ;; Shift+Arrow - text selection OR block selection at boundaries
       (and (= key "ArrowUp") shift? (not mod?) (not alt?))
       (handle-shift-arrow-up e db block-id on-intent)
@@ -340,6 +408,15 @@
       (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
       (handle-arrow-right e db block-id on-intent)
 
+      ;; LOGSEQ PARITY: Shift+Enter inserts literal newline (doesn't create block)
+      (and (= key "Enter") shift? (not mod?) (not alt?))
+      (do (.preventDefault e)
+          (let [selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)]
+            (on-intent {:type :insert-newline
+                        :block-id block-id
+                        :cursor-pos cursor-pos})))
+
       ;; Enter - create new block
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))
       (handle-enter e db block-id on-intent)
@@ -348,7 +425,7 @@
       (= key "Escape")
       (handle-escape e db block-id on-intent)
 
-;; Backspace - delete/merge at cursor boundary (within text editing)
+      ;; Backspace - delete/merge at cursor boundary (within text editing)
       (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
       (handle-backspace e db block-id on-intent)
 
@@ -534,9 +611,9 @@
 
                                        ;; CRITICAL: Use :replicant/remember to set textContent ONLY ONCE
                                        ;; After first initialization, browser manages contenteditable completely
-                                       (when-not memory  ; Only if we haven't initialized this node yet
+                                       (when-not memory ; Only if we haven't initialized this node yet
                                          (set! (.-textContent node) text)
-                                         (remember true))  ; Mark as initialized
+                                         (remember true)) ; Mark as initialized
 
                                        ;; Apply cursor position ONCE per cursor-pos value
                                        ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
