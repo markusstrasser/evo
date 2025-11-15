@@ -60,12 +60,41 @@
   []
   {:nodes #{} :focus nil :anchor nil})
 
-(defn- get-sibling-fn
-  "Return the sibling function for the given direction."
+(defn- next-block-dom-order
+  "Get the next block in DOM/visual order (pre-order traversal).
+   
+   LOGSEQ PARITY: This matches Logseq's navigation which uses
+   get-next-block-non-collapsed to traverse in DOM order.
+   
+   Returns nil if at last block."
+  [db current-id]
+  (let [all-blocks (tree/visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks current-id)]
+    (when (>= idx 0)
+      (get all-blocks (inc idx)))))
+
+(defn- prev-block-dom-order
+  "Get the previous block in DOM/visual order (pre-order traversal).
+   
+   LOGSEQ PARITY: This matches Logseq's navigation which uses
+   get-prev-block-non-collapsed to traverse in DOM order.
+   
+   Returns nil if at first block."
+  [db current-id]
+  (let [all-blocks (tree/visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks current-id)]
+    (when (> idx 0)
+      (get all-blocks (dec idx)))))
+
+(defn- get-dom-nav-fn
+  "Return the DOM order navigation function for the given direction.
+   
+   CRITICAL: Uses DOM order (pre-order traversal), NOT sibling order.
+   This ensures selection includes children, not just siblings."
   [direction]
   (case direction
-    :next tree/next-sibling
-    :prev tree/prev-sibling))
+    :next next-block-dom-order
+    :prev prev-block-dom-order))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
@@ -107,7 +136,7 @@
 
           ;; Get next block in the specified direction
           next-block (when current-focus
-                       ((get-sibling-fn direction) db current-focus))]
+                       ((get-dom-nav-fn direction) db current-focus))]
 
       (cond
         ;; No focus → start fresh selection
@@ -132,7 +161,7 @@
           ;; Remove the current focus, move focus toward anchor
           (let [new-nodes (disj current-nodes current-focus)
                 ;; Find the block that's now at the edge (closest to old focus in anchor direction)
-                new-focus ((get-sibling-fn (case current-direction
+                new-focus ((get-dom-nav-fn (case current-direction
                                              :next :prev
                                              :prev :next))
                            db current-focus)]
@@ -158,8 +187,8 @@
     ;; Non-extend mode (plain arrow navigation)
     (if-let [current (tree/focus db)]
       ;; Normal case: navigate from current focus
-      (when-let [sibling-id ((get-sibling-fn direction) db current)]
-        (calc-select-props sibling-id))
+      (when-let [next-id ((get-dom-nav-fn direction) db current)]
+        (calc-select-props next-id))
       ;; Edge case: no focus (after Escape) → select first/last block
       (when-let [first-or-last (get-first-last-visible-block db direction)]
         (calc-select-props first-or-last)))))
