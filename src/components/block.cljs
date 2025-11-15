@@ -527,20 +527,16 @@
             ;; This ensures Replicant treats them as different elements during mode transitions
             :key (str block-id "-edit")
             ;; Focus and cursor positioning on every render
-            :replicant/on-render (fn [{:replicant/keys [node life-cycle]}]
+            :replicant/on-render (fn [{:replicant/keys [node life-cycle remember memory]}]
                                    ;; Don't run on unmount
                                    (when-not (= life-cycle :replicant.life-cycle/unmount)
                                      (let [cursor-pos (q/cursor-position db)]
 
-                                       ;; CRITICAL: Uncontrolled component pattern (like Logseq)
-                                       ;; Set textContent ONLY on mount OR when empty, not on every render
-                                       ;; Read text from node's data attribute to get correct block-id
-                                       (when (or (= life-cycle :replicant.life-cycle/mount)
-                                                 (and (empty? (.-textContent node))
-                                                      (not cursor-pos)))
-                                         (let [node-block-id (aget node "dataset" "blockId")
-                                               current-text (get-in db [:nodes node-block-id :props :text] "")]
-                                           (set! (.-textContent node) current-text)))
+                                       ;; CRITICAL: Use :replicant/remember to set textContent ONLY ONCE
+                                       ;; After first initialization, browser manages contenteditable completely
+                                       (when-not memory  ; Only if we haven't initialized this node yet
+                                         (set! (.-textContent node) text)
+                                         (remember true))  ; Mark as initialized
 
                                        ;; Apply cursor position ONCE per cursor-pos value
                                        ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
