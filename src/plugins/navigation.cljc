@@ -24,13 +24,13 @@
   (let [zoom-root (q/zoom-root db)
         ;; Check if block is within zoom context
         in-zoom? (or (nil? zoom-root)
-                    (= block-id zoom-root)
+                     (= block-id zoom-root)
                     ;; Check if zoom-root is an ancestor of block-id
-                    (loop [current (get-in db [:derived :parent-of block-id])]
-                      (cond
-                        (nil? current) false
-                        (= current zoom-root) true
-                        :else (recur (get-in db [:derived :parent-of current])))))
+                     (loop [current (get-in db [:derived :parent-of block-id])]
+                       (cond
+                         (nil? current) false
+                         (= current zoom-root) true
+                         :else (recur (get-in db [:derived :parent-of current])))))
         ;; Check if any ancestor is folded
         no-folded-ancestors? (loop [current (get-in db [:derived :parent-of block-id])]
                                (cond
@@ -40,26 +40,26 @@
     (and in-zoom? no-folded-ancestors?)))
 
 (defn- get-prev-visible-block
-  "Get the previous visible block, skipping folded and out-of-zoom blocks.
+  "Get the previous visible block in DOM order, skipping folded and out-of-zoom blocks.
 
-   This mirrors Logseq's get-prev-block-non-collapsed behavior."
+   LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
+   This matches Logseq's get-prev-block-non-collapsed behavior."
   [db block-id]
-  (loop [current-id (get-in db [:derived :prev-id-of block-id])]
-    (cond
-      (nil? current-id) nil
-      (visible-in-context? db current-id) current-id
-      :else (recur (get-in db [:derived :prev-id-of current-id])))))
+  (let [all-blocks (q/visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks block-id)]
+    (when (> idx 0)
+      (get all-blocks (dec idx)))))
 
 (defn- get-next-visible-block
-  "Get the next visible block, skipping folded and out-of-zoom blocks.
+  "Get the next visible block in DOM order, skipping folded and out-of-zoom blocks.
 
-   This mirrors Logseq's get-next-block-non-collapsed behavior."
+   LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
+   This matches Logseq's get-next-block-non-collapsed behavior."
   [db block-id]
-  (loop [current-id (get-in db [:derived :next-id-of block-id])]
-    (cond
-      (nil? current-id) nil
-      (visible-in-context? db current-id) current-id
-      :else (recur (get-in db [:derived :next-id-of current-id])))))
+  (let [all-blocks (q/visible-blocks-in-dom-order db)
+        idx (.indexOf all-blocks block-id)]
+    (when (>= idx 0)
+      (get all-blocks (inc idx)))))
 
 (defn- grapheme-count
   "Count graphemes (user-perceived characters) in a string.
@@ -165,7 +165,7 @@
         ;; This matches Logseq's text-range-by-lst-fst-line behavior
         lines (str/split-lines target-text)
         target-line (if (= direction :up)
-                      (last lines)   ; UP → LAST line
+                      (last lines) ; UP → LAST line
                       (first lines)) ; DOWN → FIRST line
         ;; If no lines, empty string
         target-line (or target-line "")
@@ -259,13 +259,13 @@
                           :handler
                           (fn [db {:keys [direction current-block-id cursor-position]}]
                             (let [target-id (case direction
-                                             :up (get-in db [:derived :prev-id-of current-block-id])
-                                             :down (get-in db [:derived :next-id-of current-block-id]))]
+                                              :up (get-in db [:derived :prev-id-of current-block-id])
+                                              :down (get-in db [:derived :next-id-of current-block-id]))]
                               (when target-id
                                 (let [target-text (get-block-text db target-id)
                                       actual-pos (if (= cursor-position :max)
-                                                  (count target-text)
-                                                  cursor-position)]
+                                                   (count target-text)
+                                                   cursor-position)]
                                   [{:op :update-node
                                     :id const/session-ui-id
                                     :props {:editing-block-id nil}}
