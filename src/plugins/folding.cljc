@@ -111,6 +111,28 @@
                     :id const/session-ui-id
                     :props {:folded new-folded}}])))})
 
+(intent/register-intent! :toggle-subtree
+  {:doc "Toggle entire subtree (Alt+Click on bullet - Logseq parity FR-Pointer-01).
+
+         If any descendant is expanded, collapse all descendants.
+         If all descendants are collapsed, expand all descendants."
+   :spec [:map [:type [:= :toggle-subtree]] [:block-id :string]]
+   :handler (fn [db {:keys [block-id]}]
+              (when (has-children? db block-id)
+                (let [descendants (all-descendant-ids db block-id)
+                      all-ids (cons block-id descendants)
+                      folded-set (get-folded-set db)
+                      ;; Check if all descendants are collapsed
+                      all-collapsed? (every? folded-set all-ids)
+                      new-folded (if all-collapsed?
+                                  ;; Expand all
+                                  (apply disj folded-set all-ids)
+                                  ;; Collapse all
+                                  (apply conj folded-set all-ids))]
+                  [{:op :update-node
+                    :id const/session-ui-id
+                    :props {:folded new-folded}}])))})
+
 (intent/register-intent! :toggle-all-folds
   {:doc "Toggle all folds on a page. Expand all if any collapsed, else collapse all top-level."
    :spec [:map [:type [:= :toggle-all-folds]] [:root-id :string]]

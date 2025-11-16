@@ -19,6 +19,7 @@
             [shell.nexus :as nexus]
             [plugins.selection]
             [plugins.editing]
+            [plugins.clipboard] ;; Load to register paste/copy/cut intents
             [plugins.navigation] ;; Load to register navigation intents (cursor memory)
             [plugins.struct]
             [plugins.folding]
@@ -30,11 +31,22 @@
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
+(defn- test-mode?
+  "Check if running in E2E test mode"
+  []
+  (when-let [search (.-search js/location)]
+    (boolean (re-find #"[?&]test=true" search))))
+
 (defonce !db
   (atom
-   (-> (DB/empty-db)
+   (if (test-mode?)
+     ;; E2E test mode: empty database
+     (-> (DB/empty-db)
+         (H/record))
+     ;; Normal mode: load demo content
+     (-> (DB/empty-db)
                ;; Create multiple pages with transclusion examples
-       (tx/interpret [;; ── Projects Page ──
+         (tx/interpret [;; ── Projects Page ──
                       {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
                       {:op :place :id "projects" :under :doc :at :last}
                       {:op :create-node :id "proj-1" :type :block :props {:text "Evolver - Outliner Project"}}
@@ -396,8 +408,21 @@
   (d/render (js/document.getElementById "root")
             (App)))
 
+;; ── Test Helpers ──────────────────────────────────────────────────────────────
+
+(defn reset-to-empty-db!
+  "Reset database to empty state for E2E tests.
+   Exposed on window.TEST_HELPERS for Playwright."
+  []
+  (reset! !db (-> (DB/empty-db)
+                  (H/record))))
+
 (defn main []
   (js/console.log "Blocks UI starting with proper architecture...")
+
+  ;; Expose test helpers for E2E tests
+  (set! (.-TEST_HELPERS js/window)
+        #js {:resetToEmptyDb reset-to-empty-db!})
 
   ;; Initialize keyboard bindings (explicit, not side-effect)
   (bindings/reload!)
