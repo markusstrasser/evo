@@ -19,6 +19,7 @@
             [shell.nexus :as nexus]
             [plugins.selection]
             [plugins.editing]
+            [plugins.clipboard] ;; Load to register paste/copy/cut intents
             [plugins.navigation] ;; Load to register navigation intents (cursor memory)
             [plugins.struct]
             [plugins.folding]
