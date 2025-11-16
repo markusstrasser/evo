@@ -8,6 +8,8 @@ import { test, expect } from '@playwright/test';
 import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
 import { getAllBlocks } from './helpers/blocks.js';
 import { enterEditModeAndClick } from './helpers/edit-mode.js';
+import { enterEditMode, waitForEditMode } from './helpers/debug.js';
+import { pressKeyOnContentEditable } from './helpers/keyboard.js';
 
 const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
 
@@ -127,7 +129,7 @@ test.describe('Block Navigation', () => {
 
 test.describe(`${NAV_PARENT_HOP}`, () => {
   test('ArrowLeft at block start hops to parent and lands caret at end', async ({ page }) => {
-    test.fail(true, 'LOGSEQ-PARITY-112: boundary hop not implemented yet');
+    // LOGSEQ-PARITY-112: Testing if boundary hop is now working
     await page.goto('/blocks.html?test=true');
     await enterEditModeAndClick(page);
 
@@ -144,18 +146,24 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     await page.keyboard.type(childText);
     const childIdRaw = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
     await page.keyboard.press('Tab');
-    await page.waitForFunction(() => document.querySelectorAll('.block[data-block-id]').length >= 2);
+    await page.waitForTimeout(200); // Wait for indent operation and re-render
 
     expect(parentId).toBeTruthy();
     expect(childIdRaw).toBeTruthy();
 
-    // Ensure cursor is at start of child block
+    // Tab causes blur → exits edit mode. Re-enter using DEBUG helper
+    await enterEditMode(page, childIdRaw, 'end');
+    await page.waitForTimeout(100);
+
+    // Now set cursor to start for boundary test
     await setCursorPosition(page, childIdRaw, 0);
-    await page.waitForTimeout(50);
 
     // ArrowLeft at boundary should move focus to parent and place caret at end
-    await page.keyboard.press('ArrowLeft');
-    await page.waitForTimeout(150);
+    // Use helper instead of page.keyboard.press() to ensure events reach handlers
+    await pressKeyOnContentEditable(page, 'ArrowLeft');
+
+    // Wait for DB state to update (navigation to parent)
+    await waitForEditMode(page, parentId, 2000);
 
     const cursor = await getCursorPosition(page);
     expect(cursor.elementId).toBe(parentId);
