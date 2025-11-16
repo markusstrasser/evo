@@ -44,15 +44,21 @@
       v)))
 
 (defn- strip-history
-  "Remove :history and clear session/ui props from DB (for storing in history stack).
+  "Remove :history from DB before storing in history stack.
 
-   session/ui contains ephemeral state (edit mode, cursor) that should not be undoable."
+   LOGSEQ PARITY (FR-Undo-01): Preserve editing-block-id and cursor-position
+   so undo/redo restores interaction state (editing block, caret position).
+
+   Only strip truly ephemeral state like cursor boundary flags."
   [DB]
-  (let [ui-id const/session-ui-id]
+  (let [ui-id const/session-ui-id
+        ui-props (get-in DB [:nodes ui-id :props] {})
+        ;; Preserve editing state for undo/redo, strip transient cursor state
+        preserved-props (select-keys ui-props [:editing-block-id :cursor-position])]
     (-> DB
         (dissoc :history)
-        ;; Clear ephemeral props but keep the node to preserve invariants
-        (assoc-in [:nodes ui-id :props] {}))))
+        ;; Keep editing-block-id and cursor-position, clear cursor boundary flags
+        (assoc-in [:nodes ui-id :props] preserved-props))))
 
 (defn record
   "Record current DB state to undo stack before making a change.
@@ -75,18 +81,16 @@
    Moves current state to future (for redo).
    Returns updated DB, or nil if no history.
 
-   Preserves session/ui props (ephemeral state) from current DB."
+   LOGSEQ PARITY (FR-Undo-01): Restores editing-block-id and cursor-position
+   from the historical state, NOT the current state."
   [DB]
-  (let [{:keys [past future limit]} (get-history DB)
-        ui-id const/session-ui-id
-        current-ui-props (get-in DB [:nodes ui-id :props])]
+  (let [{:keys [past future limit]} (get-history DB)]
     (when (seq past)
       (let [current-snapshot (strip-history DB)
             prev-snapshot (peek past)
             new-past (pop past)
             new-future (conj (vec future) current-snapshot)]
         (-> prev-snapshot
-            (assoc-in [:nodes ui-id :props] current-ui-props)
             (assoc :history {:past new-past
                              :future new-future
                              :limit limit}))))))
@@ -96,18 +100,16 @@
    Moves current state to past (for undo).
    Returns updated DB, or nil if no future.
 
-   Preserves session/ui props (ephemeral state) from current DB."
+   LOGSEQ PARITY (FR-Undo-01): Restores editing-block-id and cursor-position
+   from the future state, NOT the current state."
   [DB]
-  (let [{:keys [past future limit]} (get-history DB)
-        ui-id const/session-ui-id
-        current-ui-props (get-in DB [:nodes ui-id :props])]
+  (let [{:keys [past future limit]} (get-history DB)]
     (when (seq future)
       (let [current-snapshot (strip-history DB)
             next-snapshot (peek future)
             new-future (pop future)
             new-past (conj (vec past) current-snapshot)]
         (-> next-snapshot
-            (assoc-in [:nodes ui-id :props] current-ui-props)
             (assoc :history {:past new-past
                              :future new-future
                              :limit limit}))))))

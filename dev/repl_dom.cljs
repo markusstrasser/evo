@@ -81,9 +81,9 @@
            :order-correct? boolean}"
   [text-to-type]
   (let [positions (atom [])]
-    (doseq [char text-to-type]
+    (doseq [character text-to-type]
       ;; Simulate keypress
-      (let [event (js/KeyboardEvent. "keydown" #js {:key (str char)})]
+      (let [event (js/KeyboardEvent. "keydown" #js {:key (str character)})]
         (.dispatchEvent js/document.activeElement event))
 
       ;; Track cursor position after each char
