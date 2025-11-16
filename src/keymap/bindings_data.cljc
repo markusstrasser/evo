@@ -43,16 +43,16 @@
              [{:key "Tab" :shift true} :outdent-selected]
 
                  ;; === Word Navigation (Emacs-style, macOS) ===
-             [{:key "f" :ctrl true :shift true} {:type :move-cursor-forward-word :block-id :editing-block-id}]
-             [{:key "b" :ctrl true :shift true} {:type :move-cursor-backward-word :block-id :editing-block-id}]
+             [{:key "f" :mod true :shift true} {:type :move-cursor-forward-word :block-id :editing-block-id}]
+             [{:key "b" :mod true :shift true} {:type :move-cursor-backward-word :block-id :editing-block-id}]
 
                  ;; === Kill Commands (Emacs-style, macOS) ===
                  ;; Ctrl+L → clear entire block
-             [{:key "l" :ctrl true} {:type :clear-block-content :block-id :editing-block-id}]
+             [{:key "l" :mod true} {:type :clear-block-content :block-id :editing-block-id}]
                  ;; Ctrl+U → kill from cursor to beginning
-             [{:key "u" :ctrl true} {:type :kill-to-beginning :block-id :editing-block-id}]
+             [{:key "u" :mod true} {:type :kill-to-beginning :block-id :editing-block-id}]
                  ;; Ctrl+W → kill word forward
-             [{:key "w" :ctrl true} {:type :kill-word-forward :block-id :editing-block-id}]
+             [{:key "w" :mod true} {:type :kill-word-forward :block-id :editing-block-id}]
                  ;; Note: Ctrl+K (kill to end) is NOT bound on macOS in Logseq
                  ;; Note: Alt+W (kill word backward) is NOT bound on macOS in Logseq
 
