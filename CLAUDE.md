@@ -1,0 +1,382 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Event-sourced UI kernel with declarative operations and generative AI tooling. Pure data transformation library for UI state management using ClojureScript.
+
+**Philosophy**: Build → Learn → Extract → Generalize (not: Theorize → Propose → Analyze → Repeat)
+
+Key characteristics:
+- Event sourcing: All changes as immutable EDN operations
+- REPL-first development workflow
+- AI-native design: LLMs generate operations, not DOM
+- Framework-agnostic core with thin UI adapters
+- Correctness over performance, simple over clever
+- Docs map: start with `docs/DX_INDEX.md` for the current canonical references.
+
+## Essential Commands
+
+### Development
+
+```bash
+# Start development (ALWAYS use this)
+npm start                  # Clean + watch CLJS + watch CSS (prevents stale errors)
+
+# Fast restart (skip clean - only when cache is fresh)
+npm run dev:fast           # Watch CLJS + watch CSS
+
+# Manual cache clear
+npm run clean              # Clear shadow-cljs + bb caches
+
+# Production build
+npm run build              # Clean + release anki + release blocks-ui + minified CSS
+```
+
+**Important**: Always use `npm start` for development. It runs **watch mode** which prevents "stale output" errors. Never use `npx shadow-cljs compile` directly.
+
+### Testing
+
+```bash
+# Unit tests (ClojureScript via shadow-cljs)
+bb test                    # Compile and run once
+bb test-watch              # Auto-rerun on save (TDD mode)
+bb test-focus PATTERN      # Run tests matching pattern
+bb test-fail-fast          # Stop on first failure
+bb test-seed SEED          # Reproduce property test with specific seed
+
+# E2E tests (Playwright)
+bb e2e                     # Run all E2E tests
+bb e2e-watch               # Watch mode with UI
+bb e2e-debug               # Run with Playwright debugger
+bb e2e-headed              # Run with visible browser
+bb e2e-report              # Open last test report
+bb e2e-a11y                # Accessibility tests only
+bb e2e-visual              # Visual regression tests (Percy)
+```
+
+### Quality Gates
+
+```bash
+bb lint                    # Run clj-kondo linter
+bb check                   # Lint + compile check (full quality gate)
+bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
+```
+
+### Cache & Index Management
+
+```bash
+bb clean                   # Clear all caches + semantic search index
+bb index                   # Rebuild ck semantic embeddings index
+```
+
+### REPL
+
+```bash
+# Start shadow-cljs and connect via your editor
+# Then load REPL utilities:
+(require '[repl :as repl])
+(repl/init!)               # Load core namespaces + clojure+ enhancements
+
+# Quick health check
+bb repl-health             # Run diagnostics (requires running REPL)
+```
+
+### AI-Assisted Development
+
+```bash
+# Get bird's-eye view of codebase with Gemini 2.5 Pro
+# Generate full src context and analyze with long-context LLM
+bb repomix                 # Creates repomix-output.txt with full codebase
+# Then share repomix-output.txt with Gemini 2.5 Pro for architectural analysis
+```
+
+**Tip**: Use `bb repomix` + Gemini 2.5 Pro's 2M token context for high-level codebase understanding, architectural decisions, and pattern analysis.
+
+## Architecture
+
+### Core Layers
+
+```
+src/kernel/          # Pure kernel: db, ops, transaction, schema, errors
+src/plugins/         # Intent handlers: navigation, editing, selection, refs
+src/shell/           # UI adapters: Replicant components
+src/keymap/          # Keybinding definitions and dispatch
+src/parser/          # Block refs, page refs, embeds
+src/components/      # Replicant UI components
+```
+
+### Transaction Pipeline
+
+All state changes flow through a strict pipeline:
+
+1. **Normalize**: Filter no-ops, resolve position anchors
+2. **Validate**: Check schema, invariants (cycles, missing refs)
+3. **Apply**: Execute via three primitives (create, place, update)
+4. **Derive**: Recompute indexes (`:parent-of`, `:next-id-of`, `:prev-id-of`, traversal orders)
+
+```clojure
+;; Three-op kernel primitives
+{:op :create   :id "a" :type :block :props {:text "Hello"}}
+{:op :place    :id "a" :under :doc :at :last}
+{:op :update   :id "a" :props {:text "World"}}
+```
+
+### Canonical DB Shape
+
+```clojure
+{:nodes {"id" {:type :block :props {...}}}
+ :children-by-parent {:doc ["a" "b"] "a" ["c"]}
+ :roots [:doc :trash :session]
+ :derived {:parent-of {"a" :doc}
+           :next-id-of {"a" "b"}
+           :prev-id-of {"b" "a"}
+           :index-of {"a" 0 "b" 1}
+           :pre {"a" 0 "b" 1}  ; pre-order traversal
+           :post {"a" 2 "b" 1}
+           :id-by-pre {0 "a" 1 "b"}}}
+```
+
+**Critical**: Derived indexes are recomputed automatically. Never mutate them directly.
+
+### Intent → Operations Pattern
+
+UI components dispatch intents, plugins calculate operations:
+
+```
+User Action
+    ↓
+Component (Replicant)      # Dispatch intent
+    ↓
+Plugin (Intent Handler)    # Calculate operations
+    ↓
+Kernel (Transaction)       # Apply + derive
+    ↓
+Component Re-renders       # Replicant diffs DOM
+```
+
+Components never mutate state directly. They describe what happened via intents.
+
+### Replicant (View Layer)
+
+- Treat components as **pure render functions**. All persistent state/governance lives in the kernel.
+- Event handlers are simple functions that dispatch Nexus actions. Never call `handle-intent` (or mutate DB) directly from a component.
+- Lifecycle hooks (`:replicant/on-mount`, `:replicant/on-render`, `:replicant/on-unmount`) are the only place you may touch the DOM (focus, selection, mock text). Guard cursor placement with the `__lastAppliedCursorPos` pattern described in `docs/RENDERING_AND_DISPATCH.md`.
+- `set-dispatch!` must stay wired so lifecycle hooks fire; leave it alone unless you know what you’re doing.
+
+**Nexus workflow:**
+1. Component receives a DOM event → computes context (cursor offsets, row info).
+2. Component calls `(nexus/dispatch! [:editing/navigate-up payload])`.
+3. Nexus handler translates the action into an intent and routes it through the kernel.
+
+This guarantees one dispatch per event and keeps DOM-only facts close to the component. See `docs/RENDERING_AND_DISPATCH.md` + `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md` before touching keyboard logic.
+
+## Common Gotchas
+
+### Constants & IDs
+
+```clojure
+;; ❌ WRONG: Root IDs are NOT prefixed
+{:op :place :id "a" :under :root-trash :at :last}
+
+;; ✅ CORRECT: Use bare keywords
+{:op :place :id "a" :under :trash :at :last}
+
+;; ❌ WRONG: Session UI ID is a string
+(get-in db [:nodes :session-ui :props :editing-block-id])
+
+;; ✅ CORRECT: Use the constant
+(require '[kernel.constants :as const])
+(get-in db [:nodes const/session-ui-id :props :editing-block-id])
+;; const/session-ui-id => "session/ui" (a string!)
+```
+
+**Root constants**: `:doc`, `:trash`, `:session` (defined in `src/kernel/constants.cljc`)
+
+### Keyboard & Selection
+- Use the Nexus dispatcher for **all** keyboard actions. Do not add new handlers directly to `handle-global-keydown` or components without routing through Nexus.
+- Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
+- For new behaviors, add Playwright coverage that asserts both DOM selection (`window.getSelection()`) and kernel selection state. Pure DB tests are not enough for cursor/selection bugs.
+
+### Move "Climb" Semantics (Logseq Parity)
+
+**Mod+Shift+Up/Down** implements boundary-aware "climb" behavior:
+
+- **Climb Out**: When pressing `Mod+Shift+Up` on a first child (no previous sibling), the block "climbs out" to become a sibling of its parent, positioned immediately before the parent.
+- **Descend Into**: When pressing `Mod+Shift+Down` on a last child (no next sibling), the block descends into the parent's next sibling as its first child.
+- **Boundary Respect**: Blocks at doc level (top-level) cannot climb further; operations become no-ops.
+
+```clojure
+;; Example: Climb out behavior
+;; Before: Parent → [Child A (first), Child B]
+;; After Mod+Shift+Up on Child A: [Child A, Parent → [Child B]]
+
+;; Example: Descend behavior
+;; Before: [Parent → [Child C (last)], Uncle]
+;; After Mod+Shift+Down on Child C: [Parent, Uncle → [Child C]]
+```
+
+**Implementation**: `plugins.struct/move-selected-up-ops` and `move-selected-down-ops` detect boundary conditions and re-parent blocks accordingly. Multi-selection is fully supported.
+
+### Empty List Item Enter (Logseq Parity)
+
+Pressing **Enter** on an empty list item (e.g., `- ` with no content) performs two operations in a single keystroke:
+
+1. **Unformats** the current block (removes the list marker, leaving empty text)
+2. **Creates a peer block** at the parent's level, positioned after the parent
+
+This matches Logseq's one-step workflow for exiting nested list contexts.
+
+```clojure
+;; Example: Empty list Enter
+;; Before: Parent → [Child with content, "- " (empty list marker)]
+;; After Enter: Parent → [Child with content, (empty unformatted)], New Peer (cursor here)
+```
+
+**Implementation**: `plugins.smart_editing/context-aware-enter` handles the `:list-item` context, emitting `:update-node` (to clear marker) + `:create-node` + `:place` operations when content is blank.
+
+### Variable Shadowing
+
+Avoid shadowing core Clojure vars:
+
+```clojure
+;; ❌ WRONG: Shadows clojure.core
+(fn [db {:keys [char count num key val]}] ...)
+
+;; ✅ CORRECT: Rename parameters
+(fn [db {:keys [input-char total-count number k v]}] ...)
+```
+
+**Pre-commit hook blocks shadowed vars**. Run `bb lint` to detect before committing.
+
+### Multi-Character Text Markers
+
+Bold/italic use multi-char markers (`**`, `__`). Need substring matching:
+
+```clojure
+;; ❌ WRONG: Only handles single chars
+(when (= (nth text cursor-pos) "*") ...)
+
+;; ✅ CORRECT: Check substrings, sort by length
+(some (fn [[open close]]
+        (when (= (subs text start (+ start (count open))) open) ...))
+      (sort-by (comp - count key) marker-pairs))
+```
+
+### Test ID Format
+
+DB uses string IDs, not keywords:
+
+```clojure
+;; ❌ WRONG
+(is (= :trash (get-in db [:derived :parent-of :block-a])))
+
+;; ✅ CORRECT
+(is (= :trash (get-in db [:derived :parent-of "block-a"])))
+```
+
+**See**: `docs/CODING_GOTCHAS.md` for complete list.
+
+## Testing Strategy
+
+### Unit Tests (Property-Based)
+
+- Generate random operations, verify invariants hold
+- Test with multiple random seeds for coverage
+- Located in `test/` directory (`.cljc` files)
+
+```clojure
+;; Reproduce property test failure
+bb test-seed 1234567890
+```
+
+### E2E Tests (Playwright)
+
+- Test actual browser behavior: cursor position, focus, keyboard navigation
+- Use accessibility snapshots (not screenshots)
+- Verify DOM state, not internal DB structure
+
+```javascript
+// Good: Test user-facing behavior
+await expect(page.locator('[contenteditable="true"]')).toBeFocused();
+
+// Bad: Couple to implementation
+const db = await page.evaluate(() => window.DEBUG.state());
+```
+
+**See**: `docs/PLAYWRIGHT_MCP_TESTING.md` for MCP testing guide.
+
+### Full Testing Stack Reference
+
+For the complete philosophy (headless tiers, redundancy analysis, browser-only gaps) read `docs/TESTING_STACK.md`.
+
+### REPL-First Debugging
+
+**Preferred workflow** (30s vs 5min):
+
+1. Reproduce issue in REPL
+2. Test fix in REPL
+3. Apply to code
+4. Verify in REPL
+5. Run test suite
+
+```clojure
+(require '[repl :as repl])
+(repl/init!)
+
+;; Load fixtures
+(require '[fixtures :as fix])
+(def db (fix/sample-db))
+
+;; Test operations
+(require '[kernel.api :as api])
+(api/transact! db [{:op :create :id "a" :type :block :props {:text "test"}}])
+```
+
+## Key Documentation
+
+- `docs/DX_INDEX.md` - Canonical doc map for humans + agents
+- `VISION.md` - Project philosophy and architectural ideas
+- `docs/RENDERING_AND_DISPATCH.md` - Replicant + Nexus reference (event handlers, lifecycle, dispatch data)
+- `docs/specs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
+- `docs/TESTING_STACK.md` - Unified testing guide (view/integration tiers, redundancy analysis, UX gap appendix)
+- `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
+- `docs/PLAYWRIGHT_MCP_TESTING.md` - E2E testing with MCP
+- `dev/repl/init.cljc` - REPL utilities and initialization
+
+## Design Constraints
+
+- No protocols in kernel (just pure functions)
+- No async in core (event sourcing is synchronous)
+- Canonical DB shape owned by kernel
+- Adapters at edges only (normalize/denormalize)
+- Framework-agnostic core (swap React/Replicant for anything)
+
+## Shadow-cljs Builds
+
+```clojure
+;; shadow-cljs.edn
+:builds
+  {:anki       ; Main app build
+   :blocks-ui  ; Block editor UI
+   :test       ; Unit tests (node-test)
+   :frontend   ; Legacy build
+   :app}       ; Lab experiments
+```
+
+Use `:anki` build for primary development. REPL connects to `:frontend` by default (see `dev/repl/init.cljc`).
+
+## Babashka Tasks
+
+All development tasks available via `bb`:
+
+```bash
+bb help                    # Show all available tasks
+```
+
+Key task categories:
+- Quality Gates: `lint`, `check`, `test`
+- E2E Testing: `e2e`, `e2e-watch`, `e2e-debug`, `e2e-a11y`
+- Cache Management: `clean`, `index`
+- Development: `dev`, `repl-health`
