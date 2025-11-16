@@ -45,6 +45,9 @@
    lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
                    :task (shell "bb scripts/lint_scenarios.clj")}
 
+   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
+                      :task (shell "node scripts/lint-e2e-keyboard.js")}
+
    ;; E2E Testing with Playwright
    e2e         {:doc "Run Playwright E2E tests"
                 :task (shell "npx playwright test")}
