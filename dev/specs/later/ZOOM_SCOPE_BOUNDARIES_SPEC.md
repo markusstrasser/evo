@@ -8,9 +8,9 @@ Enforce zoom/fold boundaries for structural commands to match Logseq parity. Whe
 
 ## Related Specs
 
-- LOGSEQ_SPEC.md §7 (Fold & Zoom Constraints)
-- LOGSEQ_PARITY_PRD.md §5.3
-- LOGSEQ_PARITY.md G-Scope-01
+- `dev/specs/LOGSEQ_SPEC.md` §6 (Fold & Zoom Constraints)
+- `docs/specs/LOGSEQ_PARITY_EVO.md` §3 (Gap table entries G-Nav-Visibility / G-Scope family)
+- `dev/specs/LOGSEQ_PARITY.md` G-Scope-01
 
 ## Functional Requirements
 

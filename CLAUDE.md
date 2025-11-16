@@ -14,7 +14,7 @@ Key characteristics:
 - AI-native design: LLMs generate operations, not DOM
 - Framework-agnostic core with thin UI adapters
 - Correctness over performance, simple over clever
-- Docs map: start with `docs/DX_INDEX.md` for the current canonical references.
+- Docs map: start with `docs/DX_INDEX.md` (then read `dev/specs/LOGSEQ_SPEC.md` for Logseq ground truth, `docs/specs/LOGSEQ_PARITY_EVO.md` for Evo guardrails, and `docs/specs/logseq_behaviors.md` for triad scenarios).
 
 ## Essential Commands
 

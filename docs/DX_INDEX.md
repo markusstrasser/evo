@@ -12,7 +12,9 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 - `docs/RENDERING_AND_DISPATCH.md` – merged Replicant + Nexus reference (hiccup diffing, lifecycle, dispatch data, effects).
 
 ## Feature Specs (Triad system)
-- `docs/specs/logseq_behaviors.md` – Logseq parity behaviors (keymap slices, intent contracts, scenario ledger rows). Scenario IDs reference tests.
+- `dev/specs/LOGSEQ_SPEC.md` – Canonical Logseq behavior spec (platform-agnostic).
+- `docs/specs/LOGSEQ_PARITY_EVO.md` – Evo overlay (implementation guardrails, gap tracker, testing workflow).
+- `docs/specs/logseq_behaviors.md` – Triad entries (keymap slices, intent contracts, scenario ledger rows). Scenario IDs reference tests.
 
 ## Testing Stack
 - `docs/TESTING_STACK.md` – data-driven testing philosophy, tier mapping, redundancy analysis, and scenario ↔ test matrix.
@@ -28,7 +30,9 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 ```edn
 {:orientation ["README.md" "EVO_ARCHITECTURE_ANALYSIS.md" "VISION.md"]
  :core ["docs/RENDERING_AND_DISPATCH.md"]
- :specs ["docs/specs/logseq_behaviors.md"]
+ :specs ["dev/specs/LOGSEQ_SPEC.md"
+         "docs/specs/LOGSEQ_PARITY_EVO.md"
+         "docs/specs/logseq_behaviors.md"]
  :testing ["docs/TESTING_STACK.md"]
  :tooling ["docs/PLAYWRIGHT_MCP_TESTING.md" "docs/CONTENTEDITABLE_DEBUGGING.md" "docs/CURSOR_FIX_ATTEMPTS.md"]
  :templates ["docs/templates/TRIAD.md"]}
