@@ -233,3 +233,84 @@
           "Cannot descend when parent has no next sibling")
       (is (= db (:db result))
           "DB should remain unchanged"))))
+
+;; ── Zoom Boundary Tests (FR-Scope-02) ────────────────────────────────────────
+
+(defn build-zoomed-doc
+  "Creates a test DB with zoom set:
+   doc -> [page]
+   page -> [parent]
+   parent -> [child-a, child-b]
+
+   Zoom root: parent (cannot operate outside parent)"
+  []
+  (let [DB0 (D/empty-db)
+        {:keys [db issues]} (tx/interpret DB0
+                                          [{:op :create-node :id "page" :type :page :props {:title "Page"}}
+                                           {:op :place :id "page" :under :doc :at :last}
+                                           {:op :create-node :id "parent" :type :block :props {:text "Parent"}}
+                                           {:op :place :id "parent" :under "page" :at :last}
+                                           {:op :create-node :id "child-a" :type :block :props {:text "Child A"}}
+                                           {:op :place :id "child-a" :under "parent" :at :last}
+                                           {:op :create-node :id "child-b" :type :block :props {:text "Child B"}}
+                                           {:op :place :id "child-b" :under "parent" :at :last}
+                                           ;; Set zoom root to "parent"
+                                           {:op :update-node
+                                            :id const/session-ui-id
+                                            :props {:zoom-root "parent"}}])]
+    (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
+    db))
+
+(deftest outdent-blocked-by-zoom-boundary
+  (testing "FR-Scope-02: Outdent is no-op when grandparent is outside zoom root"
+    (let [db (build-zoomed-doc)
+          ;; Try to outdent child-a (would move it under "page", outside zoom root "parent")
+          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "child-a"})
+          result (tx/interpret db ops)]
+      (is (= [] ops)
+          "Outdent should be blocked when grandparent is outside zoom root")
+      (is (= ["child-a" "child-b"] (get-in result [:db :children-by-parent "parent"]))
+          "Structure should remain unchanged"))))
+
+(deftest move-up-climb-blocked-by-zoom-boundary
+  (testing "FR-Scope-02: Move up (climb) is no-op when grandparent is outside zoom root"
+    (let [db (build-zoomed-doc)
+          ;; Set child-a as editing block (first child, will try to climb out)
+          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-a")
+          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          result (tx/interpret db ops)]
+      (is (= [] ops)
+          "Move up (climb) should be blocked when grandparent is outside zoom root")
+      (is (= ["child-a" "child-b"] (get-in result [:db :children-by-parent "parent"]))
+          "Structure should remain unchanged"))))
+
+(deftest move-down-descend-blocked-by-zoom-boundary
+  (testing "FR-Scope-02: Move down (descend) is no-op when target is outside zoom root"
+    (let [db (build-zoomed-doc)
+          ;; Add a sibling to parent (outside zoom root)
+          {:keys [db]} (tx/interpret db
+                                     [{:op :create-node :id "uncle" :type :block :props {:text "Uncle"}}
+                                      {:op :place :id "uncle" :under "page" :at {:after "parent"}}])
+          ;; Set child-b as editing block (last child, will try to descend into uncle)
+          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-b")
+          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          result (tx/interpret db ops)]
+      (is (= [] ops)
+          "Move down (descend) should be blocked when target is outside zoom root")
+      (is (= ["child-a" "child-b"] (get-in result [:db :children-by-parent "parent"]))
+          "Structure should remain unchanged"))))
+
+(deftest operations-allowed-within-zoom-scope
+  (testing "FR-Scope-01: Operations within zoom scope work normally"
+    (let [db (build-zoomed-doc)
+          ;; Outdent child-b (stays within zoom root "parent")
+          ;; This should work because grandparent is child-a (within zoom)
+          {:keys [db]} (tx/interpret db
+                                     [{:op :create-node :id "child-c" :type :block :props {:text "Child C"}}
+                                      {:op :place :id "child-c" :under "child-a" :at :last}])
+          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "child-c"})
+          result (tx/interpret db ops)]
+      (is (not (empty? ops))
+          "Outdent should work when staying within zoom scope")
+      (is (= ["child-a" "child-c" "child-b"] (get-in result [:db :children-by-parent "parent"]))
+          "child-c should outdent to become sibling of child-a"))))

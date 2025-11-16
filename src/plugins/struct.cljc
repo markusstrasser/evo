@@ -19,6 +19,24 @@
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
+(defn- within-zoom-scope?
+  "Check if target-id is within the current zoom scope.
+
+   When zoomed into block Z, any node N is within scope if:
+   - N is Z itself, OR
+   - N is a descendant of Z
+
+   When not zoomed (zoom-root is nil), all nodes are in scope.
+
+   FR-Scope-02: Prevents operations from moving blocks outside zoom root."
+  [db target-id]
+  (if-let [zoom-root (q/zoom-root db)]
+    ;; Zoomed: target must be zoom-root or a descendant of it
+    (or (= target-id zoom-root)
+        (db/descendant-of? db zoom-root target-id))
+    ;; Not zoomed: all nodes in scope
+    true))
+
 (defn delete-ops
   "Compiles a delete intent into a :place operation that moves the node to :trash."
   [_DB id]
@@ -76,13 +94,17 @@
    Note: Direct outdenting (where B kidnaps C and D as children) can be added
    via config flag when user preference plumbing exists.
 
-   Prevents outdenting if grandparent is a root container (already at top level)."
+   FR-Scope-02: Prevents outdenting if grandparent is a root container (already
+   at top level) OR if grandparent is outside the current zoom scope."
   [db id]
   (let [p (q/parent-of db id)
         gp (when p (q/parent-of db p))
         roots (set (:roots db const/roots))]
-    ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root
-    (if (and p gp (not (contains? roots gp)))
+    ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root,
+    ;; AND grandparent is within zoom scope
+    (if (and p gp
+             (not (contains? roots gp))
+             (within-zoom-scope? db gp))
       ;; Logical outdenting: move to position RIGHT AFTER parent (as sibling of parent)
       ;; Right siblings stay under parent (not kidnapped)
       [{:op :place :id id :under gp :at {:after p}}]
@@ -209,19 +231,23 @@
 
       ;; Climb case: first child with no prev sibling
       ;; Re-parent under grandparent, place before parent
+      ;; FR-Scope-02: Prevent climb if grandparent is outside zoom scope
       (and parent (not prev) first-id)
       (let [grandparent (q/parent-of db parent)
             roots (set (:roots db const/roots))]
-        ;; Can climb if grandparent exists and parent is NOT a root
+        ;; Can climb if grandparent exists, parent is NOT a root,
+        ;; AND grandparent is within zoom scope
         ;; (This allows climbing TO doc level, but not FROM doc level)
-        (if (and grandparent (not (contains? roots parent)))
+        (if (and grandparent
+                 (not (contains? roots parent))
+                 (within-zoom-scope? db grandparent))
           ;; Can climb: move to grandparent level, positioned before parent
           (let [parent-prev (q/prev-sibling db parent)]
             (intent/intent->ops db {:type :move
                                     :selection targets
                                     :parent grandparent
                                     :anchor (if parent-prev {:after parent-prev} :first)}))
-          ;; Can't climb: parent is a root-level node
+          ;; Can't climb: parent is a root-level node OR grandparent outside zoom
           []))
 
       ;; No valid move
@@ -266,15 +292,17 @@
 
       ;; Descend case: last child with no next sibling
       ;; Re-parent under parent's next sibling (if it exists), placed as first child
+      ;; FR-Scope-02: Prevent descend if target (parent's next sibling) is outside zoom scope
       (and parent (not next) last-id)
       (let [parent-next (q/next-sibling db parent)]
-        (if parent-next
+        (if (and parent-next
+                 (within-zoom-scope? db parent-next))
           ;; Can descend: move into parent's next sibling as first child
           (intent/intent->ops db {:type :move
                                   :selection targets
                                   :parent parent-next
                                   :anchor :first})
-          ;; Can't descend: no next sibling of parent
+          ;; Can't descend: no next sibling of parent OR target outside zoom
           []))
 
       ;; No valid move
