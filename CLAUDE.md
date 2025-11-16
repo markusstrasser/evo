@@ -94,6 +94,8 @@ bb repomix                 # Creates repomix-output.txt with full codebase
 
 **Tip**: Use `bb repomix` + Gemini 2.5 Pro's 2M token context for high-level codebase understanding, architectural decisions, and pattern analysis.
 
+**Auto overview**: Every push generates a `source-auto-overview*.md` artifact (check the workspace or CI run). Grab the latest version for a quick, human-readable summary before diving in.
+
 ## Architecture
 
 ### Core Layers

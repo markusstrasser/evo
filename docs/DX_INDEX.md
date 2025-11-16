@@ -6,6 +6,7 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 - `README.md` – project quick start.
 - `EVO_ARCHITECTURE_ANALYSIS.md` – high-level system map.
 - `VISION.md` – product north star.
+- `source-auto-overview*.md` (generated each push; see workspace or CI artifacts) – latest automatic codebase snapshot.
 
 ## Rendering & Dispatch Core
 - `docs/RENDERING_AND_DISPATCH.md` – merged Replicant + Nexus reference (hiccup diffing, lifecycle, dispatch data, effects).
