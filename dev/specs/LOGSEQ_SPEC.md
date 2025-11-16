@@ -1,5 +1,24 @@
 # LOGSEQ_SPEC.md — Editing, Navigation, Selection, and Structural Behaviors
 
+## 0. Behavior Map & References
+
+| FR ID | Behavior Summary | Spec Section | Logseq Source (verification) |
+|-------|------------------|--------------|------------------------------|
+| FR-Idle-01..03 | Idle-state guard + type-to-edit | §1 | `src/main/frontend/handler/editor.cljs` (`select-first-last`, `keydown-new-block-handler`) |
+| FR-State-01..03 | Edit/view exclusivity & selection clearing | §1 | `state.cljs`, `util.cljs` selection helpers |
+| FR-Scope-01..03 | Visible-outline boundaries (page, zoom, folding) | §5, §7 | `util/get-prev-block-non-collapsed`, `state/zoom-in!` |
+| FR-NavEdit-01..04 | Editing-mode arrows + Shift+Arrow seeding | §2 | `handler/editor.cljs` (`shortcut-up-down`, `shortcut-left-right`) |
+| FR-NavView-01..04 | Selection-mode arrows, Shift+Click, Shift+Enter sidebar | §3 | `handler/editor.cljs` (`select-up-down`, `shortcut-select-up-down`) |
+| FR-Edit-01..07 | Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore | §4 | `handler/editor.cljs` (`keydown-new-block`, `keydown-backspace-handler`) |
+| FR-Move-01..03 | Indent/outdent rules, climb/descend, drag & Alt-drag | §5 | `outliner/core.cljs`, `handler/editor.cljs/move-up-down`, `handler/dnd.cljs` |
+| FR-Clipboard-01..03 | Copy/cut/reference, paste semantics | §9.6–§9.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs` |
+| FR-Pointer-01..02 | Alt+Click folding, hover previews | §9.3 | `frontend/components/block.cljs`, `frontend/ui.cljs` |
+| FR-Slash-01 | Slash command palette | §9.4 | `components/block-editor.cljs` |
+| FR-QuickSwitch-01 | Cmd+K/Cmd+P quick switcher | §9.5 | `components/quick_command.cljs` |
+| FR-Undo-01 | Undo/redo restores caret/selection | §9.8 | `state.cljs`, `history.cljs` |
+
+> **Verification note:** Behaviors validated against `~/Projects/best/logseq` (master, 2025‑11‑15). Re-run validation whenever upstream changes and update both this map and `dev/specs/LOGSEQ_PARITY_PRD.md`.
+
 **Target Application:** Logseq desktop (macOS, build 0.10.x)  
 **Purpose:** Canonical source-of-truth for Evo parity. Every behavior below is observed directly in `~/Projects/best/logseq` and must be implemented identically unless a deliberate divergence is documented in `LOGSEQ_PARITY.md`.
 
@@ -38,6 +57,7 @@ Logseq enforces a strict, mutually exclusive state machine for block interaction
 - Transitioning *into* edit mode clears `selection`, `focus`, and ensures exactly one block has `:editing-block-id`.
 - Transitioning *out* of edit mode leaves selection cleared unless a view-mode gesture immediately re-selects blocks.
 - Background clicks and Escape (when not editing) clear selection.
+- In the fully idle state (no block selected, no block editing), pressing Enter, Backspace, Tab, Shift+Enter, Shift+Arrow, or Cmd+Enter does nothing—Logseq never creates or deletes blocks from that state. The only keys that take effect are ArrowUp/ArrowDown (which select the first/last visible block) and printable characters (which immediately enter edit mode on the focused block and insert the character at the end).
 
 ### 1.2 Session Data Contracts
 
@@ -71,6 +91,7 @@ Any Evo implementation must mutate these nodes exactly as Logseq does to avoid u
 - Use grapheme-aware counting (`js/Intl.Segmenter`/`GraphemeSplitter`) to calculate `line-pos` and convert back to character offsets.
 - `:navigate-with-cursor-memory` must skip folded descendants and blocks outside current zoom root using the same filters as `util/get-prev-block-non-collapsed` in Logseq.
 - Missing siblings result in a no-op with the caret left at boundary (`:cursor-position` resets to `:start`/`(count text)`), never an exception.
+- Single-block pages: when the entire visible outline consists of one block, ArrowUp/ArrowDown in view mode keep that block selected, and ArrowUp/ArrowDown in edit mode only move the caret within the block (never exiting). Outdent/Move-Up commands on that block are hard no-ops because there is no valid target.
 
 ### 2.2 Vertical Navigation in View Mode
 
@@ -101,6 +122,7 @@ Any Evo implementation must mutate these nodes exactly as Logseq does to avoid u
 6. Escape behavior:
    - In edit mode: leaves edit, focus becomes `[*]` block.
    - In view mode: clears selection (no `[*]`).
+7. Selection integrity: if any block in the current selection disappears (deleted, moved outside the visible outline, or hidden by folding/zoom), Logseq clears the entire selection immediately so there are never dangling highlights.
 
 ---
 
@@ -115,6 +137,11 @@ Any Evo implementation must mutate these nodes exactly as Logseq does to avoid u
 | `Cmd+O` | Follow link under caret (page refs open page, block refs scroll into view). |
 | `Cmd+Shift+H` | Toggle highlight `^^…^^` preserving text selection. |
 
+Additional guarantees:
+- Blocks containing only whitespace behave like empty blocks for editing commands: Backspace/Delete remove them, Tab/Shift+Tab indent/outdent them, and merge operations treat them as zero-length.
+- Inside fenced code blocks or inline code spans, pressing Tab inserts a literal tab (or configured spaces) instead of indenting the block.
+- After structural edits (split, indent/outdent, move up/down), the caret remains inside the block that was edited/moved in its new location. Undo/redo restores both the content and the caret/selection state exactly as it was when the edit occurred.
+
 Undo granularity: each editing intent must emit minimal structural ops (`:update-node`, `:place`) to integrate with history.
 
 ---
@@ -127,12 +154,16 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
   - Block moves to position immediately AFTER its parent (becomes sibling of parent).
   - Right siblings remain under original parent (no "kidnapping").
   - Outdenting is prevented when parent is a root (`:doc`, `:journal`).
+- When the previous sibling has children, indenting makes the block the *last* child of that sibling (after all existing children).
+- Outdenting a block that has children keeps those children attached to the block; they do not remain under the old parent.
+- Indenting the first child (no previous sibling) and outdenting the root-most block are both hard no-ops.
 
 ### 5.2 Move Up/Down
 
 - `Alt+Shift+ArrowUp/Down` reorder siblings while preserving selection order (stable move).
 - **Climb semantics:** when a block is the first child and the user presses `Mod/Alt+Shift+Up`, Logseq “climbs” it out—moving it to become the previous sibling of its parent. Likewise, pressing `Mod/Alt+Shift+Down` on the last child pushes it into the next visible sibling chain. The behavior is implemented in `frontend.handler.editor/move-up-down` + `outliner-op/move-blocks-up-down!` and covered by `test-move-blocks-up-down`.
 - When editing, dedicated intents (`:move-block-up-while-editing`) perform the same structural move without exiting edit mode.
+- When a selection already sits at the absolute top (no climb target) or bottom (no descend target) of the visible outline, `Cmd+Shift+ArrowUp/Down` are strict no-ops.
 
 ### 5.3 Delete Selected
 
@@ -161,6 +192,9 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 
 - All navigation/selection intents must consult derived indexes that exclude folded descendants and nodes outside current zoom root. Equivalent to Logseq’s `util/get-prev-block-non-collapsed` / `get-next-block-non-collapsed`.
 - Folding state lives under node props (e.g., `{:props {:folded? true}}`). Navigation should traverse siblings via derived links, skipping folded subtrees entirely.
+- Editing a folded block automatically expands it so the user can see its children while typing.
+- Delete operations applied to a folded block remove the entire subtree (exactly as if it were expanded).
+- While zoomed into block `Z`, any operation that would move a block outside of `Z` (outdent, Shift+Arrow extend, Cmd+Shift+Arrow move) is a no-op; the zoom root is treated as a hard boundary.
 
 ---
 
@@ -176,7 +210,45 @@ Additionally, replicate Logseq’s DOM-driven Playwright tests for Shift+Arrow, 
 
 ---
 
-## 9. Summary Checklist
+## 9. Additional Interaction Patterns
+
+Beyond keyboard navigation and structural edits, Logseq users rely on several subtle cues:
+
+### 9.1 Type-to-edit
+- When a block is selected (but not editing), pressing any printable key instantly enters edit mode, appends that character, and positions the caret after it. Selections across multiple blocks keep their visual highlight, but only the focused block begins editing.
+
+### 9.2 Selection-mode shortcuts
+- `Shift+Enter` on a selected block opens that block (or the entire selection) in the right sidebar. The main outline keeps focus where it was.
+- `Cmd+A` cycles: first press selects text in the current block (when editing), second press selects the block, third press selects its parent, fourth selects the entire visible outline. Users expect this cycle everywhere.
+
+### 9.3 Pointer gestures
+- Dragging a block’s bullet reorders the outline; the drop indicator shows where it will land. Holding **Alt** during drop inserts a block reference (`((uuid))`) instead of moving the source block.
+- **Alt+Click** on a bullet toggles the entire subtree (fully expand/collapse), not just the direct block.
+- Hovering block references pops a preview tooltip; Cmd+Click opens that block in the sidebar without leaving the current outline.
+
+### 9.4 Slash commands & autocomplete
+- Typing `/` opens the inline command palette at the caret. Arrow keys navigate suggestions; Enter inserts the highlighted item; Escape closes the palette without altering text. This interaction is instant and does not scroll the document.
+- Slash commands autocomplete pages, templates, blocks, properties, and queries inline. Users expect search-as-you-type performance identical to Logseq.
+
+### 9.5 Quick switcher / global search
+- `Cmd+K` (or `Cmd+P`) brings up the quick switcher overlay. Typing filters results in real time, Arrow keys move through them, Enter opens the selection, Escape closes the overlay with no side effects.
+
+### 9.6 Clipboard permutations
+- `Cmd+Option+C` copies the focused block as a reference (`((uuid))`). Context menus expose “Copy block ref” alongside standard copy/cut entries.
+- `Cmd+Shift+C` copies selected blocks as plain text; `Cmd+Shift+V` pastes plain text into the editing block. Standard `Cmd+C` / `Cmd+V` retain block metadata and formatting.
+
+### 9.7 Paste semantics
+- Pasting text that contains single newlines but no blank lines keeps the content inside the current block (newlines become literal `\n` characters).
+- Pasting text with blank lines (`\n\n`) splits the paste into multiple blocks: everything before the first blank line stays in the current block, and each additional paragraph becomes its own block inserted below. Existing list markers or checkboxes in the pasted text carry over.
+
+### 9.8 Undo/redo focus memory
+- Undo and redo reapply not just document content but also the interaction state: if the user was editing block B when the change occurred, undo returns the caret to block B (or reselects it) exactly as Logseq does.
+
+Document these expectations in parity trackers whenever Evo diverges so QA can verify them explicitly.
+
+---
+
+## 10. Summary Checklist
 
 - [ ] Edit/View states mutually exclusive; Escape/background click clear selection.
 - [ ] Cursor memory uses grapheme-aware calculations and respects fold/zoom constraints.
@@ -186,5 +258,6 @@ Additionally, replicate Logseq’s DOM-driven Playwright tests for Shift+Arrow, 
 - [ ] Cursor hints applied then cleared every render cycle.
 - [ ] Keybindings align with Logseq (Cmd+A, Cmd+Shift+A, Cmd+O, Shift+Enter, highlight toggle).
 - [ ] Tests cover intents, views, integrations per section 8.
+- [ ] Type-to-edit, sidebar openings, Alt-drag references, slash commands, quick switcher, and hover previews behave like Logseq.
 
 This document supersedes all prior Logseq parity specs. Any future deviations must be recorded in `LOGSEQ_PARITY.md`.

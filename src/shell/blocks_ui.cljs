@@ -122,7 +122,7 @@
 
    Single source of truth: keymap/bindings.cljc registers all bindings.
    This function just resolves key event → intent type → dispatch.
-   
+
    NOTE: Arrow key navigation at block boundaries is handled by the Block component
    (see components/block.cljs handle-arrow-up/down) using cursor row detection,
    NOT here. The block component dispatches :navigate-with-cursor-memory intents."
@@ -133,6 +133,7 @@
         shift? (.-shiftKey e)
         focus-id (q/focus db)
         editing? (q/editing-block-id db)
+        idle? (and (nil? editing?) (nil? focus-id))  ; FR-Idle-01: True idle state
         intent-type (keymap/resolve-intent-type event db)
 
         ;; Editable element for text formatting
@@ -145,6 +146,31 @@
                         (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
 
     (cond
+      ;; FR-Idle-01: Idle guard - no accidental edits
+      ;; In true idle state (no block selected, no block editing), Enter/Backspace/Tab/etc are no-ops
+      (and idle?
+           intent-type
+           (contains? #{"Enter" "Backspace" "Delete" "Tab"} key))
+      nil ;; No-op in idle state
+
+      ;; FR-Idle-01: Guard Cmd+Enter in idle state
+      (and idle?
+           mod?
+           (= key "Enter"))
+      nil ;; No-op in idle state
+
+      ;; FR-Idle-01: Guard Shift+Enter in idle state
+      (and idle?
+           shift?
+           (= key "Enter"))
+      nil ;; No-op in idle state
+
+      ;; FR-Idle-01: Guard Shift+Arrow in idle state
+      (and idle?
+           shift?
+           (contains? #{"ArrowUp" "ArrowDown"} key))
+      nil ;; No-op in idle state
+
       ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
 
       ;; Skip Shift+Arrow when editing - let Block component handle text selection
