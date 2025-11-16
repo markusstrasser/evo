@@ -1,24 +1,21 @@
 # LOGSEQ_PARITY.md — Evo vs Logseq Gap Tracker
 
-This document enumerates the remaining deviations between Evo (`src/`) and the canonical Logseq behavior defined in `LOGSEQ_SPEC.md`. Items are ordered by severity. Once a gap is closed, move it to the “Resolved” appendix with a short commit / PR reference.
+This tracker maps outstanding gaps to the Functional Requirements (FR) defined in `dev/specs/LOGSEQ_SPEC.md` and the PRD (`dev/specs/LOGSEQ_PARITY_PRD.md`). Keep it current: when a gap is fixed, move it to the Resolved appendix with references to commits/tests.
 
-| ID | Area | Spec Reference | Status in `src/` | Impact | Fix Outline |
-|----|------|----------------|------------------|--------|-------------|
-| P2-004 | Documentation sync | Whole spec | Older specs (`LOGSEQ-BLOCK-NAV-TEXT-SPEC.md`, `LOGSEQ-PARITY-BLOCK-TEXT.md`, `claude-logseq-parity-deep-dive.md`) contradicted each other and the current code. | Confuses contributors / agents. | ✅ Consolidated into `LOGSEQ_SPEC.md` (this task completed with latest update). |
+| Gap ID | FR ID(s) | Area | Status in `src/` | Impact | Fix/Test Outline |
+|--------|----------|------|------------------|--------|------------------|
+| G-Idle-01 | FR-Idle-01..03 | Idle-state guard | **??** – need audit | Accidental block creation/deletion when idle. | Ensure global key handler no-ops Enter/Backspace/Tab in true idle state; add Playwright regression. |
+| G-Scope-01 | FR-Scope-01..03 | Visible outline boundaries | Partially fixed in parity/navigation-selection-fixes | Arrow navigation now scoped but structural ops (outdent at zoom root, shift+arrow across zoom) still need guards. | Audit commands (`:indent-selected`, `:move-selected-up/down`, `:selection :extend`) to enforce zoom root; add unit + e2e tests. |
+| G-Clipboard-02 | FR-Clipboard-01..03 | Paste semantics | Unknown | Paste likely uses doc-range; multi-paragraph paste may not split like Logseq. | Implement blank-line detection in paste handler; add unit tests referencing `handler/paste.cljs`. |
+| G-Pointer-01 | FR-Pointer-01..02 | Alt+Click toggle / hover preview | Not implemented | Missing Alt+Click full-tree toggle + hover popovers. | Add bullet listener for Alt+Click; implement popover component; add UI tests. |
+| G-Slash-01 | FR-Slash-01 | Slash palette behavior | Not implemented | `/` command palette absent or incomplete. | Implement inline command palette mirroring Logseq’s filtering/navigation. |
+| G-QuickSwitch-01 | FR-QuickSwitch-01 | Quick switcher | Not implemented | Cmd+K/Cmd+P overlay missing; users can’t jump quickly. | Add quick switcher UI + keyboard plumbing. |
+| G-Undo-01 | FR-Undo-01 | Undo/redo focus memory | Requires verification | Need tests proving caret/selection state restores with undo/redo. | Instrument undo/redo ops; add tests ensuring editing block and caret position restored. |
 
-**All known gaps resolved as of 2025-11-11.**
+> Update this table whenever a new gap is discovered or closed. Use FR IDs for traceability and cite commit hashes / test names in the “Fix/Test Outline” once resolved.
 
-## Resolved / Historical Notes
+## Resolved Gaps
 
-- **P0-001: Shift+Arrow while editing** — `src/shell/blocks_ui.cljs` now skips global Shift+Arrow bindings when `editing?` is true, allowing block component to handle text selection. Added Playwright tests in `test/e2e/editing-parity.spec.js` verifying text selection within blocks and Escape clearing. (Commit 2025-11-11)
-- **P1-002: Selection boundary test typo** — Fixed `:idss` → `:ids` in `test/core/selection_edit_boundary_test.cljc`. All 259 tests pass. (Commit 2025-11-11)
-- **P1-003: Playwright coverage** — Added comprehensive Shift+Arrow text selection tests and Escape behavior tests to `test/e2e/editing-parity.spec.js`. (Commit 2025-11-11)
-- **Cursor hint clearing** — `components/block.cljs` now calls `:clear-cursor-position` immediately after applying hints, matching `LOGSEQ_SPEC` §6. (See commit 2025-11-11.)
-- **Logical outdenting semantics** — `plugins/struct.cljc` implements non-kidnapping behavior (`outdent-ops`), aligning with `LOGSEQ_SPEC` §5.1.
-- **Backspace merge child preservation** — `plugins/editing.cljc` re-parents children before moving the emptied node to trash (§4 Editing Actions).
-- **§4.1: Navigation scope isolation** — Added `kernel.query/active-outline-root` helper that respects zoom-root → current-page → :doc priority. Updated `visible-blocks-in-dom-order` to use this helper, preventing arrow navigation from spilling across pages. (Commit 2025-11-14, branch parity/navigation-selection-fixes)
-- **§4.2: Horizontal boundary traversal** — Added `kernel.query/next-block-dom-order` and `prev-block-dom-order` public helpers. Updated `plugins.navigation/:navigate-to-adjacent` to use DOM-order traversal instead of sibling-only indexes, enabling Left/Right arrows to navigate into/out of children. (Commit 2025-11-14, branch parity/navigation-selection-fixes)
-- **§4.3: Shift+Click range selection** — Added `kernel.query/visible-range` helper that respects fold state, zoom, and page boundaries. Updated `plugins.selection/calc-extend-props` to use `visible-range` instead of `doc-range`, preventing Shift+Click from selecting hidden blocks. (Commit 2025-11-14, branch parity/navigation-selection-fixes)
-- **§4.4: Shift+Arrow anchoring in edit mode** — Updated `components.block/handle-shift-arrow-up` and `handle-shift-arrow-down` to seed selection with current block when focus is nil, preventing unexpected jumps to page top/bottom when extending selection from editing mode. (Commit 2025-11-14, branch parity/navigation-selection-fixes)
-
-Keep this table authoritative. When Evo matches Logseq for an item, move it to the resolved list with evidence (test names, commit hashes, or manual verification steps).
+| Gap ID | FR ID(s) | Summary | Evidence |
+|--------|----------|---------|----------|
+| G-Nav-01 | FR-NavEdit-01..04 | Horizontal/vertical navigation scope + Shift+Arrow seeding | Commit `<hash>` (parity/navigation-selection-fixes), tests `foundational-editing-parity.spec.ts` |
