@@ -11,8 +11,10 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Alt+Click Subtree Toggle (FR-Pointer-01)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Load with test mode to get empty database
+    await page.goto('/?test=true');
     await page.waitForLoadState('networkidle');
+
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
