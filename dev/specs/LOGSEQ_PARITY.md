@@ -1,6 +1,6 @@
 # LOGSEQ_PARITY.md — Evo vs Logseq Gap Tracker
 
-This tracker maps outstanding gaps to the Functional Requirements (FR) defined in `dev/specs/LOGSEQ_SPEC.md` and the PRD (`dev/specs/LOGSEQ_PARITY_PRD.md`). Keep it current: when a gap is fixed, move it to the Resolved appendix with references to commits/tests.
+This tracker maps outstanding gaps to the Functional Requirements (FR) defined in the canonical spec (`dev/specs/LOGSEQ_SPEC.md`). Implementation guardrails and testing expectations live in `docs/specs/LOGSEQ_PARITY_EVO.md`. Keep this table current: when a gap is fixed, move it to the Resolved appendix with references to commits/tests (and update `docs/specs/logseq_behaviors.md` + relevant triad rows).
 
 | Gap ID | FR ID(s) | Area | Status in `src/` | Impact | Fix/Test Outline |
 |--------|----------|------|------------------|--------|------------------|

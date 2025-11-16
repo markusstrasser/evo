@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 /**
  * Logseq Parity: Idle State Guard (FR-Idle-01..03)
  *
- * Spec: LOGSEQ_SPEC.md §1.1 (Global Interaction Model)
- * PRD: LOGSEQ_PARITY_PRD.md §5.1
+ * Spec: dev/specs/LOGSEQ_SPEC.md §1.1 (Global Interaction Model)
+ * Overlay: docs/specs/LOGSEQ_PARITY_EVO.md §3 (G-Idle-01)
  * Gap: LOGSEQ_PARITY.md G-Idle-01
  *
  * In fully idle state (no block selected, no block editing):
