@@ -475,7 +475,7 @@ To make the above stack actionable for AI agents (and humans), we’re standardi
 
 1. `bb test:view` – runs only the hiccup/unit namespaces (Block, Sidebar, helpers). This suite depends solely on `clojure.test` and executes entirely headlessly, so agents can iterate without opening a browser. Because Replicant’s dispatcher always surfaces DOM data via `:replicant/trigger` and `:replicant/dom-event`, assertions can safely stub placeholders rather than invoking actual events. citeturn0search3
 2. `bb test:int` – executes the render → action → apply loop described earlier. These integration tests still run in-process, but they wire the same Nexus path production uses. We’ll add helpers like `(integration/run-scenario NAV-BOUNDARY-LEFT-01 state overrides)` so contributors can reference spec IDs directly, mirroring the scenario ledger in `docs/specs/logseq_behaviors.md`.
-3. `bb test:e2e --spec <id>` – thin Playwright smoke runs that remain for DOM-only behavior (cursor/selection, IME, accessibility). Each Playwright spec’s `describe` block will include the scenario IDs it covers, keeping the traceability chain intact.
+3. `bb test:e2e NAV-…` – thin Playwright smoke runs (chromium-only) filtered by scenario ID. Each Playwright `describe` block now includes the triad ID in its title so you can target exactly the behaviors that still need a real browser (cursor/selection, IME, accessibility).
 
 ### Watch mode support
 
