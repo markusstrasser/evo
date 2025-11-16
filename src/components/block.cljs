@@ -601,7 +601,10 @@
                        :on {:click (fn [e]
                                      (.stopPropagation e)
                                      (when has-children?
-                                       (on-intent {:type :toggle-fold :block-id block-id})))}}
+                                       ;; LOGSEQ PARITY (FR-Pointer-01): Alt+Click toggles entire subtree
+                                       (if (.-altKey e)
+                                         (on-intent {:type :toggle-subtree :block-id block-id})
+                                         (on-intent {:type :toggle-fold :block-id block-id}))))}}
                 (cond
                   (not has-children?) "•"
                   folded? "▸"
