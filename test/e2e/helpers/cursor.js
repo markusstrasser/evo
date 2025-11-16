@@ -33,15 +33,44 @@ export async function getCursorPosition(page) {
  */
 export async function setCursorPosition(page, blockId, offset) {
   await page.evaluate(({ blockId, offset }) => {
-    const elem = document.querySelector(`[data-block-id="${blockId}"]`);
-    if (!elem || !elem.firstChild) return false;
+    const baseSelector = `[data-block-id="${blockId}"]`;
+    const editable =
+      document.querySelector(`${baseSelector}[contenteditable="true"]`) ||
+      document.querySelector(`${baseSelector} [contenteditable="true"]`) ||
+      document.querySelector(`${baseSelector}.content-edit`) ||
+      document.querySelector(`${baseSelector} .content-edit`);
+
+    if (!editable) return false;
+
+    // Focus the actual contenteditable span so it receives keyboard events
+    editable.focus();
 
     const range = document.createRange();
     const sel = window.getSelection();
-    const textNode = elem.firstChild;
 
-    range.setStart(textNode, Math.min(offset, textNode.length));
-    range.setEnd(textNode, Math.min(offset, textNode.length));
+    // Find the text node containing actual block text (contenteditable children only)
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.textContent.trim() === '•'
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    let textNode = walker.nextNode();
+
+    if (!textNode) {
+      if (editable.firstChild && editable.firstChild.nodeType === Node.TEXT_NODE) {
+        textNode = editable.firstChild;
+      } else {
+        textNode = document.createTextNode('');
+        editable.appendChild(textNode);
+      }
+    }
+
+    const clampedOffset = Math.min(offset, textNode.length ?? 0);
+    range.setStart(textNode, clampedOffset);
+    range.setEnd(textNode, clampedOffset);
     sel.removeAllRanges();
     sel.addRange(range);
 
