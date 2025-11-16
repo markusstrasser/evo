@@ -13,7 +13,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8000');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Wait for the app to be ready

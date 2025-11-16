@@ -13,7 +13,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8000');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
