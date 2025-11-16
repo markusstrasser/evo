@@ -136,10 +136,10 @@ Test full user interactions: render → extract actions → apply actions → re
 
 #### 1. Add View Test Utilities
 
-Create `test/view_util.cljc`:
+Create `test/view/util.cljc`:
 
 ```clojure
-(ns view-util
+(ns view.util
   "Utilities for testing Replicant views."
   (:require [clojure.walk :as walk]))
 
@@ -200,7 +200,7 @@ Create `test/components/block_test.cljc`:
 ```clojure
 (ns components.block-test
   (:require [clojure.test :refer [deftest testing is]]
-            [view-util :as vu]
+            [view.util :as vu]
             [components.block :as block]
             [kernel.db :as db]))
 
@@ -256,7 +256,7 @@ Create `test/integration/component_intents_test.cljc`:
 (ns integration.component-intents-test
   "Test full flow: component → action → intent → ops → updated component"
   (:require [clojure.test :refer [deftest testing is]]
-            [view-util :as vu]
+            [view.util :as vu]
             [components.block :as block]
             [kernel.db :as db]
             [kernel.intent :as intent]
@@ -362,7 +362,7 @@ With data handlers:
 (pprint view)
 
 ;; Extract actions
-(require '[view-util :as vu])
+(require '[view.util :as vu])
 (vu/select-actions view :.content-edit [:on :input])
 ;; => [[:update-content "a" :event/target.value]]
 
@@ -1216,7 +1216,7 @@ Then we compared `(keyword "")` with `(keyword "span")` which failed.
 ```clojure
 (ns components.my-component-test
   (:require [clojure.test :refer [deftest testing is]]
-            [view-util :as vu]
+            [view.util :as vu]
             [components.my-component :as my]))
 
 (deftest my-component-renders
@@ -1241,7 +1241,7 @@ Then we compared `(keyword "")` with `(keyword "span")` which failed.
 
 ```clojure
 ;; In REPL
-(require '[view-util :as vu]
+(require '[view.util :as vu]
          '[components.block :as block])
 
 ;; Create test data

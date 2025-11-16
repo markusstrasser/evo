@@ -40,11 +40,13 @@ npm run build              # Clean + release anki + release blocks-ui + minified
 
 ```bash
 # Unit tests (ClojureScript via shadow-cljs)
-bb test                    # Compile and run once
-bb test-watch              # Auto-rerun on save (TDD mode)
-bb test-focus PATTERN      # Run tests matching pattern
-bb test-fail-fast          # Stop on first failure
-bb test-seed SEED          # Reproduce property test with specific seed
+bb test                    # Compile + run full suite (shadow :test)
+bb test:view               # Hiccup/view-only tests (<1s)
+bb test:int                # Render→action integration tests
+bb test-watch              # Watch entire suite
+bb test-watch:view         # Watch view tier only
+bb test-watch:int          # Watch integration tier only
+bb test:e2e NAV-...        # Filter Playwright specs by scenario ID
 
 # E2E tests (Playwright)
 bb e2e                     # Run all E2E tests
@@ -290,7 +292,7 @@ DB uses string IDs, not keywords:
 
 ```clojure
 ;; Reproduce property test failure
-bb test-seed 1234567890
+bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 ```
 
 ### E2E Tests (Playwright)

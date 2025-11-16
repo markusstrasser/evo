@@ -45,10 +45,18 @@
    {:target :browser
     :output-dir "public/js/blocks-ui"
     :asset-path "/js/blocks-ui"
-    :modules {:main {:init-fn shell.blocks-ui/main}}
-    :preloads [debug]}
-   :test
+   :modules {:main {:init-fn shell.blocks-ui/main}}
+   :preloads [debug]}
+  :test
+  {:target :node-test
+   :output-to "out/tests.js"
+   :ns-regexp "-test$"
+    :ns-exclude-regexp "browser-ui"}
+   :test-view
    {:target :node-test
-    :output-to "out/tests.js"
-    :ns-regexp "-test$"
-    :ns-exclude-regexp "browser-ui"}}}
+    :output-to "out/tests-view.js"
+    :ns-regexp "^view\\..*-test$"}
+   :test-integration
+   {:target :node-test
+   :output-to "out/tests-integration.js"
+    :ns-regexp "^integration\\.navigation.*-test$"}}}

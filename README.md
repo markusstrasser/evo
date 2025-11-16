@@ -70,9 +70,9 @@ docs/               # Architecture, patterns, gotchas
 4. Re-derive indexes (children-by-parent, siblings, etc.)
 
 **Testing**:
-- Unit tests: Property-based tests generate random operations, verify invariants hold
-- E2E tests: Playwright browser tests catch cursor jumping, a11y violations, visual bugs
-- Run: `bb test` (unit), `bb test-watch` (TDD), `bb e2e` (browser)
+- View/unit tiers: `bb test:view` (hiccup) and `bb test:int` (render→action) for <1s feedback
+- Full suite: `bb test` or `bb test-watch` when you need everything
+- Browser flows: `bb e2e` / `bb test:e2e NAV-BOUNDARY-LEFT-01`
 
 **Debugging**: REPL-first workflow - reproduce in REPL, test fix, apply, verify (30s vs 5min)
 

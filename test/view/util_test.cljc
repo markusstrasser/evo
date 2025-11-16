@@ -1,7 +1,7 @@
-(ns view-util-test
-  "Tests for view-util functions"
+(ns view.util-test
+  "Tests for view.util helper functions"
   (:require [clojure.test :refer [deftest testing is]]
-            [view-util :as vu]))
+            [view.util :as vu]))
 
 (deftest parse-tag-test
   (testing "Parse simple tag"
