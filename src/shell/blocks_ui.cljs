@@ -34,8 +34,10 @@
 (defn- test-mode?
   "Check if running in E2E test mode"
   []
-  (when-let [search (.-search js/location)]
-    (boolean (re-find #"[?&]test=true" search))))
+  (let [search (.-search js/location)
+        has-param (and search (>= (.indexOf search "test=true") 0))]
+    (js/console.log "TEST MODE CHECK - search:" search "has-param:" has-param)
+    (boolean has-param)))
 
 (defonce !db
   (atom
@@ -93,7 +95,7 @@
                               ;; Set initial current page to Projects
                       {:op :update-node :id "session/ui" :props {:current-page "projects"}}])
        :db
-       (H/record)))) ;; Record initial state for undo
+       (H/record))))) ;; Record initial state for undo
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
@@ -411,14 +413,27 @@
 ;; ── Test Helpers ──────────────────────────────────────────────────────────────
 
 (defn reset-to-empty-db!
-  "Reset database to empty state for E2E tests.
+  "Reset database to empty state for E2E tests with one empty block.
    Exposed on window.TEST_HELPERS for Playwright."
   []
   (reset! !db (-> (DB/empty-db)
+                  (tx/interpret [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
+                                 {:op :place :id "test-page" :under :doc :at :last}
+                                 {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
+                                 {:op :place :id "test-block-1" :under "test-page" :at :last}
+                                 {:op :update-node :id "session/ui" :props {:current-page "test-page"}}])
+                  :db
                   (H/record))))
 
 (defn main []
   (js/console.log "Blocks UI starting with proper architecture...")
+  (js/console.log "Current URL:" (.-href js/location))
+
+  ;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
+  (when (test-mode?)
+    (js/console.log "Test mode detected - resetting to empty DB")
+    (reset-to-empty-db!)
+    (js/console.log "DB after reset - block count:" (count (get-in @!db [:nodes]))))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
