@@ -601,7 +601,10 @@
                        :on {:click (fn [e]
                                      (.stopPropagation e)
                                      (when has-children?
-                                       (on-intent {:type :toggle-fold :block-id block-id})))}}
+                                       ;; LOGSEQ PARITY (FR-Pointer-01): Alt+Click toggles entire subtree
+                                       (if (.-altKey e)
+                                         (on-intent {:type :toggle-subtree :block-id block-id})
+                                         (on-intent {:type :toggle-fold :block-id block-id}))))}}
                 (cond
                   (not has-children?) "•"
                   folded? "▸"
@@ -673,6 +676,17 @@
                             (on-intent {:type :update-content
                                         :block-id block-id
                                         :text new-text})))
+                 :paste (fn [e]
+                          ;; LOGSEQ PARITY (FR-Clipboard-03): Handle paste with multi-paragraph splitting
+                          (.preventDefault e)
+                          (let [clipboard-data (.-clipboardData e)
+                                pasted-text (.getData clipboard-data "text/plain")
+                                selection (.getSelection js/window)
+                                cursor-pos (.-anchorOffset selection)]
+                            (on-intent {:type :paste-text
+                                        :block-id block-id
+                                        :cursor-pos cursor-pos
+                                        :pasted-text pasted-text})))
                  :blur (fn [e]
                          ;; Only exit on blur if not already exiting via Escape
                          (when-not @exiting-edit?

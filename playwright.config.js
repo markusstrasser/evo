@@ -8,7 +8,7 @@ const headless =
 
 export default defineConfig({
   testDir: './test/e2e',
-  testMatch: '**/*.spec.js',
+  testMatch: '**/*.spec.{js,ts}',
 
   // Run tests in parallel
   fullyParallel: true,
