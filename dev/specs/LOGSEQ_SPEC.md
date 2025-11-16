@@ -1,23 +1,22 @@
-# Desktop Logseq Behavior & PRD (macOS)
+# Logseq Desktop Behavior Spec (macOS)
 
-Canonical behavior-only specification for delivering desktop Logseq (macOS build 0.10.x) inside Evo. This file merges the former PRD, parity tracker, keymap extract, and behavior spec so humans and AI agents have a single artifact.
+Canonical, implementation-agnostic description of the Logseq desktop “feel” (macOS build 0.10.x). Every statement below comes from observing and reading upstream Logseq; use it as the ground truth before mapping behavior into another client.
 
-_Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-run the checklist below whenever upstream changes.
+_Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-run the walkthrough any time upstream changes.
 
 ---
 
 ## 1. Objective & Scope
 
-- Derive every observable interaction (state machine, keyboard, pointer, clipboard, slash palette, quick switcher, undo/redo) directly from Logseq’s desktop source and reproduce it in Evo.
-- Coverage focuses on macOS keybindings (Logseq disables/changes some shortcuts per platform).
-- Out of scope: mobile/touch flows, new Evo-only features, architectural rewrites (Replicant/Nexus guidance lives in `docs/RENDERING_AND_DISPATCH.md`).
+- Capture every observable desktop interaction (state machine, keyboard, pointer, clipboard, slash palette, quick switcher, undo/redo) exactly as Logseq ships.
+- Focus on macOS keybindings (Logseq varies bindings per platform).
+- Out of scope: mobile/touch flows or downstream architectural decisions.
 
-## 2. Source-of-Truth Workflow
+## 2. Observation Workflow
 
-1. `cd ~/Projects/best/logseq` and ensure you are on main (see `OVERVIEW.md` for file map).
-2. For each interaction area (state machine, navigation, selection, edit commands, structural edits, folding/zoom, clipboard, paste, slash palette, quick switcher, undo/redo, mouse gestures) read the files listed in §3.
-3. Mirror the behavior in Evo by updating intents, plugins, and Replicant components; never guess—cite the upstream file + line range in commits/docs/tests.
-4. Update this spec plus `docs/specs/logseq_behaviors.md` (triad scenarios) and `docs/TESTING_STACK.md` whenever behavior or coverage changes.
+1. `cd ~/Projects/best/logseq` (main branch). Use `OVERVIEW.md` there as your file map.
+2. For each interaction area (state machine, navigation, selection, editing, structural moves, folding/zoom, clipboard, slash palette, quick switcher, undo/redo, mouse gestures) inspect the upstream files listed in §3.
+3. When uncertain, run the Logseq desktop app and reproduce the scenario manually; record any edge cases in this spec with links back to the upstream code you verified.
 
 ### Interaction Area Source Map (from `logseq/OVERVIEW.md`)
 
@@ -33,31 +32,19 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 | Undo/redo | `handler/history.cljs`, `state.cljs` | Restores text, block structure, caret/selection. |
 | Pointer + mouse gestures | `components/block.cljs`, `components/dnd.cljs`, `modules/outliner/tree.cljs` | Alt+click folding, Shift+click ranges, drag/drop + Alt reference insert. |
 
-## 3. Product Requirement Overlay
+## 3. Behavior Themes
 
-### 3.1 Purpose & Scope
-- Deliver Logseq desktop parity for editing, navigation, selection, structural ops, folding/zoom, clipboard/paste, slash palette, quick switcher, undo/redo, and pointer gestures within Evo’s Replicant shell.
-- Applies to all outline contexts (pages, journals, zoomed blocks, sidebar mirrors).
+The tables below summarize the interaction promises users rely on.
 
-### 3.2 Goals
-1. Match Logseq muscle memory for every shortcut and pointer gesture.
-2. Keep interaction states (idle ⇄ selection ⇄ edit) identical, including fold/zoom boundary guards.
-3. Provide deterministic acceptance criteria (triad scenarios + tests) so QA/agents can certify parity.
-
-### 3.3 Non-Goals
-- Introducing new UX beyond Logseq desktop.
-- Mobile/touch behaviors.
-- Changing core architectural patterns (pure data kernel, intent-driven plugins).
-
-### 3.4 Personas
+### 3.1 Personas
 | Persona | Expectation |
 |---------|-------------|
 | **Power user** | Every shortcut behaves like Logseq; no surprise focus jumps or scroll glitches. |
 | **Structural editor** | Indent/outdent/move/drag keeps tree topology identical to Logseq. |
 | **Note writer** | Paste, slash palette, quick switcher, and inline typing feel instantaneous. |
-| **QA / Agent** | Triad scenarios + tests make it obvious what remains to reach parity. |
+| **QA / Tester** | Deterministic scenarios exist for each shortcut so regressions are obvious. |
 
-### 3.5 Functional Requirements Catalog
+### 3.2 Functional Requirement Catalog
 (FR IDs referenced throughout this document)
 - **FR-Idle-01..03** – Idle guard + type-to-edit contract.
 - **FR-State-01..03** – Exclusive edit/selection states & clearing rules.
@@ -71,13 +58,20 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 - **FR-Slash-01 / FR-QuickSwitch-01** – Slash palette + Cmd+K/P quick switcher.
 - **FR-Undo-01** – Undo/redo restores caret + selection context.
 
-## 4. Implementation Guardrails (from `LOGSEQ_EDITING_SELECTION_PARITY.md`)
-
-1. **Single dispatcher rule** – Editing-mode keys (Enter, ArrowUp/Down, Shift+Arrow) are handled exclusively inside `components/block.cljs`, which dispatches Nexus actions with DOM facts (cursor rows, selection collapse). `keymap/bindings_data.cljc` must not bind those keys under `:editing`.
-2. **Nexus wiring** – All DOM handlers go through `shell/nexus.cljs` (see `docs/RENDERING_AND_DISPATCH.md`). Components emit `[:editing/navigate-up payload]` instead of calling reducers directly; global keymap dispatches the same queue so instrumentation/tests have one choke point.
-3. **Cursor guard** – Maintain the `__lastAppliedCursorPos` pattern plus mock-text measurement to prevent Replicant from stomping native cursor selection (see `dev/specs/CURSOR_GUARD_FLAG_SOLUTION.md` for failure cases).
-4. **Selection direction tracking** – `session/selection` stores `:direction` plus `:anchor`/`:focus`; Shift+Arrow extends/contracts incrementally instead of recomputing contiguous ranges. Shift+Click still uses contiguous visible ranges.
-5. **Visibility filter** – Navigation/selection rely on `visible-blocks-in-dom-order {:root (active page or zoom) :skip-folded? true}` so folded descendants and off-page nodes never enter selection.
+### 3.3 Acceptance Examples (BDD snippets)
+```
+Scenario: Idle guard
+  Given no block is selected or editing
+  When the user presses Enter
+  Then no new blocks are created and focus remains idle
+```
+```
+Scenario: Zoom boundary
+  Given the user zoomed into block Z
+  And block B is the first child of Z
+  When the user presses Shift+ArrowUp while B is editing
+  Then B stays selected and no blocks outside Z become selected
+```
 
 ## 5. macOS Keymap Coverage (extracted from `modules/shortcut/config.cljs`)
 
@@ -111,6 +105,7 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 |-----|--------|----------|
 | Tab / Shift+Tab | `:indent-selected` / `:outdent-selected` | Indent/outdent selection; guard zoom roots and root-level blocks. |
 | Cmd+Shift+Up/Down | `:move-selected-up/down` | Reorders selection; climbs/descends when at boundaries (FR-Move-01..03). |
+| Cmd+Shift+M | `:editor/move-blocks` | Opens move dialog to reposition selection under arbitrary target, matching Logseq’s “Move blocks to…” workflow. |
 | Cmd+Up/Down / Cmd+; | `:editor/collapse-block-children` / `:editor/expand-block-children` / toggle | Folding shortcuts respect current selection/edit block. |
 | Cmd+. / Cmd+, | `:editor/zoom-in` / `:editor/zoom-out` | Zoom root stack maintained in `state.cljs`. |
 
@@ -130,35 +125,6 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 |-----|--------|-------|
 | Cmd+Z / Cmd+Shift+Z / Cmd+Y | `:editor/undo` / `:editor/redo` | Restores block content + selection/caret using history stack.
 
-## 6. Gap Tracker & Regression Focus
-
-| Gap ID | FR IDs | Area | Status | Notes / Tests |
-|--------|--------|------|--------|---------------|
-| G-Nav-Visibility | FR-Scope-01..03 | Visible-outline traversal | ❌ Open | `visible-blocks-in-dom-order` must treat current page as implicit zoom root; update selection + navigation helpers. Tests: `test/view/block_navigation_view_test.cljc`, `test/e2e/navigation.spec.js::page_scope`. |
-| G-Horizontal-DOM | FR-NavEdit-02 | Left/Right boundary traversal | ❌ Open (LOGSEQ-PARITY-112) | Replace sibling-only adjacency with DOM-order traversal; scenario NAV-BOUNDARY-LEFT-01 currently failing. |
-| G-ShiftClick-Visibility | FR-NavView-02 | Shift+Click range | ❌ Open | `calc-extend-props` uses `doc-range`; needs visibility-aware helper to avoid folded/out-of-page nodes. |
-| G-ShiftArrow-Seeding | FR-NavEdit-04 | Editing boundary selection seed | ⚠ In progress | Need Nexus action to seed selection before extend; ensure tests `NAV-BOUNDARY-LEFT-01`, `SEL-EXTEND-SHRINK-01` pass. |
-| G-Clipboard-Segments | FR-Clipboard-02 | Paste semantics | ⚠ In progress | Multi-paragraph paste should split into blocks with list marker preservation; see `handler/paste.cljs`. |
-| G-Pointer-Hover | FR-Pointer-02 | Block ref hover preview | Deferred | Requires popover component + tests; document plan once UI shell ready. |
-| G-Slash / G-QuickSwitch | FR-Slash-01 / FR-QuickSwitch-01 | Slash palette & quick switcher | Not implemented | Need inline command palette and Cmd+K overlay parity. |
-| G-Undo-Cursor | FR-Undo-01 | Undo/redo caret memory | ⚠ In progress | Kernel/history stores session hints but cursor restoration still flaky; track via `dev/specs/CURSOR_GUARD_FLAG_SOLUTION.md`. |
-
-**Resolved gaps:** idle guard, base navigation, selection direction tracking, Enter/Shift+Enter parity (see commit history referenced in `source-auto-overview*.md` artifacts).
-
-### Regression Notes (from November 2025 verification)
-- **Navigation scope isolation** – `visible-blocks-in-dom-order` defaults to `:doc` when `:zoom-root` is nil, so ArrowDown from the last journal block can jump into hidden siblings. Treat the active page as implicit zoom root; unit tests should assert traversal respects `q/current-page-id`. (Refs: `src/plugins/navigation.cljc`, `src/kernel/query.cljc`.)
-- **Horizontal DOM traversal** – `:navigate-to-adjacent` only uses sibling indexes (`:prev-id-of`/`:next-id-of`). Replace with DOM-order traversal shared with vertical navigation so ArrowLeft hops to parent when caret=0 and ArrowRight dives into first child. (Refs: `components/block.cljs` boundary handlers, scenario `NAV-BOUNDARY-LEFT-01`.)
-- **Shift+Click visibility** – `calc-extend-props` still relies on `tree/doc-range`, causing folded/off-page nodes to enter selection. Implement `visible-range` helper backed by DOM-order list filtered by fold + zoom. (Refs: `src/plugins/selection.cljc`, `state.cljs`.)
-- **Shift+Arrow seeding** – Editing boundary events exit edit mode without seeding `session/selection`, so Shift+Arrow at caret row boundary starts extension from page start. Dispatch a `:selection/seed` intent before extend when editing block isn’t in selection. (Refs: `components/block.cljs`, `shell/nexus.cljs`.)
-
-## 7. Triad & Testing Workflow
-
-1. **Triad entries** live in `docs/specs/logseq_behaviors.md`. Each row links Keymap slice → Intent contract → Scenario ledger so an agent can pick a ❌/◐ cell and know the exact behavior + tests to implement.
-2. **Testing tiers** are documented in `docs/TESTING_STACK.md`: view (hiccup), intent/integration (action pipeline), Playwright e2e (headless by default, headed via `bb e2e-headed` if manual debugging needed). Use scenario IDs (e.g., `NAV-BOUNDARY-LEFT-01`) to filter tests via `bb test:e2e NAV-BOUNDARY-LEFT-01`.
-3. **Source-auto-overview** artifacts (generated on every push) summarize recent code changes. Link them in PRs/issues so agents know if specs/tests already cover an area.
-
----
-
 # LOGSEQ_SPEC.md — Editing, Navigation, Selection, and Structural Behaviors
 
 ## 0. Behavior Map & References
@@ -167,21 +133,20 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 |-------|------------------|--------------|------------------------------|
 | FR-Idle-01..03 | Idle-state guard + type-to-edit | §1 | `src/main/frontend/handler/editor.cljs` (`select-first-last`, `keydown-new-block-handler`) |
 | FR-State-01..03 | Edit/view exclusivity & selection clearing | §1 | `state.cljs`, `util.cljs` selection helpers |
-| FR-Scope-01..03 | Visible-outline boundaries (page, zoom, folding) | §5, §7 | `util/get-prev-block-non-collapsed`, `state/zoom-in!` |
+| FR-Scope-01..03 | Visible-outline boundaries (page, zoom, folding) | §5, §6 | `util/get-prev-block-non-collapsed`, `state/zoom-in!` |
 | FR-NavEdit-01..04 | Editing-mode arrows + Shift+Arrow seeding | §2 | `handler/editor.cljs` (`shortcut-up-down`, `shortcut-left-right`) |
 | FR-NavView-01..04 | Selection-mode arrows, Shift+Click, Shift+Enter sidebar | §3 | `handler/editor.cljs` (`select-up-down`, `shortcut-select-up-down`) |
 | FR-Edit-01..07 | Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore | §4 | `handler/editor.cljs` (`keydown-new-block`, `keydown-backspace-handler`) |
 | FR-Move-01..03 | Indent/outdent rules, climb/descend, drag & Alt-drag | §5 | `outliner/core.cljs`, `handler/editor.cljs/move-up-down`, `handler/dnd.cljs` |
-| FR-Clipboard-01..03 | Copy/cut/reference, paste semantics | §9.6–§9.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs` |
-| FR-Pointer-01..02 | Alt+Click folding, hover previews | §9.3 | `frontend/components/block.cljs`, `frontend/ui.cljs` |
-| FR-Slash-01 | Slash command palette | §9.4 | `components/block-editor.cljs` |
-| FR-QuickSwitch-01 | Cmd+K/Cmd+P quick switcher | §9.5 | `components/quick_command.cljs` |
-| FR-Undo-01 | Undo/redo restores caret/selection | §9.8 | `state.cljs`, `history.cljs` |
+| FR-Clipboard-01..03 | Copy/cut/reference, paste semantics | §7.6–§7.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs` |
+| FR-Pointer-01..02 | Alt+Click folding, hover previews | §7.3 | `frontend/components/block.cljs`, `frontend/ui.cljs` |
+| FR-Slash-01 | Slash command palette | §7.4 | `components/block-editor.cljs` |
+| FR-QuickSwitch-01 | Cmd+K/Cmd+P quick switcher | §7.5 | `components/quick_command.cljs` |
+| FR-Undo-01 | Undo/redo restores caret/selection | §7.8 | `state.cljs`, `history.cljs` |
 
-> **Verification note:** Behaviors validated against `~/Projects/best/logseq` (master, 2025‑11‑15). Re-run validation whenever upstream changes and update both this map and `dev/specs/LOGSEQ_PARITY_PRD.md`.
+> **Verification note:** Behaviors confirmed against `~/Projects/best/logseq` (master, 2025‑11‑15). Re-run validation whenever upstream changes.
 
-**Target Application:** Logseq desktop (macOS, build 0.10.x)  
-**Purpose:** Canonical source-of-truth for Evo parity. Every behavior below is observed directly in `~/Projects/best/logseq` and must be implemented identically unless a deliberate divergence is documented in `LOGSEQ_PARITY.md`.
+**Target application:** Logseq desktop (macOS build 0.10.x).  \n**Purpose:** Canonical record of user-observable behavior—implementation-specific notes live elsewhere.
 
 ---
 
@@ -234,7 +199,7 @@ Logseq stores ephemeral interaction state in session nodes:
 |                       | `:focus`                 | Current focus block in selection         |
 |                       | `:anchor`                | Anchor block for range selection         |
 
-Any Evo implementation must mutate these nodes exactly as Logseq does to avoid undo/redo drift.
+Any implementation that seeks parity must mutate these nodes exactly as Logseq does to avoid undo/redo drift.
 
 ---
 
@@ -334,22 +299,9 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 
 - Logseq exposes drag handles on blocks. Dropping without modifiers performs the same structural move as `move-blocks`. Holding **Alt** during drop inserts a block reference instead of moving the source (`frontend.handler.dnd/move-blocks` checks `event.altKey` and calls `ref/->block-ref`).
 - Dragging into the top/bottom “hit zones” reuses the same “climb” semantics described above—dropping at the top of a block with Alt released moves the dragged block before the target’s parent when appropriate.
-- Evo must mirror both behaviors when DnD support lands.
+- Any parity-seeking implementation must reproduce both behaviors once drag-and-drop support lands.
 
----
-
-## 6. Cursor Hint Lifecycle (Replicant Integration)
-
-- On block render, `components.block.cljs` must:
-  1. Focus the contenteditable node if it matches `:editing-block-id`.
-  2. Apply cursor hints from `:cursor-position`, respecting `:start`, `:end`, or numeric offsets (clamped to text length).
-  3. After applying, dispatch `{:type :clear-cursor-position}` to avoid reusing stale hints.
-  4. Update mock text (`#mock-text`) to mirror content for accurate line detection.
-- Boundary detection uses stored `:cursor` flags (first/last row) to decide when to escalate `Shift+Arrow` to block selection.
-
----
-
-## 7. Fold & Zoom Constraints
+## 6. Fold & Zoom Constraints
 
 - All navigation/selection intents must consult derived indexes that exclude folded descendants and nodes outside current zoom root. Equivalent to Logseq’s `util/get-prev-block-non-collapsed` / `get-next-block-non-collapsed`.
 - Folding state lives under node props (e.g., `{:props {:folded? true}}`). Navigation should traverse siblings via derived links, skipping folded subtrees entirely.
@@ -357,68 +309,53 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 - Delete operations applied to a folded block remove the entire subtree (exactly as if it were expanded).
 - While zoomed into block `Z`, any operation that would move a block outside of `Z` (outdent, Shift+Arrow extend, Cmd+Shift+Arrow move) is a no-op; the zoom root is treated as a hard boundary.
 
----
-
-## 8. Testing Guidance
-
-Logseq’s coverage spans three layers; Evo should mirror these:
-
-1. **Pure intent tests** (`plugins/navigation_test.cljs`, `plugins/editing_test.cljs`) to verify ops.
-2. **View tests** using Replicant hiccup (`components.block-view-test.cljc`) to ensure caret, selection, and handlers are wired.
-3. **Integration tests** simulating keybindings (`integration/keybinding_test.cljc`) covering edit vs view transitions and structural edits.
-
-Additionally, replicate Logseq’s DOM-driven Playwright tests for Shift+Arrow, backspace merge, and outdenting to guard regressions.
-
----
-
-## 9. Additional Interaction Patterns
+## 7. Additional Interaction Patterns
 
 Beyond keyboard navigation and structural edits, Logseq users rely on several subtle cues:
 
-### 9.1 Type-to-edit
+### 7.1 Type-to-edit
 - When a block is selected (but not editing), pressing any printable key instantly enters edit mode, appends that character, and positions the caret after it. Selections across multiple blocks keep their visual highlight, but only the focused block begins editing.
 
-### 9.2 Selection-mode shortcuts
+### 7.2 Selection-mode shortcuts
 - `Shift+Enter` on a selected block opens that block (or the entire selection) in the right sidebar. The main outline keeps focus where it was.
 - `Cmd+A` cycles: first press selects text in the current block (when editing), second press selects the block, third press selects its parent, fourth selects the entire visible outline. Users expect this cycle everywhere.
 
-### 9.3 Pointer gestures
+### 7.3 Pointer gestures
 - Dragging a block’s bullet reorders the outline; the drop indicator shows where it will land. Holding **Alt** during drop inserts a block reference (`((uuid))`) instead of moving the source block.
 - **Alt+Click** on a bullet toggles the entire subtree (fully expand/collapse), not just the direct block.
 - Hovering block references pops a preview tooltip; Cmd+Click opens that block in the sidebar without leaving the current outline.
 
-### 9.4 Slash commands & autocomplete
+### 7.4 Slash commands & autocomplete
 - Typing `/` opens the inline command palette at the caret. Arrow keys navigate suggestions; Enter inserts the highlighted item; Escape closes the palette without altering text. This interaction is instant and does not scroll the document.
 - Slash commands autocomplete pages, templates, blocks, properties, and queries inline. Users expect search-as-you-type performance identical to Logseq.
 
-### 9.5 Quick switcher / global search
+### 7.5 Quick switcher / global search
 - `Cmd+K` (or `Cmd+P`) brings up the quick switcher overlay. Typing filters results in real time, Arrow keys move through them, Enter opens the selection, Escape closes the overlay with no side effects.
 
-### 9.6 Clipboard permutations
+### 7.6 Clipboard permutations
 - `Cmd+Option+C` copies the focused block as a reference (`((uuid))`). Context menus expose “Copy block ref” alongside standard copy/cut entries.
 - `Cmd+Shift+C` copies selected blocks as plain text; `Cmd+Shift+V` pastes plain text into the editing block. Standard `Cmd+C` / `Cmd+V` retain block metadata and formatting.
 
-### 9.7 Paste semantics
+### 7.7 Paste semantics
 - Pasting text that contains single newlines but no blank lines keeps the content inside the current block (newlines become literal `\n` characters).
 - Pasting text with blank lines (`\n\n`) splits the paste into multiple blocks: everything before the first blank line stays in the current block, and each additional paragraph becomes its own block inserted below. Existing list markers or checkboxes in the pasted text carry over.
 
-### 9.8 Undo/redo focus memory
+### 7.8 Undo/redo focus memory
 - Undo and redo reapply not just document content but also the interaction state: if the user was editing block B when the change occurred, undo returns the caret to block B (or reselects it) exactly as Logseq does.
 
-Document these expectations in parity trackers whenever Evo diverges so QA can verify them explicitly.
+Downstream parity trackers should reference these expectations whenever a client diverges so QA can verify the difference explicitly.
 
 ---
 
-## 10. Summary Checklist
+## 8. Summary Checklist (Behavioral)
 
-- [ ] Edit/View states mutually exclusive; Escape/background click clear selection.
-- [ ] Cursor memory uses grapheme-aware calculations and respects fold/zoom constraints.
-- [ ] Shift+Arrow defers to browser until row boundary, then dispatches selection intents.
-- [ ] Structural intents (`indent`, `outdent`, move up/down) mirror Logseq semantics.
-- [ ] Backspace/Delete merge logic re-parents children correctly.
-- [ ] Cursor hints applied then cleared every render cycle.
-- [ ] Keybindings align with Logseq (Cmd+A, Cmd+Shift+A, Cmd+O, Shift+Enter, highlight toggle).
-- [ ] Tests cover intents, views, integrations per section 8.
-- [ ] Type-to-edit, sidebar openings, Alt-drag references, slash commands, quick switcher, and hover previews behave like Logseq.
+- [ ] Edit ↔ View states never overlap; Escape/background click clears selection instantly.
+- [ ] Cursor memory keeps grapheme column across blocks and honors fold/zoom scope.
+- [ ] Shift+Arrow only exits text selection at visual boundaries, then extends block selection one step at a time.
+- [ ] Structural moves (indent/outdent, Cmd+Shift+Arrow climb/descend, drag/drop with Alt for references) match Logseq’s tree rules.
+- [ ] Enter/Shift+Enter, Backspace/Delete, whitespace trimming, and merge semantics behave exactly like Logseq.
+- [ ] Keymap parity: Cmd+A cycle, Cmd+Shift+A select-all-visible, Cmd+O follow link, Slash palette, Cmd+K/P quick switcher.
+- [ ] Clipboard permutations (copy block, copy plain text, copy reference, paste plain text, multi-paragraph paste) align with Logseq.
+- [ ] Type-to-edit, sidebar open-on-Shift+Enter, Alt+click folding, hover previews, and quick switcher UX feel identical to Logseq.
 
 This document supersedes all prior Logseq parity specs. Any future deviations must be recorded in `LOGSEQ_PARITY.md`.
