@@ -6,6 +6,8 @@ const headless =
     ? process.env.PLAYWRIGHT_HEADLESS !== 'false'
     : !!process.env.CI;
 
+const shouldStartWebServer = process.env.PW_SKIP_WEB_SERVER !== '1';
+
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: '**/*.spec.{js,ts}',
@@ -61,10 +63,10 @@ export default defineConfig({
   ],
 
   // Dev server
-  webServer: {
+  webServer: shouldStartWebServer ? {
     command: 'bb dev',
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
     timeout: 120000
-  }
+  } : undefined
 });
