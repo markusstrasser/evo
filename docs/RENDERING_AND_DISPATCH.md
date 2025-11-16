@@ -1763,3 +1763,8 @@ Distributed under the [MIT License](https://opensource.org/license/mit).
 - Keep event handlers serializable: the data vectors described above should always dispatch via `shell.nexus/dispatch!` so headless tests can walk hiccup and assert intent wiring.
 - Lifecycle hooks (`:replicant/on-mount`, etc.) pair naturally with Nexus effects: store DOM references with `:replicant/remember`, then trigger follow-up actions through dispatch data.
 - Editing shortcuts follow the single-dispatcher rule (see `docs/specs/logseq_behaviors.md`) so parity specs can link directly to handler data.
+
+## Upstream Release Notes (2025)
+
+- **Replicant 2025.06.21** tightened the contract for `replicant.dom/set-dispatch!`: the dispatcher now always receives a map that includes `:replicant/trigger` and `:replicant/dom-event`, and the recommended pattern is to gate DOM work on `:replicant.trigger/dom-event` before touching browser APIs. Keep our handler wrapper aligned with that guidance so placeholder interpolation matches upstream expectations. citeturn0search3
+- **Nexus 2025.10.2** ships with optional Dataspex validation—actions, effects, and placeholders can be declared with Dataspex schemas so incorrect payloads are rejected before they reach the kernel. When we add new intents, consider wrapping the action registry in `dataspex` specs so test failures point straight at malformed data. citeturn0search10

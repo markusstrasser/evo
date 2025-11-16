@@ -468,6 +468,22 @@ With data handlers:
 
 8. **Visual regression tests** - Already using Percy
 9. **Performance benchmarks** - Render performance for large trees
+
+## Fast Agent Workflow (Planned)
+
+To make the above stack actionable for AI agents (and humans), we’re standardizing on three explicit entry points. Each maps to the tiers in this document and keeps feedback loops under a second whenever possible.
+
+1. `bb test:view` – runs only the hiccup/unit namespaces (Block, Sidebar, helpers). This suite depends solely on `clojure.test` and executes entirely headlessly, so agents can iterate without opening a browser. Because Replicant’s dispatcher always surfaces DOM data via `:replicant/trigger` and `:replicant/dom-event`, assertions can safely stub placeholders rather than invoking actual events. citeturn0search3
+2. `bb test:int` – executes the render → action → apply loop described earlier. These integration tests still run in-process, but they wire the same Nexus path production uses. We’ll add helpers like `(integration/run-scenario NAV-BOUNDARY-LEFT-01 state overrides)` so contributors can reference spec IDs directly, mirroring the scenario ledger in `docs/specs/logseq_behaviors.md`.
+3. `bb test:e2e --spec <id>` – thin Playwright smoke runs that remain for DOM-only behavior (cursor/selection, IME, accessibility). Each Playwright spec’s `describe` block will include the scenario IDs it covers, keeping the traceability chain intact.
+
+### Watch mode support
+
+The June 2025 ClojureScript release switched watch builds to Java’s virtual threads, which requires running under JDK 21+ for stable file watching. We’ll publish a `bb test-watch:view` task that shells out with the workspace’s Java 21 toolchain (or `JAVA_HOME` override) so agents don’t hit the known “stuck watcher” bug on older JVMs. citeturn0search2
+
+### Scenario-aware lint
+
+Every scenario ID in `docs/specs/logseq_behaviors.md` must appear in at least one view or integration test namespace. A lightweight lint (`bb lint:scenarios`) will scan for missing IDs and fail fast if a spec row lacks coverage, keeping the Keymap → Intent → Scenario triad executable end to end.
 10. **Fuzz testing** - Random hiccup generation
 
 ## Resources
