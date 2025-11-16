@@ -82,7 +82,7 @@ source_refs:
      - `[:ui/clear-selection]`
 - **Side effects**: Exit child edit mode, enter parent at text end, preserve outline root, clear selection.
 - **Parity reference**: `logseq/editor.cljs:3245-3320`
-- **Tests owed**: `test/plugins/navigation_dom_order_test.cljc :: left_traverses_parent`; `test/e2e/block_navigation_parity.spec.ts :: arrow_left_parent_jump`
+- **Tests owed**: covered by `test/view/block_navigation_view_test.cljc`, `test/integration/navigation_scenarios_test.cljc`, and `test/e2e/navigation.spec.js :: NAV-BOUNDARY-LEFT-01`
 - **Open issues**: Share DOM-order helper with vertical navigation so page scope stays consistent.
 
 - **Scenario ID**: NAV-BOUNDARY-LEFT-01  
@@ -91,7 +91,7 @@ source_refs:
   **Then** Edit focus moves to A, caret lands at end of A, selection stays empty, outline root unchanged.  
   **User feel** Flow continues upward with no flicker; user never sees the caret jump to the top of B or collapse the fold.  
   **Edge cases** Folded parents, zoomed views, parent with long text, child preceded by sibling selection.  
-  **Tests** `test/plugins/navigation_dom_order_test.cljc :: left_traverses_parent`; `test/e2e/block_navigation_parity.spec.ts :: arrow_left_parent_jump`  
+  **Tests** `test/view/block_navigation_view_test.cljc :: scenario-nav-boundary-left-01`; `test/integration/navigation_scenarios_test.cljc :: scenario-nav-boundary-left-01`; `test/e2e/navigation.spec.js :: NAV-BOUNDARY-LEFT-01 (expected-fail until LOGSEQ-PARITY-112)`  
   **Status** ❌ (cursor remains in child B).
 
 _Add additional behaviors below using `docs/templates/TRIAD.md` as more parity items are documented._

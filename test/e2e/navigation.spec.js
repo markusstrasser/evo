@@ -9,10 +9,13 @@ import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
 import { getAllBlocks } from './helpers/blocks.js';
 import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
+const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
+
 test.describe('Block Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/blocks.html');
     await enterEditModeAndClick(page);
+    await page.waitForFunction(() => typeof window.DEBUG?.state === 'function');
   });
 
   test('arrow down preserves cursor column', async ({ page }) => {
@@ -119,5 +122,43 @@ test.describe('Block Navigation', () => {
 
     // Should still be in same block
     expect(blockAfter).toBe(blockBefore);
+  });
+});
+
+test.describe(`${NAV_PARENT_HOP}`, () => {
+  test('ArrowLeft at block start hops to parent and lands caret at end', async ({ page }) => {
+    test.fail(true, 'LOGSEQ-PARITY-112: boundary hop not implemented yet');
+    await page.goto('/blocks.html?test=true');
+    await enterEditModeAndClick(page);
+
+    // Create parent block
+    const parentText = 'Parent nav target';
+    await page.keyboard.type(parentText);
+    const parentId = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
+    await page.keyboard.press('Enter');
+
+    // Create child and indent under parent
+    const childText = 'Child boundary test';
+    const childBlock = page.locator('.block').last();
+    await childBlock.click();
+    await page.keyboard.type(childText);
+    const childIdRaw = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(() => document.querySelectorAll('.block[data-block-id]').length >= 2);
+
+    expect(parentId).toBeTruthy();
+    expect(childIdRaw).toBeTruthy();
+
+    // Ensure cursor is at start of child block
+    await setCursorPosition(page, childIdRaw, 0);
+    await page.waitForTimeout(50);
+
+    // ArrowLeft at boundary should move focus to parent and place caret at end
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(150);
+
+    const cursor = await getCursorPosition(page);
+    expect(cursor.elementId).toBe(parentId);
+    expect(cursor.offset).toBe(parentText.length);
   });
 });

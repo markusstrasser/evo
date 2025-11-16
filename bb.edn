@@ -67,11 +67,12 @@
    e2e-a11y    {:doc "Run accessibility tests only"
                 :task (shell "npx playwright test accessibility")}
 
-   test:e2e    {:doc "Run Playwright tests filtered by scenario ID (optional arg)"
-                :task (let [scenario (first *command-line-args*)]
-                        (if scenario
-                          (shell "npx playwright test --grep" scenario)
-                          (shell "npx playwright test")))}
+   test:e2e    {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
+                :task (let [scenario (first *command-line-args*)
+                            base-cmd ["npx" "playwright" "test" "--project=chromium"]
+                            cmd (if scenario (conj base-cmd "--grep" scenario) base-cmd)
+                            cmd-str (clojure.string/join " " cmd)]
+                        (shell cmd-str))}
 
    ;; Cache & index management
    clean       {:doc "Clear all caches and semantic search index"
