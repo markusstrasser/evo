@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Git pre-push hook: Generate dual overviews before pushing
+
+# Check if src/ directory has uncommitted or unpushed changes
+if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q '^src/' || \
+   git diff --cached --name-only | grep -q '^src/' || \
+   git diff --name-only | grep -q '^src/'; then
+  echo "📦 Detected changes in src/ - generating overviews..."
+  ./scripts/generate-overview.sh --auto
+
+  # Check if overviews were modified and stage them if they exist
+  if [ -f "dev/overviews/AUTO-SOURCE-OVERVIEW.md" ] || [ -f "dev/overviews/AUTO-PROJECT-OVERVIEW.md" ]; then
+    echo "ℹ️  Overviews generated. Commit them if needed before pushing."
+  fi
+else
+  echo "ℹ️  No changes in src/ - skipping overview generation"
+fi
+
+exit 0
