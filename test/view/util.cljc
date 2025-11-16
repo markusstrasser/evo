@@ -1,4 +1,4 @@
-(ns view-util
+(ns view.util
   "Utilities for testing Replicant views (components).
 
    Replicant views are pure functions that return hiccup data.
@@ -23,7 +23,8 @@
        ;; Extract actions from event handlers
        (select-actions view :.content-edit [:on :input]))"
   (:require [clojure.walk :as walk]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.pprint :as pprint]))
 
 ;; =============================================================================
 ;; Element Selection
@@ -290,7 +291,7 @@
    Returns formatted string."
   [hiccup]
   (with-out-str
-    (clojure.pprint/pprint hiccup)))
+    (pprint/pprint hiccup)))
 
 (defn count-elements
   "Count elements matching selector in hiccup."

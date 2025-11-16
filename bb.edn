@@ -15,27 +15,35 @@
                         (run 'lint)
                         (shell "npx shadow-cljs compile :anki"))}
 
-   test        {:doc "Run test suite"
+   test        {:doc "Compile + run the full shadow-cljs test suite"
                 :task (do
                         (shell "npx shadow-cljs compile :test")
                         (shell "node out/tests.js"))}
 
-   test-watch  {:doc "Run tests in watch mode (auto-rerun on save)"
-                :task (shell "clj -M:test -m kaocha.runner --watch")}
+   test:view   {:doc "Fast view (hiccup) tests"
+                :task (do
+                        (shell "npx shadow-cljs compile :test-view")
+                        (shell "node out/tests-view.js"))}
 
-   test-focus  {:doc "Run only tests matching pattern"
-                :task (shell "clj -M:test -m kaocha.runner --focus"
-                             (first *command-line-args*))}
+   test:int    {:doc "Render→action integration tests"
+                :task (do
+                        (shell "npx shadow-cljs compile :test-integration")
+                        (shell "node out/tests-integration.js"))}
 
-   test-fail-fast {:doc "Stop on first failure with full context"
-                   :task (shell "clj -M:test -m kaocha.runner --fail-fast")}
+   test-watch  {:doc "Watch entire suite (shadow-cljs)"
+                :task (shell "npx shadow-cljs watch :test")}
 
-   test-seed   {:doc "Run tests with specific seed (reproduce property test failures)"
-                :task (shell "clj -M:test -m kaocha.runner --randomize --seed"
-                             (first *command-line-args*))}
+   test-watch:view {:doc "Watch view tests"
+                    :task (shell "npx shadow-cljs watch :test-view")}
+
+   test-watch:int {:doc "Watch integration tests"
+                   :task (shell "npx shadow-cljs watch :test-integration")}
 
    check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
                     :task (shell "scripts/check-version-sync.sh")}
+
+   lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
+                   :task (shell "bb scripts/lint_scenarios.clj")}
 
    ;; E2E Testing with Playwright
    e2e         {:doc "Run Playwright E2E tests"
@@ -58,6 +66,12 @@
 
    e2e-a11y    {:doc "Run accessibility tests only"
                 :task (shell "npx playwright test accessibility")}
+
+   test:e2e    {:doc "Run Playwright tests filtered by scenario ID (optional arg)"
+                :task (let [scenario (first *command-line-args*)]
+                        (if scenario
+                          (shell "npx playwright test --grep" scenario)
+                          (shell "npx playwright test")))}
 
    ;; Cache & index management
    clean       {:doc "Clear all caches and semantic search index"
@@ -108,13 +122,16 @@
                         (println "Quality Gates:")
                         (println "  bb lint            - Run clj-kondo linter")
                         (println "  bb check           - Lint + compile check")
-                        (println "  bb test            - Run test suite")
+                        (println "  bb test            - Run full shadow-cljs tests")
+                        (println "  bb test:view       - View (hiccup) tests")
+                        (println "  bb test:int        - Integration tests")
                         (println "  bb check-deps-sync - Verify dependency versions match\n")
                         (println "E2E Testing:")
                         (println "  bb e2e             - Run Playwright E2E tests")
                         (println "  bb e2e-watch       - Watch mode (UI)")
                         (println "  bb e2e-debug       - Debug mode")
                         (println "  bb e2e-headed      - Visible browser")
+                        (println "  bb test:e2e <ID>   - Filter Playwright by scenario")
                         (println "  bb e2e-report      - Open test report")
                         (println "  bb e2e-visual      - Visual regression (Percy)")
                         (println "  bb e2e-a11y        - Accessibility tests\n")
@@ -124,7 +141,8 @@
                         (println "Development:")
                         (println "  bb dev             - Start dev server + watch")
                         (println "  bb repl-health     - REPL diagnostics")
-                        (println "  bb docs-overview   - Generate overview\n")
+                        (println "  bb docs-overview   - Generate overview")
+                        (println "  bb lint:scenarios  - Ensure specs ↔ tests stay linked\n")
                         (println "Setup:")
                         (println "  bb install-hooks   - Install git hooks\n")
                         (println "Skills (call directly):")

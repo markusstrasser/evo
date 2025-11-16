@@ -5,12 +5,11 @@
           :ns-exclude-regexp "browser-ui"
           :cljs/compiler-options {:output-to "out/tests.js"
                                   :target :node-test}}]
-
- :plugins [:kaocha.plugin/profiling    ;; Show slow tests
-           :kaocha.plugin/notifier      ;; Desktop notifications
-           :kaocha.plugin/hooks]        ;; Custom lifecycle hooks
-
+ 
+ :plugins [:kaocha.plugin/profiling
+           :kaocha.plugin/notifier
+           :kaocha.plugin/hooks]
+ 
  :kaocha.plugin.profiling/count 10
-
- ;; Custom reporter for structured output
+ 
  :kaocha/reporter [kaocha.report/documentation]}
