@@ -319,7 +319,7 @@ if (!canTypeImmediately) {
 
 ## Resources
 
-- `docs/REPLICANT.md` - Lifecycle hooks reference
+- `docs/RENDERING_AND_DISPATCH.md` - Lifecycle hooks reference
 - `docs/CONTENTEDITABLE_DEBUGGING.md` - Specific failure modes
 - `docs/UI_DEBUGGING_GUIDE.md` - Step-by-step debugging workflow
 - React docs on contenteditable (same issues apply to Replicant)

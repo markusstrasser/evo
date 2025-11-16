@@ -1,6 +1,6 @@
 # Hotkeys & Actions Documentation Index
 
-This directory contains comprehensive documentation of the hotkey binding system and UI action implementation.
+This directory contains comprehensive documentation of the hotkey binding system and UI action implementation. For the broader documentation map (rendering, specs, testing), start with `docs/DX_INDEX.md`.
 
 ## Documents
 
@@ -178,7 +178,7 @@ All intents compile to 3-operation kernel:
 
 - **CLAUDE.md** - Project philosophy and development setup
 - **src/kernel/README** - Kernel architecture (if exists)
-- **docs/REPLICANT.md** - Event handler syntax details
+- **docs/RENDERING_AND_DISPATCH.md** - Event handler syntax details
 - **test/integration/keybinding_test.cljc** - Hotkey integration tests
 
 ---

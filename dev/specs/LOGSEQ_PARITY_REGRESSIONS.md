@@ -6,14 +6,14 @@
 
 ## 1. Background & Motivation
 
-Logseq parity work (see `docs/LOGSEQ_PARITY_STATUS.md`) claims that foundational editing, navigation, and selection behaviors now match Logseq. Manual verification in Evo build `main@HEAD` (2025-11-15) surfaces four mismatches that end users notice immediately:
+Logseq parity work (see `docs/specs/logseq_behaviors.md`) claims that foundational editing, navigation, and selection behaviors now match Logseq. Manual verification in Evo build `main@HEAD` (2025-11-15) surfaces four mismatches that end users notice immediately:
 
 1. Arrow navigation spills into hidden pages/folded trees, unlike Logseq’s page-scoped, visibility-aware traversal.
 2. Horizontal boundary navigation (Left/Right at block edges) only walks siblings, so it gets stuck at parent boundaries and never dives into children.
 3. Shift+Click (range selection) includes folded/off-page blocks because it trusts `doc-range` instead of the visible DOM tree.
 4. While editing, Shift+Arrow at the block boundary starts extending from the top of the page because selection state is empty—Logseq seeds the current block before extending.
 
-These gaps break the “feel identical to Logseq” goal and contradict `docs/LOGSEQ_PARITY_STATUS.md`. This spec defines the required fixes, acceptance criteria, and testing obligations.
+These gaps break the “feel identical to Logseq” goal and contradict `docs/specs/logseq_behaviors.md`. This spec defines the required fixes, acceptance criteria, and testing obligations.
 
 ## 2. Goals
 
@@ -151,8 +151,8 @@ These gaps break the “feel identical to Logseq” goal and contradict `docs/LO
    - Integration/E2E: extend `test/e2e/foundational-editing-parity.spec.ts` with scenarios from §6.
 
 6. **Docs**
-   - Update `docs/LOGSEQ_PARITY_STATUS.md` after fixes land.
-   - Append “page vs zoom” guidance to `docs/REPLICANT.md` and `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md`.
+   - Update `docs/specs/logseq_behaviors.md` after fixes land.
+   - Append “page vs zoom” guidance to `docs/RENDERING_AND_DISPATCH.md` and `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md`.
 
 ## 8. Risks & Mitigations
 

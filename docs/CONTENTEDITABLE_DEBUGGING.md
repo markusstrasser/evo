@@ -358,7 +358,7 @@ Before claiming "bug is fixed":
 
 ## See Also
 
-- `docs/REPLICANT.md` - Replicant lifecycle hooks
+- `docs/RENDERING_AND_DISPATCH.md` - Replicant lifecycle hooks
 - `docs/UI_DEBUGGING_GUIDE.md` - General UI debugging
 - `dev/debug/block_render.cljs` - REPL debugging tools
 - Logseq source: `src/main/frontend/components/editor.cljs`
