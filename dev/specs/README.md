@@ -41,3 +41,4 @@ Keeping these two files current ensures every future agent works from the same g
 ### Recently archived
 - `EDGE_CASES.md` → moved to `archive/EDGE_CASES.md` (content now covered by `LOGSEQ_SPEC.md` + regressions doc).
 - `CURSOR_BEHAVIOR.md` → moved to `archive/CURSOR_BEHAVIOR.md` (cursor lifecycle captured in `LOGSEQ_SPEC.md` §2–4).
+- `LOGSEQ_PARITY_PRD.md` → moved to `archive/LOGSEQ_PARITY_PRD.md` (product-level narrative superseded by `dev/specs/LOGSEQ_SPEC.md` + `docs/specs/LOGSEQ_PARITY_EVO.md`).
