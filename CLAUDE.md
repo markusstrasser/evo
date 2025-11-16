@@ -64,6 +64,7 @@ bb e2e-visual              # Visual regression tests (Percy)
 bb lint                    # Run clj-kondo linter
 bb check                   # Lint + compile check (full quality gate)
 bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
+bb lint:e2e-keyboard       # Check E2E tests for problematic keyboard usage
 ```
 
 ### Cache & Index Management
@@ -301,6 +302,21 @@ bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 - Use accessibility snapshots (not screenshots)
 - Verify DOM state, not internal DB structure
 
+**CRITICAL: Keyboard Events on `contenteditable` Elements**
+
+Playwright's `page.keyboard.press()` does **NOT** reliably trigger keyboard event handlers on `contenteditable` elements. Always use the `pressKeyOnContentEditable()` helper from `test/e2e/helpers/keyboard.js`:
+
+```javascript
+// ❌ WRONG: May silently fail to trigger handlers
+await page.keyboard.press('ArrowLeft');
+
+// ✅ CORRECT: Guaranteed to dispatch events properly
+import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+await pressKeyOnContentEditable(page, 'ArrowLeft');
+```
+
+Use `bb lint:e2e-keyboard` to detect problematic keyboard usage in tests.
+
 ```javascript
 // Good: Test user-facing behavior
 await expect(page.locator('[contenteditable="true"]')).toBeFocused();
@@ -309,7 +325,7 @@ await expect(page.locator('[contenteditable="true"]')).toBeFocused();
 const db = await page.evaluate(() => window.DEBUG.state());
 ```
 
-**See**: `docs/PLAYWRIGHT_MCP_TESTING.md` for MCP testing guide.
+**See**: `docs/PLAYWRIGHT_MCP_TESTING.md` for complete E2E testing guide and keyboard helper API.
 
 ### Full Testing Stack Reference
 

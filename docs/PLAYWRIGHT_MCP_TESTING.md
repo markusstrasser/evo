@@ -106,7 +106,7 @@ await page.waitForTimeout(100); // Only when necessary
 
 Simulate actual keyboard/mouse events:
 ```javascript
-// Good: real keyboard input
+// Good: real keyboard input (non-contenteditable)
 await page.keyboard.press('Shift+Tab');
 await page.keyboard.type('Block text');
 
@@ -114,6 +114,37 @@ await page.keyboard.type('Block text');
 await page.click('.block');
 await page.dblclick('.bullet');
 ```
+
+**CRITICAL: Keyboard Events on `contenteditable` Elements**
+
+Playwright's `page.keyboard.press()` API does **NOT** reliably trigger keyboard event handlers on `contenteditable` elements in this application. This can cause silent test failures where navigation appears to work but handlers aren't called.
+
+**Problem**: Playwright's keyboard abstraction bypasses the event handlers attached to `contenteditable` elements, leading to tests that pass even when the actual feature is broken.
+
+**Solution**: Always use `pressKeyOnContentEditable()` helper from `test/e2e/helpers/keyboard.js`:
+
+```javascript
+// ❌ WRONG: May silently fail to trigger handlers
+await page.keyboard.press('ArrowLeft');
+
+// ✅ CORRECT: Guaranteed to dispatch events properly
+import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+await pressKeyOnContentEditable(page, 'ArrowLeft');
+
+// ✅ With modifiers
+await pressKeyOnContentEditable(page, 'ArrowUp', { shiftKey: true });
+
+// ✅ Keyboard combos
+import { pressKeyCombo } from './helpers/keyboard.js';
+const isMac = process.platform === 'darwin';
+await pressKeyCombo(page, 'Enter', [isMac ? 'Meta' : 'Control']);
+```
+
+**When to use `page.keyboard.press()` vs helpers**:
+- Use `page.keyboard.press()`: Keyboard shortcuts on non-contenteditable elements (modals, buttons, dialogs)
+- Use `pressKeyOnContentEditable()`: Any key press when a contenteditable block is focused (arrow keys, Enter, Backspace, etc.)
+
+See `test/e2e/helpers/keyboard.js` for the complete API and examples.
 
 ### 7. Verify Both State AND Structure
 
@@ -185,9 +216,11 @@ Comprehensive tests for all editing/navigation features:
 ### Helper Functions (`test/e2e/helpers/`)
 
 Reusable test utilities:
+- `keyboard.js`: **Keyboard event dispatch for contenteditable elements** (ALWAYS use for block interactions)
 - `edit-mode.js`: Enter edit mode helpers
-- `cursor.js`: Cursor position helpers (if needed)
-- `blocks.js`: Block traversal helpers (if needed)
+- `cursor.js`: Cursor position and selection helpers
+- `blocks.js`: Block traversal and structure helpers
+- `debug.js`: Debugging utilities for E2E tests
 
 ## Running Tests
 
