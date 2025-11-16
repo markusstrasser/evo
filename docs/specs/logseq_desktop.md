@@ -1,3 +1,164 @@
+# Desktop Logseq Behavior & PRD (macOS)
+
+Canonical behavior-only specification for delivering desktop Logseq (macOS build 0.10.x) inside Evo. This file merges the former PRD, parity tracker, keymap extract, and behavior spec so humans and AI agents have a single artifact.
+
+_Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-run the checklist below whenever upstream changes.
+
+---
+
+## 1. Objective & Scope
+
+- Derive every observable interaction (state machine, keyboard, pointer, clipboard, slash palette, quick switcher, undo/redo) directly from Logseq’s desktop source and reproduce it in Evo.
+- Coverage focuses on macOS keybindings (Logseq disables/changes some shortcuts per platform).
+- Out of scope: mobile/touch flows, new Evo-only features, architectural rewrites (Replicant/Nexus guidance lives in `docs/RENDERING_AND_DISPATCH.md`).
+
+## 2. Source-of-Truth Workflow
+
+1. `cd ~/Projects/best/logseq` and ensure you are on main (see `OVERVIEW.md` for file map).
+2. For each interaction area (state machine, navigation, selection, edit commands, structural edits, folding/zoom, clipboard, paste, slash palette, quick switcher, undo/redo, mouse gestures) read the files listed in §3.
+3. Mirror the behavior in Evo by updating intents, plugins, and Replicant components; never guess—cite the upstream file + line range in commits/docs/tests.
+4. Update this spec plus `docs/specs/logseq_behaviors.md` (triad scenarios) and `docs/TESTING_STACK.md` whenever behavior or coverage changes.
+
+### Interaction Area Source Map (from `logseq/OVERVIEW.md`)
+
+| Area | Primary files | Notes |
+|------|---------------|-------|
+| State machine & editor loop | `src/main/frontend/handler/editor.cljs`, `state.cljs`, `components/editor.cljs` | Contains idle/selection/edit transitions, keyboard handlers. |
+| Selection helpers | `state.cljs`, `util.cljs`, `components/block.cljs`, `components/selection.cljs` | Direction tracking, Shift+Arrow seeding, Shift+Click. |
+| Navigation | `handler/editor.cljs` (`shortcut-up-down`, `select-up-down`, `shortcut-left-right`), `util.cljc`, `util/cursor.cljs` | Grapheme-aware cursor memory, DOM-order traversal. |
+| Structural edits | `modules/outliner/op.cljs`, `handler/block.cljs`, `handler/dnd.cljs` | Create/place/update ops, move/indent/drag semantics. |
+| Folding & zoom | `handler/editor.cljs` (expand/collapse), `state.cljs` (zoom roots) | Cmd+Up/Down/; plus page/zoom boundaries. |
+| Clipboard & paste | `handler/editor.cljs` (copy/cut), `handler/paste.cljs`, `commands.cljs` | Metadata-preserving block copy, segmented paste, macro detection. |
+| Slash palette & quick switcher | `commands.cljs`, `handler/command_palette.cljs`, `components/search.cljs` | `/` inline menu, Cmd+K/P overlay. |
+| Undo/redo | `handler/history.cljs`, `state.cljs` | Restores text, block structure, caret/selection. |
+| Pointer + mouse gestures | `components/block.cljs`, `components/dnd.cljs`, `modules/outliner/tree.cljs` | Alt+click folding, Shift+click ranges, drag/drop + Alt reference insert. |
+
+## 3. Product Requirement Overlay
+
+### 3.1 Purpose & Scope
+- Deliver Logseq desktop parity for editing, navigation, selection, structural ops, folding/zoom, clipboard/paste, slash palette, quick switcher, undo/redo, and pointer gestures within Evo’s Replicant shell.
+- Applies to all outline contexts (pages, journals, zoomed blocks, sidebar mirrors).
+
+### 3.2 Goals
+1. Match Logseq muscle memory for every shortcut and pointer gesture.
+2. Keep interaction states (idle ⇄ selection ⇄ edit) identical, including fold/zoom boundary guards.
+3. Provide deterministic acceptance criteria (triad scenarios + tests) so QA/agents can certify parity.
+
+### 3.3 Non-Goals
+- Introducing new UX beyond Logseq desktop.
+- Mobile/touch behaviors.
+- Changing core architectural patterns (pure data kernel, intent-driven plugins).
+
+### 3.4 Personas
+| Persona | Expectation |
+|---------|-------------|
+| **Power user** | Every shortcut behaves like Logseq; no surprise focus jumps or scroll glitches. |
+| **Structural editor** | Indent/outdent/move/drag keeps tree topology identical to Logseq. |
+| **Note writer** | Paste, slash palette, quick switcher, and inline typing feel instantaneous. |
+| **QA / Agent** | Triad scenarios + tests make it obvious what remains to reach parity. |
+
+### 3.5 Functional Requirements Catalog
+(FR IDs referenced throughout this document)
+- **FR-Idle-01..03** – Idle guard + type-to-edit contract.
+- **FR-State-01..03** – Exclusive edit/selection states & clearing rules.
+- **FR-Scope-01..03** – Visible-outline boundaries (page, zoom, folding).
+- **FR-NavEdit-01..04** – Editing-mode arrows, cursor memory, Shift+Arrow seeding.
+- **FR-NavView-01..04** – View-mode selection, Shift+Click, sidebar open.
+- **FR-Edit-01..07** – Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore.
+- **FR-Move-01..03** – Indent/outdent rules, climb/descend, drag/drop parity.
+- **FR-Clipboard-01..03** – Copy/cut/reference variants, paste semantics.
+- **FR-Pointer-01..02** – Alt+click folding toggle, hover preview + Cmd+click open.
+- **FR-Slash-01 / FR-QuickSwitch-01** – Slash palette + Cmd+K/P quick switcher.
+- **FR-Undo-01** – Undo/redo restores caret + selection context.
+
+## 4. Implementation Guardrails (from `LOGSEQ_EDITING_SELECTION_PARITY.md`)
+
+1. **Single dispatcher rule** – Editing-mode keys (Enter, ArrowUp/Down, Shift+Arrow) are handled exclusively inside `components/block.cljs`, which dispatches Nexus actions with DOM facts (cursor rows, selection collapse). `keymap/bindings_data.cljc` must not bind those keys under `:editing`.
+2. **Nexus wiring** – All DOM handlers go through `shell/nexus.cljs` (see `docs/RENDERING_AND_DISPATCH.md`). Components emit `[:editing/navigate-up payload]` instead of calling reducers directly; global keymap dispatches the same queue so instrumentation/tests have one choke point.
+3. **Cursor guard** – Maintain the `__lastAppliedCursorPos` pattern plus mock-text measurement to prevent Replicant from stomping native cursor selection (see `dev/specs/CURSOR_GUARD_FLAG_SOLUTION.md` for failure cases).
+4. **Selection direction tracking** – `session/selection` stores `:direction` plus `:anchor`/`:focus`; Shift+Arrow extends/contracts incrementally instead of recomputing contiguous ranges. Shift+Click still uses contiguous visible ranges.
+5. **Visibility filter** – Navigation/selection rely on `visible-blocks-in-dom-order {:root (active page or zoom) :skip-folded? true}` so folded descendants and off-page nodes never enter selection.
+
+## 5. macOS Keymap Coverage (extracted from `modules/shortcut/config.cljs`)
+
+### 5.1 Editing & Formatting
+| Key | Intent | Handler | Notes |
+|-----|--------|---------|-------|
+| Enter | `:editor/new-block` | `keydown-new-block-handler` | Context-aware split (above when caret=0, below otherwise). |
+| Shift+Enter | `:editor/new-line` | `keydown-new-line-handler` | Inserts literal newline inside block. |
+| Backspace/Delete | `:editor/backspace` / `:editor/delete` | Component handlers | Merge/trim semantics, skip keymap to avoid double-dispatch. |
+| Cmd+B / Cmd+I / Cmd+Shift+H / Cmd+Shift+S | `:editor/bold` / `:editor/italics` / ... | Format helpers | Works on selection; same combos as Logseq. |
+| Ctrl+L / Ctrl+U / Ctrl+W | Clear/kill commands | `clear-block-content!`, `kill-line-before!`, `forward-kill-word` | Emacs-style controls (Ctrl modifier, not Cmd). |
+
+### 5.2 Editing Navigation
+| Key | Intent | Behavior |
+|-----|--------|----------|
+| ArrowUp/ArrowDown | `:navigate-with-cursor-memory` | Maintains grapheme column; no-ops at page edges. |
+| Ctrl+P / Ctrl+N | Aliases for Up/Down | Provided for Emacs users. |
+| ArrowLeft/ArrowRight | `:navigate-to-adjacent` | At boundaries, jumps to previous/next visible block (parent/child aware). |
+
+### 5.3 Selection & View Mode
+| Key | Intent | Notes |
+|-----|--------|-------|
+| Shift+ArrowUp/Down | `:selection/extend-prev-next` | Incremental range with direction tracking, seeded when exiting edit via boundary. |
+| Alt+ArrowUp/Down | `:editor/select-block-up/down` | Jumps entire blocks without extending range. |
+| Enter (selection) | `:editor/open-edit` | Enters edit on focused block. |
+| Shift+Enter (selection) | `:editor/open-selected-blocks-in-sidebar` | Opens highlighted blocks in sidebar. |
+| Cmd+A / Cmd+Shift+A | `:editor/select-parent` / `:editor/select-all-blocks` | Page/zoom aware. |
+
+### 5.4 Structural & Folding
+| Key | Intent | Behavior |
+|-----|--------|----------|
+| Tab / Shift+Tab | `:indent-selected` / `:outdent-selected` | Indent/outdent selection; guard zoom roots and root-level blocks. |
+| Cmd+Shift+Up/Down | `:move-selected-up/down` | Reorders selection; climbs/descends when at boundaries (FR-Move-01..03). |
+| Cmd+Up/Down / Cmd+; | `:editor/collapse-block-children` / `:editor/expand-block-children` / toggle | Folding shortcuts respect current selection/edit block. |
+| Cmd+. / Cmd+, | `:editor/zoom-in` / `:editor/zoom-out` | Zoom root stack maintained in `state.cljs`. |
+
+### 5.5 Clipboard, Slash, Quick Switcher
+| Key | Intent | Notes |
+|-----|--------|-------|
+| Cmd+C / Cmd+Shift+C / Cmd+X | Copy block w/ metadata / copy plain text / cut | Uses Logseq’s block serialization (HTML + Markdown). |
+| Cmd+Shift+V | Paste as plain text | Bypasses block parsing. |
+| Cmd+Shift+E / Cmd+Shift+R | Copy embed / replace block ref with content | Reference utilities in `handler/editor.cljs`. |
+| Cmd+L / Cmd+Shift+O | Insert link / open link in sidebar | Link helpers in `commands.cljs`. |
+| `/` | Slash palette | Opens inline command menu anchored to caret. |
+| Cmd+K / Cmd+P | Quick switcher | Overlay search in `handler/command_palette.cljs`. |
+| Cmd+Enter | `:editor/cycle-todo` | Toggles TODO/checkbox values. |
+
+### 5.6 Undo / Redo
+| Key | Intent | Notes |
+|-----|--------|-------|
+| Cmd+Z / Cmd+Shift+Z / Cmd+Y | `:editor/undo` / `:editor/redo` | Restores block content + selection/caret using history stack.
+
+## 6. Gap Tracker & Regression Focus
+
+| Gap ID | FR IDs | Area | Status | Notes / Tests |
+|--------|--------|------|--------|---------------|
+| G-Nav-Visibility | FR-Scope-01..03 | Visible-outline traversal | ❌ Open | `visible-blocks-in-dom-order` must treat current page as implicit zoom root; update selection + navigation helpers. Tests: `test/view/block_navigation_view_test.cljc`, `test/e2e/navigation.spec.js::page_scope`. |
+| G-Horizontal-DOM | FR-NavEdit-02 | Left/Right boundary traversal | ❌ Open (LOGSEQ-PARITY-112) | Replace sibling-only adjacency with DOM-order traversal; scenario NAV-BOUNDARY-LEFT-01 currently failing. |
+| G-ShiftClick-Visibility | FR-NavView-02 | Shift+Click range | ❌ Open | `calc-extend-props` uses `doc-range`; needs visibility-aware helper to avoid folded/out-of-page nodes. |
+| G-ShiftArrow-Seeding | FR-NavEdit-04 | Editing boundary selection seed | ⚠ In progress | Need Nexus action to seed selection before extend; ensure tests `NAV-BOUNDARY-LEFT-01`, `SEL-EXTEND-SHRINK-01` pass. |
+| G-Clipboard-Segments | FR-Clipboard-02 | Paste semantics | ⚠ In progress | Multi-paragraph paste should split into blocks with list marker preservation; see `handler/paste.cljs`. |
+| G-Pointer-Hover | FR-Pointer-02 | Block ref hover preview | Deferred | Requires popover component + tests; document plan once UI shell ready. |
+| G-Slash / G-QuickSwitch | FR-Slash-01 / FR-QuickSwitch-01 | Slash palette & quick switcher | Not implemented | Need inline command palette and Cmd+K overlay parity. |
+| G-Undo-Cursor | FR-Undo-01 | Undo/redo caret memory | ⚠ In progress | Kernel/history stores session hints but cursor restoration still flaky; track via `dev/specs/CURSOR_GUARD_FLAG_SOLUTION.md`. |
+
+**Resolved gaps:** idle guard, base navigation, selection direction tracking, Enter/Shift+Enter parity (see commit history referenced in `source-auto-overview*.md` artifacts).
+
+### Regression Notes (from November 2025 verification)
+- **Navigation scope isolation** – `visible-blocks-in-dom-order` defaults to `:doc` when `:zoom-root` is nil, so ArrowDown from the last journal block can jump into hidden siblings. Treat the active page as implicit zoom root; unit tests should assert traversal respects `q/current-page-id`. (Refs: `src/plugins/navigation.cljc`, `src/kernel/query.cljc`.)
+- **Horizontal DOM traversal** – `:navigate-to-adjacent` only uses sibling indexes (`:prev-id-of`/`:next-id-of`). Replace with DOM-order traversal shared with vertical navigation so ArrowLeft hops to parent when caret=0 and ArrowRight dives into first child. (Refs: `components/block.cljs` boundary handlers, scenario `NAV-BOUNDARY-LEFT-01`.)
+- **Shift+Click visibility** – `calc-extend-props` still relies on `tree/doc-range`, causing folded/off-page nodes to enter selection. Implement `visible-range` helper backed by DOM-order list filtered by fold + zoom. (Refs: `src/plugins/selection.cljc`, `state.cljs`.)
+- **Shift+Arrow seeding** – Editing boundary events exit edit mode without seeding `session/selection`, so Shift+Arrow at caret row boundary starts extension from page start. Dispatch a `:selection/seed` intent before extend when editing block isn’t in selection. (Refs: `components/block.cljs`, `shell/nexus.cljs`.)
+
+## 7. Triad & Testing Workflow
+
+1. **Triad entries** live in `docs/specs/logseq_behaviors.md`. Each row links Keymap slice → Intent contract → Scenario ledger so an agent can pick a ❌/◐ cell and know the exact behavior + tests to implement.
+2. **Testing tiers** are documented in `docs/TESTING_STACK.md`: view (hiccup), intent/integration (action pipeline), Playwright e2e (headless by default, headed via `bb e2e-headed` if manual debugging needed). Use scenario IDs (e.g., `NAV-BOUNDARY-LEFT-01`) to filter tests via `bb test:e2e NAV-BOUNDARY-LEFT-01`.
+3. **Source-auto-overview** artifacts (generated on every push) summarize recent code changes. Link them in PRs/issues so agents know if specs/tests already cover an area.
+
+---
+
 # LOGSEQ_SPEC.md — Editing, Navigation, Selection, and Structural Behaviors
 
 ## 0. Behavior Map & References
