@@ -57,7 +57,7 @@ docs/               # Architecture, patterns, gotchas
 - `CLAUDE.md` - Agent instructions and tooling index
 - `VISION.md` - Project philosophy and architectural ideas
 - `STYLE.md` - Clojure refactoring patterns
-- `docs/REPLICANT.md` - Event handler syntax gotchas
+- `docs/RENDERING_AND_DISPATCH.md` - Replicant/Nexus event handling reference
 
 ## Core Concepts
 

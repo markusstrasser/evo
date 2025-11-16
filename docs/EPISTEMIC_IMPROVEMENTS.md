@@ -35,7 +35,7 @@ Before touching code:
 ```clojure
 ;; Session start checklist:
 (def session-prep
-  [x] Read docs/REPLICANT.md
+  [x] Read docs/RENDERING_AND_DISPATCH.md
   [x] Understand lifecycle: :on-mount vs :on-render vs :on-unmount
   [x] Know when :replicant/remember is needed
   [x] Review past bugs in area (git log -p src/components/block.cljs)
@@ -368,7 +368,7 @@ echo
    :tools [":replicant/remember" ":replicant/on-render"]
    :pitfalls ["stale-closures" "empty-blocks-no-text-node" "conditional-focus"]
    :tests ["cursor-preservation" "focus-attachment" "db-dom-match"]
-   :resources ["docs/REPLICANT.md" "docs/CONTENTEDITABLE_DEBUGGING.md"]}
+   :resources ["docs/RENDERING_AND_DISPATCH.md" "docs/CONTENTEDITABLE_DEBUGGING.md"]}
 
   {:pattern-id "duplicate-event-dispatch"
    :when "Same key bound in multiple places"
@@ -490,7 +490,7 @@ With model, I'd know:
 
 **Session Start:**
 ```markdown
-[ ] Read relevant docs (REPLICANT.md, CONTENTEDITABLE_DEBUGGING.md)
+[ ] Read relevant docs (RENDERING_AND_DISPATCH.md, CONTENTEDITABLE_DEBUGGING.md)
 [ ] Review git log for recent changes in area
 [ ] Check for related bugs in session memory
 [ ] Load knowledge graph for domain
@@ -595,7 +595,7 @@ bb session-retrospective
 
 ### Action Items
 - [ ] Create regression tests for all 4 bugs
-- [ ] Read REPLICANT.md fully before next session
+- [ ] Read RENDERING_AND_DISPATCH.md fully before next session
 - [ ] Use REPL-first workflow
 - [ ] Implement parallel hypothesis testing
 

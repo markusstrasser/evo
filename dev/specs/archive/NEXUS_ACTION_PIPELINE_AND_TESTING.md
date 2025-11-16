@@ -4,7 +4,7 @@
 
 **Date:** 2025-11-14
 
-**Sources:** [`no.cjohansen/nexus`](~/Projects/best/nexus/Readme.md), `docs/REPLICANT.md`, `CLAUDE.md`, `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md`
+**Sources:** [`no.cjohansen/nexus`](~/Projects/best/nexus/Readme.md), `docs/RENDERING_AND_DISPATCH.md`, `CLAUDE.md`, `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md`
 
 ---
 
@@ -88,7 +88,7 @@ DOM Event → Component handler → Nexus action(s) → Nexus dispatcher
 - Actions are pure; effects are thin wrappers (usually `:effects/dispatch-intent`).
 - DOM data enters via placeholders.
 - Provide helpers (e.g., `dev/nexus.cljs`) to register common placeholders/effects during hot-reload.
-- Update `docs/REPLICANT.md`, `CLAUDE.md`, onboarding docs to reference the Nexus pipeline; remove instructions that suggest adding raw keymap bindings for editing keys.
+- Update `docs/RENDERING_AND_DISPATCH.md`, `CLAUDE.md`, onboarding docs to reference the Nexus pipeline; remove instructions that suggest adding raw keymap bindings for editing keys.
 
 ---
 

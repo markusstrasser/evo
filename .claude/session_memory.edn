@@ -76,7 +76,7 @@
    :industry-standard true
    :used-by ["React" "Notion" "Logseq" "Roam"]
    :alternatives ["textarea (no rich text)" "Draft.js (heavy)" "ProseMirror (complex)"]
-   :resources ["docs/REPLICANT.md" "docs/CONTENTEDITABLE_DEBUGGING.md"]}
+   :resources ["docs/RENDERING_AND_DISPATCH.md" "docs/CONTENTEDITABLE_DEBUGGING.md"]}
 
   {:pattern-id "duplicate-event-dispatch"
    :when "Same key bound in multiple places"

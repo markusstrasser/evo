@@ -42,7 +42,7 @@ This spec defines the target end-state: Logseq-compatible keyboard semantics wit
    - `:replicant/on-render` guards for text updates must keep the `__lastAppliedCursorPos` check (documented in §4 below).
    - Mock-text updates use both element and text (`(update-mock-text! node text)`) to maintain coordinate parity.
 4. **Docs alignment**
-   - Update `docs/REPLICANT.md`, `CLAUDE.md`, and team onboarding docs to describe the Nexus-based dispatch pipeline and forbid the old dual-handler pattern.
+   - Update `docs/RENDERING_AND_DISPATCH.md`, `CLAUDE.md`, and team onboarding docs to describe the Nexus-based dispatch pipeline and forbid the old dual-handler pattern.
 
 ### 2.3 Deliverables
 - Nexus bootstrap module (`src/shell/nexus.cljs` or similar) plus wiring from `shell/blocks_ui.cljs`.
@@ -96,7 +96,7 @@ Extend `session/selection` props:
 
 ### 4.2 Single Dispatcher Rule
 - Editing-mode Shift+Arrow must never be bound in the keymap: the component already owns it.
-- `docs/REPLICANT.md` must call out this rule so future contributors do not reintroduce double-dispatch.
+- `docs/RENDERING_AND_DISPATCH.md` must call out this rule so future contributors do not reintroduce double-dispatch.
 
 ---
 
@@ -127,7 +127,7 @@ Extend `session/selection` props:
 
 ## 7. Documentation Updates
 
-1. **`docs/REPLICANT.md`**
+1. **`docs/RENDERING_AND_DISPATCH.md`**
    - Lead with the function-based event handlers we actually use.
    - Explain the single-dispatch rule and the `__lastAppliedCursorPos` guard.
    - Show the updated `update-mock-text!` signature.
@@ -150,7 +150,7 @@ Extend `session/selection` props:
 3. **Visibility filtering**
    - Replace `:zoom-id` lookups with `q/zoom-root` or pass `visible-in-context?` to selection helpers.
 4. **Docs/tests**
-   - Update `docs/REPLICANT.md` and `LOGSEQ_SPEC.md` according to §7.
+   - Update `docs/RENDERING_AND_DISPATCH.md` and `LOGSEQ_SPEC.md` according to §7.
    - Land new unit + e2e tests from §6.
 
 ---
