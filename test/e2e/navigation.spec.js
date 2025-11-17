@@ -127,9 +127,8 @@ test.describe('Block Navigation', () => {
 });
 
 test.describe(`${NAV_PARENT_HOP}`, () => {
-  test.skip('ArrowLeft at block start hops to parent and lands caret at end', async ({ page }) => {
-    // LOGSEQ-PARITY-112: Focus management issue after Tab - needs investigation
-    // Navigation feature is implemented but test has focus issues
+  test('ArrowLeft at block start hops to parent and lands caret at end', async ({ page }) => {
+    // LOGSEQ-PARITY-112: Testing boundary hop navigation
     await page.goto('/blocks.html?test=true');
     await enterEditModeAndClick(page);
 
@@ -139,30 +138,33 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     const parentId = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
     await page.keyboard.press('Enter');
 
-    // Create child and indent under parent
+    // Create child block
     const childText = 'Child boundary test';
-    const childBlock = page.locator('.block').last();
-    await childBlock.click();
     await page.keyboard.type(childText);
     const childIdRaw = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
-    await page.keyboard.press('Tab');
-    await page.waitForFunction(() => document.querySelectorAll('.block[data-block-id]').length >= 2);
+
+    // Indent the child under parent by dispatching the intent directly
+    // (avoids page.keyboard.press('Tab') which doesn't trigger handlers on contenteditable)
+    await page.evaluate(() => {
+      if (window.DEBUG?.handleIntent) {
+        window.DEBUG.handleIntent({ type: 'indent-selected' });
+      }
+    });
+    await page.waitForTimeout(300); // Wait for indent and re-render
 
     expect(parentId).toBeTruthy();
     expect(childIdRaw).toBeTruthy();
 
-    // Tab may blur element, click child to ensure it's focused for keyboard input
-    await childBlock.click();
+    // Wait for re-render, child should still be in edit mode after indent
+    await page.waitForSelector(`[data-block-id="${childIdRaw}"] [contenteditable="true"]`, { timeout: 5000 });
+
+    // Set cursor at start
+    await setCursorPosition(page, childIdRaw, 0);
     await page.waitForTimeout(100);
 
-    // Set cursor at start of child block for boundary test
-    await setCursorPosition(page, childIdRaw, 0);
-    await page.waitForTimeout(50);
-
-    // ArrowLeft at boundary should move focus to parent and place caret at end
-    // Use pressKeyOnContentEditable to ensure event reaches handlers
+    // ArrowLeft at boundary should navigate to parent
     await pressKeyOnContentEditable(page, 'ArrowLeft');
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(200);
 
     const cursor = await getCursorPosition(page);
     expect(cursor.elementId).toBe(parentId);
