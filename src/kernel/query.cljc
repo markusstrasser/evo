@@ -8,7 +8,8 @@
    - Selection: queries on session/selection node (undoable)
    - Edit/Cursor: queries on :ui map (ephemeral, not in history)
    - Tree: queries on :derived indexes and :children-by-parent"
-  (:require [kernel.constants :as const]))
+  (:require [kernel.constants :as const]
+            [kernel.navigation :as nav]))
 
 ;; ── Selection Queries (Undoable) ──────────────────────────────────────────────
 
@@ -215,20 +216,22 @@
    (NOT sibling order: [A, B] or depth-first: [A1, A2, A, B1, B])"
   [db]
   (let [root (active-outline-root db)
-        folded (folded-set db)
 
-        ;; Pre-order traversal: parent, then children (if not folded)
+        ;; Get visible children from :visible-order index (already filtered by folding/zoom)
+        visible-children (fn [parent-id]
+                           (get-in db [:derived :visible-order :by-parent parent-id] []))
+
+        ;; Pre-order traversal: parent, then children
         traverse (fn traverse [node-id]
                    (when node-id
-                     (let [is-folded (contains? folded node-id)
-                           child-ids (when-not is-folded (children db node-id))]
+                     (let [children (visible-children node-id)]
                        (cons node-id
-                             (when (seq child-ids)
-                               (mapcat traverse child-ids))))))]
+                             (when (seq children)
+                               (mapcat traverse children))))))]
 
     ;; Start from active outline root's children
     ;; (zoom root, current page, or doc root)
-    (vec (mapcat traverse (children db root)))))
+    (vec (mapcat traverse (visible-children root)))))
 
 (defn next-block-dom-order
   "Get the next block in DOM/visual order (pre-order traversal).
@@ -239,10 +242,7 @@
    
    Returns nil if at last visible block."
   [db current-id]
-  (let [all-blocks (visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks current-id)]
-    (when (>= idx 0)
-      (get all-blocks (inc idx)))))
+  (nav/next-visible-block db current-id))
 
 (defn prev-block-dom-order
   "Get the previous block in DOM/visual order (pre-order traversal).
@@ -253,10 +253,7 @@
    
    Returns nil if at first visible block."
   [db current-id]
-  (let [all-blocks (visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks current-id)]
-    (when (> idx 0)
-      (get all-blocks (dec idx)))))
+  (nav/prev-visible-block db current-id))
 
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
