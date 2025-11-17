@@ -146,6 +146,42 @@ await pressKeyCombo(page, 'Enter', [isMac ? 'Meta' : 'Control']);
 
 See `test/e2e/helpers/keyboard.js` for the complete API and examples.
 
+**Case Study: NAV-BOUNDARY-LEFT-01 Test Failure**
+
+A real debugging session that took 2+ hours revealed a subtle but critical issue:
+
+*Symptom*: Test using `page.keyboard.press('Tab')` to indent a child block would timeout waiting for contenteditable elements to appear. The Tab operation was exiting edit mode instead of just indenting the block.
+
+*Root Cause*: `page.keyboard.press('Tab')` doesn't trigger the global keydown handler on contenteditable elements. The browser's default Tab behavior (move focus to next element) executes instead, triggering the contenteditable's `blur` event, which exits edit mode.
+
+*Solution*: For test setup that requires keyboard operations, dispatch intents directly instead of simulating keypresses:
+
+```javascript
+// ❌ WRONG: Causes blur and exits edit mode
+await page.keyboard.press('Tab');
+
+// ✅ CORRECT: Dispatches intent directly, stays in edit mode
+await page.evaluate(() => {
+  if (window.DEBUG?.handleIntent) {
+    window.DEBUG.handleIntent({ type: 'indent-selected' });
+  }
+});
+```
+
+*Key Learnings*:
+1. Tab IS in the RISKY_KEYS list - the linter should have caught this
+2. Always run `bb lint:e2e-keyboard` before committing E2E tests
+3. For test setup, prefer direct intent dispatch over keyboard simulation
+4. Use `pressKeyOnContentEditable()` for testing actual keyboard interactions, not for test scaffolding
+
+**Automated Protection**: The `lint-e2e-keyboard.js` script catches these issues:
+
+```bash
+bb lint:e2e-keyboard  # Run before commits
+```
+
+This linter is registered as a quality gate. Violations indicate tests that may fail silently.
+
 ### 7. Verify Both State AND Structure
 
 For tree-based UI, check:
