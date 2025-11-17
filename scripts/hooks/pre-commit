@@ -31,6 +31,53 @@ if [ -n "$CLOJURE_FILES" ]; then
     echo "✓ No shadowed variables found"
 fi
 
+# ── Check E2E tests for risky keyboard usage ─────────────────────────────────
+
+# Only check E2E test files being committed
+E2E_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E 'test/e2e/.*\.spec\.js$' || true)
+
+if [ -n "$E2E_FILES" ]; then
+    echo "🔍 Checking E2E tests for keyboard event issues..."
+
+    # Create temp file with just the staged content
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
+    HAS_ISSUES=false
+    for file in $E2E_FILES; do
+        # Get staged content
+        git show ":$file" > "$TEMP_DIR/$(basename $file)"
+
+        # Check for problematic keyboard usage
+        if grep -nE "page\.keyboard\.press\(['\"]+(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Enter|Backspace|Delete|Tab)" "$TEMP_DIR/$(basename $file)" > /dev/null; then
+            if [ "$HAS_ISSUES" = false ]; then
+                echo ""
+                echo "❌ Found page.keyboard.press() calls on risky keys in modified E2E tests!"
+                echo ""
+                HAS_ISSUES=true
+            fi
+
+            echo "  File: $file"
+            grep -nE "page\.keyboard\.press\(['\"]+(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Enter|Backspace|Delete|Tab)" "$TEMP_DIR/$(basename $file)" | head -3
+            echo ""
+        fi
+    done
+
+    if [ "$HAS_ISSUES" = true ]; then
+        echo "💡 Solutions:"
+        echo "  • For navigation testing: Use pressKeyOnContentEditable() from test/e2e/helpers/keyboard.js"
+        echo "  • For test setup: Dispatch intents directly via window.DEBUG.handleIntent()"
+        echo ""
+        echo "See docs/PLAYWRIGHT_MCP_TESTING.md for details."
+        echo ""
+        echo "To bypass this check: git commit --no-verify"
+        echo ""
+        exit 1
+    fi
+
+    echo "✓ No keyboard event issues in modified E2E tests"
+fi
+
 # ── Sync CLAUDE.md to AGENTS.md ──────────────────────────────────────────────
 # DISABLED: CLAUDE.md was removed due to repo bloat (10GB transcript file)
 
