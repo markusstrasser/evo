@@ -112,12 +112,13 @@ Scenario: Zoom boundary
 ### 5.5 Clipboard, Slash, Quick Switcher
 | Key | Intent | Notes |
 |-----|--------|-------|
-| Cmd+C / Cmd+Shift+C / Cmd+X | Copy block w/ metadata / copy plain text / cut | Uses Logseq’s block serialization (HTML + Markdown). |
-| Cmd+Shift+V | Paste as plain text | Bypasses block parsing. |
+| Cmd+C / Cmd+Shift+C / Cmd+X | Copy block w/ metadata / copy plain text / cut | Uses Logseq’s block serialization (HTML + Markdown) plus custom MIME payload. |
+| Cmd+Shift+V | Paste as plain text | Calls `paste-handler/editor-on-paste-raw!`. |
 | Cmd+Shift+E / Cmd+Shift+R | Copy embed / replace block ref with content | Reference utilities in `handler/editor.cljs`. |
 | Cmd+L / Cmd+Shift+O | Insert link / open link in sidebar | Link helpers in `commands.cljs`. |
 | `/` | Slash palette | Opens inline command menu anchored to caret. |
-| Cmd+K / Cmd+P | Quick switcher | Overlay search in `handler/command_palette.cljs`. |
+| Cmd+K | Quick switcher (`:go/search :global`) | Overlay search implemented in `components/search.cljs`. |
+| Cmd+Shift+P | Command palette | Command overlay in `handler/command_palette.cljs`. |
 | Cmd+Enter | `:editor/cycle-todo` | Toggles TODO/checkbox values. |
 
 ### 5.6 Undo / Redo
@@ -139,9 +140,9 @@ Scenario: Zoom boundary
 | FR-Edit-01..07 | Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore | §4 | `handler/editor.cljs` (`keydown-new-block`, `keydown-backspace-handler`) |
 | FR-Move-01..03 | Indent/outdent rules, climb/descend, drag & Alt-drag | §5 | `outliner/core.cljs`, `handler/editor.cljs/move-up-down`, `handler/dnd.cljs` |
 | FR-Clipboard-01..03 | Copy/cut/reference, paste semantics | §7.6–§7.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs` |
-| FR-Pointer-01..02 | Alt+Click folding, hover previews | §7.3 | `frontend/components/block.cljs`, `frontend/ui.cljs` |
-| FR-Slash-01 | Slash command palette | §7.4 | `components/block-editor.cljs` |
-| FR-QuickSwitch-01 | Cmd+K/Cmd+P quick switcher | §7.5 | `components/quick_command.cljs` |
+| FR-Pointer-01..02 | Pointer gestures (bullet click collapse, Shift/Cmd multi-select, Alt-drag refs) | §7.3 | `frontend/components/block.cljs`, `frontend/handler/dnd.cljs` |
+| FR-Slash-01 | Slash command palette & inline workflows | §7.4 | `frontend/commands.cljs`, `frontend/handler/editor.cljs` |
+| FR-QuickSwitch-01 | Quick switcher + command palette overlay | §7.5 | `frontend/handler/command_palette.cljs`, `frontend/components/search.cljs`, `modules/shortcut/config.cljs` |
 | FR-Undo-01 | Undo/redo restores caret/selection | §7.8 | `state.cljs`, `history.cljs` |
 
 > **Verification note:** Behaviors confirmed against `~/Projects/best/logseq` (master, 2025‑11‑15). Re-run validation whenever upstream changes.
@@ -185,21 +186,23 @@ Logseq enforces a strict, mutually exclusive state machine for block interaction
 - Background clicks and Escape (when not editing) clear selection.
 - In the fully idle state (no block selected, no block editing), pressing Enter, Backspace, Tab, Shift+Enter, Shift+Arrow, or Cmd+Enter does nothing—Logseq never creates or deletes blocks from that state. The only keys that take effect are ArrowUp/ArrowDown (which select the first/last visible block) and printable characters (which immediately enter edit mode on the focused block and insert the character at the end).
 
-### 1.2 Session Data Contracts
+### 1.2 Interaction State Mirrors
 
-Logseq stores ephemeral interaction state in session nodes:
+Logseq keeps ephemeral interaction data inside `frontend.state` (see `state.cljs`). Evo’s `session/*` nodes must mirror the same slots so undo/redo, Shift+Arrow, and slash palette flows behave exactly the way the upstream UI expects.
 
-| Node ID               | Key                      | Meaning                                  |
-|-----------------------|--------------------------|------------------------------------------|
-| `session/ui`          | `:editing-block-id`      | ID of block in edit mode (or `nil`)      |
-|                       | `:cursor-position`       | Hint for caret placement (`:start`/`:end`/offset) |
-|                       | `:cursor-memory`         | `{ :line-pos int :last-block-id id :direction dir }` |
-|                       | `:cursor`                | Map of boundary flags per block `{block-id {:first-row? ...}}` |
-| `session/selection`   | `:nodes`                 | Set of selected block IDs                |
-|                       | `:focus`                 | Current focus block in selection         |
-|                       | `:anchor`                | Anchor block for range selection         |
+| Session slot | Logseq source | Meaning |
+|--------------|---------------|---------|
+| `session/ui.editing-block-id` | `:editor/editing?`, `:editor/block` | Which block is in edit mode and therefore owns the live textarea. |
+| `session/ui.cursor-position` | `:editor/cursor-range`, `state/get-editor-last-pos` | Stores the last saved caret offset (`:start`, `:end`, or numeric) per block so returning to a block restores the caret. |
+| `session/ui.cursor-memory` | `:editor/last-saved-cursor` | Grapheme column memory `{block-uuid {:line-pos n :direction dir}}` reused by `shortcut-up-down`. |
+| `session/selection.nodes` | `:selection/blocks` | Vector of DOM nodes (ordered) that are currently highlighted. |
+| `session/selection.focus` | `state/get-selection-blocks` + last entry | The block that range operations treat as the “focused” endpoint. |
+| `session/selection.anchor` | `:selection/start-block` | The DOM node seeded by the very first Shift+Click; used by `highlight-selection-area!` for contiguous ranges. |
+| `session/selection.direction` | `:selection/direction` (`nil`/`:up`/`:down`) | Governs whether Shift+Arrow extends or contracts the selection. Opposite directions call `drop-last-selection-block!`. |
+| `session/selection.flags.selected-all?` | `:selection/selected-all?` | Tracks whether `Cmd+Shift+A` already scooped the full visible outline (prevents duplicate work). |
+| `session/ui.inline-action` | `:editor/action` + `:editor/action-data` | Encodes transient overlays such as slash palette input steps, block search, and inline property dialogs. |
 
-Any implementation that seeks parity must mutate these nodes exactly as Logseq does to avoid undo/redo drift.
+`state/set-selection-blocks!` normalizes DOM nodes, reapplies the `.selected` class, updates `:selection/direction`, and publishes `[:editor/load-blocks ids]`. `state/clear-selection!` wipes nodes, direction, anchor, and fires `[:editor/hide-action-bar]`. Pointer gestures (see §7.3) use `state/set-selection-start-block!` to seed anchors so the next Shift+Click can compute ranges via `editor-handler/highlight-selection-area!`, which in turn walks the DOM with `util/get-nodes-between-two-nodes`. Implementations that only store an unordered set of IDs cannot reproduce Logseq’s extend/contract semantics.
 
 ---
 
@@ -283,6 +286,8 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 - When the previous sibling has children, indenting makes the block the *last* child of that sibling (after all existing children).
 - Outdenting a block that has children keeps those children attached to the block; they do not remain under the old parent.
 - Indenting the first child (no previous sibling) and outdenting the root-most block are both hard no-ops.
+- Multi-selection runs through `frontend.handler.block/get-top-level-blocks`, which replaces clones with their original blocks and filters out nested duplicates so the outliner never tries to move the same subtree twice.
+- After `indent-outdent-blocks!` finishes, Logseq re-queries the DOM (`js/setTimeout 100ms`) and calls `state/set-selection-blocks!` so the highlight follows the moved blocks. Evo must preserve the same rehydration or Shift+Arrow immediately breaks after an indent.
 
 ### 5.2 Move Up/Down
 
@@ -299,11 +304,13 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
 
 - Logseq exposes drag handles on blocks. Dropping without modifiers performs the same structural move as `move-blocks`. Holding **Alt** during drop inserts a block reference instead of moving the source (`frontend.handler.dnd/move-blocks` checks `event.altKey` and calls `ref/->block-ref`).
 - Dragging into the top/bottom “hit zones” reuses the same “climb” semantics described above—dropping at the top of a block with Alt released moves the dragged block before the target’s parent when appropriate.
+- Dropping onto a page whose format (Markdown vs Org) differs from the source triggers the warning “Those two pages have different formats.” and aborts the move. This guard (`state/pub-event! [:notification/show …]`) prevents Logseq from silently reformatting content; Evo must retain it.
 - Any parity-seeking implementation must reproduce both behaviors once drag-and-drop support lands.
 
 ## 6. Fold & Zoom Constraints
 
 - All navigation/selection intents must consult derived indexes that exclude folded descendants and nodes outside current zoom root. Equivalent to Logseq’s `util/get-prev-block-non-collapsed` / `get-next-block-non-collapsed`.
+- `Cmd+.` / `Cmd+Shift+.` invoke `editor-handler/zoom-in!`. If a block is editing, Logseq saves it, sets `:editing-block-id` to the block’s UUID, and `route-handler/redirect-to-page!` so the block becomes the zoom root; if nothing is editing it simply uses `window.history.forward`. `Cmd+,` mirrors this: while editing it climbs to the parent page/block (walking `db/get-block-parent`), otherwise it calls `window.history.back`.
 - Folding state lives under node props (e.g., `{:props {:folded? true}}`). Navigation should traverse siblings via derived links, skipping folded subtrees entirely.
 - Editing a folded block automatically expands it so the user can see its children while typing.
 - Delete operations applied to a folded block remove the entire subtree (exactly as if it were expanded).
@@ -321,27 +328,44 @@ Beyond keyboard navigation and structural edits, Logseq users rely on several su
 - `Cmd+A` cycles: first press selects text in the current block (when editing), second press selects the block, third press selects its parent, fourth selects the entire visible outline. Users expect this cycle everywhere.
 
 ### 7.3 Pointer gestures
-- Dragging a block’s bullet reorders the outline; the drop indicator shows where it will land. Holding **Alt** during drop inserts a block reference (`((uuid))`) instead of moving the source block.
-- **Alt+Click** on a bullet toggles the entire subtree (fully expand/collapse), not just the direct block.
-- Hovering block references pops a preview tooltip; Cmd+Click opens that block in the sidebar without leaving the current outline.
+- `block-content-on-pointer-down` short-circuits when the target is a link, table, attachment, code toggle, etc. (see `target-forbidden-edit?`). Everywhere else it clears selection, saves the current block, and either toggles selection or enters edit mode.
+- **Shift+Click** seeding: the first Shift+Click stores `:selection/start-block`; subsequent Shift+Clicks highlight every DOM node between anchor and target via `editor-handler/highlight-selection-area!`. If the user reverses direction, `drop-last-selection-block!` removes blocks one by one to match Logseq’s contract.
+- **Cmd (Meta)+Click** toggles individual blocks in/out of the current selection without touching the anchor. **Cmd+Shift+Click** appends contiguous ranges to an existing multi-selection so users can build disjoint sets, matching Logseq’s `{:append? true}` path.
+- **Shift+Click on bullets or block references** calls `state/sidebar-add-block!` so the block (or referenced block) opens in the right sidebar. Hovering a block reference shows the preview tooltip, and default clicks follow the reference (PDF annotations jump into the PDF panel; whiteboard refs honor portal context).
+- On mobile, each tap toggles selection membership (no modifier keys). When the final selected block is removed, `:mobile/show-action-bar?` is cleared so the bulk action bar hides exactly like upstream.
+- Drag handles behave the same as keyboard moves: the ghost indicator mirrors DOM order, and holding **Alt** during drop converts the gesture into “insert block reference” (see §5.4).
 
 ### 7.4 Slash commands & autocomplete
-- Typing `/` opens the inline command palette at the caret. Arrow keys navigate suggestions; Enter inserts the highlighted item; Escape closes the palette without altering text. This interaction is instant and does not scroll the document.
-- Slash commands autocomplete pages, templates, blocks, properties, and queries inline. Users expect search-as-you-type performance identical to Logseq.
+- Typing `/` records the trigger in `:editor/action` (`:commands`) and spawns the inline palette at the caret. Arrow keys navigate, Enter dispatches the highlighted command vector, and Escape clears `:editor/action` without mutating the block.
+- Every slash entry in `frontend.commands` returns a vector of steps (e.g., `[[:editor/input ...] [:editor/show-input {...}] ...]`). The same command often has DB-only and file graph branches (`db-based-embed-block`, `file-based-embed-block`, `query-steps`, `calc-steps`). Evo needs to keep the branching so `/embed` and `/query` behave correctly on both backends.
+- Multi-step commands (link, image link, Zotero, properties) use `state/set-editor-show-input!` to render inline forms. The palette stores placeholders, autofocus targets, and even secondary prompts (see `link-steps`, `image-link-steps`).
+- Plugins extend the palette through `register-slash-command` / `*extend-slash-commands`. The extension hook appends custom entries with their own action vectors, so the spec must guarantee a comparable API.
+- Additional triggers (`#`, `:` and `command-ask` for `\`) reuse the same infrastructure for tags, properties, and whiteboard macros; all of them rely on fast `search.cljs` filtering with incremental updates every keypress.
 
 ### 7.5 Quick switcher / global search
-- `Cmd+K` (or `Cmd+P`) brings up the quick switcher overlay. Typing filters results in real time, Arrow keys move through them, Enter opens the selection, Escape closes the overlay with no side effects.
+- `Cmd+K` calls `frontend.modules.shortcut.config/go/search :global`, which first escapes edit mode (`editor-handler/escape-editing {:select? true}`) and then routes to the quick switcher overlay (`route-handler/go-to-search!`). Results stream from `components/search.cljs` and update every keystroke; Arrow keys move the highlight, Enter opens the selected page/block, Escape exits and restores the previous focus.
+- `Cmd+Shift+K` scopes the overlay to the current page (`:current-page` mode). Both modes reuse the same component and key handling.
+- `Cmd+Shift+P` switches to the command palette view (`:commands`). `frontend.handler.command-palette` registers built-in shortcuts, merges plugin registrations, and sorts everything by invoke frequency using a local `commands-history` ring buffer. When a command executes, `add-history` records its timestamp so frequently used commands float to the top automatically.
+- `register-global-shortcut-commands` ensures every entry in `modules/shortcut/config.cljs` with a global binding also surfaces inside the palette, so users can discover keyboard shortcuts even if they forget the chord.
 
 ### 7.6 Clipboard permutations
-- `Cmd+Option+C` copies the focused block as a reference (`((uuid))`). Context menus expose “Copy block ref” alongside standard copy/cut entries.
-- `Cmd+Shift+C` copies selected blocks as plain text; `Cmd+Shift+V` pastes plain text into the editing block. Standard `Cmd+C` / `Cmd+V` retain block metadata and formatting.
+- `Cmd+C` delegates to `shortcut-copy`: selections call `copy-selection-blocks` (returns Markdown, HTML, and the custom MIME `web application/logseq`), editing with no range calls `copy-current-block-ref` (copies `((uuid))`), and editing with a text range falls back to the browser’s native copy. If the caret lives in a PDF pane, Logseq pulls the highlight text instead.
+- `Cmd+Shift+C` maps to `shortcut-copy-text`, which copies the currently selected blocks but strips Logseq metadata so users can paste into other editors without list markers, then falls back to the browser copy command when not in selection mode.
+- `Cmd+Shift+E` copies the current block as an embed (`{{embed (())}}`) and `Cmd+Shift+R` replaces the block reference under the caret with its resolved content; both functions live in `handler/editor.cljs`.
+- Cut operations set `:editor/block-op-type` to `:cut` so paste handlers know whether to keep UUIDs and how to build revert transactions.
+- Block copy/cut writes Markdown, HTML, and the custom MIME payload to the clipboard. On paste, `get-copied-blocks` refuses to import data when the clipboard’s `:graph` doesn’t match the current repo, mirroring Logseq’s guard rails.
 
 ### 7.7 Paste semantics
-- Pasting text that contains single newlines but no blank lines keeps the content inside the current block (newlines become literal `\n` characters).
-- Pasting text with blank lines (`\n\n`) splits the paste into multiple blocks: everything before the first blank line stays in the current block, and each additional paragraph becomes its own block inserted below. Existing list markers or checkboxes in the pasted text carry over.
+- `Cmd+Shift+V` routes to `paste-handler/editor-on-paste-raw!`, which deletes the current selection and inserts clipboard text verbatim (no Markdown parsing, no block splitting).
+- Standard paste first checks for the custom MIME payload (`web application/logseq`). If the clipboard graph matches the current repo, Logseq pastes the serialized blocks (keeping UUIDs for cut operations and replaying revert transactions when necessary). Only when that payload is absent does it fall back to HTML/text parsing.
+- `paste-text-or-blocks-aux` detection order: attachments (if files present and the user prefers file pasting), rich text (`html-parser/convert`), macro URLs (`wrap-macro-url` for video/Twitter), block refs (pasting `((uuid))` inside `(( ))` only inserts the ID), and finally plain text.
+- Multi-paragraph pastes are split whenever blank lines appear. `paste-segmented-text` also injects list markers so Markdown/Org bullets continue to render as lists when pasted into Logseq; single newlines stay inside the current block as literal `\n` characters.
+- When the paste payload contains `<whiteboard-tldr>` metadata, the handler extracts the JSON blob and injects the referenced shapes instead of raw text, matching Logseq’s whiteboard copy/paste workflow.
+- Link-aware pasting: if the user selects a `[label](url)` range (Markdown) or `[[page][label]]` (Org), pasting a new URL replaces only the target portion, not the label, by way of `selection-within-link?`.
 
 ### 7.8 Undo/redo focus memory
 - Undo and redo reapply not just document content but also the interaction state: if the user was editing block B when the change occurred, undo returns the caret to block B (or reselects it) exactly as Logseq does.
+- `frontend.handler.history/undo!` and `redo!` debounce requests (20 ms), pause history (`:history/paused?`), save the current block, and then either merge the serialized UI state (`ui-state-str`) back into `frontend.state` or restore the caret from the stored `editor-cursors`. Evo must mirror this so routing (page vs block) and selection survive the undo stack.
 
 Downstream parity trackers should reference these expectations whenever a client diverges so QA can verify the difference explicitly.
 
@@ -354,8 +378,8 @@ Downstream parity trackers should reference these expectations whenever a client
 - [ ] Shift+Arrow only exits text selection at visual boundaries, then extends block selection one step at a time.
 - [ ] Structural moves (indent/outdent, Cmd+Shift+Arrow climb/descend, drag/drop with Alt for references) match Logseq’s tree rules.
 - [ ] Enter/Shift+Enter, Backspace/Delete, whitespace trimming, and merge semantics behave exactly like Logseq.
-- [ ] Keymap parity: Cmd+A cycle, Cmd+Shift+A select-all-visible, Cmd+O follow link, Slash palette, Cmd+K/P quick switcher.
+- [ ] Keymap parity: Cmd+A cycle, Cmd+Shift+A select-all-visible, Cmd+O follow link, Slash palette, Cmd+K + Cmd+Shift+P overlays.
 - [ ] Clipboard permutations (copy block, copy plain text, copy reference, paste plain text, multi-paragraph paste) align with Logseq.
-- [ ] Type-to-edit, sidebar open-on-Shift+Enter, Alt+click folding, hover previews, and quick switcher UX feel identical to Logseq.
+- [ ] Type-to-edit, sidebar open-on-Shift+Enter, bullet-click collapse plus Shift/Meta pointer gestures, hover previews, and quick switcher UX feel identical to Logseq.
 
 This document supersedes all prior Logseq parity specs. Any future deviations must be recorded in `LOGSEQ_PARITY.md`.
