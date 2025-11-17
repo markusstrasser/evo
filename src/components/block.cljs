@@ -5,9 +5,11 @@
    Implements cursor boundary detection for seamless up/down navigation."
   (:require [replicant.dom :as d]
             [kernel.query :as q]
+            [kernel.constants :as const]
             [parser.block-refs :as block-refs]
             [parser.embeds :as embeds]
             [parser.page-refs :as page-refs]
+            [plugins.slash-commands :as slash]
             [components.block-ref :as block-ref]
             [components.block-embed :as block-embed]
             [components.page-ref :as page-ref]))
@@ -311,147 +313,170 @@
 (defn handle-keydown [e db block-id on-intent]
   "Handle keyboard events while editing a block.
 
-   Global shortcuts (Alt+Arrow, Shift+Arrow, Cmd/Alt+Shift+Arrow, Backspace for deletion)
-   are handled by the global keydown handler when blocks are selected but NOT editing.
-
-   This handler focuses on editing-specific behavior:
-   - Arrow keys with cursor boundary detection for seamless navigation
-   - Shift+Arrow for text selection OR block selection at boundaries
-   - Enter to create new blocks
-   - Shift+Enter to insert literal newline (Logseq parity)
-   - Emacs navigation: Ctrl+A/E (line), Alt+A/E (block)
-   - Escape to exit mode
-   - Backspace for delete/merge at cursor boundaries (within text)
-   - Tab/Shift+Tab for indent/outdent while editing"
-  (let [key (.-key e)
+   Routes to slash menu when active, otherwise handles normal editing.
+   
+   Slash menu gets priority for:
+   - Arrow keys (navigation)
+   - Enter (selection)
+   - Escape (close)
+   
+   Otherwise delegates to normal editing handlers."
+  (let [slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])
+        key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         alt? (.-altKey e)
         ctrl? (.-ctrlKey e)
         target (.-target e)]
-    (cond
-      ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
-      ;; Ctrl+A - Move to beginning of current line
-      (and (= key "a") ctrl? (not shift?) (not alt?))
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)
-                ;; Find start of current line (search backward for \n)
-                line-start (loop [pos (dec cursor-pos)]
+
+    (if slash-menu-active?
+      ;; === SLASH MENU ACTIVE - Route keys to menu ===
+      (cond
+        ;; Arrow down / Ctrl+N - next command
+        (or (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+            (and (= key "n") ctrl? (not shift?) (not alt?)))
+        (do (.preventDefault e)
+            (on-intent {:type :slash-menu/next}))
+
+        ;; Arrow up / Ctrl+P - previous command
+        (or (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
+            (and (= key "p") ctrl? (not shift?) (not alt?)))
+        (do (.preventDefault e)
+            (on-intent {:type :slash-menu/prev}))
+
+        ;; Enter - select command
+        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+        (do (.preventDefault e)
+            (on-intent {:type :slash-menu/select}))
+
+        ;; Escape - close menu
+        (= key "Escape")
+        (do (.preventDefault e)
+            (on-intent {:type :slash-menu/close}))
+
+        ;; Backspace - update search (let it propagate, input handler will update)
+        (= key "Backspace")
+        nil ; Let browser handle, input event will trigger search update
+
+        ;; Other keys - let them propagate (typing updates search)
+        :else nil)
+
+      ;; === NORMAL EDITING (No slash menu) ===
+      (cond
+        ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
+        (and (= key "a") ctrl? (not shift?) (not alt?))
+        (do (.preventDefault e)
+            (let [text-content (.-textContent target)
+                  selection (.getSelection js/window)
+                  cursor-pos (.-anchorOffset selection)
+                  line-start (loop [pos (dec cursor-pos)]
+                               (cond
+                                 (< pos 0) 0
+                                 (= (nth text-content pos) \newline) (inc pos)
+                                 :else (recur (dec pos))))]
+              (when-let [text-node (.-firstChild target)]
+                (let [range (.createRange js/document)
+                      sel (.getSelection js/window)]
+                  (.setStart range text-node line-start)
+                  (.setEnd range text-node line-start)
+                  (.removeAllRanges sel)
+                  (.addRange sel range)))))
+
+        (and (= key "e") ctrl? (not shift?) (not alt?))
+        (do (.preventDefault e)
+            (let [text-content (.-textContent target)
+                  selection (.getSelection js/window)
+                  cursor-pos (.-anchorOffset selection)
+                  text-length (count text-content)
+                  line-end (loop [pos cursor-pos]
                              (cond
-                               (< pos 0) 0
-                               (= (nth text-content pos) \newline) (inc pos)
-                               :else (recur (dec pos))))]
+                               (>= pos text-length) text-length
+                               (= (nth text-content pos) \newline) pos
+                               :else (recur (inc pos))))]
+              (when-let [text-node (.-firstChild target)]
+                (let [range (.createRange js/document)
+                      sel (.getSelection js/window)]
+                  (.setStart range text-node line-end)
+                  (.setEnd range text-node line-end)
+                  (.removeAllRanges sel)
+                  (.addRange sel range)))))
+
+        ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
+        (and (= key "a") alt? (not shift?) (not ctrl?))
+        (do (.preventDefault e)
             (when-let [text-node (.-firstChild target)]
               (let [range (.createRange js/document)
                     sel (.getSelection js/window)]
-                (.setStart range text-node line-start)
-                (.setEnd range text-node line-start)
+                (.setStart range text-node 0)
+                (.setEnd range text-node 0)
                 (.removeAllRanges sel)
-                (.addRange sel range)))))
+                (.addRange sel range))))
 
-      ;; Ctrl+E - Move to end of current line
-      (and (= key "e") ctrl? (not shift?) (not alt?))
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)
-                text-length (count text-content)
-                ;; Find end of current line (search forward for \n)
-                line-end (loop [pos cursor-pos]
-                           (cond
-                             (>= pos text-length) text-length
-                             (= (nth text-content pos) \newline) pos
-                             :else (recur (inc pos))))]
-            (when-let [text-node (.-firstChild target)]
-              (let [range (.createRange js/document)
-                    sel (.getSelection js/window)]
-                (.setStart range text-node line-end)
-                (.setEnd range text-node line-end)
-                (.removeAllRanges sel)
-                (.addRange sel range)))))
+        (and (= key "e") alt? (not shift?) (not ctrl?))
+        (do (.preventDefault e)
+            (let [text-content (.-textContent target)
+                  text-length (count text-content)]
+              (when-let [text-node (.-firstChild target)]
+                (let [range (.createRange js/document)
+                      sel (.getSelection js/window)]
+                  (.setStart range text-node text-length)
+                  (.setEnd range text-node text-length)
+                  (.removeAllRanges sel)
+                  (.addRange sel range)))))
 
-      ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
-      ;; Alt+A - Move to beginning of block
-      (and (= key "a") alt? (not shift?) (not ctrl?))
-      (do (.preventDefault e)
-          (when-let [text-node (.-firstChild target)]
-            (let [range (.createRange js/document)
-                  sel (.getSelection js/window)]
-              (.setStart range text-node 0)
-              (.setEnd range text-node 0)
-              (.removeAllRanges sel)
-              (.addRange sel range))))
+        ;; Shift+Arrow - text selection OR block selection at boundaries
+        (and (= key "ArrowUp") shift? (not mod?) (not alt?))
+        (handle-shift-arrow-up e db block-id on-intent)
 
-      ;; Alt+E - Move to end of block
-      (and (= key "e") alt? (not shift?) (not ctrl?))
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                text-length (count text-content)]
-            (when-let [text-node (.-firstChild target)]
-              (let [range (.createRange js/document)
-                    sel (.getSelection js/window)]
-                (.setStart range text-node text-length)
-                (.setEnd range text-node text-length)
-                (.removeAllRanges sel)
-                (.addRange sel range)))))
+        (and (= key "ArrowDown") shift? (not mod?) (not alt?))
+        (handle-shift-arrow-down e db block-id on-intent)
 
-      ;; Shift+Arrow - text selection OR block selection at boundaries
-      (and (= key "ArrowUp") shift? (not mod?) (not alt?))
-      (handle-shift-arrow-up e db block-id on-intent)
+        ;; Ctrl+P/N - Emacs-style navigation aliases
+        (and (= key "p") ctrl? (not shift?) (not alt?))
+        (handle-arrow-up e db block-id on-intent)
 
-      (and (= key "ArrowDown") shift? (not mod?) (not alt?))
-      (handle-shift-arrow-down e db block-id on-intent)
+        (and (= key "n") ctrl? (not shift?) (not alt?))
+        (handle-arrow-down e db block-id on-intent)
 
-      ;; Ctrl+P/N - Emacs-style navigation aliases (same as arrows)
-      (and (= key "p") ctrl? (not shift?) (not alt?))
-      (handle-arrow-up e db block-id on-intent)
+        ;; Plain arrows - navigate between blocks while editing
+        (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-up e db block-id on-intent)
 
-      (and (= key "n") ctrl? (not shift?) (not alt?))
-      (handle-arrow-down e db block-id on-intent)
+        (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-down e db block-id on-intent)
 
-      ;; Plain arrows (with boundary detection) - navigate between blocks while editing
-      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-up e db block-id on-intent)
+        (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-left e db block-id on-intent)
 
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-down e db block-id on-intent)
+        (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-right e db block-id on-intent)
 
-      (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-left e db block-id on-intent)
+        ;; LOGSEQ PARITY: Shift+Enter inserts literal newline
+        (and (= key "Enter") shift? (not mod?) (not alt?))
+        (do (.preventDefault e)
+            (let [selection (.getSelection js/window)
+                  cursor-pos (.-anchorOffset selection)]
+              (on-intent {:type :insert-newline
+                          :block-id block-id
+                          :cursor-pos cursor-pos})))
 
-      (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-right e db block-id on-intent)
+        ;; Enter - create new block
+        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+        (handle-enter e db block-id on-intent)
 
-      ;; LOGSEQ PARITY: Shift+Enter inserts literal newline (doesn't create block)
-      (and (= key "Enter") shift? (not mod?) (not alt?))
-      (do (.preventDefault e)
-          (let [selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)]
-            (on-intent {:type :insert-newline
-                        :block-id block-id
-                        :cursor-pos cursor-pos})))
+        ;; Escape - exit edit mode
+        (= key "Escape")
+        (handle-escape e db block-id on-intent)
 
-      ;; Enter - create new block
-      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (handle-enter e db block-id on-intent)
+        ;; Backspace - delete/merge at cursor boundary
+        (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
+        (handle-backspace e db block-id on-intent)
 
-      ;; Escape - exit edit mode
-      (= key "Escape")
-      (handle-escape e db block-id on-intent)
+        ;; Delete at end - merge with next block
+        (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+        (handle-delete e db block-id on-intent)
 
-      ;; Backspace - delete/merge at cursor boundary (within text editing)
-      (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
-      (handle-backspace e db block-id on-intent)
-
-      ;; Delete at end - merge with next block
-      (and (= key "Delete") (not shift?) (not mod?) (not alt?))
-      (handle-delete e db block-id on-intent)
-
-      ;; Tab/Shift+Tab handled by global keymap (bindings_data.cljc :editing context)
-
-      :else nil)))
+        :else nil))))
 
 ;; ── Content Rendering with Block References, Embeds, and Page Refs ────────────
 
@@ -671,11 +696,26 @@
                                        (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
                           (let [target (.-target e)
-                                new-text (.-textContent target)]
+                                new-text (.-textContent target)
+                                selection (.getSelection js/window)
+                                cursor-pos (.-anchorOffset selection)
+                                slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])]
                             (update-mock-text! target new-text)
                             (on-intent {:type :update-content
                                         :block-id block-id
-                                        :text new-text})))
+                                        :text new-text})
+
+                            ;; Check for slash trigger or update existing menu
+                            (if slash-menu-active?
+                              ;; Menu already open - update search
+                              (on-intent {:type :slash-menu/update-search
+                                          :block-id block-id
+                                          :cursor-pos cursor-pos})
+                              ;; No menu - check for trigger
+                              (when-let [trigger (slash/detect-slash-trigger new-text cursor-pos)]
+                                (on-intent {:type :slash-menu/open
+                                            :block-id block-id
+                                            :trigger-pos (:trigger-pos trigger)})))))
                  :paste (fn [e]
                           ;; LOGSEQ PARITY (FR-Clipboard-03): Handle paste with multi-paragraph splitting
                           (.preventDefault e)

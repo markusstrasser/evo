@@ -126,8 +126,7 @@
   "Action: Extend block selection upward (Shift+Arrow up at boundary)."
   [state {:keys [block-id direction]}]
   [[:effects/dispatch-intent {:type :selection
-                              :mode :extend
-                              :direction :prev}]
+                              :mode :extend-prev}]
    [:effects/log-devtools {:action :selection/extend-prev
                            :block-id block-id
                            :direction direction}]])
@@ -136,8 +135,7 @@
   "Action: Extend block selection downward (Shift+Arrow down at boundary)."
   [state {:keys [block-id direction]}]
   [[:effects/dispatch-intent {:type :selection
-                              :mode :extend
-                              :direction :next}]
+                              :mode :extend-next}]
    [:effects/log-devtools {:action :selection/extend-next
                            :block-id block-id
                            :direction direction}]])
