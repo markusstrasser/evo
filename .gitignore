@@ -83,6 +83,12 @@ logs/
 .architect/archive/
 .architect/ops.ednlog
 
+# Architecture analysis outputs (reproducible via bb tasks)
+arch-analysis/
+arch-lens-output.md
+arch-lens-detailed.md
+arch-lens-comprehensive.md
+
 # Keep valuable records
 !.architect/adr/
 !.architect/specs/

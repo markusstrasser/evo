@@ -1,155 +1,191 @@
 {:paths ["dev" "src" "test"]
-  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-         org.clojure/clojurescript {:mvn/version "1.11.60"}}
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+        org.clojure/clojurescript {:mvn/version "1.11.60"}}
 
-  :tasks
-  {:requires ([babashka.fs :as fs]
-              [clojure.string :as str])
+ :tasks
+ {:requires ([babashka.fs :as fs]
+             [clojure.string :as str])
 
    ;; Quality gates
-   lint        {:doc "Run clj-kondo linter"
-                :task (shell "clj-kondo --lint src test dev")}
+  lint {:doc "Run clj-kondo linter"
+        :task (shell "clj-kondo --lint src test dev")}
 
-   check       {:doc "Lint + compile check (full quality gate)"
-                :task (do
-                        (run 'lint)
-                        (shell "npx shadow-cljs compile :anki"))}
+  check {:doc "Lint + compile check (full quality gate)"
+         :task (do
+                 (run 'lint)
+                 (shell "npx shadow-cljs compile :anki"))}
 
-   test        {:doc "Compile + run the full shadow-cljs test suite"
-                :task (do
-                        (shell "npx shadow-cljs compile :test")
-                        (shell "node out/tests.js"))}
+  test {:doc "Compile + run the full shadow-cljs test suite"
+        :task (do
+                (shell "npx shadow-cljs compile :test")
+                (shell "node out/tests.js"))}
 
-   test:view   {:doc "Fast view (hiccup) tests"
-                :task (do
-                        (shell "npx shadow-cljs compile :test-view")
-                        (shell "node out/tests-view.js"))}
+  test:view {:doc "Fast view (hiccup) tests"
+             :task (do
+                     (shell "npx shadow-cljs compile :test-view")
+                     (shell "node out/tests-view.js"))}
 
-   test:int    {:doc "Render→action integration tests"
-                :task (do
-                        (shell "npx shadow-cljs compile :test-integration")
-                        (shell "node out/tests-integration.js"))}
+  test:int {:doc "Render→action integration tests"
+            :task (do
+                    (shell "npx shadow-cljs compile :test-integration")
+                    (shell "node out/tests-integration.js"))}
 
-   test-watch  {:doc "Watch entire suite (shadow-cljs)"
-                :task (shell "npx shadow-cljs watch :test")}
+  test-watch {:doc "Watch entire suite (shadow-cljs)"
+              :task (shell "npx shadow-cljs watch :test")}
 
-   test-watch:view {:doc "Watch view tests"
-                    :task (shell "npx shadow-cljs watch :test-view")}
+  test-watch:view {:doc "Watch view tests"
+                   :task (shell "npx shadow-cljs watch :test-view")}
 
-   test-watch:int {:doc "Watch integration tests"
-                   :task (shell "npx shadow-cljs watch :test-integration")}
+  test-watch:int {:doc "Watch integration tests"
+                  :task (shell "npx shadow-cljs watch :test-integration")}
 
-   check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
-                    :task (shell "scripts/check-version-sync.sh")}
+  check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
+                   :task (shell "scripts/check-version-sync.sh")}
 
-   lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
-                   :task (shell "bb scripts/lint_scenarios.clj")}
+  lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
+                  :task (shell "bb scripts/lint_scenarios.clj")}
 
-   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
-                      :task (shell "node scripts/lint-e2e-keyboard.js")}
+  lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
+                     :task (shell "node scripts/lint-e2e-keyboard.js")}
+
+   ;; Architecture analysis
+  arch-summary {:doc "Generate architecture overview"
+                :task (shell "bb scripts/arch-summary.clj")}
+
+  arch-complexity {:doc "Per-function complexity analysis"
+                   :task (shell "bb scripts/function-complexity.clj")}
+
+  arch-abstractions {:doc "Extract protocols, multimethods, specs"
+                     :task (shell "bb scripts/abstractions.clj")}
+
+  arch-data-flow {:doc "Trace data flow patterns"
+                  :task (shell "bb scripts/data-flow.clj")}
+
+  arch-lens {:doc "Generate comprehensive architectural lens (all views combined)"
+             :task (shell "bb scripts/arch-lens.clj arch-lens-output.md")}
+
+   ;; Detailed architecture analysis (10-15k tokens)
+  arch-summary-detailed {:doc "Comprehensive architecture summary with namespace details"
+                         :task (shell "bb scripts/arch-summary-detailed.clj")}
+
+  arch-complexity-detailed {:doc "Detailed per-function complexity with operation types"
+                            :task (shell "bb scripts/function-complexity-detailed.clj")}
+
+  arch-call-graph {:doc "Call graph analysis with critical execution paths"
+                   :task (shell "bb scripts/call-graph-detailed.clj")}
+
+  arch-lens-detailed {:doc "Generate detailed architectural lens (10-15k tokens)"
+                      :task (do
+                              (println "Generating detailed architectural lens...")
+                              (shell "bb scripts/arch-summary-detailed.clj > /tmp/arch-detailed-1.md")
+                              (shell "bb scripts/function-complexity-detailed.clj > /tmp/arch-detailed-2.md")
+                              (shell "bb scripts/call-graph-detailed.clj > /tmp/arch-detailed-3.md")
+                              (shell "bb scripts/data-flow.clj > /tmp/arch-detailed-4.md")
+                              (shell "cat /tmp/arch-detailed-1.md /tmp/arch-detailed-2.md /tmp/arch-detailed-3.md /tmp/arch-detailed-4.md > arch-lens-detailed.md")
+                              (println "✅ Detailed lens saved to: arch-lens-detailed.md"))}
 
    ;; E2E Testing with Playwright
-   e2e         {:doc "Run Playwright E2E tests"
-                :task (shell "npx playwright test")}
+  e2e {:doc "Run Playwright E2E tests"
+       :task (shell "npx playwright test")}
 
-   e2e-watch   {:doc "Run E2E tests in watch mode (UI)"
-                :task (shell "npx playwright test --ui")}
+  e2e-watch {:doc "Run E2E tests in watch mode (UI)"
+             :task (shell "npx playwright test --ui")}
 
-   e2e-debug   {:doc "Run E2E tests with debugger"
-                :task (shell "npx playwright test --debug")}
+  e2e-debug {:doc "Run E2E tests with debugger"
+             :task (shell "npx playwright test --debug")}
 
-   e2e-headed  {:doc "Run E2E tests with visible browser"
-                :task (shell "npx playwright test --headed")}
+  e2e-headed {:doc "Run E2E tests with visible browser"
+              :task (shell "npx playwright test --headed")}
 
-   e2e-report  {:doc "Open last E2E test report"
-                :task (shell "npx playwright show-report")}
+  e2e-report {:doc "Open last E2E test report"
+              :task (shell "npx playwright show-report")}
 
-   e2e-visual  {:doc "Run visual regression tests with Percy"
-                :task (shell "npx percy exec -- npx playwright test visual")}
+  e2e-visual {:doc "Run visual regression tests with Percy"
+              :task (shell "npx percy exec -- npx playwright test visual")}
 
-   e2e-a11y    {:doc "Run accessibility tests only"
-                :task (shell "npx playwright test accessibility")}
+  e2e-a11y {:doc "Run accessibility tests only"
+            :task (shell "npx playwright test accessibility")}
 
-   test:e2e    {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
-                :task (let [scenario (first *command-line-args*)
-                            base-cmd ["npx" "playwright" "test" "--project=chromium"]
-                            cmd (if scenario (conj base-cmd "--grep" scenario) base-cmd)
-                            cmd-str (clojure.string/join " " cmd)]
-                        (shell cmd-str))}
+  test:e2e {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
+            :task (let [scenario (first *command-line-args*)
+                        base-cmd ["npx" "playwright" "test" "--project=chromium"]
+                        cmd (if scenario (conj base-cmd "--grep" scenario) base-cmd)
+                        cmd-str (clojure.string/join " " cmd)]
+                    (shell cmd-str))}
 
    ;; Cache & index management
-   clean       {:doc "Clear all caches and semantic search index"
-                :task (do
-                        (println "Clearing caches...")
-                        (fs/delete-tree ".shadow-cljs")
-                        (fs/delete-tree ".cpcache")
-                        (when (fs/exists? "node_modules/.cache")
-                          (fs/delete-tree "node_modules/.cache"))
-                        (println "Cleaning semantic search index...")
-                        (shell "ck --clean-orphans .")
-                        (doseq [dir (fs/glob "." "**/.ck")]
-                          (println (str "  Removing " dir))
-                          (fs/delete-tree dir))
-                        (println "✓ Caches and index cleaned"))}
+  clean {:doc "Clear all caches and semantic search index"
+         :task (do
+                 (println "Clearing caches...")
+                 (fs/delete-tree ".shadow-cljs")
+                 (fs/delete-tree ".cpcache")
+                 (when (fs/exists? "node_modules/.cache")
+                   (fs/delete-tree "node_modules/.cache"))
+                 (println "Cleaning semantic search index...")
+                 (shell "ck --clean-orphans .")
+                 (doseq [dir (fs/glob "." "**/.ck")]
+                   (println (str "  Removing " dir))
+                   (fs/delete-tree dir))
+                 (println "✓ Caches and index cleaned"))}
 
-   index       {:doc "Rebuild ck (semantic search) embeddings index"
-                :task (do
-                        (println "Rebuilding semantic search index...")
-                        (println "Cleaning orphaned files...")
-                        (shell "ck --clean-orphans .")
-                        (println "Indexing source files...")
-                        (shell "ck --sem --threshold 0.0 --limit 1 'test' src/")
-                        (println "Indexing session files...")
-                        (shell "ck --sem --threshold 0.0 --limit 1 'test' ~/.claude/projects/-Users-alien-Projects-evo/")
-                        (println "✓ Index rebuilt"))}
+  index {:doc "Rebuild ck (semantic search) embeddings index"
+         :task (do
+                 (println "Rebuilding semantic search index...")
+                 (println "Cleaning orphaned files...")
+                 (shell "ck --clean-orphans .")
+                 (println "Indexing source files...")
+                 (shell "ck --sem --threshold 0.0 --limit 1 'test' src/")
+                 (println "Indexing session files...")
+                 (shell "ck --sem --threshold 0.0 --limit 1 'test' ~/.claude/projects/-Users-alien-Projects-evo/")
+                 (println "✓ Index rebuilt"))}
 
    ;; REPL helpers
-   repl-health {:doc "Quick REPL diagnostics (requires running REPL)"
-                :task (shell "clj -M -e '(require '[repl :as repl]) (repl/quick-health-check!)'")}
+  repl-health {:doc "Quick REPL diagnostics (requires running REPL)"
+               :task (shell "clj -M -e '(require '[repl :as repl]) (repl/quick-health-check!)'")}
 
    ;; Documentation
-   docs-overview {:doc "Generate AI architectural overview"
-                  :task (shell "scripts/generate-overview.sh" (str/join " " *command-line-args*))}
+  docs-overview {:doc "Generate AI architectural overview"
+                 :task (shell "scripts/generate-overview.sh" (str/join " " *command-line-args*))}
 
    ;; Development server
-   dev         {:doc "Start shadow-cljs dev server + watch"
-                :task (shell "npx shadow-cljs watch :blocks-ui")}
+  dev {:doc "Start shadow-cljs dev server + watch"
+       :task (shell "npx shadow-cljs watch :blocks-ui")}
 
    ;; Git hooks
-   install-hooks {:doc "Install git pre-commit hooks"
-                  :task (shell "scripts/install-hooks.sh")}
+  install-hooks {:doc "Install git pre-commit hooks"
+                 :task (shell "scripts/install-hooks.sh")}
 
    ;; Help
-   help        {:doc "Show available tasks"
-                :task (do
-                        (println "Available Babashka tasks:\n")
-                        (println "Quality Gates:")
-                        (println "  bb lint            - Run clj-kondo linter")
-                        (println "  bb check           - Lint + compile check")
-                        (println "  bb test            - Run full shadow-cljs tests")
-                        (println "  bb test:view       - View (hiccup) tests")
-                        (println "  bb test:int        - Integration tests")
-                        (println "  bb check-deps-sync - Verify dependency versions match\n")
-                        (println "E2E Testing:")
-                        (println "  bb e2e             - Run Playwright E2E tests")
-                        (println "  bb e2e-watch       - Watch mode (UI)")
-                        (println "  bb e2e-debug       - Debug mode")
-                        (println "  bb e2e-headed      - Visible browser")
-                        (println "  bb test:e2e <ID>   - Filter Playwright by scenario")
-                        (println "  bb e2e-report      - Open test report")
-                        (println "  bb e2e-visual      - Visual regression (Percy)")
-                        (println "  bb e2e-a11y        - Accessibility tests\n")
-                        (println "Cache & Index:")
-                        (println "  bb clean           - Clear all caches + semantic index")
-                        (println "  bb index           - Rebuild ck semantic index\n")
-                        (println "Development:")
-                        (println "  bb dev             - Start dev server + watch")
-                        (println "  bb repl-health     - REPL diagnostics")
-                        (println "  bb docs-overview   - Generate overview")
-                        (println "  bb lint:scenarios  - Ensure specs ↔ tests stay linked\n")
-                        (println "Setup:")
-                        (println "  bb install-hooks   - Install git hooks\n")
-                        (println "Skills (call directly):")
-                        (println "  .claude/skills/diagnostics/run.sh health")
-                        (println "  .claude/skills/code-research/run.sh ...")
-                        (println "  .claude/skills/session-memory/run.sh ..."))}}}
+  help {:doc "Show available tasks"
+        :task (do
+                (println "Available Babashka tasks:\n")
+                (println "Quality Gates:")
+                (println "  bb lint            - Run clj-kondo linter")
+                (println "  bb check           - Lint + compile check")
+                (println "  bb test            - Run full shadow-cljs tests")
+                (println "  bb test:view       - View (hiccup) tests")
+                (println "  bb test:int        - Integration tests")
+                (println "  bb check-deps-sync - Verify dependency versions match\n")
+                (println "E2E Testing:")
+                (println "  bb e2e             - Run Playwright E2E tests")
+                (println "  bb e2e-watch       - Watch mode (UI)")
+                (println "  bb e2e-debug       - Debug mode")
+                (println "  bb e2e-headed      - Visible browser")
+                (println "  bb test:e2e <ID>   - Filter Playwright by scenario")
+                (println "  bb e2e-report      - Open test report")
+                (println "  bb e2e-visual      - Visual regression (Percy)")
+                (println "  bb e2e-a11y        - Accessibility tests\n")
+                (println "Cache & Index:")
+                (println "  bb clean           - Clear all caches + semantic index")
+                (println "  bb index           - Rebuild ck semantic index\n")
+                (println "Development:")
+                (println "  bb dev             - Start dev server + watch")
+                (println "  bb repl-health     - REPL diagnostics")
+                (println "  bb docs-overview   - Generate overview")
+                (println "  bb lint:scenarios  - Ensure specs ↔ tests stay linked\n")
+                (println "Setup:")
+                (println "  bb install-hooks   - Install git hooks\n")
+                (println "Skills (call directly):")
+                (println "  .claude/skills/diagnostics/run.sh health")
+                (println "  .claude/skills/code-research/run.sh ...")
+                (println "  .claude/skills/session-memory/run.sh ..."))}}}
