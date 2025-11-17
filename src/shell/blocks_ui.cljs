@@ -29,6 +29,7 @@
             [plugins.folding]
             [plugins.smart-editing]
             [plugins.text-formatting]
+            [plugins.visible-order] ;; Load to register :visible-order derived index
             [plugins.pages :as pages] ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
