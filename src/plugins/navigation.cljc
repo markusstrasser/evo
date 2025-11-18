@@ -187,9 +187,12 @@
 
 (intent/register-intent! :navigate-with-cursor-memory
                          {:doc "Navigate to adjacent block, preserving cursor column position.
-         
+
          This is the PRIMARY navigation intent while editing.
          Replaces simple :selection :mode :prev/:next when cursor memory is desired."
+
+                          :fr/ids #{:fr.nav/vertical-cursor-memory}
+
                           :spec [:map
                                  [:type [:= :navigate-with-cursor-memory]]
                                  [:direction [:enum :up :down]]
