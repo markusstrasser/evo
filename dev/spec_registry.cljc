@@ -152,7 +152,306 @@
     :status :active
     :version 1
     :tags [:kernel :transaction]
-    :spec-ref "CLAUDE.md - Canonical DB Shape"}})
+    :spec-ref "CLAUDE.md - Canonical DB Shape"}
+
+   ;; Editing (additional behaviors)
+   :fr.edit/arrow-nav-mode
+   {:desc "Arrow keys move cursor within block in Edit Mode"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing :navigation]
+    :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-01"}
+
+   :fr.edit/shift-arrow-text-select
+   {:desc "Shift+Arrow extends text selection within block (seeds multi-block selection)"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing :selection]
+    :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-02"}
+
+   :fr.edit/delete-forward
+   {:desc "Delete key removes character at cursor or merges with next block at end"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing]
+    :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-03"}
+
+   :fr.edit/word-navigation
+   {:desc "Option+Arrow moves cursor by word boundaries"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing :navigation]
+    :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-04"}
+
+   :fr.edit/kill-operations
+   {:desc "Ctrl+K/U kill to end/beginning of line"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing :emacs]
+    :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-05"}
+
+   :fr.edit/newline-no-split
+   {:desc "Shift+Enter inserts newline without splitting block"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing]
+    :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-06"}
+
+   :fr.edit/paired-char-insertion
+   {:desc "Auto-insert closing bracket/quote and place cursor inside"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:editing :smart-editing]
+    :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-07"}
+
+   ;; Clipboard
+   :fr.clipboard/copy-block
+   {:desc "Cmd+C copies selected blocks with metadata"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:clipboard]
+    :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-01"}
+
+   :fr.clipboard/paste-multiline
+   {:desc "Pasting multi-line text creates multiple blocks"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:clipboard]
+    :spec-ref "LOGSEQ_SPEC.md §7.7 FR-Clipboard-02"}
+
+   :fr.clipboard/block-reference
+   {:desc "Cmd+Shift+C copies block reference ((id))"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:clipboard :references]
+    :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-03"}
+
+   ;; Pointer/Mouse
+   :fr.pointer/shift-click-range
+   {:desc "Shift+Click extends selection range from current to clicked block"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:pointer :selection]
+    :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-01"}
+
+   :fr.pointer/alt-click-fold
+   {:desc "Alt+Click toggles fold state of subtree"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:pointer :folding]
+    :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-02"}
+
+   ;; UI/Commands
+   :fr.ui/slash-palette
+   {:desc "Slash (/) opens inline command menu"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:ui :commands]
+    :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-01"}
+
+   :fr.ui/quick-switcher
+   {:desc "Cmd+K opens global search overlay"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:ui :navigation]
+    :spec-ref "LOGSEQ_SPEC.md §7.5 FR-QuickSwitch-01"}
+
+   ;; State Machine
+   :fr.state/idle-guard
+   {:desc "Idle state requires explicit action to enter edit/selection; prevents accidental state changes"
+    :priority :high
+    :type :invariant
+    :status :active
+    :version 1
+    :tags [:state-machine :idle]
+    :spec-ref "LOGSEQ_SPEC.md §1.1 FR-Idle-01"}
+
+   :fr.state/type-to-edit
+   {:desc "Typing from idle/selection enters edit mode on first/selected block"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:state-machine :editing]
+    :spec-ref "LOGSEQ_SPEC.md §1.1 FR-Idle-02"}
+
+   :fr.state/selection-clears-edit
+   {:desc "Entering selection mode clears editing state"
+    :priority :high
+    :type :invariant
+    :status :active
+    :version 1
+    :tags [:state-machine]
+    :spec-ref "LOGSEQ_SPEC.md §1.1 FR-State-02"}
+
+   ;; Scope/Boundaries
+   :fr.scope/visible-outline
+   {:desc "Navigation stays within visible outline (respects page, zoom, folding)"
+    :priority :high
+    :type :invariant
+    :status :active
+    :version 1
+    :tags [:navigation :scope]
+    :spec-ref "LOGSEQ_SPEC.md §5, §6 FR-Scope-01"}
+
+   :fr.scope/zoom-guards
+   {:desc "Structural operations blocked by zoom boundary (can't indent/outdent zoom root)"
+    :priority :medium
+    :type :invariant
+    :status :active
+    :version 1
+    :tags [:structural :zoom]
+    :spec-ref "LOGSEQ_SPEC.md §6 FR-Scope-02"}
+
+   ;; Folding/Zoom
+   :fr.fold/toggle-block
+   {:desc "Cmd+Up/Down toggles fold state of current block"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:folding]
+    :spec-ref "LOGSEQ_SPEC.md §6"}
+
+   :fr.fold/expand-collapse-all
+   {:desc "Cmd+Shift+Up/Down expands/collapses all blocks in scope"
+    :priority :low
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:folding]
+    :spec-ref "LOGSEQ_SPEC.md §6"}
+
+   :fr.zoom/focus-subtree
+   {:desc "Cmd+. zooms into block as temporary root"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:zoom :navigation]
+    :spec-ref "LOGSEQ_SPEC.md §6"}
+
+   :fr.zoom/restore-scope
+   {:desc "Escape from zoom restores normal scope"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:zoom]
+    :spec-ref "LOGSEQ_SPEC.md §6 FR-Scope-03"}
+
+   ;; Structural (additional)
+   :fr.struct/delete-block
+   {:desc "Delete selected blocks and re-parent children to parent"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:structural]
+    :spec-ref "LOGSEQ_SPEC.md §5"}
+
+   :fr.struct/create-sibling
+   {:desc "Create new block as sibling of current/selected"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:structural]
+    :spec-ref "LOGSEQ_SPEC.md §5"}
+
+   ;; Text Formatting
+   :fr.format/bold-italic
+   {:desc "Cmd+B/I wraps selection in **bold** or *italic* markers"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:formatting]
+    :spec-ref "LOGSEQ_SPEC.md §7.9"}
+
+   :fr.format/highlight-strikethrough
+   {:desc "Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~"
+    :priority :low
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:formatting]
+    :spec-ref "LOGSEQ_SPEC.md §7.9"}
+
+   ;; Pages/Links
+   :fr.pages/switch-page
+   {:desc "Navigate to different page (clears zoom, preserves page state)"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:pages :navigation]
+    :spec-ref "LOGSEQ_SPEC.md §7.1"}
+
+   :fr.pages/follow-link
+   {:desc "Cmd+Click or Cmd+O on page reference navigates to that page"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:pages :links]
+    :spec-ref "LOGSEQ_SPEC.md §7.2"}
+
+   ;; Smart Editing (additional)
+   :fr.smart/checkbox-toggle
+   {:desc "Cmd+Enter toggles TODO/DOING/DONE markers"
+    :priority :medium
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:smart-editing]
+    :spec-ref "LOGSEQ_SPEC.md §7.10"}
+
+   :fr.smart/list-unformat
+   {:desc "Enter on empty list item removes marker and creates peer at parent level"
+    :priority :high
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:smart-editing :lists]
+    :spec-ref "LOGSEQ_SPEC.md §4 (part of FR-Edit-01)"}
+
+   :fr.smart/auto-increment
+   {:desc "Enter on numbered list auto-increments next item"
+    :priority :low
+    :type :intent-level
+    :status :active
+    :version 1
+    :tags [:smart-editing :lists]
+    :spec-ref "LOGSEQ_SPEC.md §7.10"}})
 
 (defonce !registry
   (atom embedded-registry))
