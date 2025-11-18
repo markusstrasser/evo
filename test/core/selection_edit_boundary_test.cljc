@@ -37,7 +37,8 @@
 ;; Boundary Tests
 ;; =============================================================================
 
-(deftest selection-intents-dont-touch-ui
+(deftest ^{:fr/ids #{:fr.selection/edit-view-exclusive}}
+  selection-intents-dont-touch-ui
   (testing "Selection intents preserve :ui state (ephemeral boundary)"
     (let [db0 (-> (setup-db-with-blocks)
                   (assoc :ui {:editing-block-id "a"
