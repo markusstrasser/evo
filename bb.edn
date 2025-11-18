@@ -13,7 +13,7 @@
   check {:doc "Lint + compile check (full quality gate)"
          :task (do
                  (run 'lint)
-                 (shell "npx shadow-cljs compile :anki"))}
+                 (shell "npx shadow-cljs compile :blocks-ui"))}
 
   test {:doc "Compile + run the full shadow-cljs test suite"
         :task (do
@@ -155,6 +155,16 @@
   install-hooks {:doc "Install git pre-commit hooks"
                  :task (shell "scripts/install-hooks.sh")}
 
+   ;; Agent & Tooling
+  context:file {:doc "Generate agent-friendly context for a file"
+                :task (shell "bb scripts/agent-context.clj" (first *command-line-args*))}
+
+  scaffold:view-test {:doc "Generate view test scaffold for a component"
+                      :task (shell "bb scripts/scaffold-view-test.clj" (first *command-line-args*))}
+
+  lint:robustness {:doc "Lint for common anti-patterns and robustness issues"
+                   :task (shell "bb scripts/lint-robustness.clj")}
+
    ;; Help
   help {:doc "Show available tasks"
         :task (do
@@ -185,6 +195,10 @@
                 (println "  bb lint:scenarios  - Ensure specs ↔ tests stay linked\n")
                 (println "Setup:")
                 (println "  bb install-hooks   - Install git hooks\n")
+                (println "Agent & Tooling:")
+                (println "  bb context:file <path>      - Analyze file context")
+                (println "  bb scaffold:view-test <path> - Generate view test")
+                (println "  bb lint:robustness          - Check robustness patterns\n")
                 (println "Skills (call directly):")
                 (println "  .claude/skills/diagnostics/run.sh health")
                 (println "  .claude/skills/code-research/run.sh ...")
