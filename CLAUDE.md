@@ -31,7 +31,7 @@ npm run dev:fast           # Watch CLJS + watch CSS
 npm run clean              # Clear shadow-cljs + bb caches
 
 # Production build
-npm run build              # Clean + release anki + release blocks-ui + minified CSS
+npm run build              # Clean + release blocks-ui + minified CSS
 ```
 
 **Important**: Always use `npm start` for development. It runs **watch mode** which prevents "stale output" errors. Never use `npx shadow-cljs compile` directly.
@@ -162,6 +162,46 @@ Component Re-renders       # Replicant diffs DOM
 ```
 
 Components never mutate state directly. They describe what happened via intents.
+
+### Multi-Step Operations: Macro Pattern
+
+For operations where step N depends on results of step N-1, use the **macro pattern** (`src/macros/`):
+
+```clojure
+;; Problem: Delete block, then select previous block
+;; Single-pass plugins can't see intermediate state
+
+;; Solution: Macro simulates on scratch DB
+(ns macros.editing
+  (:require [macros.script :as script]))
+
+(defn smart-backspace [db {:keys [id]}]
+  (:ops
+    (script/run db
+      [;; Step 1: Delete block
+       {:type :delete :id id}
+
+       ;; Step 2: Function sees result of step 1
+       (fn [db-after-delete]
+         (when-let [prev (get-in db-after-delete [:derived :prev-id-of id])]
+           [{:type :select :id prev}]))])))
+```
+
+**How it works:**
+1. Run steps on scratch DB (throwaway copy)
+2. Each step sees real intermediate state
+3. Accumulate normalized ops
+4. Commit all ops atomically to real DB (one undo entry)
+
+**When to use:**
+- Multi-step with dependencies (step 2 needs result of step 1)
+- Example: Smart backspace, paste multi-line, batch operations
+
+**When NOT to use:**
+- Single-pass logic (one intent → ops)
+- No dependency on intermediate state
+
+See `src/macros/script.cljc` for implementation, `test/macros/` for examples.
 
 ### Replicant (View Layer)
 
@@ -378,14 +418,12 @@ For the complete philosophy (headless tiers, redundancy analysis, browser-only g
 ```clojure
 ;; shadow-cljs.edn
 :builds
-  {:anki       ; Main app build
-   :blocks-ui  ; Block editor UI
+  {:blocks-ui  ; Block editor UI (primary development build)
    :test       ; Unit tests (node-test)
-   :frontend   ; Legacy build
-   :app}       ; Lab experiments
+   :frontend}  ; Legacy build
 ```
 
-Use `:anki` build for primary development. REPL connects to `:frontend` by default (see `dev/repl/init.cljc`).
+Use `:blocks-ui` build for primary development. REPL connects to `:frontend` by default (see `dev/repl/init.cljc`).
 
 ## Babashka Tasks
 
