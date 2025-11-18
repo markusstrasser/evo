@@ -11,7 +11,21 @@
    - derive: Recompute derived indexes (unless :tx/skip-derived? true)
 
    ONE LAW: The pipeline is a pure transformation (DB, ops) → {:db :issues :trace}.
-   Issues block execution (return old DB). No issues means ops executed successfully."
+   Issues block execution (return old DB). No issues means ops executed successfully.
+
+   FUNCTIONAL REQUIREMENTS (Kernel Invariants):
+   ─────────────────────────────────────────────
+   This namespace enforces critical kernel invariants:
+
+   :fr.kernel/derive-indexes
+     All operations trigger automatic index derivation via db/derive-indexes.
+     Derived state (:parent-of, :next-id-of, :prev-id-of, traversal orders)
+     is NEVER mutated directly - always recomputed from canonical structure.
+
+   :fr.kernel/undo-restores-all
+     Transaction pipeline is pure (DB, ops) → DB'. Combined with kernel.history,
+     this enables complete undo/redo: all state (content + session) is restored
+     by replaying inverse operations through the same pipeline."
   (:require [kernel.db :as db]
             [kernel.ops :as ops]
             [kernel.position :as pos]
