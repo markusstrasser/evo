@@ -42,6 +42,13 @@
   check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
                    :task (shell "scripts/check-version-sync.sh")}
 
+  ;; FR Coverage (Spec-as-Database pattern)
+  fr-audit {:doc "Audit FR implementation coverage (fails if critical FRs uncited)"
+            :task (shell "bb scripts/audit_ci.clj")}
+
+  fr-matrix {:doc "Generate FR coverage matrix (FR_MATRIX.md)"
+             :task (shell "bb scripts/gen_coverage.clj")}
+
   lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
                   :task (shell "bb scripts/lint_scenarios.clj")}
 
