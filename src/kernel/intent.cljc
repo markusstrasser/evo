@@ -9,6 +9,11 @@
    This unifies the event handling pipeline through the 3-op kernel.
    All state changes go through validate/derive, enabling full undo/redo.
 
+   Spec-as-Database Pattern:
+   - Intents cite Functional Requirements (FRs) via :fr/ids
+   - Registration validates FR IDs against resources/specs.edn
+   - REPL audit shows implementation coverage
+
    Example usage:
      ;; Structural intent (compiles to ops)
      (apply-intent db {:type :indent :id \"a\"})
@@ -16,7 +21,8 @@
      ;; Session intent (compiles to ops on session nodes)
      (apply-intent db {:type :select :ids [\"a\" \"b\"]})"
   (:require [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me]
+            [spec-registry :as fr]))
 
 ;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────
 
@@ -25,11 +31,17 @@
 ;; ── Registration API ──────────────────────────────────────────────────────────
 
 (defn register-intent!
-  "Register an intent handler with Malli spec validation.
+  "Register an intent handler with Malli spec validation and FR linkage.
 
    Args:
    - kw: Intent type keyword (e.g. :select, :indent)
-   - config: Map with :doc, :spec, :handler keys
+   - config: Map with :doc, :spec, :handler, :fr/ids keys
+
+   Spec-as-Database Enforcement:
+   - :fr/ids (optional): Set of FR keywords this intent implements
+   - Validates FR IDs against resources/specs.edn registry
+   - Soft warnings for uncited intents (breaking changes deferred)
+   - Throws on unknown FR IDs (hard enforcement)
 
    Implementation Notes (GPT-5 Spec Link Pattern):
    - Caches compiled Malli validator for performance
@@ -44,9 +56,25 @@
         :spec [:map {:closed true}
                [:type [:= :select]]
                [:ids [:vector :string]]]
+        :fr/ids #{:fr.selection/edit-view-exclusive}
         :handler (fn [db {:keys [ids]}]
                    [{:op :update-node :id \"session/selection\" :props {...}}])})"
-  [kw {:keys [doc spec handler]}]
+  [kw {:keys [doc spec handler fr/ids] :as config}]
+  ;; Soft warnings for uncited intents (Gemini's approach)
+  (when (empty? ids)
+    (println "⚠️ WARNING: Intent" kw "has no FR citations (:fr/ids)"))
+
+  ;; Hard enforcement: validate FR IDs (GPT-5's approach)
+  (when (seq ids)
+    (try
+      (fr/validate-fr-ids! ids)
+      (catch #?(:clj Exception :cljs js/Error) e
+        (throw (ex-info "Intent registration failed: unknown FR ID(s)"
+                        {:intent kw
+                         :fr/ids ids
+                         :error (ex-message e)
+                         :cause e})))))
+
   (let [;; Compile Malli validator (cached for performance)
         validator (when spec (m/validator spec))
         ;; Track spec version for hot reload detection
@@ -56,6 +84,7 @@
             :spec spec
             :validator validator
             :handler handler
+            :fr/ids (or ids #{})
             :version version})
     kw))
 
@@ -208,3 +237,53 @@
   "DEPRECATED: Use apply-intent instead. Kept for backward compatibility."
   [db intent]
   (:ops (apply-intent db intent)))
+
+;; ── FR Coverage Audit (REPL Introspection) ───────────────────────────────────
+
+(defn audit-coverage
+  "Audit FR implementation coverage across registered intents.
+
+   Returns map with:
+   - :total-frs          - Total FRs in registry
+   - :cited-frs          - FRs cited by at least one intent
+   - :uncited-frs        - FRs with no intent implementation
+   - :critical-uncited   - Critical FRs with no implementation (RED FLAG!)
+   - :implementation-pct - Percentage of FRs with intent coverage
+   - :intent-citations   - Map of intent → FR set
+
+   Example:
+     (audit-coverage)
+     ;=> {:total-frs 12
+     ;    :cited-frs [:fr.nav/vertical-cursor-memory :fr.selection/extend-boundary]
+     ;    :uncited-frs [:fr.struct/climb-descend :fr.kernel/undo-restores-all]
+     ;    :critical-uncited [:fr.kernel/undo-restores-all]
+     ;    :implementation-pct 83
+     ;    :intent-citations {:select #{:fr.selection/edit-view-exclusive}
+     ;                       :indent #{:fr.struct/indent-outdent}}}"
+  []
+  (let [;; All FRs from registry
+        all-frs (set (fr/list-frs))
+        critical-frs (set (fr/critical-frs))
+
+        ;; FR citations from intents
+        intent-citations (into {}
+                               (map (fn [[kw config]]
+                                      [kw (:fr/ids config)])
+                                    @!intents))
+        cited-frs (set (mapcat val intent-citations))
+
+        ;; Uncited FRs
+        uncited-frs (clojure.set/difference all-frs cited-frs)
+        critical-uncited (clojure.set/intersection critical-frs uncited-frs)
+
+        ;; Coverage percentage
+        implementation-pct (if (zero? (count all-frs))
+                             100
+                             (int (* 100 (/ (count cited-frs) (count all-frs)))))]
+
+    {:total-frs (count all-frs)
+     :cited-frs (vec (sort cited-frs))
+     :uncited-frs (vec (sort uncited-frs))
+     :critical-uncited (vec (sort critical-uncited))
+     :implementation-pct implementation-pct
+     :intent-citations intent-citations}))
