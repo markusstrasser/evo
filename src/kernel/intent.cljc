@@ -287,3 +287,134 @@
      :critical-uncited (vec (sort critical-uncited))
      :implementation-pct implementation-pct
      :intent-citations intent-citations}))
+
+(defn full-audit
+  "Complete FR audit showing both implementation and verification coverage.
+
+   Returns vector of maps, one per FR:
+   - :id               - FR keyword
+   - :desc             - FR description
+   - :priority         - :critical | :high | :medium | :low
+   - :implemented?     - Boolean (has intent citation)
+   - :verified?        - Boolean (has test citation)
+   - :status           - :complete | :implemented-untested | :verified-unimplemented | :missing
+   - :implementing-intents - Set of intent keywords citing this FR
+   - :verifying-tests  - Set of test names citing this FR
+
+   Status meanings:
+   - :complete                  - 🟢 Has both intent and test coverage
+   - :implemented-untested      - 🟡 Has intent but no test
+   - :verified-unimplemented    - 🟠 Has test but no intent (rare, possible for invariants)
+   - :missing                   - 🔴 No intent or test coverage
+
+   Example:
+     (full-audit)
+     ;=> [{:id :fr.nav/vertical-cursor-memory
+     ;     :desc \"Vertical navigation preserves column\"
+     ;     :priority :critical
+     ;     :implemented? true
+     ;     :verified? true
+     ;     :status :complete
+     ;     :implementing-intents #{:navigate-with-cursor-memory}
+     ;     :verifying-tests #{cursor-memory-test}}
+     ;    {:id :fr.edit/smart-split
+     ;     :desc \"Enter splits at cursor\"
+     ;     :priority :high
+     ;     :implemented? true
+     ;     :verified? false
+     ;     :status :implemented-untested
+     ;     :implementing-intents #{:context-aware-enter}
+     ;     :verifying-tests #{}}]"
+  []
+  (let [;; Get implementation coverage from intents
+        impl-audit (audit-coverage)
+        impl-citations (:intent-citations impl-audit)
+        cited-frs (set (:cited-frs impl-audit))
+
+        ;; Get verification coverage from tests
+        ;; Note: Test scanner is only available in dev/test environments
+        ;; Production builds or non-test contexts will show zero verification coverage
+        test-scan (try
+                    ;; Try to resolve dev.test-scanner/scan-tests-for-frs function
+                    ;; This will only work if the namespace is already loaded (dev/test context)
+                    (if-let [scan-fn (resolve 'dev.test-scanner/scan-tests-for-frs)]
+                      (scan-fn)
+                      ;; Function not available (prod build or namespace not loaded)
+                      {:verified-frs #{}
+                       :tests-by-fr {}})
+                    (catch #?(:clj Exception :cljs js/Error) _
+                      ;; Fallback for any resolution errors
+                      {:verified-frs #{}
+                       :tests-by-fr {}}))
+        verified-frs (:verified-frs test-scan)
+        tests-by-fr (:tests-by-fr test-scan)
+
+        ;; Invert intent-citations to get intents-by-fr
+        intents-by-fr (reduce
+                       (fn [acc [intent-kw fr-ids]]
+                         (reduce (fn [m fr-id]
+                                   (update m fr-id (fnil conj #{}) intent-kw))
+                                 acc
+                                 fr-ids))
+                       {}
+                       impl-citations)]
+
+    ;; Build report for each FR
+    (vec
+     (for [fr-id (fr/list-frs)]
+       (let [fr-meta (fr/get-fr fr-id)
+             impl? (contains? cited-frs fr-id)
+             verif? (contains? verified-frs fr-id)
+             status (cond
+                      (and impl? verif?) :complete
+                      impl? :implemented-untested
+                      verif? :verified-unimplemented
+                      :else :missing)]
+         {:id fr-id
+          :desc (:desc fr-meta)
+          :priority (:priority fr-meta)
+          :implemented? impl?
+          :verified? verif?
+          :status status
+          :implementing-intents (get intents-by-fr fr-id #{})
+          :verifying-tests (get tests-by-fr fr-id #{})})))))
+
+(defn coverage-summary
+  "High-level summary of coverage metrics.
+
+   Returns:
+   - :total-frs         - Total FRs in registry
+   - :complete          - FRs with both intent and test
+   - :implemented       - FRs with intent (subset: with test)
+   - :verified          - FRs with test (subset: with intent)
+   - :missing           - FRs with neither
+   - :complete-pct      - % with both
+   - :implementation-pct - % with intent
+   - :verification-pct   - % with test
+
+   Example:
+     (coverage-summary)
+     ;=> {:total-frs 12
+     ;    :complete 5
+     ;    :implemented 9
+     ;    :verified 5
+     ;    :missing 3
+     ;    :complete-pct 41
+     ;    :implementation-pct 75
+     ;    :verification-pct 41}"
+  []
+  (let [audit (full-audit)
+        total (count audit)
+        by-status (group-by :status audit)
+        complete-count (count (:complete by-status))
+        impl-count (count (filter :implemented? audit))
+        verif-count (count (filter :verified? audit))
+        missing-count (count (:missing by-status))]
+    {:total-frs total
+     :complete complete-count
+     :implemented impl-count
+     :verified verif-count
+     :missing missing-count
+     :complete-pct (if (zero? total) 100 (int (* 100 (/ complete-count total))))
+     :implementation-pct (if (zero? total) 100 (int (* 100 (/ impl-count total))))
+     :verification-pct (if (zero? total) 100 (int (* 100 (/ verif-count total))))}))
