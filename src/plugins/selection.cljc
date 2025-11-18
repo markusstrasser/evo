@@ -193,7 +193,14 @@
      {:type :selection :mode :extend :ids \"c\"}
      {:type :selection :mode :next}
      {:type :selection :mode :clear}"
-   ;; Mode-conditional validation: :ids required for certain modes
+
+                          ;; FR Citations (Spec-as-Database pattern)
+                          :fr/ids #{:fr.selection/edit-view-exclusive
+                                    :fr.selection/extend-boundary
+                                    :fr.nav/view-arrows
+                                    :fr.nav/idle-first-last}
+
+                          ;; Mode-conditional validation: :ids required for certain modes
                           :spec [:multi {:dispatch :mode}
                                  [:replace [:map
                                             [:type [:= :selection]]
