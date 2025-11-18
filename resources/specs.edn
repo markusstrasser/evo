@@ -1,0 +1,113 @@
+{;; Navigation: Editing mode
+ :fr.nav/vertical-cursor-memory
+ {:desc "Vertical navigation preserves horizontal grapheme column across blocks"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:navigation :editing :cursor]
+  :spec-ref "LOGSEQ_SPEC.md §2.1"}
+
+ :fr.nav/horizontal-boundary
+ {:desc "ArrowLeft at column 0 / ArrowRight at end jumps to adjacent block"
+  :priority :high
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:navigation :editing]
+  :spec-ref "LOGSEQ_SPEC.md §2.3"}
+
+ ;; Navigation: View mode
+ :fr.nav/view-arrows
+ {:desc "ArrowUp/Down in view mode moves focus through visible siblings, skipping folded blocks"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:navigation :selection]
+  :spec-ref "LOGSEQ_SPEC.md §2.2"}
+
+ :fr.nav/idle-first-last
+ {:desc "ArrowDown/Up from idle state selects first/last visible block"
+  :priority :high
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:navigation :idle]
+  :spec-ref "LOGSEQ_SPEC.md §2.2"}
+
+ ;; Selection
+ :fr.selection/extend-boundary
+ {:desc "Shift+Arrow extends selection incrementally with direction tracking"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:selection :keyboard]
+  :spec-ref "LOGSEQ_SPEC.md §3"}
+
+ :fr.selection/edit-view-exclusive
+ {:desc "Edit mode and selection state never coexist; transitions clear opposite state"
+  :priority :critical
+  :type :invariant
+  :status :active
+  :version 1
+  :tags [:state-machine :editing :selection]
+  :spec-ref "LOGSEQ_SPEC.md §1.1"}
+
+ ;; Editing
+ :fr.edit/smart-split
+ {:desc "Enter performs context-aware split; empty list items unformat + create peer in single step"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:editing :smart-editing]
+  :spec-ref "LOGSEQ_SPEC.md §4"}
+
+ :fr.edit/backspace-merge
+ {:desc "Backspace at start merges into previous sibling, re-parents children, preserves caret"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:editing :merge]
+  :spec-ref "LOGSEQ_SPEC.md §4"}
+
+ ;; Structural
+ :fr.struct/indent-outdent
+ {:desc "Tab/Shift+Tab moves blocks under previous sibling / after parent; guards zoom roots"
+  :priority :critical
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:structural :tree]
+  :spec-ref "LOGSEQ_SPEC.md §5.1"}
+
+ :fr.struct/climb-descend
+ {:desc "Cmd+Shift+Up/Down at boundaries climbs out to parent level / descends into next sibling"
+  :priority :high
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:structural :move]
+  :spec-ref "LOGSEQ_SPEC.md §5.2"}
+
+ ;; Invariants
+ :fr.kernel/undo-restores-all
+ {:desc "Undo/redo restores block content + caret position + selection state"
+  :priority :critical
+  :type :invariant
+  :status :active
+  :version 1
+  :tags [:kernel :undo]
+  :spec-ref "LOGSEQ_SPEC.md §7.8"}
+
+ :fr.kernel/derive-indexes
+ {:desc "All operations trigger automatic index derivation; never mutate derived state directly"
+  :priority :critical
+  :type :invariant
+  :status :active
+  :version 1
+  :tags [:kernel :transaction]
+  :spec-ref "CLAUDE.md - Canonical DB Shape"}}
