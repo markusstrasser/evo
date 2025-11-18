@@ -316,24 +316,36 @@
 
 (intent/register-intent! :indent-selected
                          {:doc "Indent all selected nodes (or editing block if no selection)."
+
+                          :fr/ids #{:fr.struct/indent-outdent}
+
                           :spec [:map [:type [:= :indent-selected]]]
                           :handler (fn [db _]
                                      (apply-to-active-targets db indent-ops))})
 
 (intent/register-intent! :outdent-selected
                          {:doc "Outdent all selected nodes (or editing block if no selection)."
+
+                          :fr/ids #{:fr.struct/indent-outdent}
+
                           :spec [:map [:type [:= :outdent-selected]]]
                           :handler (fn [db _]
                                      (apply-to-active-targets db outdent-ops))})
 
 (intent/register-intent! :move-selected-up
                          {:doc "Move selected nodes up one sibling position."
+
+                          :fr/ids #{:fr.struct/climb-descend}
+
                           :spec [:map [:type [:= :move-selected-up]]]
                           :handler (fn [db _]
                                      (move-selected-up-ops db))})
 
 (intent/register-intent! :move-selected-down
                          {:doc "Move selected nodes down one sibling position."
+
+                          :fr/ids #{:fr.struct/climb-descend}
+
                           :spec [:map [:type [:= :move-selected-down]]]
                           :handler (fn [db _]
                                      (move-selected-down-ops db))})
