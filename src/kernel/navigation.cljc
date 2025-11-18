@@ -145,12 +145,12 @@
    Returns a vector of node IDs."
   [db node-id]
   (loop [current node-id
-         ancestors []]
+         chain []]
     (if-let [parent (parent-of db current)]
       (if (contains? (set const/roots) parent)
-        ancestors
-        (recur parent (conj ancestors parent)))
-      ancestors)))
+        chain
+        (recur parent (conj chain parent)))
+      chain)))
 
 (defn first-visible-block
   "Get the first visible block in the outline.

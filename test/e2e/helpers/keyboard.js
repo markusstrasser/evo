@@ -71,6 +71,8 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
       'ArrowUp': 38,
       'ArrowRight': 39,
       'ArrowDown': 40,
+      'Home': 36,
+      'End': 35,
       'Enter': 13,
       'Escape': 27,
       'Backspace': 8,

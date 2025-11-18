@@ -1,6 +1,6 @@
 ;; shadow-cljs configuration
  {:source-paths
-  ["src" "test" "dev" "lab"]
+  ["src" "test" "dev"]
 
   :dependencies
   [[no.cjohansen/replicant "2025.06.21"]
@@ -28,31 +28,16 @@
    {:target :browser
     :modules {:main {:init-fn shell.main/main}}}
                      ;; :preloads [evolver.dev-preload] ; ARCHIVED: see .archived/dev_preload.cljs}
-   :app
-   {:target :browser
-    :output-dir "public/js/app"
-    :asset-path "/js/app"
-    :modules {:main {:init-fn lab.app/main}}}
-   :anki
-   {:target :browser
-    :output-dir "public/js/anki"
-    :asset-path "/js/anki"
-    :modules {:vendor {:entries [cljs.core
-                                 replicant.dom
-                                 malli.core
-                                 medley.core]}
-              :main {:init-fn lab.anki.ui/main
-                     :depends-on #{:vendor}}}}
    :blocks-ui
    {:target :browser
     :output-dir "public/js/blocks-ui"
     :asset-path "/js/blocks-ui"
-   :modules {:main {:init-fn shell.blocks-ui/main}}
-   :preloads [debug]}
-  :test
-  {:target :node-test
-   :output-to "out/tests.js"
-   :ns-regexp "-test$"
+    :modules {:main {:init-fn shell.blocks-ui/main}}
+    :preloads [debug]}
+   :test
+   {:target :node-test
+    :output-to "out/tests.js"
+    :ns-regexp "-test$"
     :ns-exclude-regexp "browser-ui"}
    :test-view
    {:target :node-test
@@ -60,5 +45,5 @@
     :ns-regexp "^view\\..*-test$"}
    :test-integration
    {:target :node-test
-   :output-to "out/tests-integration.js"
+    :output-to "out/tests-integration.js"
     :ns-regexp "^integration\\.navigation.*-test$"}}}
