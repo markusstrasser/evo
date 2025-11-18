@@ -48,38 +48,76 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   });
 
   test.describe('§4.1: Navigation Scope Isolation', () => {
-    test('arrow navigation stops at document boundaries', async ({ page }) => {
-      // Find the last visible block in the document
-      const lastBlockId = await page.evaluate(() => {
-        const blocks = Array.from(document.querySelectorAll('[data-block-id]'));
-        // Filter to actual content blocks (not session/selection nodes)
-        const contentBlocks = blocks.filter(b => {
-          const id = b.getAttribute('data-block-id');
-          return id && !id.startsWith('session') && !id.startsWith('note');
-        });
-        return contentBlocks[contentBlocks.length - 1]?.getAttribute('data-block-id');
+    test('arrow navigation stops at current page boundaries', async ({ page }) => {
+      // SPEC REQUIREMENT (§4.1): "On the Projects page, Arrow Down from the last block should no-op instead of jumping to Tasks"
+      // CURRENT BEHAVIOR: Navigation DOES jump to Tasks page (regression described in spec)
+      // EXPECTED: This test should FAIL until §4.1 is implemented
+      // Implementation needed: visible-blocks-in-dom-order must respect current-page as implicit zoom root
+
+      // Verify we're on the Projects page
+      const currentPage = await page.evaluate(() => {
+        if (!window.DEBUG || typeof window.DEBUG.state !== 'function') {
+          // Fallback: check DOM for active page indicator
+          const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
+          return activePageItem?.textContent?.trim();
+        }
+        const db = window.DEBUG.state();
+        return db?.nodes?.['session/ui']?.props?.['current-page'];
       });
 
-      // Enter edit mode on last block
-      const lastBlock = page.locator(`div.block[data-block-id="${lastBlockId}"]`);
-      await enterEditModeOn(page, lastBlock);
+      // Current page should be "projects" or "Projects"
+      expect(currentPage?.toLowerCase()).toContain('project');
+
+      // Find the last block of the PROJECTS page specifically (proj-3)
+      // NOT the last block of the entire document
+      const lastProjectBlock = page.locator('div.block[data-block-id="proj-3"]');
+      await enterEditModeOn(page, lastProjectBlock);
       await setCursorPosition(page, 'end');
 
-      // Try to navigate down past last block
+      // Try to navigate down past last block of current page
       await pressKeyOnContentEditable(page, 'ArrowDown');
       await page.waitForTimeout(100);
 
-      // Should stay on same block (no-op at document boundary)
+      // Should stay on proj-3 (no-op at page boundary)
+      // Should NOT jump to task-1 (first block of Tasks page)
       const currentBlockId = await page.evaluate(() => {
         const el = document.querySelector('[contenteditable]');
         return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
       });
 
-      expect(currentBlockId).toBe(lastBlockId);
+      expect(currentBlockId).toBe('proj-3');
+
+      // Verify we didn't jump to Tasks page
+      const stillOnProjectsPage = await page.evaluate(() => {
+        const db = window.DEBUG?.state?.();
+        return db?.nodes?.['session/ui']?.props?.['current-page'] === 'projects';
+      });
+      expect(stillOnProjectsPage).toBe(true);
+    });
+
+    test('arrow navigation up from first block stays at page boundary', async ({ page }) => {
+      // SPEC: Navigation should be page-scoped
+      // Navigate up from first block of Projects page should no-op
+      const firstProjectBlock = page.locator('div.block[data-block-id="proj-1"]');
+      await enterEditModeOn(page, firstProjectBlock);
+      await setCursorPosition(page, 'start');
+
+      // Try to navigate up past first block of current page
+      await pressKeyOnContentEditable(page, 'ArrowUp');
+      await page.waitForTimeout(100);
+
+      // Should stay on proj-1 (no-op at page boundary)
+      const currentBlockId = await page.evaluate(() => {
+        const el = document.querySelector('[contenteditable]');
+        return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      });
+
+      expect(currentBlockId).toBe('proj-1');
     });
 
     test.skip('vertical navigation respects zoom boundaries', async ({ page }) => {
-      // Zoom functionality not yet implemented
+      // TODO: Zoom functionality not yet implemented
+      // When implemented, test that zooming into a block makes that block the navigation root
     });
   });
 
@@ -182,16 +220,25 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(selectedCount).toBeGreaterThanOrEqual(2);
     });
 
-    test.skip('Shift+Click skips folded descendants', async ({ page }) => {
-      // TODO: Folding is implemented (via :toggle-fold intent) but not working in test environment
-      // The toggle icon click doesn't dispatch the intent properly in tests
-      // This needs investigation into test fixture setup and intent handler registration
-      // See src/components/block.cljs line 632 for fold implementation
+    test('Shift+Click skips folded descendants', async ({ page }) => {
+      // SPEC REQUIREMENT (§4.3): "Shift+Click between folded nodes → skips folded descendants; selection only spans visible nodes"
+      // CURRENT BEHAVIOR: Shift+Click DOES include folded children (regression described in spec)
+      // EXPECTED: This test should FAIL until §4.3 is implemented
+      // Implementation needed: Replace tree/doc-range with visibility-aware range helper
 
-      // Find and click the toggle icon (▾) to fold the parent block
+      // Fold proj-1 by clicking the toggle icon (▾)
       const toggleIcon = page.locator('div.block[data-block-id="proj-1"] > span').first();
       await toggleIcon.click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
+
+      // Verify children are actually hidden in DOM
+      const childrenHidden = await page.evaluate(() => {
+        const child1 = document.querySelector('[data-block-id="proj-1-1"]');
+        const child2 = document.querySelector('[data-block-id="proj-1-2"]');
+        // Children should either not exist in DOM or be hidden
+        return (!child1 && !child2) ||
+               (child1?.style?.display === 'none' && child2?.style?.display === 'none');
+      });
 
       // Select the parent block first by clicking its content
       const parentContent = page.locator('div.block[data-block-id="proj-1"] > span.content-view');
@@ -211,11 +258,16 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         );
         return {
           count: selected.length,
-          blockIds: selected.map(el => el.getAttribute('data-block-id'))
+          blockIds: selected.map(el => el.getAttribute('data-block-id')),
+          childrenInDom: {
+            'proj-1-1': !!document.querySelector('[data-block-id="proj-1-1"]'),
+            'proj-1-2': !!document.querySelector('[data-block-id="proj-1-2"]')
+          }
         };
       });
 
-      // Should select parent (proj-1) and proj-2, but NOT the folded children
+      // CRITICAL: Should select parent (proj-1) and proj-2, but NOT the folded children
+      // If this fails, it means the implementation doesn't respect fold state in selection
       expect(selection.count).toBe(2);
       expect(selection.blockIds).toContain('proj-1');
       expect(selection.blockIds).toContain('proj-2');
