@@ -15,8 +15,7 @@
    - Predefined fixtures (empty-db, simple-tree)"
   (:require [kernel.db :as db]
             [kernel.transaction :as tx]
-            [kernel.intent :as intent]
-            #?@(:cljs [[dev.validation :as validation]])))
+            [kernel.intent :as intent]))
 
 ;; =============================================================================
 ;; Generic DB builders
@@ -136,12 +135,24 @@
      :root-id root
      :child-ids [a b]}))
 
+(defn sample-db
+  "Create a minimal database suitable for basic testing.
+   Uses generic make-db without kernel-specific root nodes."
+  []
+  (make-db {} {}))
+
+(defn sample-db-with-roots
+  "Create a database with kernel root nodes (:doc, :trash, :session).
+   This is the canonical database shape used by the kernel."
+  []
+  (db/empty-db))
+
 ;; =============================================================================
 ;; Enhanced Test Helpers
 ;; =============================================================================
 
-;; Enable validation in tests (ClojureScript only)
-#?(:cljs (validation/wrap-apply-intent-with-validation))
+;; Note: Validation is automatically enabled in dev.validation when running in browser
+;; Tests in Node.js environment don't use validation (it's a no-op stub)
 
 (defn make-blocks
   "Create blocks with sensible defaults. Returns db.
