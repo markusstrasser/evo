@@ -111,6 +111,9 @@
                          {:doc "Merge block with previous sibling, placing cursor at merge point.
 
                                 CRITICAL: Re-parents children of deleted block to prev block (Logseq behavior)."
+
+                          :fr/ids #{:fr.edit/backspace-merge}
+
                           :spec [:map [:type [:= :merge-with-prev]] [:block-id :string]]
                           :handler (fn [db {:keys [block-id]}]
                                      (let [prev-id (get-in db [:derived :prev-id-of block-id])

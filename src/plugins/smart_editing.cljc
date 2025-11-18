@@ -332,6 +332,8 @@
          - Checkbox → Continue checkbox pattern
          - Plain text → Normal split"
 
+                          :fr/ids #{:fr.edit/smart-split}
+
                           :spec [:map
                                  [:type [:= :context-aware-enter]]
                                  [:block-id :string]
