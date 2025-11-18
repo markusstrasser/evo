@@ -41,6 +41,27 @@
   [db]
   (get-in db [:nodes const/session-ui-id :props :zoom-root]))
 
+(defn- get-current-page
+  "Get the current active page ID."
+  [db]
+  (get-in db [:nodes const/session-ui-id :props :current-page]))
+
+(defn- active-outline-root
+  "Get the active outline root for navigation and rendering.
+
+   LOGSEQ PARITY: Determines which subtree is 'visible' for navigation.
+   Priority order:
+   1. Zoom root (when zoomed into a block)
+   2. Current page (when a page is selected)
+   3. Document root (fallback)
+
+   This ensures navigation stays within the rendered outline, preventing
+   arrow keys from jumping across pages or into hidden subtrees."
+  [db]
+  (or (get-zoom-root db)
+      (get-current-page db)
+      :doc))
+
 (defn- under-subtree?
   "Check if a node ID is under a given subtree root by walking parent chain.
    Returns true if the node is a descendant of subtree-root or IS subtree-root."
@@ -56,18 +77,23 @@
 
    Returns:
    - Empty vector if parent is folded (children hidden)
-   - Filtered children if zoom is active (only show in-scope descendants)
-   - All children otherwise"
-  [db parent-of parent-id zoom-root folded-set]
+   - Filtered children if outline root is active (only show in-scope descendants)
+   - All children otherwise
+
+   LOGSEQ PARITY: Respects current page as implicit zoom root (§4.1).
+   When on Projects page, navigation only sees Projects subtree."
+  [db parent-of parent-id outline-root folded-set]
   (let [children (get-in db [:children-by-parent parent-id] [])]
     (cond
       ;; Parent is folded → no visible children
       (contains? folded-set parent-id)
       []
 
-      ;; Zoom is active → filter out children not under zoom root
-      (and zoom-root (not= parent-id zoom-root))
-      (filterv #(under-subtree? parent-of zoom-root %) children)
+      ;; Outline scope is active (zoom or page) → filter out children not under outline root
+      (and outline-root
+           (not= outline-root :doc)  ; :doc means no scope restriction
+           (not= parent-id outline-root))
+      (filterv #(under-subtree? parent-of outline-root %) children)
 
       ;; Default → all children are visible
       :else
@@ -87,17 +113,20 @@
    because:
    1. Fold/zoom changes are rare (not on every keystroke)
    2. Index computation is O(n) where n = number of parents
-   3. Correctness > Performance (project philosophy)"
+   3. Correctness > Performance (project philosophy)
+
+   LOGSEQ PARITY: Uses active-outline-root (zoom → page → doc) to determine
+   visibility scope (§4.1)."
   [db]
   (let [parent-of (get-in db [:derived :parent-of])
-        zoom-root (get-zoom-root db)
+        outline-root (active-outline-root db)
         folded-set (get-folded-set db)
         all-parents (keys (:children-by-parent db))
 
         visible-children
         (into {}
               (map (fn [parent-id]
-                     [parent-id (compute-visible-children db parent-of parent-id zoom-root folded-set)])
+                     [parent-id (compute-visible-children db parent-of parent-id outline-root folded-set)])
                    all-parents))]
 
     {:visible-order {:by-parent visible-children}}))
