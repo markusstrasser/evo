@@ -65,6 +65,8 @@ bb lint                    # Run clj-kondo linter
 bb check                   # Lint + compile check (full quality gate)
 bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
 bb lint:e2e-keyboard       # Check E2E tests for problematic keyboard usage
+bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
+bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
 ```
 
 ### Cache & Index Management
@@ -110,6 +112,9 @@ src/shell/           # UI adapters: Replicant components
 src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Block refs, page refs, embeds
 src/components/      # Replicant UI components
+resources/specs.edn  # FR registry (44 functional requirements)
+dev/spec_registry.cljc  # FR loader + validation
+dev/test_scanner.cljc   # Test verification coverage scanner
 ```
 
 ### Transaction Pipeline
@@ -330,10 +335,16 @@ DB uses string IDs, not keywords:
 - Generate random operations, verify invariants hold
 - Test with multiple random seeds for coverage
 - Located in `test/` directory (`.cljc` files)
+- Tag tests with FR metadata: `(deftest ^{:fr/ids #{:fr.xxx/yyy}} ...)`
 
 ```clojure
 ;; Reproduce property test failure
 bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
+
+;; FR coverage tracking
+(require '[kernel.intent :as intent])
+(intent/full-audit)        # Show implementation + verification coverage
+(intent/coverage-summary)  # High-level metrics
 ```
 
 ### E2E Tests (Playwright)
