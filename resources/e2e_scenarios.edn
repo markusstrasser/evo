@@ -1,0 +1,6 @@
+{:navigation
+ {:projects {:first-block "proj-1"
+             :last-block "proj-3"
+             :first-child "proj-1-1"
+             :second-child "proj-1-2"
+             :adjacent-sibling "proj-2"}}}
