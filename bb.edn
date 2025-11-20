@@ -10,9 +10,16 @@
   lint {:doc "Run clj-kondo linter"
         :task (shell "clj-kondo --lint src test dev")}
 
-  check {:doc "Lint + compile check (full quality gate)"
+  format:check {:doc "Check Clojure code formatting (cljfmt)"
+                :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.12.0\"}}}' -M -m cljfmt.main check src test dev")}
+
+  format:fix {:doc "Fix Clojure code formatting (cljfmt)"
+              :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.12.0\"}}}' -M -m cljfmt.main fix src test dev")}
+
+  check {:doc "Lint + format check + compile check (full quality gate)"
          :task (do
                  (run 'lint)
+                 (run 'format:check)
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
   test {:doc "Compile + run the full shadow-cljs test suite"
@@ -54,6 +61,14 @@
 
   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
                      :task (shell "node scripts/lint-e2e-keyboard.js")}
+
+  lint:fr-tests {:doc "Report Functional Requirement ↔ test coverage (use -- --strict to fail on gaps)"
+                 :task (let [arg-str (when (seq *command-line-args*)
+                                       (str " " (str/join " " *command-line-args*)))]
+                         (shell (str "bb scripts/lint_fr_tests.clj" arg-str)))}
+
+  docs:verify {:doc "Verify all file references in docs/DX_INDEX.md exist"
+               :task (shell "bb scripts/verify-docs.clj")}
 
    ;; Architecture analysis
   arch-summary {:doc "Generate architecture overview"
@@ -178,7 +193,9 @@
                 (println "Available Babashka tasks:\n")
                 (println "Quality Gates:")
                 (println "  bb lint            - Run clj-kondo linter")
-                (println "  bb check           - Lint + compile check")
+                (println "  bb format:check    - Check Clojure code formatting")
+                (println "  bb format:fix      - Fix Clojure code formatting")
+                (println "  bb check           - Lint + format + compile check")
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
                 (println "  bb test:int        - Integration tests")
