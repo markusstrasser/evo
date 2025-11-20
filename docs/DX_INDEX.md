@@ -3,10 +3,10 @@
 Single landing page for humans and AI agents. Follow the lifecycle order below; each section lists canonical docs plus a short machine-readable map.
 
 ## Orientation
-- `README.md` – project quick start.
-- `EVO_ARCHITECTURE_ANALYSIS.md` – high-level system map.
-- `VISION.md` – product north star.
-- `source-auto-overview*.md` (generated each push; see workspace or CI artifacts) – latest automatic codebase snapshot.
+- `README.md` – project quick start + constraints.
+- `docs/START_HERE.md` – single-page onboarding runbook.
+- `VISION.md` – product north star and long-term bets.
+- `dev/overviews/` (auto-generated via `bb repomix`) – latest architecture snapshots when present.
 
 ## Rendering & Dispatch Core
 - `docs/RENDERING_AND_DISPATCH.md` – merged Replicant + Nexus reference (hiccup diffing, lifecycle, dispatch data, effects).
@@ -28,7 +28,7 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 - `docs/templates/TRIAD.md` – required sections for triad specs (Keymap slice, Intent contract, Scenario ledger, optional user story table).
 
 ```edn
-{:orientation ["README.md" "EVO_ARCHITECTURE_ANALYSIS.md" "VISION.md"]
+{:orientation ["README.md" "docs/START_HERE.md" "VISION.md"]
  :core ["docs/RENDERING_AND_DISPATCH.md"]
  :specs ["dev/specs/LOGSEQ_SPEC.md"
          "docs/specs/LOGSEQ_PARITY_EVO.md"

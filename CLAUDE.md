@@ -65,6 +65,7 @@ bb lint                    # Run clj-kondo linter
 bb check                   # Lint + compile check (full quality gate)
 bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
 bb lint:e2e-keyboard       # Check E2E tests for problematic keyboard usage
+bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fail on gaps)
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
 ```
@@ -113,6 +114,8 @@ src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Block refs, page refs, embeds
 src/components/      # Replicant UI components
 resources/specs.edn  # FR registry (44 functional requirements)
+resources/plugins.edn   # Declarative plugin manifest consumed by shell.plugin-manifest
+resources/demo-pages.edn# Blocks UI seed data (load via shell.demo-data)
 dev/spec_registry.cljc  # FR loader + validation
 dev/test_scanner.cljc   # Test verification coverage scanner
 ```
