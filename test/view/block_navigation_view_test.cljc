@@ -25,7 +25,8 @@
                 :depth 0
                 :on-intent (constantly nil)}))
 
-(deftest scenario-nav-boundary-left-01-view
+(deftest ^{:fr/ids #{:fr.nav/horizontal-boundary}}
+  scenario-nav-boundary-left-01-view
   ;; Scenario ID matches docs/specs/logseq_behaviors.md
   (let [db (nav-boundary-db)
         hiccup (render-block db "b")
