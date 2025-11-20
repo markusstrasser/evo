@@ -252,6 +252,29 @@ This guarantees one dispatch per event and keeps DOM-only facts close to the com
 - Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
 - For new behaviors, add Playwright coverage that asserts both DOM selection (`window.getSelection()`) and kernel selection state. Pure DB tests are not enough for cursor/selection bugs.
 
+### Text Selection Utilities
+
+Use `util.text-selection` for contenteditable DOM operations:
+
+```clojure
+;; ❌ WRONG: Using element->text for input/paste handlers
+(let [new-text (text-sel/element->text target)] ...)  ;; Adds trailing \n!
+
+;; ✅ CORRECT: Use textContent for simple text extraction
+(let [new-text (.-textContent target)] ...)
+
+;; ✅ CORRECT: Use element->text only for cursor positioning with make-range
+(text-sel/set-current-range! (text-sel/make-range node pos pos))
+```
+
+**Key functions**:
+- `element->text`: Converts contenteditable to plain text with trailing newline (for DOM traversal)
+- `get-position`: Returns cursor position info (`:position`, `:extent`, `:line`)
+- `make-range`: Creates DOM Range for cursor positioning
+- Use **`textContent`** for input handlers, **`element->text`** only with `make-range`
+
+See `src/util/text_selection.cljs` for full API.
+
 ### Move "Climb" Semantics (Logseq Parity)
 
 **Mod+Shift+Up/Down** implements boundary-aware "climb" behavior:
