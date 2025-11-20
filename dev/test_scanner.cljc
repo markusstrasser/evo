@@ -24,35 +24,39 @@
 (defn scan-tests-for-frs
   "Scan all test namespaces and extract FR citations from metadata.
 
-   Returns:
-     {:verified-frs #{:fr.nav/... :fr.edit/...}  ; Set of all FRs with test coverage
-      :test-count 10                              ; Total tests with FR citations
-      :tests-by-fr {:fr.nav/... #{'test-name}}   ; Map of FR -> test names
-      :uncited-test-count 42}                     ; Tests without FR citations"
+   Returns map with keys:
+   - :verified-frs        => set of FR IDs referenced by tests
+   - :test-count          => number of tests that cite FRs
+   - :tests-by-fr         => map FR -> set of test symbols
+   - :uncited-tests       => set of tests missing :fr/ids
+   - :uncited-test-count  => count of uncited tests
+   - :total-tests         => total number of discovered tests"
   []
   (let [test-vars (get-test-vars)
-        total-tests (count test-vars)]
-    (reduce
-     (fn [acc test-var]
-       (let [m (meta test-var)
-             test-name (:name m)
-             fr-ids (:fr/ids m)]
-         (if (seq fr-ids)
-           (-> acc
-               (update :verified-frs into fr-ids)
-               (update :test-count inc)
-               (update :tests-by-fr
-                       (fn [by-fr]
-                         (reduce (fn [m fr-id]
-                                   (update m fr-id (fnil conj #{}) test-name))
-                                 by-fr
-                                 fr-ids))))
-           acc)))
-     {:verified-frs #{}
-      :test-count 0
-      :tests-by-fr {}
-      :uncited-test-count total-tests}
-     test-vars)))
+        total-tests (count test-vars)
+        result (reduce (fn [acc test-var]
+                         (let [m (meta test-var)
+                               test-name (:name m)
+                               fr-ids (:fr/ids m)]
+                           (if (seq fr-ids)
+                             (-> acc
+                                 (update :verified-frs into fr-ids)
+                                 (update :test-count inc)
+                                 (update :tests-by-fr
+                                         (fn [by-fr]
+                                           (reduce (fn [m fr-id]
+                                                     (update m fr-id (fnil conj #{}) test-name))
+                                                   by-fr
+                                                   fr-ids))))
+                             (update acc :uncited-tests conj test-name))))
+                       {:verified-frs #{}
+                        :test-count 0
+                        :tests-by-fr {}
+                        :uncited-tests #{}}
+                       test-vars)]
+    (-> result
+        (assoc :total-tests total-tests)
+        (assoc :uncited-test-count (count (:uncited-tests result))))))
 
 (defn verification-coverage
   "Calculate verification coverage percentage.
