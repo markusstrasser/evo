@@ -666,7 +666,7 @@
                                            (when (not= cursor-pos last-applied)
                                              (try
                                                ;; Use robust text selection utilities for cursor positioning
-                                               (let [text-content (text-sel/element->text node)
+                                               (let [text-content (.-textContent node)
                                                      text-length (count text-content)
                                                      pos (cond
                                                            (= cursor-pos :start) 0
@@ -690,8 +690,8 @@
                                        (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
                           (let [target (.-target e)
-                                ;; Use robust text extraction that handles BR elements and text nodes
-                                new-text (text-sel/element->text target)
+                                ;; Use textContent for input handler (don't want trailing newline)
+                                new-text (.-textContent target)
                                 ;; Get cursor position using robust utilities
                                 position-info (text-sel/get-position target)
                                 cursor-pos (:position position-info)
