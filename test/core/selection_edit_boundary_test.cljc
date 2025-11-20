@@ -71,7 +71,8 @@
           (is (= initial-ui (:ui db1))
               ":clear-selection must not modify :ui"))))))
 
-(deftest editing-intents-dont-touch-selection
+(deftest ^{:fr/ids #{:fr.selection/edit-view-exclusive}}
+  editing-intents-dont-touch-selection
   (testing "Editing intents preserve selection state (structural boundary)"
     (let [db0 (-> (setup-db-with-blocks)
                   (api/dispatch {:type :selection :mode :replace :ids "b"})
@@ -112,7 +113,8 @@
           (is (= initial-focus (q/focus db1))
               ":update-cursor-state must not modify focus"))))))
 
-(deftest navigation-intents-dont-touch-ui
+(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+  navigation-intents-dont-touch-ui
   (testing "Navigation intents preserve :ui state (only modify selection focus)"
     (let [db0 (setup-db-with-blocks)
           initial-ui {:editing-block-id "a"
@@ -140,7 +142,8 @@
           (is (= "b" (q/focus db1))
               ":select-next-sibling should update focus to next block"))))))
 
-(deftest structural-intents-respect-boundaries
+(deftest ^{:fr/ids #{:fr.struct/indent-outdent}}
+  structural-intents-respect-boundaries
   (testing "Structural intents may set focus after creation, but never touch :ui"
     (let [db0 (-> (setup-db-with-blocks)
                   (api/dispatch {:type :selection :mode :replace :ids "a"})

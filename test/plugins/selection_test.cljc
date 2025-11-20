@@ -91,7 +91,8 @@
       (is (not (q/selected? db' "b")))
       (is (q/selected? db' "c")))))
 
-(deftest extend-selection-test
+(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+  extend-selection-test
   (testing "Extend selection selects range between anchor and focus"
     (let [db (build-doc)
           db' (-> db
@@ -132,7 +133,8 @@
 
 ;; ── Selection navigation tests ────────────────────────────────────────────────
 
-(deftest select-next-sibling-test
+(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+  select-next-sibling-test
   (testing "Select next sibling replaces selection"
     (let [db (build-doc)
           db' (-> db
@@ -149,7 +151,8 @@
       (is (= #{"c"} (q/selection db'))
           "Selection should stay on 'c' (last child)"))))
 
-(deftest select-prev-sibling-test
+(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+  select-prev-sibling-test
   (testing "Select previous sibling replaces selection"
     (let [db (build-doc)
           db' (-> db
@@ -189,7 +192,8 @@
       (is (= #{"a" "d"} (q/selection db'))
           "Selection should remain unchanged when parents differ"))))
 
-(deftest select-all-siblings-test
+(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+  select-all-siblings-test
   (testing "Select all siblings of current selection"
     (let [db (build-doc)
           db' (-> db

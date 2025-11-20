@@ -35,7 +35,8 @@
 
 ;; ── Smart Backspace ────────────────────────────────────────────────────────────
 
-(deftest test-smart-backspace-with-prev-sibling
+(deftest ^{:fr/ids #{:fr.edit/backspace-merge}}
+  test-smart-backspace-with-prev-sibling
   (testing "Delete block, select previous sibling"
     (let [db (sample-blocks-db)
 
@@ -56,7 +57,8 @@
       ;; For now, just verify ops were generated
       (is (pos? (count ops))))))
 
-(deftest test-smart-backspace-first-child
+(deftest ^{:fr/ids #{:fr.edit/backspace-merge}}
+  test-smart-backspace-first-child
   (testing "Delete first child, select parent"
     (let [db (sample-blocks-db)
 
@@ -75,7 +77,8 @@
       ;; TODO: Verify parent "a" is selected
       (is (pos? (count ops))))))
 
-(deftest test-smart-backspace-single-block
+(deftest ^{:fr/ids #{:fr.edit/backspace-merge}}
+  test-smart-backspace-single-block
   (testing "Delete only block under parent"
     (let [db (sample-blocks-db)
 
@@ -96,7 +99,8 @@
 
 ;; ── Paste Multi-Line ───────────────────────────────────────────────────────────
 
-(deftest test-paste-lines-multiple
+(deftest ^{:fr/ids #{:fr.clipboard/paste-multiline}}
+  test-paste-lines-multiple
   (testing "Paste creates multiple blocks"
     (let [db (sample-blocks-db)
 
@@ -124,7 +128,8 @@
           (is (= "Line 2" (get-in (:db result) [:nodes (nth new-ids 1) :props :text])))
           (is (= "Line 3" (get-in (:db result) [:nodes (nth new-ids 2) :props :text]))))))))
 
-(deftest test-paste-lines-single
+(deftest ^{:fr/ids #{:fr.clipboard/paste-multiline}}
+  test-paste-lines-single
   (testing "Paste single line creates one block"
     (let [db (sample-blocks-db)
 
@@ -146,7 +151,8 @@
         (is (= "Single line"
                (get-in (:db result) [:nodes (first children-a) :props :text])))))))
 
-(deftest test-paste-lines-empty
+(deftest ^{:fr/ids #{:fr.clipboard/paste-multiline}}
+  test-paste-lines-empty
   (testing "Paste empty lines creates no blocks"
     (let [db (sample-blocks-db)
 
@@ -168,7 +174,8 @@
 
 ;; ── Insert Block ───────────────────────────────────────────────────────────────
 
-(deftest test-insert-block-basic
+(deftest ^{:fr/ids #{:fr.struct/create-sibling}}
+  test-insert-block-basic
   (testing "Insert creates and places block"
     (let [db (sample-blocks-db)
 
@@ -190,7 +197,8 @@
         (is (= "New block"
                (get-in (:db result) [:nodes new-id :props :text])))))))
 
-(deftest test-insert-block-after
+(deftest ^{:fr/ids #{:fr.struct/create-sibling}}
+  test-insert-block-after
   (testing "Insert after specific block"
     (let [db (sample-blocks-db)
 

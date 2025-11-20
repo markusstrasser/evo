@@ -93,7 +93,8 @@
 
 ;; ── Navigate with cursor memory intent tests ──────────────────────────────────
 
-(deftest navigate-down-with-cursor-memory-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-down-with-cursor-memory-test
   (testing "Navigate down preserves cursor column position"
     (let [db (sample-db)
           result (intent/apply-intent db {:type :navigate-with-cursor-memory
@@ -116,7 +117,8 @@
       ;; KEY TEST: Cursor at same column (after "foo ba")
       (is (= 6 (get-in (:ops result) [2 :props :cursor-position]))))))
 
-(deftest navigate-up-with-cursor-memory-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-up-with-cursor-memory-test
   (testing "Navigate up preserves cursor column position"
     (let [db (sample-db)
           result (intent/apply-intent db {:type :navigate-with-cursor-memory
@@ -134,7 +136,8 @@
       ;; Cursor at position 4 (after "hell")
       (is (= 4 (get-in (:ops result) [2 :props :cursor-position]))))))
 
-(deftest navigate-up-target-shorter-goes-to-end-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-up-target-shorter-goes-to-end-test
   (testing "Arrow up with short target block goes to end"
     (let [db (-> (DB/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hi"}}
@@ -151,7 +154,8 @@
       ;; Target "hi" is only 2 chars, cursor should be at end
       (is (= :end (get-in (:ops result) [2 :props :cursor-position]))))))
 
-(deftest navigate-with-empty-block-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-with-empty-block-test
   (testing "Navigate from empty block"
     (let [db (-> (DB/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hello"}}
@@ -174,7 +178,8 @@
       ;; Cursor should be at start of target (position 0)
       (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
 
-(deftest navigate-to-empty-block-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-to-empty-block-test
   (testing "Navigate to empty block"
     (let [db (-> (DB/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hello"}}
@@ -191,7 +196,8 @@
       ;; Target is empty, cursor should be at start (0)
       (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
 
-(deftest navigate-no-sibling-throws-test
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-no-sibling-throws-test
   (testing "Arrow navigation with no sibling returns no-op (Logseq behavior)"
     (let [db (-> (DB/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "only block"}}
