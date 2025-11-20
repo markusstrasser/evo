@@ -5,6 +5,7 @@
    - Plugins provide getters and extend intent multimethods
    - Components use getters and dispatch intents
    - App just composes components and routes intents"
+  (:require-macros [shell.plugin-manifest :refer [require-specs]])
   (:require [replicant.dom :as d]
             [kernel.db :as DB]
             [kernel.api :as api]
@@ -19,17 +20,10 @@
             [dataspex.core :as dataspex]
             [dev.tooling :as dev]
             [shell.nexus :as nexus]
-            [plugins.selection]
-            [plugins.editing]
-            [plugins.clipboard] ;; Load to register paste/copy/cut intents
-            [plugins.navigation] ;; Load to register navigation intents (cursor memory)
-            [plugins.slash-commands] ;; Load to register slash command intents
-            [plugins.quick-switcher] ;; Load to register quick switcher intents
-            [plugins.struct]
-            [plugins.folding]
-            [plugins.smart-editing]
-            [plugins.text-formatting]
-            [plugins.visible-order] ;; Load to register :visible-order derived index
+            [shell.demo-data :as demo-data]
+            [shell.e2e-scenarios]
+            [shell.plugin-manifest-runtime :as plugin-manifest]
+            #?@(:clj [(shell.plugin-manifest/require-specs)])
             [plugins.pages :as pages] ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
@@ -44,6 +38,12 @@
     (js/console.log "TEST MODE CHECK - search:" search "has-param:" has-param)
     (boolean has-param)))
 
+(defn- devtools-enabled?
+  "Check if devtools UI should be shown (via ?devtools query param)"
+  []
+  (let [search (.-search js/location)]
+    (boolean (and search (>= (.indexOf search "devtools") 0)))))
+
 (defonce !db
   (atom
    (if (test-mode?)
@@ -52,53 +52,7 @@
          (H/record))
      ;; Normal mode: load demo content
      (-> (DB/empty-db)
-               ;; Create multiple pages with transclusion examples
-         (tx/interpret [;; ── Projects Page ──
-                        {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
-                        {:op :place :id "projects" :under :doc :at :last}
-                        {:op :create-node :id "proj-1" :type :block :props {:text "Evolver - Outliner Project"}}
-                        {:op :place :id "proj-1" :under "projects" :at :last}
-                        {:op :create-node :id "proj-1-1" :type :block :props {:text "Building a Logseq-inspired outliner"}}
-                        {:op :place :id "proj-1-1" :under "proj-1" :at :last}
-                        {:op :create-node :id "proj-1-2" :type :block :props {:text "Using event sourcing architecture"}}
-                        {:op :place :id "proj-1-2" :under "proj-1" :at :last}
-                        {:op :create-node :id "proj-2" :type :block :props {:text "Tech Stack: ClojureScript + Replicant"}}
-                        {:op :place :id "proj-2" :under "projects" :at :last}
-                        {:op :create-node :id "proj-3" :type :block :props {:text "See also: [[Tasks]] page for work items"}}
-                        {:op :place :id "proj-3" :under "projects" :at :last}
-
-                              ;; ── Tasks Page ──
-                        {:op :create-node :id "tasks" :type :page :props {:title "Tasks"}}
-                        {:op :place :id "tasks" :under :doc :at :last}
-                        {:op :create-node :id "task-1" :type :block :props {:text "Implement block embeds"}}
-                        {:op :place :id "task-1" :under "tasks" :at :last}
-                        {:op :create-node :id "task-1-1" :type :block :props {:text "Parse embed syntax"}}
-                        {:op :place :id "task-1-1" :under "task-1" :at :last}
-                        {:op :create-node :id "task-1-2" :type :block :props {:text "Reference example: ((proj-2)) shows tech stack"}}
-                        {:op :place :id "task-1-2" :under "task-1" :at :last}
-                        {:op :create-node :id "task-1-3" :type :block :props {:text "Render full tree with children"}}
-                        {:op :place :id "task-1-3" :under "task-1" :at :last}
-                        {:op :create-node :id "task-2" :type :block :props {:text "Test embed here: {{embed ((proj-1))}}"}}
-                        {:op :place :id "task-2" :under "tasks" :at :last}
-                        {:op :create-node :id "task-3" :type :block :props {:text "Related project: [[Projects]]"}}
-                        {:op :place :id "task-3" :under "tasks" :at :last}
-
-                              ;; ── Notes Page ──
-                        {:op :create-node :id "notes" :type :page :props {:title "Notes"}}
-                        {:op :place :id "notes" :under :doc :at :last}
-                        {:op :create-node :id "note-1" :type :block :props {:text "Block reference example: ((proj-2))"}}
-                        {:op :place :id "note-1" :under "notes" :at :last}
-                        {:op :create-node :id "note-2" :type :block :props {:text "This refs a task inline: ((task-1))"}}
-                        {:op :place :id "note-2" :under "notes" :at :last}
-                        {:op :create-node :id "note-3" :type :block :props {:text "Navigate between: [[Projects]], [[Tasks]], [[Notes]]"}}
-                        {:op :place :id "note-3" :under "notes" :at :last}
-                        {:op :create-node :id "note-4" :type :block :props {:text "Full embed of task tree:"}}
-                        {:op :place :id "note-4" :under "notes" :at :last}
-                        {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
-                        {:op :place :id "note-4-1" :under "note-4" :at :last}
-
-                              ;; Set initial current page to Projects
-                        {:op :update-node :id "session/ui" :props {:current-page "projects"}}])
+         (tx/interpret demo-data/ops)
          :db
          (H/record))))) ;; Record initial state for undo
 
@@ -415,7 +369,9 @@
          [:p "Select a page from the sidebar to begin"]])
 
       ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
-      (devtools/DevToolsPanel {:db db})
+      ;; Auto-show when ?devtools query param present
+      (when (devtools-enabled?)
+        (devtools/DevToolsPanel {:db db}))
 
       ;; Hotkeys reference
       (HotkeysReference)]]))
@@ -460,6 +416,8 @@
 
   ;; Initialize Nexus action pipeline
   (nexus/init!)
+
+  (js/console.log "Registered plugins:" (clj->js plugin-manifest/manifest))
 
   ;; Enable lifecycle hooks + Nexus dispatch
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
