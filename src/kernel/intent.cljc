@@ -334,18 +334,18 @@
         ;; Get verification coverage from tests
         ;; Note: Test scanner is only available in dev/test environments
         ;; Production builds or non-test contexts will show zero verification coverage
-        test-scan (try
-                    ;; Try to resolve dev.test-scanner/scan-tests-for-frs function
-                    ;; This will only work if the namespace is already loaded (dev/test context)
-                    (if-let [scan-fn (resolve 'dev.test-scanner/scan-tests-for-frs)]
-                      (scan-fn)
-                      ;; Function not available (prod build or namespace not loaded)
-                      {:verified-frs #{}
-                       :tests-by-fr {}})
-                    (catch #?(:clj Exception :cljs js/Error) _
-                      ;; Fallback for any resolution errors
-                      {:verified-frs #{}
-                       :tests-by-fr {}}))
+        test-scan #?(:clj (try
+                           ;; Try to resolve dev.test-scanner/scan-tests-for-frs function
+                           ;; This will only work if the namespace is already loaded (dev/test context)
+                           (if-let [scan-fn (resolve 'dev.test-scanner/scan-tests-for-frs)]
+                             (scan-fn)
+                             {:verified-frs #{}
+                              :tests-by-fr {}})
+                           (catch Exception _
+                             {:verified-frs #{}
+                              :tests-by-fr {}}))
+                      :cljs {:verified-frs #{}
+                             :tests-by-fr {}})
         verified-frs (:verified-frs test-scan)
         tests-by-fr (:tests-by-fr test-scan)
 
