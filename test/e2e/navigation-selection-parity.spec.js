@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { pressKeyOnContentEditable, pressKeyCombo } from './helpers/keyboard.js';
 import { setCursorPosition as setExactCursor } from './helpers/cursor.js';
 
+let navIds;
+
 /**
  * LOGSEQ_PARITY_REGRESSIONS.md §4.1-4.4: Navigation & Selection Scope Fixes
  *
@@ -45,6 +47,16 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     await page.goto('http://localhost:8080/');
     // Wait for blocks to render (they start in view mode, not edit mode)
     await page.waitForSelector('[data-block-id]');
+    navIds = await page.evaluate(() => {
+      const proj = window.__E2E_SCENARIOS?.navigation?.projects;
+      return {
+        first: proj?.['first-block'] ?? 'proj-1',
+        last: proj?.['last-block'] ?? 'proj-3',
+        firstChild: proj?.['first-child'] ?? 'proj-1-1',
+        secondChild: proj?.['second-child'] ?? 'proj-1-2',
+        sibling: proj?.['adjacent-sibling'] ?? 'proj-2'
+      };
+    });
   });
 
   test.describe('§4.1: Navigation Scope Isolation', () => {
@@ -70,7 +82,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Find the last block of the PROJECTS page specifically (proj-3)
       // NOT the last block of the entire document
-      const lastProjectBlock = page.locator('div.block[data-block-id="proj-3"]');
+      const lastProjectBlock = page.locator(`div.block[data-block-id="${navIds.last}"]`);
       await enterEditModeOn(page, lastProjectBlock);
       await setCursorPosition(page, 'end');
 
@@ -85,7 +97,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
       });
 
-      expect(currentBlockId).toBe('proj-3');
+      expect(currentBlockId).toBe(navIds.last);
 
       // Verify we didn't jump to Tasks page
       const stillOnProjectsPage = await page.evaluate(() => {
@@ -98,7 +110,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     test('arrow navigation up from first block stays at page boundary', async ({ page }) => {
       // SPEC: Navigation should be page-scoped
       // Navigate up from first block of Projects page should no-op
-      const firstProjectBlock = page.locator('div.block[data-block-id="proj-1"]');
+      const firstProjectBlock = page.locator(`div.block[data-block-id="${navIds.first}"]`);
       await enterEditModeOn(page, firstProjectBlock);
       await setCursorPosition(page, 'start');
 
@@ -112,7 +124,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
       });
 
-      expect(currentBlockId).toBe('proj-1');
+      expect(currentBlockId).toBe(navIds.first);
     });
 
     test.skip('vertical navigation respects zoom boundaries', async ({ page }) => {
@@ -151,7 +163,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     test('Left arrow from second child navigates to first child at end', async ({ page }) => {
       // This tests horizontal navigation between siblings (child-to-child)
       // Start at second child
-      const secondChild = page.locator('div.block[data-block-id="proj-1-2"]');
+      const secondChild = page.locator(`div.block[data-block-id="${navIds.secondChild}"]`);
       await enterEditModeOn(page, secondChild);
       await setCursorPosition(page, 'start');
 
@@ -171,7 +183,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       });
 
       // Should be in first child at end position
-      expect(result.blockId).toBe('proj-1-1');
+      expect(result.blockId).toBe(navIds.firstChild);
       expect(result.text).toContain('Building');
       expect(result.cursorPos).toBe(result.textLength); // At end
     });
@@ -227,32 +239,31 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       // Implementation needed: Replace tree/doc-range with visibility-aware range helper
 
       // Fold proj-1 by clicking the toggle icon (▾)
-      const toggleIcon = page.locator('div.block[data-block-id="proj-1"] > span').first();
+      const toggleIcon = page.locator(`div.block[data-block-id="${navIds.first}"] > span`).first();
       await toggleIcon.click();
       await page.waitForTimeout(300);
 
       // Verify children are actually hidden in DOM
-      const childrenHidden = await page.evaluate(() => {
-        const child1 = document.querySelector('[data-block-id="proj-1-1"]');
-        const child2 = document.querySelector('[data-block-id="proj-1-2"]');
-        // Children should either not exist in DOM or be hidden
+      const childrenHidden = await page.evaluate((ids) => {
+        const child1 = document.querySelector(`[data-block-id="${ids.firstChild}"]`);
+        const child2 = document.querySelector(`[data-block-id="${ids.secondChild}"]`);
         return (!child1 && !child2) ||
                (child1?.style?.display === 'none' && child2?.style?.display === 'none');
-      });
+      }, navIds);
 
       // Select the parent block first by clicking its content
-      const parentContent = page.locator('div.block[data-block-id="proj-1"] > span.content-view');
+      const parentContent = page.locator(`div.block[data-block-id="${navIds.first}"] > span.content-view`);
       await parentContent.click();
       await page.waitForTimeout(100);
 
       // Shift+Click from the folded parent to a later block
       await page.keyboard.down('Shift');
-      await page.locator('div.block[data-block-id="proj-2"]').click();
+      await page.locator(`div.block[data-block-id="${navIds.sibling}"]`).click();
       await page.keyboard.up('Shift');
       await page.waitForTimeout(100);
 
       // Count selected blocks - should NOT include the hidden children
-      const selection = await page.evaluate(() => {
+      const selection = await page.evaluate((ids) => {
         const selected = Array.from(
           document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]')
         );
@@ -260,20 +271,20 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           count: selected.length,
           blockIds: selected.map(el => el.getAttribute('data-block-id')),
           childrenInDom: {
-            'proj-1-1': !!document.querySelector('[data-block-id="proj-1-1"]'),
-            'proj-1-2': !!document.querySelector('[data-block-id="proj-1-2"]')
+            first: !!document.querySelector(`[data-block-id="${ids.firstChild}"]`),
+            second: !!document.querySelector(`[data-block-id="${ids.secondChild}"]`)
           }
         };
-      });
+      }, navIds);
 
       // CRITICAL: Should select parent (proj-1) and proj-2, but NOT the folded children
       // If this fails, it means the implementation doesn't respect fold state in selection
       expect(selection.count).toBe(2);
-      expect(selection.blockIds).toContain('proj-1');
-      expect(selection.blockIds).toContain('proj-2');
+      expect(selection.blockIds).toContain(navIds.first);
+      expect(selection.blockIds).toContain(navIds.sibling);
       // Should NOT contain the folded children
-      expect(selection.blockIds).not.toContain('proj-1-1');
-      expect(selection.blockIds).not.toContain('proj-1-2');
+      expect(selection.blockIds).not.toContain(navIds.firstChild);
+      expect(selection.blockIds).not.toContain(navIds.secondChild);
     });
   });
 
@@ -357,12 +368,12 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   test.describe('Integration: Combined Behaviors', () => {
     test('Shift+Click creates range selection between blocks', async ({ page }) => {
       // Click first block to select it
-      await page.locator('div.block[data-block-id="proj-1-1"]').click();
+      await page.locator(`div.block[data-block-id="${navIds.firstChild}"]`).click();
       await page.waitForTimeout(50);
 
       // Shift+Click on a later block to create range selection
       await page.keyboard.down('Shift');
-      await page.locator('div.block[data-block-id="proj-2"]').click();
+      await page.locator(`div.block[data-block-id="${navIds.sibling}"]`).click();
       await page.keyboard.up('Shift');
       await page.waitForTimeout(100);
 
@@ -375,7 +386,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
     test('selection extension with Shift+Arrow spans multiple blocks', async ({ page }) => {
       // Enter edit mode on first child block
-      const firstChild = page.locator('div.block[data-block-id="proj-1-1"]');
+      const firstChild = page.locator(`div.block[data-block-id="${navIds.firstChild}"]`);
       await enterEditModeOn(page, firstChild);
       await setCursorPosition(page, 'end');
 
