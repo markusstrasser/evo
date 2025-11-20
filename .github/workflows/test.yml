@@ -35,11 +35,20 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
-      - name: Run linter
-        run: bb lint
+      - name: Quality gate (lint + compile check)
+        run: bb check
 
-      - name: Compile check
-        run: npx shadow-cljs compile anki
+      - name: Lint JavaScript/TypeScript
+        run: npm run lint:js
+
+      - name: Check FR coverage
+        run: bb lint:fr-tests -- --strict
+
+      - name: Verify scenario coverage
+        run: bb lint:scenarios
+
+      - name: Verify documentation references
+        run: bb docs:verify
 
       - name: Run tests
         run: bb test
