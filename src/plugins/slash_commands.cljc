@@ -195,6 +195,7 @@
                          {:doc "Open slash command menu.
          
          Triggered when / is typed at start or after whitespace."
+                          :fr/ids #{:fr.ui/slash-palette}
                           :spec [:map
                                  [:type [:= :slash-menu/open]]
                                  [:block-id :string]
@@ -211,6 +212,7 @@
 
 (intent/register-intent! :slash-menu/update-search
                          {:doc "Update slash menu search query and filter results."
+                          :fr/ids #{:fr.ui/slash-filter}
                           :spec [:map
                                  [:type [:= :slash-menu/update-search]]
                                  [:block-id :string]
@@ -232,6 +234,7 @@
 
 (intent/register-intent! :slash-menu/next
                          {:doc "Select next command in menu (Down / Ctrl+N)."
+                          :fr/ids #{:fr.ui/slash-navigate}
                           :spec [:map [:type [:= :slash-menu/next]]]
                           :handler
                           (fn [db _]
@@ -245,6 +248,7 @@
 
 (intent/register-intent! :slash-menu/prev
                          {:doc "Select previous command in menu (Up / Ctrl+P)."
+                          :fr/ids #{:fr.ui/slash-navigate}
                           :spec [:map [:type [:= :slash-menu/prev]]]
                           :handler
                           (fn [db _]
@@ -258,6 +262,7 @@
 
 (intent/register-intent! :slash-menu/select
                          {:doc "Select current command and execute it (Enter)."
+                          :fr/ids #{:fr.ui/slash-select}
                           :spec [:map [:type [:= :slash-menu/select]]]
                           :handler
                           (fn [db _]
@@ -270,6 +275,7 @@
 
 (intent/register-intent! :slash-menu/close
                          {:doc "Close slash menu without selecting (Esc)."
+                          :fr/ids #{:fr.ui/slash-close}
                           :spec [:map [:type [:= :slash-menu/close]]]
                           :handler
                           (fn [db _]
