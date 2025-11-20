@@ -1,46 +1,129 @@
 (ns dev.tooling
-  "Minimal dev tooling stub.
+  "Developer-visible logging helpers consumed by components.devtools.
 
-   The full dev.tooling namespace was removed in consolidation,
-   but some files still reference log-dispatch! for intent logging.
-   This stub provides the minimum needed for compilation."
-  (:require [clojure.pprint :as pprint]))
+   Stores a rolling log of dispatches (intent, DB before/after, optional hotkey)
+   so humans/agents can inspect ops without leaving the browser."
+  (:require [clojure.data :as data]
+            [clojure.pprint :as pprint]
+            [clojure.string :as str]
+            [kernel.constants :as const]))
+
+(def ^:const max-entries 200)
+(defonce !log (atom []))
+
+(defn- summarize-db [db]
+  (let [nodes (:nodes db)
+        pages (keep (fn [[id {:keys [type]}]]
+                      (when (= type :page) id))
+                    nodes)
+        selection (get-in db [:nodes const/session-selection-id :props :nodes] #{})
+        editing (get-in db [:nodes const/session-ui-id :props :editing-block-id])]
+    {:node-count (count nodes)
+     :page-count (count pages)
+     :selection-count (count selection)
+     :selection selection
+     :editing editing}))
+
+(defn- clip-log [entries]
+  (->> entries
+       (take-last max-entries)
+       vec))
 
 (defn log-dispatch!
-  "Stub for intent dispatch logging.
-   Does nothing - full logging was consolidated into debugging skills."
+  "Record an intent dispatch with before/after DB snapshots.
+   Returns nil so callers can thread through swap!/effect code."
   ([intent db-before db-after]
-   nil)
+   (log-dispatch! intent db-before db-after nil))
   ([intent db-before db-after hotkey]
-   nil))
-
-;; Stubs for missing functions used by devtools component
+   (let [entry {:intent intent
+                :hotkey hotkey
+                :timestamp (js/Date.now)
+                :db-before db-before
+                :db-after db-after
+                :summary {:before (summarize-db db-before)
+                          :after (summarize-db db-after)}}]
+     (swap! !log (fn [entries]
+                   (clip-log (conj entries entry))))
+     nil)))
 
 (defn format-intent [intent]
-  (str (:type intent)))
+  (cond
+    (keyword? intent) (name intent)
+    (and (map? intent) (:type intent)) (name (:type intent))
+    :else (pr-str intent)))
 
 (defn copy-to-clipboard! [text]
   (when (and (exists? js/navigator)
              (exists? js/navigator.clipboard))
-    (.writeText js/navigator.clipboard text)))
+    (.writeText js/navigator.clipboard (str text))))
 
-(defn format-entry-with-diff [entry current-page-id]
-  (with-out-str (pprint/pprint entry)))
+(defn- delta-summary [{:keys [before after]}]
+  {:nodes (- (:node-count after) (:node-count before))
+   :pages (- (:page-count after) (:page-count before))
+   :selection (- (:selection-count after) (:selection-count before))})
+
+(defn format-entry-with-diff [{:keys [intent hotkey timestamp summary db-before db-after]} current-page-id]
+  (with-out-str
+    (pprint/pprint
+     {:intent intent
+      :hotkey hotkey
+      :timestamp timestamp
+      :page current-page-id
+      :delta (delta-summary summary)
+      :editing-before (get-in db-before [:nodes const/session-ui-id :props :editing-block-id])
+      :editing-after (get-in db-after [:nodes const/session-ui-id :props :editing-block-id])
+      :selection-before (get-in db-before [:nodes const/session-selection-id :props :nodes])
+      :selection-after (get-in db-after [:nodes const/session-selection-id :props :nodes])})))
 
 (defn get-log []
-  [])
+  @!log)
 
 (defn format-full-log []
-  "Log not available")
+  (->> @!log
+       (map #(format-entry-with-diff % nil))
+       (str/join "\n")))
 
 (defn clear-log! []
+  (reset! !log [])
   nil)
+
+(defn- block->snapshot [db id]
+  (let [node (get-in db [:nodes id])
+        children (get-in db [:children-by-parent id] [])]
+    {:id id
+     :type (:type node)
+     :text (or (get-in node [:props :title])
+               (get-in node [:props :text]))
+     :children (map #(block->snapshot db %) children)}))
 
 (defn extract-hiccup-tree [db page-id]
-  nil)
+  (let [root (or page-id :doc)
+    children (get-in db [:children-by-parent root] [])]
+    (map #(block->snapshot db %) children)))
 
 (defn format-hiccup-diff [before after]
-  "Diff not available")
+  (cond
+    (and before after)
+    (with-out-str
+      (println "--- BEFORE ---")
+      (pprint/pprint before)
+      (println "--- AFTER ---")
+      (pprint/pprint after))
+
+    before
+    (with-out-str
+      (println "--- BEFORE ---")
+      (pprint/pprint before))
+
+    after
+    (with-out-str
+      (println "--- AFTER ---")
+      (pprint/pprint after))
+
+    :else
+    "No DOM snapshot available"))
 
 (defn format-state-snapshot [db]
-  (str (count (:nodes db)) " nodes"))
+  (let [{:keys [node-count page-count editing selection-count]} (summarize-db db)
+        editing-text (or editing "—")]
+    (str node-count " nodes | " page-count " pages | editing=" editing-text " | selection=" selection-count)))

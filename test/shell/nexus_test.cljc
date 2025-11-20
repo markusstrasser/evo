@@ -28,7 +28,8 @@
 
 ;; ── Action Purity Tests ───────────────────────────────────────────────────────
 
-(deftest navigate-up-is-pure
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-up-is-pure
   (testing "navigate-up action is pure (same input → same output)"
     (let [state (sample-db)
           payload {:block-id "b" :cursor-row :first}
@@ -37,7 +38,8 @@
       (is (= result1 result2)
           "Multiple calls with same args should return identical results"))))
 
-(deftest navigate-down-is-pure
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-down-is-pure
   (testing "navigate-down action is pure"
     (let [state (sample-db)
           payload {:block-id "b" :cursor-row :last}
@@ -45,7 +47,8 @@
           result2 (nexus/navigate-down state payload)]
       (is (= result1 result2)))))
 
-(deftest extend-selection-prev-is-pure
+(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+  extend-selection-prev-is-pure
   (testing "extend-selection-prev action is pure"
     (let [state (sample-db)
           payload {:block-id "b" :direction :backward}
@@ -53,7 +56,8 @@
           result2 (nexus/extend-selection-prev state payload)]
       (is (= result1 result2)))))
 
-(deftest extend-selection-next-is-pure
+(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+  extend-selection-next-is-pure
   (testing "extend-selection-next action is pure"
     (let [state (sample-db)
           payload {:block-id "b" :direction :forward}
@@ -61,7 +65,8 @@
           result2 (nexus/extend-selection-next state payload)]
       (is (= result1 result2)))))
 
-(deftest smart-split-is-pure
+(deftest ^{:fr/ids #{:fr.edit/smart-split}}
+  smart-split-is-pure
   (testing "smart-split action is pure"
     (let [state (sample-db)
           payload {:block-id "b" :cursor-pos 5}
@@ -79,7 +84,8 @@
 
 ;; ── Action Structure Tests ────────────────────────────────────────────────────
 
-(deftest navigate-up-returns-valid-effects
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-up-returns-valid-effects
   (testing "navigate-up returns list of valid effects"
     (let [state (sample-db)
           result (nexus/navigate-up state {:block-id "b" :cursor-row :first})]
@@ -90,7 +96,8 @@
       (is (some #(= :effects/log-devtools (first %)) result)
           "Should include log-devtools effect"))))
 
-(deftest navigate-up-dispatches-correct-intent
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-up-dispatches-correct-intent
   (testing "navigate-up produces :navigate-with-cursor-memory intent"
     (let [state (sample-db)
           effects (nexus/navigate-up state {:block-id "b" :cursor-row :first})
@@ -102,7 +109,8 @@
       (is (= :up (:direction intent)) "Should set direction to :up")
       (is (= :first (:cursor-row intent)) "Should preserve cursor-row"))))
 
-(deftest navigate-down-dispatches-correct-intent
+(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+  navigate-down-dispatches-correct-intent
   (testing "navigate-down produces :navigate-with-cursor-memory intent"
     (let [state (sample-db)
           effects (nexus/navigate-down state {:block-id "b" :cursor-row :last})
@@ -113,7 +121,8 @@
       (is (= :down (:direction intent)) "Should set direction to :down")
       (is (= :last (:cursor-row intent))))))
 
-(deftest extend-selection-prev-dispatches-correct-intent
+(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+  extend-selection-prev-dispatches-correct-intent
   (testing "extend-selection-prev produces :selection intent"
     (let [state (sample-db)
           effects (nexus/extend-selection-prev state {:block-id "b" :direction :backward})
@@ -123,7 +132,8 @@
       (is (= :extend (:mode intent)) "Should extend selection")
       (is (= :prev (:direction intent)) "Should extend upward"))))
 
-(deftest extend-selection-next-dispatches-correct-intent
+(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+  extend-selection-next-dispatches-correct-intent
   (testing "extend-selection-next produces :selection intent"
     (let [state (sample-db)
           effects (nexus/extend-selection-next state {:block-id "b" :direction :forward})
@@ -133,7 +143,8 @@
       (is (= :extend (:mode intent)))
       (is (= :next (:direction intent)) "Should extend downward"))))
 
-(deftest smart-split-dispatches-correct-intent
+(deftest ^{:fr/ids #{:fr.edit/smart-split}}
+  smart-split-dispatches-correct-intent
   (testing "smart-split produces :smart-split intent"
     (let [state (sample-db)
           effects (nexus/smart-split state {:block-id "b" :cursor-pos 5})
