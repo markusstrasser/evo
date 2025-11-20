@@ -12,7 +12,8 @@
             [plugins.slash-commands :as slash]
             [components.block-ref :as block-ref]
             [components.block-embed :as block-embed]
-            [components.page-ref :as page-ref]))
+            [components.page-ref :as page-ref]
+            [util.text-selection :as text-sel]))
 
 ;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
 
@@ -111,10 +112,8 @@
 (defn- has-text-selection?
   "Check if user has selected text within contenteditable."
   []
-  (let [selection (.getSelection js/window)]
-    (and selection
-         (not (.-isCollapsed selection))
-         (> (.-rangeCount selection) 0))))
+  (when-let [range (text-sel/get-current-range)]
+    (not (.-collapsed range))))
 
 (defn- ensure-block-selected!
   "Ensure the given block is the active selection anchor/focus before extending.
@@ -666,26 +665,21 @@
                                          (let [last-applied (aget node "__lastAppliedCursorPos")]
                                            (when (not= cursor-pos last-applied)
                                              (try
-                                               (let [range (.createRange js/document)
-                                                     sel (.getSelection js/window)
-                                                     text-node (.-firstChild node)]
-                                                 ;; Position cursor in the text node (only if text node exists)
-                                                 (when (and text-node (= (.-nodeType text-node) 3))
-                                                   (let [text-length (.-length text-node)
-                                                         pos (cond
-                                                               (= cursor-pos :start) 0
-                                                               (= cursor-pos :end) text-length
-                                                               (number? cursor-pos) (min cursor-pos text-length)
-                                                               :else text-length)]
-                                                     (.setStart range text-node pos)
-                                                     (.setEnd range text-node pos)
-                                                     (.removeAllRanges sel)
-                                                     (.addRange sel range)
-                                                     ;; Mark this cursor-pos as applied
-                                                     (aset node "__lastAppliedCursorPos" cursor-pos)
-                                                     ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
-                                                     ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
-                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))))
+                                               ;; Use robust text selection utilities for cursor positioning
+                                               (let [text-content (text-sel/element->text node)
+                                                     text-length (count text-content)
+                                                     pos (cond
+                                                           (= cursor-pos :start) 0
+                                                           (= cursor-pos :end) text-length
+                                                           (number? cursor-pos) (min cursor-pos text-length)
+                                                           :else text-length)]
+                                                 ;; Use make-range which handles complex DOM structures
+                                                 (text-sel/set-current-range! (text-sel/make-range node pos pos))
+                                                 ;; Mark this cursor-pos as applied
+                                                 (aset node "__lastAppliedCursorPos" cursor-pos)
+                                                 ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
+                                                 ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
+                                                 (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))
                                                (catch js/Error e
                                                  (js/console.error "Cursor positioning failed:" e))))
                                            ;; CRITICAL FIX: Always focus, even for empty blocks with no text node
@@ -696,9 +690,11 @@
                                        (update-mock-text! node (.-textContent node)))))
             :on {:input (fn [e]
                           (let [target (.-target e)
-                                new-text (.-textContent target)
-                                selection (.getSelection js/window)
-                                cursor-pos (.-anchorOffset selection)
+                                ;; Use robust text extraction that handles BR elements and text nodes
+                                new-text (text-sel/element->text target)
+                                ;; Get cursor position using robust utilities
+                                position-info (text-sel/get-position target)
+                                cursor-pos (:position position-info)
                                 slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])]
                             (update-mock-text! target new-text)
                             (on-intent {:type :update-content
@@ -721,8 +717,9 @@
                           (.preventDefault e)
                           (let [clipboard-data (.-clipboardData e)
                                 pasted-text (.getData clipboard-data "text/plain")
-                                selection (.getSelection js/window)
-                                cursor-pos (.-anchorOffset selection)]
+                                target (.-target e)
+                                position-info (text-sel/get-position target)
+                                cursor-pos (:position position-info)]
                             (on-intent {:type :paste-text
                                         :block-id block-id
                                         :cursor-pos cursor-pos
