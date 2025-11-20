@@ -2290,6 +2290,10 @@ Pick one intent (like `:indent`), add visual logging:
 - ✅ Integration tests cover full flows
 - ✅ Property tests verify invariants
 
+## Tooling & Automation
+
+- `bb lint:fr-tests` – reports which tests cite Functional Requirements via `:fr/ids` metadata. Pass `-- --strict` once the suite is fully annotated to fail the build when gaps remain.
+
 ## Summary
 
 **The core issue**: Unit tests verify **logic** (operations correct), not **outcomes** (user sees correct thing).

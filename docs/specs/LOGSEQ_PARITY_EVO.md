@@ -30,7 +30,7 @@ Pulled directly from the last refactor of `LOGSEQ_EDITING_SELECTION_PARITY.md`.
 | **G-ShiftArrow-Seeding** | FR-NavEdit-04 | Editing boundary seed | ⚠ In progress | Boundary Shift+Arrow exits edit but doesn’t seed selection. Add `:selection/seed` intent before extend. |
 | **G-Clipboard-Segments** | FR-Clipboard-02 | Paste semantics | ⚠ In progress | Multi-paragraph paste should split blocks while preserving list markers. See `handler/paste.cljs`. |
 | **G-Pointer-Hover** | FR-Pointer-02 | Block ref hover preview | Deferred | Requires popover component + sidebar wiring. |
-| **G-Slash / G-QuickSwitch** | FR-Slash-01 / FR-QuickSwitch-01 | Slash palette & quick switcher | Not implemented | Need inline slash palette and Cmd+K overlay. |
+| **G-Slash / G-QuickSwitch** | FR-Slash-01..05 / FR-QuickSwitch-01 | Slash palette & quick switcher | ⚠ In progress | Inline palette wired via `:slash-menu/*` intents + tests (`plugins.slash-commands-test`). Still missing actual quick switcher UI. |
 | **G-Undo-Cursor** | FR-Undo-01 | Undo/redo caret memory | ⚠ In progress | Kernel/history stores hints but cursor restoration still flaky (`dev/specs/CURSOR_GUARD_FLAG_SOLUTION.md`). |
 
 **Resolved gaps:** idle guard, base navigation memory, Shift+Arrow direction tracking, Enter/Shift+Enter parity (see commits referenced in latest `source-auto-overview*.md`).

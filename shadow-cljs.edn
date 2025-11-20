@@ -1,6 +1,9 @@
 ;; shadow-cljs configuration
  {:source-paths
-  ["src" "test" "dev"]
+  ["src" "test" "dev" "resources"]
+
+  :resource-paths
+  ["resources"]
 
   :dependencies
   [[no.cjohansen/replicant "2025.06.21"]
