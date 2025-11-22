@@ -523,6 +523,8 @@
    - db: application database
    - block-id: ID of block to render
    - depth: nesting depth (for indentation)
+   - is-focused: boolean, true if this block has focus (passed from parent)
+   - is-selected: boolean, true if this block is in selection set (passed from parent)
    - on-intent: callback for dispatching intents
    - embed-set: Set of block IDs in current embed chain (for cycle detection)
    - embed-depth: Current embed nesting depth (for limiting recursion)
@@ -530,11 +532,11 @@
    ARCHITECTURE:
    - View mode: Pure controlled rendering from DB
    - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input"
-  [{:keys [db block-id depth on-intent embed-set embed-depth]
-    :or {embed-set #{} embed-depth 0}}]
+  [{:keys [db block-id depth is-focused is-selected on-intent embed-set embed-depth]
+    :or {embed-set #{} embed-depth 0 is-focused false is-selected false}}]
   (let [children (get-in db [:children-by-parent block-id] [])
-        selected? (q/selected? db block-id)
-        focus? (= (q/focus db) block-id)
+        selected? is-selected
+        focus? is-focused
         editing? (= (q/editing-block-id db) block-id)
         text (get-in db [:nodes block-id :props :text] "")
 
@@ -678,6 +680,8 @@
                        (Block {:db db
                                :block-id child-id
                                :depth (inc depth)
+                               :is-focused (= (q/focus db) child-id)
+                               :is-selected (q/selected? db child-id)
                                :embed-set embed-set
                                :embed-depth embed-depth
                                :on-intent on-intent}))
