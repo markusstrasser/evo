@@ -2,7 +2,8 @@
   "Block embed component for rendering full block trees (with children).
 
    Similar to block references but shows the entire block structure,
-   not just inline text.")
+   not just inline text."
+  (:require [kernel.query :as q]))
 
 (defn BlockEmbed
   "Render an embedded block with its full tree structure.
@@ -87,6 +88,8 @@
          (Block {:db db
                  :block-id block-id
                  :depth 0  ; Reset depth for the embedded tree
+                 :is-focused (= (q/focus db) block-id)
+                 :is-selected (q/selected? db block-id)
                  :embed-set (conj (or embed-set #{}) block-id)
                  :embed-depth (inc depth)
                  :on-intent on-intent}))])))

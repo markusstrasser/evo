@@ -278,12 +278,14 @@
                                                                   (when (seq all-blocks)
                                                                     (calc-select-props all-blocks))))]
                                        (when props
-                                         (cond-> []
+                                         (let [ops (cond-> []
                     ;; INVARIANT: Exit edit mode before applying selection
-                                           is-editing? (conj {:op :update-node
-                                                              :id const/session-ui-id
-                                                              :props {:editing-block-id nil}})
+                                                     is-editing? (conj {:op :update-node
+                                                                        :id const/session-ui-id
+                                                                        :props {:editing-block-id nil}})
                     ;; Then apply the selection change
-                                           true (conj {:op :update-node
-                                                       :id const/session-selection-id
-                                                       :props props})))))})
+                                                     true (conj {:op :update-node
+                                                                 :id const/session-selection-id
+                                                                 :props props}))]
+                                           ops))))})
+

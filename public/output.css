@@ -5,13 +5,10 @@
   :root, :host {
     --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "JetBrains Mono", monospace;
-    --spacing: 0.25rem;
     --default-transition-duration: 150ms;
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
-    --color-purple-start: #667eea;
-    --color-purple-end: #764ba2;
   }
 }
 @layer base {
@@ -166,12 +163,6 @@
   .collapse {
     visibility: collapse;
   }
-  .collapse\! {
-    visibility: collapse !important;
-  }
-  .invisible {
-    visibility: hidden;
-  }
   .visible {
     visibility: visible;
   }
@@ -186,15 +177,6 @@
   }
   .static {
     position: static;
-  }
-  .top-1 {
-    top: calc(var(--spacing) * 1);
-  }
-  .top-5 {
-    top: calc(var(--spacing) * 5);
-  }
-  .top-10 {
-    top: calc(var(--spacing) * 10);
   }
   .isolate {
     isolation: isolate;
@@ -219,9 +201,6 @@
   }
   .block {
     display: block;
-  }
-  .block\! {
-    display: block !important;
   }
   .contents {
     display: contents;
@@ -256,29 +235,12 @@
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
   }
-  .resize {
-    resize: both;
-  }
-  .flex-wrap {
-    flex-wrap: wrap;
-  }
-  .truncate {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .rounded {
-    border-radius: 0.25rem;
-  }
   .border {
     border-style: var(--tw-border-style);
     border-width: 1px;
   }
   .lowercase {
     text-transform: lowercase;
-  }
-  .uppercase {
-    text-transform: uppercase;
   }
   .italic {
     font-style: italic;

@@ -17,8 +17,9 @@
                                                                     :folded #{}
                                                                     :zoom-stack []
                                                                     :zoom-root nil
-                                                                    :current-page nil}}}
-   :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id]}
+                                                                    :current-page nil}}
+           "session/buffer"           {:type :buffer       :props {}}}
+   :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id "session/buffer"]}
    :roots const/roots
    :derived {:parent-of {}
              :index-of {}

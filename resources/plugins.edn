@@ -11,4 +11,5 @@
  plugins.text-formatting
  plugins.visible-order
  plugins.pages
+ plugins.buffer
 ]
