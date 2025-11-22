@@ -23,7 +23,6 @@
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
             [shell.plugin-manifest-runtime :as plugin-manifest]
-            #?@(:clj [(shell.plugin-manifest/require-specs)])
             [plugins.pages :as pages] ;; Load to register page intents
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
