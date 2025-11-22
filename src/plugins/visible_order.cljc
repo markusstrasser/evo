@@ -32,19 +32,25 @@
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
 (defn- get-folded-set
-  "Get the set of folded block IDs from session state."
+  "Get the set of folded block IDs from session state.
+
+   TODO Phase 4-5: Needs session parameter - returning empty for now."
   [db]
-  (get-in db [:nodes const/session-ui-id :props :folded] #{}))
+  #{})  ;; Return empty - no blocks folded
 
 (defn- get-zoom-root
-  "Get the current zoom root (rendering root block ID)."
+  "Get the current zoom root (rendering root block ID).
+
+   TODO Phase 4-5: Needs session parameter - returning nil for now."
   [db]
-  (get-in db [:nodes const/session-ui-id :props :zoom-root]))
+  nil)  ;; Return nil - not zoomed
 
 (defn- get-current-page
-  "Get the current active page ID."
+  "Get the current active page ID.
+
+   TODO Phase 4-5: Needs session parameter - returning nil for now."
   [db]
-  (get-in db [:nodes const/session-ui-id :props :current-page]))
+  nil)  ;; Return nil - no page selected
 
 (defn- active-outline-root
   "Get the active outline root for navigation and rendering.
