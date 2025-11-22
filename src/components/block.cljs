@@ -1,23 +1,20 @@
 (ns components.block
-  "Block component with Logseq-style editing behavior.
+  "Block component with uncontrolled contenteditable architecture.
 
-   Uses plugin getters for data and dispatches intents for all state changes.
-   Implements cursor boundary detection for seamless up/down navigation.
-
-   ARCHITECTURE: Single source of truth - DB owns text + cursor state.
-   DOM driver (evo.dom.editable) keeps DOM in sync via MutationObserver + rollback."
+   ARCHITECTURE: Uncontrolled editing - browser owns text state during edit mode.
+   - View mode: Controlled by DB (text rendered from DB)
+   - Edit mode: Uncontrolled (browser manages text, syncs to buffer, commits on blur)
+   - Buffer: High-velocity keystroke storage (no history/indexing overhead)"
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [kernel.constants :as const]
             [parser.block-refs :as block-refs]
             [parser.embeds :as embeds]
             [parser.page-refs :as page-refs]
-            [plugins.slash-commands :as slash]
             [components.block-ref :as block-ref]
             [components.block-embed :as block-embed]
             [components.page-ref :as page-ref]
-            [util.text-selection :as text-sel]
-            [evo.dom.editable :as editable]))
+            [util.text-selection :as text-sel]))
 
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
@@ -25,8 +22,7 @@
   "Detect if cursor is on first/last row of contenteditable using Range API.
    Returns {:first-row? bool :last-row? bool}
 
-   With controlled editable architecture, we use DOM Range API directly
-   instead of the old mock-text technique."
+   With uncontrolled editable architecture, we use DOM Range API directly."
   [elem]
   (when elem
     (let [selection (.getSelection js/window)]
@@ -116,12 +112,13 @@
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
 
-(defn handle-shift-arrow-up [e db block-id on-intent]
+(defn handle-shift-arrow-up
   "Handle Shift+Up: text selection within block OR block selection at boundary.
 
    Logseq parity (§4.1):
    - NOT at first row → Let browser handle (text selection)
    - At first row → Collapse text selection to start, extend block selection upward"
+  [e db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:first-row? cursor-pos)
@@ -136,12 +133,13 @@
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-prev}))))
 
-(defn handle-shift-arrow-down [e db block-id on-intent]
+(defn handle-shift-arrow-down
   "Handle Shift+Down: text selection within block OR block selection at boundary.
 
    Logseq parity (§4.1):
    - NOT at last row → Let browser handle (text selection)
    - At last row → Collapse text selection to end, extend block selection downward"
+  [e db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:last-row? cursor-pos)
@@ -156,13 +154,14 @@
       ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
       (on-intent {:type :selection :mode :extend-next}))))
 
-(defn handle-arrow-left [e db block-id on-intent]
+(defn handle-arrow-left
   "Handle left arrow key.
 
    Behaviors:
    - Has text selection → Collapse to start
    - At start of block → Edit previous block at end
    - Middle of text → Move cursor left (browser default)"
+  [e db block-id on-intent]
   (let [target (.-target e)
         selection (.getSelection js/window)
         at-start? (and (= (.-anchorOffset selection) 0)
@@ -184,13 +183,14 @@
       ;; Middle - let browser handle
       :else nil)))
 
-(defn handle-arrow-right [e db block-id on-intent]
+(defn handle-arrow-right
   "Handle right arrow key.
 
    Behaviors:
    - Has text selection → Collapse to end
    - At end of block → Edit next block at start
    - Middle of text → Move cursor right (browser default)"
+  [e db block-id on-intent]
   (let [target (.-target e)
         text-content (.-textContent target)
         selection (.getSelection js/window)
@@ -240,8 +240,9 @@
         ;; At start with content - merge with previous
         (on-intent {:type :merge-with-prev :block-id block-id})))))
 
-(defn handle-delete [e db block-id on-intent]
+(defn handle-delete
   "Handle Delete key - merge with next block if at end."
+  [e db block-id on-intent]
   (let [target (.-target e)
         text-content (.-textContent target)
         selection (.getSelection js/window)
@@ -250,17 +251,18 @@
       (.preventDefault e)
       (on-intent {:type :merge-with-next :block-id block-id}))))
 
-(defn handle-keydown [e db block-id on-intent]
+(defn handle-keydown
   "Handle keyboard events while editing a block.
 
    Routes to slash menu when active, otherwise handles normal editing.
-   
+
    Slash menu gets priority for:
    - Arrow keys (navigation)
    - Enter (selection)
    - Escape (close)
-   
+
    Otherwise delegates to normal editing handlers."
+  [e db block-id on-intent]
   (let [slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])
         key (.-key e)
         shift? (.-shiftKey e)
@@ -515,7 +517,7 @@
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
 (defn Block
-  "Reusable block component with Logseq-style editing behavior.
+  "Reusable block component with uncontrolled editing architecture.
 
    Props:
    - db: application database
@@ -525,8 +527,9 @@
    - embed-set: Set of block IDs in current embed chain (for cycle detection)
    - embed-depth: Current embed nesting depth (for limiting recursion)
 
-   Uses plugin getters for all data access.
-   Dispatches intents for all state changes."
+   ARCHITECTURE:
+   - View mode: Pure controlled rendering from DB
+   - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input"
   [{:keys [db block-id depth on-intent embed-set embed-depth]
     :or {embed-set #{} embed-depth 0}}]
   (let [children (get-in db [:children-by-parent block-id] [])
@@ -534,10 +537,6 @@
         focus? (= (q/focus db) block-id)
         editing? (= (q/editing-block-id db) block-id)
         text (get-in db [:nodes block-id :props :text] "")
-
-        ;; Atom to track if we're programmatically exiting edit mode
-        ;; This prevents blur event from firing exit-edit after Escape
-        exiting-edit? (atom false)
 
         container-props
         {:key block-id
@@ -577,10 +576,10 @@
 
         edit-key (str block-id "-edit")
         view-key (str block-id "-view")
-        _ (.log js/console "[block] Keys:" (clj->js {:editing? editing? :edit-key edit-key :view-key view-key}))
 
         content
         (if editing?
+          ;; === EDIT MODE: Uncontrolled ===
           [:span.content-edit
            {:contentEditable true
             :suppressContentEditableWarning true
@@ -588,115 +587,81 @@
                     :min-width "1px"
                     :display "inline-block"}
             :data-block-id block-id
-            ;; CRITICAL: Add key to distinguish from .content-view span
-            ;; This ensures Replicant treats them as different elements during mode transitions
             :replicant/key edit-key
-            ;; ARCHITECTURE: Controlled contenteditable with single source of truth (DB)
-            ;; On mount: Setup MutationObserver + rollback pattern + focus element
+
+            ;; On mount: Set text once, focus, position cursor
             :replicant/on-mount
             (fn [{:replicant/keys [node]}]
               (let [initial-cursor (q/cursor-position db)
-                    ;; Normalize cursor to map format {:anchor N :head N}
-                    cursor-map (cond
-                                 (map? initial-cursor) initial-cursor
-                                 (number? initial-cursor) {:anchor initial-cursor :head initial-cursor}
-                                 (= initial-cursor :start) {:anchor 0 :head 0}
-                                 (= initial-cursor :end) (let [len (count text)]
-                                                           {:anchor len :head len})
-                                 :else {:anchor (count text) :head (count text)})
-
-                    ;; Setup controlled editable with MutationObserver
-                    cleanup! (editable/setup-controlled-editable!
-                               node
-                               (fn on-change [new-text new-cursor]
-                                 ;; User edited → dispatch with text + cursor atomically
-                                 (on-intent {:type :update-content
-                                             :block-id block-id
-                                             :text new-text
-                                             :cursor-pos new-cursor})
-
-                                 ;; Handle slash menu
-                                 (let [slash-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])
-                                       pos (:anchor new-cursor)]
-                                   (if slash-active?
-                                     (on-intent {:type :slash-menu/update-search
-                                                 :block-id block-id
-                                                 :cursor-pos pos})
-                                     (when-let [trigger (slash/detect-slash-trigger new-text pos)]
-                                       (on-intent {:type :slash-menu/open
-                                                   :block-id block-id
-                                                   :trigger-pos (:trigger-pos trigger)})))))
-                               text
-                               cursor-map)]
-                ;; Store cleanup for unmount
-                (aset node "__editable-cleanup" cleanup!)
-                ;; Focus element so keyboard events work
+                    cursor-pos (cond
+                                 (number? initial-cursor) initial-cursor
+                                 (= initial-cursor :start) 0
+                                 (= initial-cursor :end) (count text)
+                                 (= initial-cursor :max) (count text)
+                                 :else (count text))]
+                ;; Set text content (browser owns this from now on)
+                (set! (.-textContent node) text)
+                ;; Focus
                 (.focus node)
-                (.log js/console "[on-mount] MutationObserver setup complete + focused" (clj->js {:block-id block-id}))))
+                ;; Position cursor
+                (when-let [text-node (.-firstChild node)]
+                  (let [range (.createRange js/document)
+                        sel (.getSelection js/window)
+                        safe-pos (min cursor-pos (count text))]
+                    (.setStart range text-node safe-pos)
+                    (.setEnd range text-node safe-pos)
+                    (.removeAllRanges sel)
+                    (.addRange sel range)))))
 
-            ;; On unmount: Disconnect observer
-            :replicant/on-unmount
-            (fn [{:replicant/keys [node]}]
-              (when-let [cleanup! (aget node "__editable-cleanup")]
-                (cleanup!)))
-
-            ;; On render: Update DOM to reflect DB state
-            ;; NOTE: With :replicant/key fix, :on-mount fires reliably so we don't need duplicate setup here
+            ;; On render: Only maintain focus, NEVER touch text
             :replicant/on-render
-            (fn [{:replicant/keys [node life-cycle]}]
-              (when (and (not= life-cycle :replicant.life-cycle/unmount)
-                         (aget node "__editable-cleanup"))  ; Only if observer is set up
-                (let [cursor-pos (q/cursor-position db)
-                      cursor-map (cond
-                                   (map? cursor-pos) cursor-pos
-                                   (number? cursor-pos) {:anchor cursor-pos :head cursor-pos}
-                                   (= cursor-pos :start) {:anchor 0 :head 0}
-                                   (= cursor-pos :end) (let [len (count text)]
-                                                         {:anchor len :head len})
-                                   :else {:anchor (count text) :head (count text)})]
-                  ;; Update DOM only - don't trigger new renders
-                  (editable/update-controlled-editable! node text cursor-map))))
-            ;; ARCHITECTURE: Controlled editable handles input/paste via MutationObserver
-            ;; Only need keydown for keyboard shortcuts + blur for exit
-            :on {:blur (fn [e]
-                         ;; CRITICAL: Only exit edit mode if we're truly blurring (not just switching blocks)
-                         ;; Use setTimeout to let React/Replicant finish rendering the new focused element
-                         (js/setTimeout
-                           (fn []
-                             (when-not @exiting-edit?
-                               ;; Check if another contenteditable is now focused (block creation/navigation)
-                               (let [active-elem (.-activeElement js/document)
-                                     still-editing? (and active-elem
-                                                        (= (.-contentEditable active-elem) "true"))]
-                                 (when-not still-editing?
-                                   (on-intent {:type :exit-edit})))))
-                           0))
+            (fn [{:replicant/keys [node]}]
+              (when (not= (.-activeElement js/document) node)
+                (.focus node)))
+
+            ;; Input handler: Sync to buffer (high velocity, no history)
+            :on {:input (fn [e]
+                          (let [target (.-target e)
+                                new-text (.-textContent target)]
+                            ;; Dispatch to buffer (ephemeral storage)
+                            (on-intent {:type :buffer/update
+                                        :block-id block-id
+                                        :text new-text})))
+
+                 ;; Blur handler: Commit to canonical DB
+                 :blur (fn [e]
+                         (let [target (.-target e)
+                               final-text (.-textContent target)]
+                           ;; Commit to canonical DB
+                           (on-intent {:type :update-content
+                                       :block-id block-id
+                                       :text final-text})
+                           ;; Exit edit mode
+                           (on-intent {:type :exit-edit})))
+
+                 ;; Keydown: Keyboard shortcuts
                  :keydown (fn [e]
-                            (.log js/console "keydown event!" (clj->js {:key (.-key e)}))
-                            (when (= (.-key e) "Escape")
-                              (reset! exiting-edit? true))
                             (handle-keydown e db block-id on-intent))
 
-                 ;; Keep paste handler for multi-paragraph splitting (Logseq parity)
+                 ;; Paste: Multi-paragraph splitting (Logseq parity)
                  :paste (fn [e]
                           (.preventDefault e)
                           (let [clipboard-data (.-clipboardData e)
                                 pasted-text (.getData clipboard-data "text/plain")
-                                ;; Get cursor from DOM
-                                cursor-info (editable/get-position (.-target e))
-                                cursor-pos (:anchor cursor-info)]
+                                selection (.getSelection js/window)
+                                cursor-pos (.-anchorOffset selection)]
                             (on-intent {:type :paste-text
                                         :block-id block-id
                                         :cursor-pos cursor-pos
                                         :pasted-text pasted-text})))}}]
+
+          ;; === VIEW MODE: Controlled ===
           [:span.content-view
            {:style {:min-width "1px"
                     :display "inline-block"
                     :cursor "text"}
             :data-block-id block-id
-            ;; CRITICAL: Add key for consistent reconciliation with edit mode
             :replicant/key view-key
-            ;; CRITICAL: Uncontrolled component - set textContent via lifecycle hook
             :replicant/on-render (fn [{:replicant/keys [node]}]
                                    (set! (.-textContent node) (or text "")))
             :on {:click (fn [e]
