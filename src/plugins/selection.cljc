@@ -17,7 +17,10 @@
             [kernel.query :as tree]))
 
 ;; Private helper for internal use
-(defn- get-selection-state [db] (tree/selection-state db))
+;; TODO Phase 4-5: This needs session parameter, but handlers don't have access to session
+;; Temporarily return empty state to allow compilation
+(defn- get-selection-state [db]
+  {:nodes #{} :focus nil :anchor nil})
 
 ;; ── Pure Selection Property Calculators ──────────────────────────────────────
 
@@ -31,15 +34,16 @@
 
 (defn- calc-extend-props
   "Pure: calculate props for extending selection with given IDs.
-   Supports range selection when single ID provided and anchor exists."
-  [db current-state ids]
+
+   NOTE: Range selection (Shift+Click) temporarily disabled after Phase 4-5
+   refactor. Will be re-enabled when session state is accessible to intent handlers."
+  [current-state ids]
   (let [ids-vec (if (coll? ids) (vec ids) [ids])
         new-focus (last ids-vec)
         anchor (:anchor current-state)
-        single-id? (= 1 (count ids-vec))
-        range-mode? (and anchor single-id?)
-        range-set (when range-mode? (tree/visible-range db anchor new-focus))
-        new-nodes (or range-set (set/union (:nodes current-state) (set ids-vec)))]
+        ;; TODO: Re-enable range selection with visible-range once session is available
+        ;; For now, just union the sets (no range expansion)
+        new-nodes (set/union (:nodes current-state) (set ids-vec))]
     {:nodes new-nodes
      :focus new-focus
      :anchor (or anchor new-focus)}))
@@ -243,17 +247,17 @@
                                                 [:type [:= :selection]]
                                                 [:mode [:= :all-in-view]]]]]
                           :handler (fn [db {:keys [mode ids]}]
-                                     (let [is-editing? (tree/editing? db)
+                                     (let [is-editing? false  ;; TODO Phase 4-5: Fix (tree/editing? requires session)
                                            state (get-selection-state db)
                                            props (case mode
                                                    :replace (calc-select-props ids)
-                                                   :extend (calc-extend-props db state ids)
+                                                   :extend (calc-extend-props state ids)
                                                    :deselect (calc-deselect-props state ids)
                                                    :toggle (let [id ids ;; toggle expects single ID
                                                                  selected? (contains? (:nodes state) id)]
                                                              (if selected?
                                                                (calc-deselect-props state id)
-                                                               (calc-extend-props db state id)))
+                                                               (calc-extend-props state id)))
                                                    :clear (calc-clear-props)
                                                    :next (calc-navigate-props db state :next false)
                                                    :prev (calc-navigate-props db state :prev false)

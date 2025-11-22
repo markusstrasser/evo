@@ -6,6 +6,7 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.query :as q]
+            [kernel.navigation :as nav]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
@@ -43,23 +44,23 @@
   "Get the previous visible block in DOM order, skipping folded and out-of-zoom blocks.
 
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   This matches Logseq's get-prev-block-non-collapsed behavior."
+   This matches Logseq's get-prev-block-non-collapsed behavior.
+
+   TODO Phase 4-5: Needs session parameter - using fallback to tree navigation for now."
   [db block-id]
-  (let [all-blocks (q/visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks block-id)]
-    (when (> idx 0)
-      (get all-blocks (dec idx)))))
+  ;; Fallback to kernel.navigation which doesn't need visible-blocks-in-dom-order
+  (nav/prev-visible-block db block-id))
 
 (defn- get-next-visible-block
   "Get the next visible block in DOM order, skipping folded and out-of-zoom blocks.
 
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   This matches Logseq's get-next-block-non-collapsed behavior."
+   This matches Logseq's get-next-block-non-collapsed behavior.
+
+   TODO Phase 4-5: Needs session parameter - using fallback to tree navigation for now."
   [db block-id]
-  (let [all-blocks (q/visible-blocks-in-dom-order db)
-        idx (.indexOf all-blocks block-id)]
-    (when (>= idx 0)
-      (get all-blocks (inc idx)))))
+  ;; Fallback to kernel.navigation which doesn't need visible-blocks-in-dom-order
+  (nav/next-visible-block db block-id))
 
 (defn- grapheme-count
   "Count graphemes (user-perceived characters) in a string.
