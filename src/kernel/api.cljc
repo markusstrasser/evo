@@ -95,20 +95,9 @@
            (println "No journal file found at" journal)
            initial-db)))))
 
-(defn ephemeral-op?
-  "Check if an operation is ephemeral (UI-only, should not enter history).
-
-   Ephemeral ops update session nodes (UI state, selection, and buffer) and should not trigger history recording.
-   Examples: cursor state, edit mode, selection state, buffer text, transient UI state.
-
-   Returns true if op is an :update-node on session-ui-id, session-selection-id, or session/buffer.
-
-   Phase 1 Refactor: Extended to include session/buffer to make typing truly ephemeral."
-  [op]
-  (and (= :update-node (:op op))
-       (or (= const/session-ui-id (:id op))
-           (= const/session-selection-id (:id op))
-           (= "session/buffer" (:id op)))))
+;; Phases 4 & 5: ephemeral-op? removed - session nodes no longer in DB
+;; All ops are now structural (affect document graph only)
+;; Ephemeral state (cursor, selection, fold, zoom, buffer) lives purely in shell.session
 
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
@@ -140,14 +129,12 @@
   ([db intent] (dispatch* db intent nil))
   ([db intent {:keys [history/enabled?] :as _opts}]
    (let [{:keys [ops]} (intent/apply-intent db intent)
-         ;; Check if ALL ops are ephemeral
-         all-ephemeral? (every? ephemeral-op? ops)
-         record? (and (not (false? enabled?))
-                      (not all-ephemeral?))
+         ;; Phases 4 & 5: All ops are structural now (no ephemeral check needed)
+         record? (not (false? enabled?))
          db0 (if record? (H/record db) db)]
      #?(:clj (journal-tx! intent ops))
-     ;; Fast path: skip derive for fully ephemeral transactions
-     (tx/interpret db0 ops {:tx/skip-derived? all-ephemeral?}))))
+     ;; All ops go through normal transaction pipeline
+     (tx/interpret db0 ops))))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
