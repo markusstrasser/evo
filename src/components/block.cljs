@@ -14,7 +14,8 @@
             [components.block-ref :as block-ref]
             [components.block-embed :as block-embed]
             [components.page-ref :as page-ref]
-            [util.text-selection :as text-sel]))
+            [util.text-selection :as text-sel]
+            [shell.session :as session]))
 
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
@@ -621,14 +622,12 @@
               (when (not= (.-activeElement js/document) node)
                 (.focus node)))
 
-            ;; Input handler: Sync to buffer (high velocity, no history)
+            ;; Input handler: Update session directly (Phase 3: no intent dispatch)
             :on {:input (fn [e]
                           (let [target (.-target e)
                                 new-text (.-textContent target)]
-                            ;; Dispatch to buffer (ephemeral storage)
-                            (on-intent {:type :buffer/update
-                                        :block-id block-id
-                                        :text new-text})))
+                            ;; Phase 3: Update session directly (instant, no dispatch overhead)
+                            (session/swap-session! assoc-in [:buffer (keyword block-id)] new-text)))
 
                  ;; Blur handler: Commit to canonical DB
                  :blur (fn [e]
