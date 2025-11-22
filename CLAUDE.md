@@ -216,7 +216,18 @@ See `src/macros/script.cljc` for implementation, `test/macros/` for examples.
 - Treat components as **pure render functions**. All persistent state/governance lives in the kernel.
 - Event handlers are simple functions that dispatch Nexus actions. Never call `handle-intent` (or mutate DB) directly from a component.
 - Lifecycle hooks (`:replicant/on-mount`, `:replicant/on-render`, `:replicant/on-unmount`) are the only place you may touch the DOM (focus, selection, mock text). Guard cursor placement with the `__lastAppliedCursorPos` pattern described in `docs/RENDERING_AND_DISPATCH.md`.
-- `set-dispatch!` must stay wired so lifecycle hooks fire; leave it alone unless you know what you’re doing.
+- `set-dispatch!` must stay wired so lifecycle hooks fire; leave it alone unless you know what you're doing.
+
+**CRITICAL**: Always use `:replicant/key` (not `:key`) for conditional elements:
+```clojure
+;; ❌ WRONG - Replicant doesn't check :key
+[:span.edit {:key (str id "-edit")} ...]
+
+;; ✅ CORRECT - Replicant uses :replicant/key for element identity
+[:span.edit {:replicant/key (str id "-edit")} ...]
+```
+
+Without proper `:replicant/key`, Replicant may reuse DOM elements when switching between modes (e.g., edit ↔ view), causing `:on-mount` to not fire. See `docs/REPLICANT_KEY_FIX.md` for details.
 
 **Nexus workflow:**
 1. Component receives a DOM event → computes context (cursor offsets, row info).
@@ -251,6 +262,29 @@ This guarantees one dispatch per event and keeps DOM-only facts close to the com
 - Use the Nexus dispatcher for **all** keyboard actions. Do not add new handlers directly to `handle-global-keydown` or components without routing through Nexus.
 - Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
 - For new behaviors, add Playwright coverage that asserts both DOM selection (`window.getSelection()`) and kernel selection state. Pure DB tests are not enough for cursor/selection bugs.
+
+### Text Selection Utilities
+
+Use `util.text-selection` for contenteditable DOM operations:
+
+```clojure
+;; ❌ WRONG: Using element->text for input/paste handlers
+(let [new-text (text-sel/element->text target)] ...)  ;; Adds trailing \n!
+
+;; ✅ CORRECT: Use textContent for simple text extraction
+(let [new-text (.-textContent target)] ...)
+
+;; ✅ CORRECT: Use element->text only for cursor positioning with make-range
+(text-sel/set-current-range! (text-sel/make-range node pos pos))
+```
+
+**Key functions**:
+- `element->text`: Converts contenteditable to plain text with trailing newline (for DOM traversal)
+- `get-position`: Returns cursor position info (`:position`, `:extent`, `:line`)
+- `make-range`: Creates DOM Range for cursor positioning
+- Use **`textContent`** for input handlers, **`element->text`** only with `make-range`
+
+See `src/util/text_selection.cljs` for full API.
 
 ### Move "Climb" Semantics (Logseq Parity)
 
@@ -288,6 +322,24 @@ This matches Logseq's one-step workflow for exiting nested list contexts.
 ```
 
 **Implementation**: `plugins.smart_editing/context-aware-enter` handles the `:list-item` context, emitting `:update-node` (to clear marker) + `:create-node` + `:place` operations when content is blank.
+
+### Replicant Keys
+
+**Always use `:replicant/key`, never `:key`** for elements that conditionally render:
+
+```clojure
+;; ❌ WRONG - Replicant ignores :key
+(if editing?
+  [:span.edit {:key (str id "-edit")} ...]
+  [:span.view {:key (str id "-view")} ...])
+
+;; ✅ CORRECT - Replicant checks :replicant/key
+(if editing?
+  [:span.edit {:replicant/key (str id "-edit")} ...]
+  [:span.view {:replicant/key (str id "-view")} ...])
+```
+
+**Why**: Replicant's `reusable?` function only checks `:replicant/key` (not `:key`). Without proper keys, elements with the same tag name get reused instead of recreated, preventing lifecycle hooks from firing. See `docs/REPLICANT_KEY_FIX.md`.
 
 ### Variable Shadowing
 

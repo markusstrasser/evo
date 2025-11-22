@@ -2,7 +2,10 @@
   "Block component with Logseq-style editing behavior.
 
    Uses plugin getters for data and dispatches intents for all state changes.
-   Implements cursor boundary detection for seamless up/down navigation."
+   Implements cursor boundary detection for seamless up/down navigation.
+
+   ARCHITECTURE: Single source of truth - DB owns text + cursor state.
+   DOM driver (evo.dom.editable) keeps DOM in sync via MutationObserver + rollback."
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [kernel.constants :as const]
@@ -12,109 +15,44 @@
             [plugins.slash-commands :as slash]
             [components.block-ref :as block-ref]
             [components.block-embed :as block-embed]
-            [components.page-ref :as page-ref]))
+            [components.page-ref :as page-ref]
+            [util.text-selection :as text-sel]
+            [evo.dom.editable :as editable]))
 
-;; ── Mock-text helpers (Logseq technique) ─────────────────────────────────────
+;; ── Cursor row detection ──────────────────────────────────────────────────────
 
-(defn- update-mock-text!
-  "Update hidden mock-text element with current contenteditable content and position.
-   This enables cursor row position detection (Logseq technique).
-   
-   The mock-text element must be positioned at the same location as the editing
-   block for accurate cursor row detection."
-  [elem text]
-  (when (and elem (.-getBoundingClientRect elem))
-    (when-let [mock-elem (js/document.getElementById "mock-text")]
-      ;; Position mock-text to match the editing element
-      (let [rect (.getBoundingClientRect elem)
-            top (.-top rect)
-            left (.-left rect)
-            width (.-width rect)]
-        (set! (.. mock-elem -style -top) (str top "px"))
-        (set! (.. mock-elem -style -left) (str left "px"))
-        (set! (.. mock-elem -style -width) (str width "px")))
+(defn- detect-cursor-row-position
+  "Detect if cursor is on first/last row of contenteditable using Range API.
+   Returns {:first-row? bool :last-row? bool}
 
-      ;; Update content with character spans
-      (let [content (str text "0")
-            chars (seq content)]
-        (set! (.-innerHTML mock-elem) "")
-        (doseq [[idx c] (map-indexed vector chars)]
-          (let [span (.createElement js/document "span")]
-            (.setAttribute span "id" (str "mock-text_" idx))
-            (if (= c \newline)
-              (do
-                (set! (.-textContent span) "0")
-                (.appendChild span (.createElement js/document "br")))
-              (set! (.-textContent span) (str c)))
-            (.appendChild mock-elem span)))))))
-
-(defn- get-caret-rect
-  "Get bounding rect of cursor position in contenteditable element."
+   With controlled editable architecture, we use DOM Range API directly
+   instead of the old mock-text technique."
   [elem]
   (when elem
     (let [selection (.getSelection js/window)]
       (when (and selection (> (.-rangeCount selection) 0))
         (let [range (.getRangeAt selection 0)
-              rects (.getClientRects range)]
-          (when (> (.-length rects) 0)
-            (.item rects 0)))))))
+              rect (.getBoundingClientRect range)
+              elem-rect (.getBoundingClientRect elem)
+              cursor-top (.-top rect)
+              elem-top (.-top elem-rect)
+              elem-bottom (.-bottom elem-rect)
+              line-height (or (when rect (.-height rect)) 20)
 
-(defn- get-mock-text-tops
-  "Get unique Y positions (tops) of all characters in mock-text element."
-  []
-  (when-let [mock-elem (js/document.getElementById "mock-text")]
-    (let [children (array-seq (.-children mock-elem))
-          tops (->> children
-                    (map (fn [span]
-                           (let [rect (.getBoundingClientRect span)]
-                             (.-top rect))))
-                    distinct
-                    sort)]
-      tops)))
+              ;; Cursor is on first row if it's within one line-height of element top
+              first-row? (< (- cursor-top elem-top) line-height)
 
-(defn- detect-cursor-row-position
-  "Detect if cursor is on first/last row of contenteditable.
-   Returns {:first-row? bool :last-row? bool}
-   
-   Uses character position in mock-text instead of range rect for accuracy
-   with wrapped text."
-  [elem]
-  (when elem
-    (let [selection (.getSelection js/window)]
-      (when (and selection (> (.-rangeCount selection) 0))
-        ;; Calculate cursor character index
-        (let [char-index (loop [node (.createTreeWalker js/document elem 4 nil) ;; NodeFilter.SHOW_TEXT = 4
-                                index 0]
-                           (if-let [text-node (.nextNode node)]
-                             (if (= text-node (.-focusNode selection))
-                               (+ index (.-focusOffset selection))
-                               (recur node (+ index (.-length text-node))))
-                             index))
+              ;; Cursor is on last row if it's within one line-height of element bottom
+              last-row? (< (- elem-bottom cursor-top) (* 1.5 line-height))]
 
-              ;; Get mock-text span for the character BEFORE cursor (the char cursor is after)
-              mock-elem (js/document.getElementById "mock-text")
-              mock-span-before (when (and mock-elem (pos? char-index))
-                                 (aget (.-children mock-elem) (dec char-index)))
-
-              ;; Get all unique line tops
-              tops (get-mock-text-tops)
-
-              ;; Cursor is on the same line as the character before it
-              ;; (or first line if at position 0)
-              cursor-top (if mock-span-before
-                           (.-top (.getBoundingClientRect mock-span-before))
-                           (first tops))]
-
-          {:first-row? (and (seq tops) (= (first tops) cursor-top))
-           :last-row? (and (seq tops) (= (last tops) cursor-top))})))))
+          {:first-row? first-row?
+           :last-row? last-row?})))))
 
 (defn- has-text-selection?
   "Check if user has selected text within contenteditable."
   []
-  (let [selection (.getSelection js/window)]
-    (and selection
-         (not (.-isCollapsed selection))
-         (> (.-rangeCount selection) 0))))
+  (when-let [range (text-sel/get-current-range)]
+    (not (.-collapsed range))))
 
 (defn- ensure-block-selected!
   "Ensure the given block is the active selection anchor/focus before extending.
@@ -275,9 +213,11 @@
       :else nil)))
 
 (defn handle-enter [e db block-id on-intent]
+  (.log js/console "handle-enter called!" (clj->js {:block-id block-id}))
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
+    (.log js/console "Dispatching smart-split" (clj->js {:cursor-pos cursor-pos}))
     ;; Emit Nexus action instead of intent
     (on-intent [[:editing/smart-split {:block-id block-id
                                        :cursor-pos cursor-pos}]])))
@@ -635,6 +575,10 @@
                   folded? "▸"
                   :else "▾")]
 
+        edit-key (str block-id "-edit")
+        view-key (str block-id "-view")
+        _ (.log js/console "[block] Keys:" (clj->js {:editing? editing? :edit-key edit-key :view-key view-key}))
+
         content
         (if editing?
           [:span.content-edit
@@ -646,108 +590,112 @@
             :data-block-id block-id
             ;; CRITICAL: Add key to distinguish from .content-view span
             ;; This ensures Replicant treats them as different elements during mode transitions
-            :key (str block-id "-edit")
-            ;; Focus and cursor positioning on every render
-            :replicant/on-render (fn [{:replicant/keys [node life-cycle remember memory]}]
-                                   ;; Don't run on unmount
-                                   (when-not (= life-cycle :replicant.life-cycle/unmount)
-                                     (let [cursor-pos (q/cursor-position db)]
+            :replicant/key edit-key
+            ;; ARCHITECTURE: Controlled contenteditable with single source of truth (DB)
+            ;; On mount: Setup MutationObserver + rollback pattern + focus element
+            :replicant/on-mount
+            (fn [{:replicant/keys [node]}]
+              (let [initial-cursor (q/cursor-position db)
+                    ;; Normalize cursor to map format {:anchor N :head N}
+                    cursor-map (cond
+                                 (map? initial-cursor) initial-cursor
+                                 (number? initial-cursor) {:anchor initial-cursor :head initial-cursor}
+                                 (= initial-cursor :start) {:anchor 0 :head 0}
+                                 (= initial-cursor :end) (let [len (count text)]
+                                                           {:anchor len :head len})
+                                 :else {:anchor (count text) :head (count text)})
 
-                                       ;; CRITICAL: Use :replicant/remember to set textContent ONLY ONCE
-                                       ;; After first initialization, browser manages contenteditable completely
-                                       (when-not memory ; Only if we haven't initialized this node yet
-                                         (set! (.-textContent node) text)
-                                         (remember true)) ; Mark as initialized
+                    ;; Setup controlled editable with MutationObserver
+                    cleanup! (editable/setup-controlled-editable!
+                               node
+                               (fn on-change [new-text new-cursor]
+                                 ;; User edited → dispatch with text + cursor atomically
+                                 (on-intent {:type :update-content
+                                             :block-id block-id
+                                             :text new-text
+                                             :cursor-pos new-cursor})
 
-                                       ;; Apply cursor position ONCE per cursor-pos value
-                                       ;; CRITICAL: Set cursor position BEFORE calling .focus() to prevent cursor reset
-                                       ;; Track the last applied cursor-pos on the DOM node to avoid reapplication
-                                       (if cursor-pos
-                                         (let [last-applied (aget node "__lastAppliedCursorPos")]
-                                           (when (not= cursor-pos last-applied)
-                                             (try
-                                               (let [range (.createRange js/document)
-                                                     sel (.getSelection js/window)
-                                                     text-node (.-firstChild node)]
-                                                 ;; Position cursor in the text node (only if text node exists)
-                                                 (when (and text-node (= (.-nodeType text-node) 3))
-                                                   (let [text-length (.-length text-node)
-                                                         pos (cond
-                                                               (= cursor-pos :start) 0
-                                                               (= cursor-pos :end) text-length
-                                                               (number? cursor-pos) (min cursor-pos text-length)
-                                                               :else text-length)]
-                                                     (.setStart range text-node pos)
-                                                     (.setEnd range text-node pos)
-                                                     (.removeAllRanges sel)
-                                                     (.addRange sel range)
-                                                     ;; Mark this cursor-pos as applied
-                                                     (aset node "__lastAppliedCursorPos" cursor-pos)
-                                                     ;; CRITICAL: Delay clearing cursor-position until AFTER this render cycle
-                                                     ;; Otherwise the re-render with nil cursor-pos will reset cursor to position 0
-                                                     (js/setTimeout #(on-intent {:type :clear-cursor-position}) 0))))
-                                               (catch js/Error e
-                                                 (js/console.error "Cursor positioning failed:" e))))
-                                           ;; CRITICAL FIX: Always focus, even for empty blocks with no text node
-                                           (.focus node))
-                                         ;; No cursor-pos specified, just focus normally
-                                         (.focus node))
+                                 ;; Handle slash menu
+                                 (let [slash-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])
+                                       pos (:anchor new-cursor)]
+                                   (if slash-active?
+                                     (on-intent {:type :slash-menu/update-search
+                                                 :block-id block-id
+                                                 :cursor-pos pos})
+                                     (when-let [trigger (slash/detect-slash-trigger new-text pos)]
+                                       (on-intent {:type :slash-menu/open
+                                                   :block-id block-id
+                                                   :trigger-pos (:trigger-pos trigger)})))))
+                               text
+                               cursor-map)]
+                ;; Store cleanup for unmount
+                (aset node "__editable-cleanup" cleanup!)
+                ;; Focus element so keyboard events work
+                (.focus node)
+                (.log js/console "[on-mount] MutationObserver setup complete + focused" (clj->js {:block-id block-id}))))
 
-                                       (update-mock-text! node (.-textContent node)))))
-            :on {:input (fn [e]
-                          (let [target (.-target e)
-                                new-text (.-textContent target)
-                                selection (.getSelection js/window)
-                                cursor-pos (.-anchorOffset selection)
-                                slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])]
-                            (update-mock-text! target new-text)
-                            (on-intent {:type :update-content
-                                        :block-id block-id
-                                        :text new-text})
+            ;; On unmount: Disconnect observer
+            :replicant/on-unmount
+            (fn [{:replicant/keys [node]}]
+              (when-let [cleanup! (aget node "__editable-cleanup")]
+                (cleanup!)))
 
-                            ;; Check for slash trigger or update existing menu
-                            (if slash-menu-active?
-                              ;; Menu already open - update search
-                              (on-intent {:type :slash-menu/update-search
-                                          :block-id block-id
-                                          :cursor-pos cursor-pos})
-                              ;; No menu - check for trigger
-                              (when-let [trigger (slash/detect-slash-trigger new-text cursor-pos)]
-                                (on-intent {:type :slash-menu/open
-                                            :block-id block-id
-                                            :trigger-pos (:trigger-pos trigger)})))))
+            ;; On render: Update DOM to reflect DB state
+            ;; NOTE: With :replicant/key fix, :on-mount fires reliably so we don't need duplicate setup here
+            :replicant/on-render
+            (fn [{:replicant/keys [node life-cycle]}]
+              (when (and (not= life-cycle :replicant.life-cycle/unmount)
+                         (aget node "__editable-cleanup"))  ; Only if observer is set up
+                (let [cursor-pos (q/cursor-position db)
+                      cursor-map (cond
+                                   (map? cursor-pos) cursor-pos
+                                   (number? cursor-pos) {:anchor cursor-pos :head cursor-pos}
+                                   (= cursor-pos :start) {:anchor 0 :head 0}
+                                   (= cursor-pos :end) (let [len (count text)]
+                                                         {:anchor len :head len})
+                                   :else {:anchor (count text) :head (count text)})]
+                  ;; Update DOM only - don't trigger new renders
+                  (editable/update-controlled-editable! node text cursor-map))))
+            ;; ARCHITECTURE: Controlled editable handles input/paste via MutationObserver
+            ;; Only need keydown for keyboard shortcuts + blur for exit
+            :on {:blur (fn [e]
+                         ;; CRITICAL: Only exit edit mode if we're truly blurring (not just switching blocks)
+                         ;; Use setTimeout to let React/Replicant finish rendering the new focused element
+                         (js/setTimeout
+                           (fn []
+                             (when-not @exiting-edit?
+                               ;; Check if another contenteditable is now focused (block creation/navigation)
+                               (let [active-elem (.-activeElement js/document)
+                                     still-editing? (and active-elem
+                                                        (= (.-contentEditable active-elem) "true"))]
+                                 (when-not still-editing?
+                                   (on-intent {:type :exit-edit})))))
+                           0))
+                 :keydown (fn [e]
+                            (.log js/console "keydown event!" (clj->js {:key (.-key e)}))
+                            (when (= (.-key e) "Escape")
+                              (reset! exiting-edit? true))
+                            (handle-keydown e db block-id on-intent))
+
+                 ;; Keep paste handler for multi-paragraph splitting (Logseq parity)
                  :paste (fn [e]
-                          ;; LOGSEQ PARITY (FR-Clipboard-03): Handle paste with multi-paragraph splitting
                           (.preventDefault e)
                           (let [clipboard-data (.-clipboardData e)
                                 pasted-text (.getData clipboard-data "text/plain")
-                                selection (.getSelection js/window)
-                                cursor-pos (.-anchorOffset selection)]
+                                ;; Get cursor from DOM
+                                cursor-info (editable/get-position (.-target e))
+                                cursor-pos (:anchor cursor-info)]
                             (on-intent {:type :paste-text
                                         :block-id block-id
                                         :cursor-pos cursor-pos
-                                        :pasted-text pasted-text})))
-                 :blur (fn [e]
-                         ;; Only exit on blur if not already exiting via Escape
-                         (when-not @exiting-edit?
-                           ;; CRITICAL: Capture final text from contenteditable before exiting
-                           ;; This prevents race conditions where the last input event hasn't fired
-                           (let [final-text (.-textContent (.-target e))]
-                             (on-intent {:type :update-content
-                                         :block-id block-id
-                                         :text final-text}))
-                           (on-intent {:type :exit-edit})))
-                 :keydown (fn [e]
-                            (when (= (.-key e) "Escape")
-                              (reset! exiting-edit? true))
-                            (handle-keydown e db block-id on-intent))}}]
+                                        :pasted-text pasted-text})))}}]
           [:span.content-view
            {:style {:min-width "1px"
                     :display "inline-block"
                     :cursor "text"}
             :data-block-id block-id
             ;; CRITICAL: Add key for consistent reconciliation with edit mode
-            :key (str block-id "-view")
+            :replicant/key view-key
             ;; CRITICAL: Uncontrolled component - set textContent via lifecycle hook
             :replicant/on-render (fn [{:replicant/keys [node]}]
                                    (set! (.-textContent node) (or text "")))
