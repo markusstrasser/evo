@@ -37,7 +37,7 @@
             [plugins.smart-editing]
             [plugins.text-formatting]
             [plugins.visible-order]
-            [plugins.buffer]
+            ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
             [plugins.pages :as pages]
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
