@@ -154,17 +154,25 @@
 
 (defn first-visible-block
   "Get the first visible block in the outline.
-   Respects zoom root if active."
-  [db]
-  (let [zoom-root (get-in db [:nodes const/session-ui-id :props :zoom-root])
+   Respects zoom root if active.
+
+   Args:
+   - db: Database
+   - session: Session state map (required for tests)"
+  [db session]
+  (let [zoom-root (get-in session [:ui :zoom-root])
         root (or zoom-root const/root-doc)]
     (first-visible-child db root)))
 
 (defn last-visible-block
   "Get the last visible block in the outline.
-   Navigates to the deepest last descendant."
-  [db]
-  (let [zoom-root (get-in db [:nodes const/session-ui-id :props :zoom-root])
+   Navigates to the deepest last descendant.
+
+   Args:
+   - db: Database
+   - session: Session state map (required for tests)"
+  [db session]
+  (let [zoom-root (get-in session [:ui :zoom-root])
         root (or zoom-root const/root-doc)]
     (loop [current (last-visible-child db root)]
       (if-let [last-child (last-visible-child db current)]
@@ -172,9 +180,13 @@
         current))))
 
 (defn visible-block-count
-  "Count total number of visible blocks in the outline."
-  [db]
-  (let [zoom-root (get-in db [:nodes const/session-ui-id :props :zoom-root])
+  "Count total number of visible blocks in the outline.
+
+   Args:
+   - db: Database
+   - session: Session state map (required for tests)"
+  [db session]
+  (let [zoom-root (get-in session [:ui :zoom-root])
         root (or zoom-root const/root-doc)]
     (letfn [(count-descendants [node-id]
               (let [children (visible-children db node-id)]

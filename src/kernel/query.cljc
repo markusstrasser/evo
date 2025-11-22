@@ -11,142 +11,202 @@
   (:require [kernel.constants :as const]
             [kernel.navigation :as nav]))
 
-;; ── Selection Queries (Undoable) ──────────────────────────────────────────────
+;; ── Selection Queries (Session-based after Phases 4-5) ────────────────────────
+;; These functions now query session state instead of DB.
+;; Tests must pass session explicitly.
 
 (defn selection-state
-  "Returns the selection state map from session/selection node."
-  [db]
-  (get-in db [:nodes const/session-selection-id :props]
-          {:nodes #{} :focus nil :anchor nil}))
+  "Returns the selection state map from session.
+
+   Args:
+   - session: Session state map (required for tests)
+
+   Example:
+     (selection-state {:selection {:nodes #{\"a\"} :focus \"a\" :anchor nil}})"
+  [session]
+  (get session :selection {:nodes #{} :focus nil :anchor nil}))
 
 (defn selection
-  "Returns the set of selected node IDs (possibly empty)."
-  [db]
-  (:nodes (selection-state db) #{}))
+  "Returns the set of selected node IDs (possibly empty).
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (:nodes (selection-state session) #{}))
 
 (defn focus
-  "Returns the focused node ID (the 'current' node for navigation), or nil."
-  [db]
-  (:focus (selection-state db)))
+  "Returns the focused node ID (the 'current' node for navigation), or nil.
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (:focus (selection-state session)))
 
 (defn anchor
-  "Returns the anchor node ID (starting point for range selection), or nil."
-  [db]
-  (:anchor (selection-state db)))
+  "Returns the anchor node ID (starting point for range selection), or nil.
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (:anchor (selection-state session)))
 
 (defn selected?
-  "Returns true if the given node ID is in the selection."
-  [db id]
-  (contains? (selection db) id))
+  "Returns true if the given node ID is in the selection.
+
+   Args:
+   - session: Session state map (required for tests)
+   - id: Block ID to check"
+  [session id]
+  (contains? (selection session) id))
 
 (defn selection-count
-  "Returns the number of selected nodes."
-  [db]
-  (count (selection db)))
+  "Returns the number of selected nodes.
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (count (selection session)))
 
 (defn has-selection?
-  "Returns true if any nodes are selected."
-  [db]
-  (pos? (selection-count db)))
+  "Returns true if any nodes are selected.
 
-;; ── Edit/Cursor Queries (Ephemeral) ───────────────────────────────────────────
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (pos? (selection-count session)))
+
+;; ── Edit/Cursor Queries (Session-based after Phases 4-5) ──────────────────────
 
 (defn editing-block-id
   "Get currently editing block ID (nil if not editing).
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :editing-block-id]))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :editing-block-id]))
 
 (defn editing?
-  "Returns true if currently in edit mode."
-  [db]
-  (some? (editing-block-id db)))
+  "Returns true if currently in edit mode.
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (some? (editing-block-id session)))
 
 (defn cursor-state
   "Get cursor state for a block (first-row?, last-row?).
-   Ephemeral state - not recorded in history."
-  [db block-id]
-  (get-in db [:nodes const/session-ui-id :props :cursor block-id]))
+
+   Args:
+   - session: Session state map (required for tests)
+   - block-id: Block ID to check"
+  [session block-id]
+  (get-in session [:ui :cursor block-id]))
 
 (defn cursor-position
   "Get cursor position hint (:start or :end) for entering edit mode.
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :cursor-position]))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :cursor-position]))
 
 (defn cursor-first-row?
   "Check if cursor is on first row of the given block.
-   Ephemeral state - not recorded in history."
-  [db block-id]
-  (get-in db [:nodes const/session-ui-id :props :cursor block-id :first-row?] false))
+
+   Args:
+   - session: Session state map (required for tests)
+   - block-id: Block ID to check"
+  [session block-id]
+  (get-in session [:ui :cursor block-id :first-row?] false))
 
 (defn cursor-last-row?
   "Check if cursor is on last row of the given block.
-   Ephemeral state - not recorded in history."
-  [db block-id]
-  (get-in db [:nodes const/session-ui-id :props :cursor block-id :last-row?] false))
 
-;; ── Fold/Zoom Queries (Ephemeral) ─────────────────────────────────────────────
+   Args:
+   - session: Session state map (required for tests)
+   - block-id: Block ID to check"
+  [session block-id]
+  (get-in session [:ui :cursor block-id :last-row?] false))
+
+;; ── Fold/Zoom Queries (Session-based after Phases 4-5) ────────────────────────
 
 (defn folded-set
   "Get the set of folded block IDs.
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :folded] #{}))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :folded] #{}))
 
 (defn folded?
   "Check if a block is currently folded (children hidden).
-   Ephemeral state - not recorded in history."
-  [db block-id]
-  (contains? (folded-set db) block-id))
+
+   Args:
+   - session: Session state map (required for tests)
+   - block-id: Block ID to check"
+  [session block-id]
+  (contains? (folded-set session) block-id))
 
 (defn zoom-stack
   "Get the zoom navigation stack.
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :zoom-stack] []))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :zoom-stack] []))
 
 (defn zoom-root
   "Get the current zoom root (rendering root block ID).
    Returns nil if at document root.
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :zoom-root]))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :zoom-root]))
 
 (defn current-page
   "Get ID of the currently active page from session/ui state.
    Returns nil if no page is selected.
-   Ephemeral state - not recorded in history."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :current-page]))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (get-in session [:ui :current-page]))
 
 (defn active-outline-root
   "Get the active outline root for navigation and rendering.
-   
+
    LOGSEQ PARITY: Determines which subtree is 'visible' for navigation.
    Priority order:
    1. Zoom root (when zoomed into a block)
    2. Current page (when a page is selected)
    3. Document root (fallback)
-   
+
    This ensures navigation stays within the rendered outline, preventing
-   arrow keys from jumping across pages or into hidden subtrees."
-  [db]
-  (or (zoom-root db)
-      (current-page db)
+   arrow keys from jumping across pages or into hidden subtrees.
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (or (zoom-root session)
+      (current-page session)
       :doc))
 
 (defn zoom-level
   "Get current zoom level (0 = root, 1+ = zoomed in).
-   Ephemeral state - not recorded in history."
-  [db]
-  (count (zoom-stack db)))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (count (zoom-stack session)))
 
 (defn in-zoom?
   "Check if currently zoomed into a block.
-   Ephemeral state - not recorded in history."
-  [db]
-  (pos? (zoom-level db)))
+
+   Args:
+   - session: Session state map (required for tests)"
+  [session]
+  (pos? (zoom-level session)))
 
 ;; ── Tree Queries (Derived Indexes) ────────────────────────────────────────────
 
@@ -194,28 +254,32 @@
 
 (defn visible-blocks-in-dom-order
   "Get all visible blocks in DOM/visual order (pre-order traversal).
-   
+
    LOGSEQ PARITY: This matches Logseq's `get-blocks-noncollapse` which returns
    all visible .ls-block elements in the order they appear in the DOM.
-   
+
    DOM order = pre-order traversal order:
    - Parent comes before its children
    - Siblings in order
    - Respects folding (collapsed children excluded)
    - Respects zoom (only blocks under zoom root)
    - Respects current page (only blocks on active page when not zoomed)
-   
+
    Example tree:
      A
        A1
        A2
      B
        B1
-   
+
    DOM order: [A, A1, A2, B, B1]
-   (NOT sibling order: [A, B] or depth-first: [A1, A2, A, B1, B])"
-  [db]
-  (let [root (active-outline-root db)
+   (NOT sibling order: [A, B] or depth-first: [A1, A2, A, B1, B])
+
+   Args:
+   - db: Database
+   - session: Session state map (required for tests)"
+  [db session]
+  (let [root (active-outline-root session)
 
         ;; Get visible children from :visible-order index (already filtered by folding/zoom)
         visible-children (fn [parent-id]
@@ -274,15 +338,21 @@
 
 (defn visible-range
   "Return set of visible block IDs between a and b (inclusive) in DOM order.
-   
+
    LOGSEQ PARITY: Unlike doc-range, this respects:
    - Fold state (excludes folded descendants)
    - Zoom/page boundaries (only blocks in active outline)
-   
+
    Used for Shift+Click range selection to prevent selecting hidden blocks.
-   Returns empty set if either node is not visible in current context."
-  [db a b]
-  (let [visible (visible-blocks-in-dom-order db)
+   Returns empty set if either node is not visible in current context.
+
+   Args:
+   - db: Database
+   - session: Session state map (required for tests)
+   - a: First block ID
+   - b: Second block ID"
+  [db session a b]
+  (let [visible (visible-blocks-in-dom-order db session)
         a-idx (.indexOf visible a)
         b-idx (.indexOf visible b)]
     (if (and (>= a-idx 0) (>= b-idx 0))
