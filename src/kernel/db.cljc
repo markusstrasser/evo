@@ -8,18 +8,15 @@
                      [goog.string.format])))
 
 (defn empty-db
-  "Create an empty database with canonical shape."
+  "Create an empty database with canonical shape.
+
+   Phases 4 & 5: Session nodes removed - ephemeral state (cursor, selection,
+   fold, zoom, buffer) lives purely in shell.session atom.
+
+   DB now contains only the persistent document graph."
   []
-  {:nodes {"session"                  {:type :session-root :props {}}
-           const/session-selection-id {:type :selection    :props {:nodes #{} :focus nil :anchor nil}}
-           const/session-ui-id        {:type :ui           :props {:editing-block-id nil
-                                                                    :cursor {}
-                                                                    :folded #{}
-                                                                    :zoom-stack []
-                                                                    :zoom-root nil
-                                                                    :current-page nil}}
-           "session/buffer"           {:type :buffer       :props {}}}
-   :children-by-parent {const/root-session [const/session-selection-id const/session-ui-id "session/buffer"]}
+  {:nodes {}  ; Pure document graph - no session nodes
+   :children-by-parent {}
    :roots const/roots
    :derived {:parent-of {}
              :index-of {}
