@@ -138,10 +138,13 @@ All state changes flow through a strict pipeline:
 
 ### Canonical DB Shape
 
+**IMPORTANT (2025-11-21)**: Session state moved to separate atom. DB now contains only persistent document graph.
+
 ```clojure
+;; Database (persistent document only)
 {:nodes {"id" {:type :block :props {...}}}
  :children-by-parent {:doc ["a" "b"] "a" ["c"]}
- :roots [:doc :trash :session]
+ :roots [:doc :trash]  ; :session removed - now separate atom
  :derived {:parent-of {"a" :doc}
            :next-id-of {"a" "b"}
            :prev-id-of {"b" "a"}
@@ -149,9 +152,22 @@ All state changes flow through a strict pipeline:
            :pre {"a" 0 "b" 1}  ; pre-order traversal
            :post {"a" 2 "b" 1}
            :id-by-pre {0 "a" 1 "b"}}}
+
+;; Session atom (ephemeral UI state) - see shell/session.cljs
+{:cursor {:block-id nil :offset 0}
+ :selection {:nodes #{} :focus nil :anchor nil}
+ :buffer {:block-id nil :text "" :dirty? false}
+ :ui {:folded #{}
+      :zoom-root nil
+      :editing-block-id nil
+      :cursor-position nil}
+ :sidebar {:right []}}
 ```
 
-**Critical**: Derived indexes are recomputed automatically. Never mutate them directly.
+**Critical**:
+- Derived indexes are recomputed automatically. Never mutate them directly.
+- Session state queries use `kernel.query` functions with session parameter: `(q/selection session)` not `(q/selection db)`
+- Buffer updates go directly to session via `session/swap-session!` (no intent)
 
 ### Intent → Operations Pattern
 
