@@ -23,7 +23,20 @@
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
             [shell.plugin-manifest-runtime :as plugin-manifest]
-            [plugins.pages :as pages] ;; Load to register page intents
+            ;; Load all plugins to register intents
+            [plugins.selection]
+            [plugins.editing]
+            [plugins.clipboard]
+            [plugins.navigation]
+            [plugins.slash-commands]
+            [plugins.quick-switcher]
+            [plugins.struct]
+            [plugins.folding]
+            [plugins.smart-editing]
+            [plugins.text-formatting]
+            [plugins.visible-order]
+            [plugins.buffer]
+            [plugins.pages :as pages]
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]))
 
@@ -71,17 +84,17 @@
     ;; Intent map: dispatch directly through kernel
     (map? intent-or-actions)
     (do
-      (js/console.log "Intent:" (pr-str intent-or-actions))
       (swap! !db (fn [db]
                    (let [db-before db
-                         {:keys [db issues]} (api/dispatch db intent-or-actions)
-                         db-after db
+                         result (api/dispatch db intent-or-actions)
+                         db-after (:db result)
+                         issues (:issues result)
                          should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-or-actions)))]
                      (when (seq issues)
                        (js/console.error "Intent validation failed:" (pr-str issues)))
                      (when should-log?
                        (dev/log-dispatch! intent-or-actions db-before db-after))
-                     db))))
+                     db-after))))
 
     ;; Keyword: wrap in :type map
     :else
@@ -263,6 +276,8 @@
                  (block/Block {:db db
                                :block-id child-id
                                :depth 0
+                               :is-focused (= (q/focus db) child-id)
+                               :is-selected (q/selected? db child-id)
                                :on-intent on-intent}))
                children))))
 
