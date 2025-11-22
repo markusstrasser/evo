@@ -23,6 +23,8 @@
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
             [shell.plugin-manifest-runtime :as plugin-manifest]
+            [shell.session :as session]
+            [shell.session-sync :as session-sync]
             ;; Load all plugins to register intents
             [plugins.selection]
             [plugins.editing]
@@ -94,6 +96,8 @@
                        (js/console.error "Intent validation failed:" (pr-str issues)))
                      (when should-log?
                        (dev/log-dispatch! intent-or-actions db-before db-after))
+                     ;; Phase 2: Sync session from DB after intent dispatch
+                     (session-sync/sync-all-from-db! db-after)
                      db-after))))
 
     ;; Keyword: wrap in :type map
@@ -425,11 +429,18 @@
   (set! (.-TEST_HELPERS js/window)
         #js {:resetToEmptyDb reset-to-empty-db!})
 
+  ;; Phase 2: Expose session for debugging
+  (set! (.-SESSION js/window) session/!session)
+
   ;; Initialize keyboard bindings (explicit, not side-effect)
   (bindings/reload!)
 
   ;; Initialize Nexus action pipeline
   (nexus/init!)
+
+  ;; Phase 2: Initialize session from DB
+  (session-sync/init-session-from-db! @!db)
+  (js/console.log "Session initialized from DB")
 
   (js/console.log "Registered plugins:" (clj->js plugin-manifest/manifest))
 
