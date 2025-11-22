@@ -98,14 +98,17 @@
 (defn ephemeral-op?
   "Check if an operation is ephemeral (UI-only, should not enter history).
 
-   Ephemeral ops update session nodes (UI state and selection) and should not trigger history recording.
-   Examples: cursor state, edit mode, selection state, transient UI state.
+   Ephemeral ops update session nodes (UI state, selection, and buffer) and should not trigger history recording.
+   Examples: cursor state, edit mode, selection state, buffer text, transient UI state.
 
-   Returns true if op is an :update-node on session-ui-id or session-selection-id."
+   Returns true if op is an :update-node on session-ui-id, session-selection-id, or session/buffer.
+
+   Phase 1 Refactor: Extended to include session/buffer to make typing truly ephemeral."
   [op]
   (and (= :update-node (:op op))
        (or (= const/session-ui-id (:id op))
-           (= const/session-selection-id (:id op)))))
+           (= const/session-selection-id (:id op))
+           (= "session/buffer" (:id op)))))
 
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
