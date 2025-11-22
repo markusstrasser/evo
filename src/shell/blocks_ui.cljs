@@ -24,7 +24,7 @@
             [shell.e2e-scenarios]
             [shell.plugin-manifest-runtime :as plugin-manifest]
             [shell.session :as session]
-            [shell.session-sync :as session-sync]
+            ;; Phases 4 & 5: session-sync removed - session is source of truth
             ;; Load all plugins to register intents
             [plugins.selection]
             [plugins.editing]
@@ -96,8 +96,7 @@
                        (js/console.error "Intent validation failed:" (pr-str issues)))
                      (when should-log?
                        (dev/log-dispatch! intent-or-actions db-before db-after))
-                     ;; Phase 2: Sync session from DB after intent dispatch
-                     (session-sync/sync-all-from-db! db-after)
+                     ;; Phases 4 & 5: No session sync - session is source of truth
                      db-after))))
 
     ;; Keyword: wrap in :type map
@@ -438,9 +437,8 @@
   ;; Initialize Nexus action pipeline
   (nexus/init!)
 
-  ;; Phase 2: Initialize session from DB
-  (session-sync/init-session-from-db! @!db)
-  (js/console.log "Session initialized from DB")
+  ;; Phases 4 & 5: Session is independent, no init from DB needed
+  (js/console.log "Session initialized (independent of DB)")
 
   (js/console.log "Registered plugins:" (clj->js plugin-manifest/manifest))
 
