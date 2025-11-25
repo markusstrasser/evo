@@ -1,6 +1,7 @@
 (ns components.sidebar
   "Sidebar component for page navigation."
-  (:require [plugins.pages :as pages]))
+  (:require [plugins.pages :as pages]
+            [shell.session :as session]))
 
 (defn Sidebar
   "Sidebar showing list of pages with navigation.
@@ -10,7 +11,7 @@
    - on-intent: callback for dispatching intents"
   [{:keys [db on-intent]}]
   (let [all-pages (pages/all-pages db)
-        current-page-id (pages/current-page db)]
+        current-page-id (session/current-page)]
     [:div.sidebar
      {:style {:position "fixed"
               :left "0"
