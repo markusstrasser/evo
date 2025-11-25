@@ -3,12 +3,14 @@
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [plugins.registry :as reg]))
 
-;; Fixture to clear plugins before each test
+;; Fixture to clear plugins before each test only.
+;; Note: We don't clear after, because other tests may depend on
+;; plugins registered at namespace load time, and requiring a namespace
+;; again doesn't re-run top-level forms.
 (use-fixtures :each
   (fn [f]
     (reg/clear!)
-    (f)
-    (reg/clear!)))
+    (f)))
 
 (deftest register-and-run
   (testing "Registering and running a simple plugin"

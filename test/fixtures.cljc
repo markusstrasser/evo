@@ -174,7 +174,7 @@
 (defn apply-intent-and-interpret
   "Apply intent and return resulting db (convenience helper)."
   [db intent]
-  (let [{:keys [ops]} (intent/apply-intent db intent)]
+  (let [{:keys [ops]} (intent/apply-intent db nil intent)]
     (:db (tx/interpret db ops))))
 
 (defn intent-chain

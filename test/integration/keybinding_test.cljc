@@ -51,73 +51,68 @@
 
 (deftest test-arrow-down-navigation
   (testing "ArrowDown: Navigate to next sibling"
-    (let [db (-> (make-tree)
-                 ;; Select "a"
-                 (api/dispatch {:type :selection :mode :replace :ids "a"})
-                 :db)
-          ;; Simulate ArrowDown keypress
-          result (api/dispatch db {:type :selection :mode :next})
-          final-db (:db result)]
+    (let [;; Select "a" - returns session-updates
+          {:keys [session-updates]} (api/dispatch (make-tree) nil {:type :selection :mode :replace :ids "a"})
+          session1 session-updates
+          ;; Simulate ArrowDown keypress with current session state
+          {:keys [session-updates]} (api/dispatch (make-tree) session1 {:type :selection :mode :next})
+          focus (get-in session-updates [:selection :focus])]
       ;; Assert focus moved from "a" to "b"
-      (is (= "b" (q/focus final-db))
+      (is (= "b" focus)
           "Focus should move to next sibling"))))
 
 (deftest test-arrow-up-navigation
-  (testing "ArrowUp: Navigate to previous sibling"
-    (let [db (-> (make-tree)
-                 ;; Select "c"
-                 (api/dispatch {:type :selection :mode :replace :ids "c"})
-                 :db)
-          ;; Simulate ArrowUp keypress
-          result (api/dispatch db {:type :selection :mode :prev})
-          final-db (:db result)]
-      ;; Assert focus moved from "c" to "b"
-      (is (= "b" (q/focus final-db))
-          "Focus should move to previous sibling"))))
+  (testing "ArrowUp: Navigate to previous block in DOM order (depth-first)"
+    (let [;; Select "c" - returns session-updates
+          {:keys [session-updates]} (api/dispatch (make-tree) nil {:type :selection :mode :replace :ids "c"})
+          session1 session-updates
+          ;; Simulate ArrowUp keypress with current session state
+          {:keys [session-updates]} (api/dispatch (make-tree) session1 {:type :selection :mode :prev})
+          focus (get-in session-updates [:selection :focus])]
+      ;; Assert focus moved from "c" to "b2" (DOM-order: last child of prev sibling)
+      ;; Tree: a, b(b1, b2), c → prev from c in DOM order is b2
+      (is (= "b2" focus)
+          "Focus should move to previous block in DOM order (b2, last child of b)"))))
 
 ;; ── Selection Tests ───────────────────────────────────────────────────────────
 
 (deftest test-shift-arrow-extend-selection
   (testing "Shift+ArrowDown: Extend selection to next sibling"
-    (let [db (-> (make-tree)
-                 ;; Select "a"
-                 (api/dispatch {:type :selection :mode :replace :ids "a"})
-                 :db)
-          ;; Simulate Shift+ArrowDown
-          result (api/dispatch db {:type :selection :mode :extend-next})
-          final-db (:db result)
-          selection (q/selection final-db)]
+    (let [;; Select "a" - returns session-updates
+          {:keys [session-updates]} (api/dispatch (make-tree) nil {:type :selection :mode :replace :ids "a"})
+          session1 session-updates
+          ;; Simulate Shift+ArrowDown with current session state
+          {:keys [session-updates]} (api/dispatch (make-tree) session1 {:type :selection :mode :extend-next})
+          selection (get-in session-updates [:selection :nodes])]
       ;; Assert both "a" and "b" are selected
       (is (contains? selection "a") "Original node should remain selected")
       (is (contains? selection "b") "Next sibling should be added to selection")
       (is (= 2 (count selection)) "Selection should contain exactly 2 nodes"))))
 
 (deftest test-shift-arrow-up-extend-selection
-  (testing "Shift+ArrowUp: Extend selection range (doc-order between anchor and focus)"
-    (let [db (-> (make-tree)
-                 ;; Select "c"
-                 (api/dispatch {:type :selection :mode :replace :ids "c"})
-                 :db)
-          ;; Simulate Shift+ArrowUp (extends to "b", creates range from b to c)
-          result (api/dispatch db {:type :selection :mode :extend-prev})
-          final-db (:db result)
-          selection (q/selection final-db)]
-      ;; Range selection: selects all nodes in doc-order between anchor (c) and focus (b)
-      ;; Tree: a, b(b1, b2), c → range from b to c includes: a, b, c (and b's children)
+  (testing "Shift+ArrowUp: Extend selection to previous block in DOM order"
+    (let [;; Select "c" - returns session-updates
+          {:keys [session-updates]} (api/dispatch (make-tree) nil {:type :selection :mode :replace :ids "c"})
+          session1 session-updates
+          ;; Simulate Shift+ArrowUp (extends to b2, prev in DOM order)
+          {:keys [session-updates]} (api/dispatch (make-tree) session1 {:type :selection :mode :extend-prev})
+          selection (get-in session-updates [:selection :nodes])]
+      ;; Tree: a, b(b1, b2), c → prev from c in DOM order is b2
+      ;; Extend-prev adds b2 to selection
       (is (contains? selection "c") "Original node should remain selected")
-      (is (contains? selection "b") "Previous sibling should be in range")
-      (is (<= 2 (count selection)) "Range selection includes all nodes between anchor and focus"))))
+      (is (contains? selection "b2") "Previous block in DOM order (b2) should be added")
+      (is (= 2 (count selection)) "Selection should contain exactly 2 nodes"))))
 
 ;; ── Structural Edit Tests ─────────────────────────────────────────────────────
 
 (deftest test-tab-indent
   (testing "Tab: Indent selected block under previous sibling"
-    (let [db (-> (make-tree)
-                 ;; Select "b"
-                 (api/dispatch {:type :selection :mode :replace :ids "b"})
-                 :db)
+    (let [db (make-tree)
+          ;; Selection now returns session-updates. For structural ops,
+          ;; we need to set up a session with selection first
+          session {:selection {:nodes #{"b"} :focus "b" :anchor "b"}}
           ;; Simulate Tab keypress
-          result (api/dispatch db {:type :indent-selected})
+          result (api/dispatch db session {:type :indent-selected})
           final-db (:db result)]
       ;; Assert "b" moved under "a", "c" remains at :doc level
       (is (= ["a" "c"] (children-of final-db :doc))
@@ -127,12 +122,11 @@
 
 (deftest test-shift-tab-outdent
   (testing "Shift+Tab: Outdent prevented at root level (design constraint)"
-    (let [db (-> (make-tree)
-                 ;; Select "b1" (child of "b", grandparent is :doc which is a root)
-                 (api/dispatch {:type :selection :mode :replace :ids "b1"})
-                 :db)
+    (let [db (make-tree)
+          ;; Set up session with selection of "b1"
+          session {:selection {:nodes #{"b1"} :focus "b1" :anchor "b1"}}
           ;; Simulate Shift+Tab keypress
-          result (api/dispatch db {:type :outdent-selected})
+          result (api/dispatch db session {:type :outdent-selected})
           final-db (:db result)]
       ;; Outdent is prevented because grandparent (:doc) is a root
       ;; "b1" should remain under "b"
@@ -145,12 +139,11 @@
 
 (deftest test-alt-shift-arrow-up-move
   (testing "Alt+Shift+ArrowUp: Move selected block up"
-    (let [db (-> (make-tree)
-                 ;; Select "b"
-                 (api/dispatch {:type :selection :mode :replace :ids "b"})
-                 :db)
+    (let [db (make-tree)
+          ;; Set up session with selection of "b"
+          session {:selection {:nodes #{"b"} :focus "b" :anchor "b"}}
           ;; Simulate Alt+Shift+ArrowUp
-          result (api/dispatch db {:type :move-selected-up})
+          result (api/dispatch db session {:type :move-selected-up})
           final-db (:db result)]
       ;; Assert "b" moved before "a"
       (is (= ["b" "a" "c"] (children-of final-db :doc))
@@ -158,12 +151,11 @@
 
 (deftest test-alt-shift-arrow-down-move
   (testing "Alt+Shift+ArrowDown: Move selected block down"
-    (let [db (-> (make-tree)
-                 ;; Select "a"
-                 (api/dispatch {:type :selection :mode :replace :ids "a"})
-                 :db)
+    (let [db (make-tree)
+          ;; Set up session with selection of "a"
+          session {:selection {:nodes #{"a"} :focus "a" :anchor "a"}}
           ;; Simulate Alt+Shift+ArrowDown
-          result (api/dispatch db {:type :move-selected-down})
+          result (api/dispatch db session {:type :move-selected-down})
           final-db (:db result)]
       ;; Assert "a" moved after "b"
       (is (= ["b" "a" "c"] (children-of final-db :doc))
@@ -173,17 +165,14 @@
 
 (deftest test-enter-creates-new-block
   (testing "Enter: Create new block after focused block"
-    (let [db (-> (make-tree)
-                 ;; Select "a"
-                 (api/dispatch {:type :selection :mode :replace :ids "a"})
-                 :db)
+    (let [db (make-tree)
           parent (get-in db [:derived :parent-of "a"])
           new-id "new-block"
           ;; Simulate Enter keypress (creates new block after "a")
-          result (api/dispatch db {:type :create-and-place
-                                   :id new-id
-                                   :parent parent
-                                   :after "a"})
+          result (api/dispatch db nil {:type :create-and-place
+                                       :id new-id
+                                       :parent parent
+                                       :after "a"})
           final-db (:db result)]
       ;; Assert new block created after "a"
       (is (= ["a" new-id "b" "c"] (children-of final-db :doc))

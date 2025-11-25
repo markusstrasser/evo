@@ -14,6 +14,29 @@
             [plugins.refs :as refs]
             [plugins.registry :as reg]))
 
+;; ── Session helpers ──────────────────────────────────────────────────────────
+
+(defn empty-session
+  "Create an empty session for testing."
+  []
+  {:cursor {:block-id nil :offset 0}
+   :selection {:nodes #{} :focus nil :anchor nil}
+   :buffer {:block-id nil :text "" :dirty? false}
+   :ui {:folded #{}
+        :zoom-root nil
+        :zoom-stack []
+        :current-page nil
+        :editing-block-id nil
+        :cursor-position nil}
+   :sidebar {:right []}})
+
+(defn apply-session-updates
+  "Apply session-updates returned by a handler to a session."
+  [session session-updates]
+  (if session-updates
+    (merge-with merge session session-updates)
+    session))
+
 ;; =============================================================================
 ;; Test Helpers
 ;; =============================================================================
@@ -48,29 +71,33 @@
 (deftest selection-survives-node-move-test
   (testing "Selection persists when node is moved within :doc tree"
     (let [db0 (create-base-db)
+          session0 (empty-session)
 
-          ;; Select node 'a' (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
+          ;; Select node 'a' (via apply-intent)
+          {:keys [session-updates]} (intent/apply-intent db0 session0 {:type :selection :mode :replace :ids "a"})
+          session1 (apply-session-updates session0 session-updates)
 
-          ;; Move 'a' to different position (still under :doc)
-          db2 (interpret-ops db1 [{:op :place :id "a" :under :doc :at 1}])]
+          ;; Move 'a' to different position (still under :doc) - session unchanged
+          db2 (interpret-ops db0 [{:op :place :id "a" :under :doc :at 1}])]
 
-      (is (q/selected? db1 "a") "Node should be selected before move")
-      (is (q/selected? db2 "a") "Selection should persist after move")
-      (is (= #{"a"} (q/selection db2))))))
+      (is (q/selected? session1 "a") "Node should be selected before move")
+      (is (q/selected? session1 "a") "Selection should persist after move (session unchanged)")
+      (is (= #{"a"} (q/selection session1))))))
 
 (deftest selection-cleared-when-node-trashed-test
-  (testing "Selection is cleared when node moved to :trash"
+  (testing "Selection persists even when node moved to :trash (session independent)"
     (let [db0 (create-base-db)
+          session0 (empty-session)
 
-          ;; Select node 'a' (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
+          ;; Select node 'a' (via apply-intent)
+          {:keys [session-updates]} (intent/apply-intent db0 session0 {:type :selection :mode :replace :ids "a"})
+          session1 (apply-session-updates session0 session-updates)
 
-          ;; Move 'a' to trash
-          db2 (interpret-ops db1 [{:op :place :id "a" :under :trash :at :last}])]
+          ;; Move 'a' to trash - session unchanged
+          _db2 (interpret-ops db0 [{:op :place :id "a" :under :trash :at :last}])]
 
-      (is (q/selected? db1 "a") "Node should be selected before trashing")
-      (is (q/selected? db2 "a") "Selection persists (manual clear needed)")
+      (is (q/selected? session1 "a") "Node should be selected before trashing")
+      (is (q/selected? session1 "a") "Selection persists (session independent)")
       ;; Note: Selection state is independent of node location
       ;; Application code should clear selection when trashing
       )))
@@ -78,22 +105,26 @@
 (deftest multi-select-deselect-order-independence-test
   (testing "Multiple deselect ops are order-independent"
     (let [db0 (create-base-db)
+          session0 (empty-session)
 
-          ;; Select all three (via intent->ops)
-          db1 (interpret-ops db0 (intent/intent->ops db0 {:type :selection :mode :replace :ids ["a" "b" "c"]}))
+          ;; Select all three
+          {:keys [session-updates]} (intent/apply-intent db0 session0 {:type :selection :mode :replace :ids ["a" "b" "c"]})
+          session1 (apply-session-updates session0 session-updates)
 
           ;; Deselect in one order
-          db2a (-> db1
-                   (interpret-ops (intent/intent->ops db1 {:type :selection :mode :deselect :ids "a"}))
-                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :selection :mode :deselect :ids "b"}))))
+          {:keys [session-updates]} (intent/apply-intent db0 session1 {:type :selection :mode :deselect :ids "a"})
+          session2a (apply-session-updates session1 session-updates)
+          {:keys [session-updates]} (intent/apply-intent db0 session2a {:type :selection :mode :deselect :ids "b"})
+          session3a (apply-session-updates session2a session-updates)
 
           ;; Deselect in different order
-          db2b (-> db1
-                   (interpret-ops (intent/intent->ops db1 {:type :selection :mode :deselect :ids "b"}))
-                   (as-> db' (interpret-ops db' (intent/intent->ops db' {:type :selection :mode :deselect :ids "a"}))))]
+          {:keys [session-updates]} (intent/apply-intent db0 session1 {:type :selection :mode :deselect :ids "b"})
+          session2b (apply-session-updates session1 session-updates)
+          {:keys [session-updates]} (intent/apply-intent db0 session2b {:type :selection :mode :deselect :ids "a"})
+          session3b (apply-session-updates session2b session-updates)]
 
-      (is (= (q/selection db2a)
-             (q/selection db2b))
+      (is (= (q/selection session3a)
+             (q/selection session3b))
           "Deselect order should not affect final state"))))
 
 ;; =============================================================================
@@ -177,21 +208,23 @@
 (deftest selection-and-refs-independent-test
   (testing "Selection and refs are independent - don't affect each other"
     (let [db0 (create-base-db)
+          session0 (empty-session)
 
-          ;; Select node (via intent->ops) and add ref (via interpret)
-          db1 (-> db0
-                  (interpret-ops (intent/intent->ops db0 {:type :selection :mode :replace :ids "a"}))
-                  (interpret-ops [(refs/add-link-op db0 "a" "b")]))
+          ;; Select node and add ref
+          {:keys [session-updates]} (intent/apply-intent db0 session0 {:type :selection :mode :replace :ids "a"})
+          session1 (apply-session-updates session0 session-updates)
+          db1 (interpret-ops db0 [(refs/add-link-op db0 "a" "b")])
 
-          ;; Clear selection (via intent->ops)
-          db2 (interpret-ops db1 (intent/intent->ops db1 {:type :selection :mode :clear}))]
+          ;; Clear selection
+          {:keys [session-updates]} (intent/apply-intent db1 session1 {:type :selection :mode :clear})
+          session2 (apply-session-updates session1 session-updates)]
 
       ;; Refs should persist after clearing selection
-      (is (= #{"b"} (get-in db2 [:derived :ref/outgoing "a"]))
+      (is (= #{"b"} (get-in db1 [:derived :ref/outgoing "a"]))
           "Refs should not be affected by selection changes")
 
       ;; Selection should be cleared
-      (is (= #{} (q/selection db2))
+      (is (= #{} (q/selection session2))
           "Selection should be cleared"))))
 
 (deftest circular-ref-detected-test
