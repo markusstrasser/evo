@@ -7,8 +7,47 @@
             [kernel.db :as D]
             [kernel.intent :as intent]
             [kernel.transaction :as tx]
-            [kernel.constants :as const]
             [plugins.struct :as S]))
+
+;; ── Session helpers ──────────────────────────────────────────────────────────
+
+(defn empty-session
+  "Create an empty session for testing."
+  []
+  {:cursor {:block-id nil :offset 0}
+   :selection {:nodes #{} :focus nil :anchor nil}
+   :buffer {:block-id nil :text "" :dirty? false}
+   :ui {:folded #{}
+        :zoom-root nil
+        :zoom-stack []
+        :current-page nil
+        :editing-block-id nil
+        :cursor-position nil}
+   :sidebar {:right []}})
+
+(defn session-with-editing
+  "Create a session with editing-block-id set."
+  [block-id]
+  (assoc-in (empty-session) [:ui :editing-block-id] block-id))
+
+(defn session-with-selection
+  "Create a session with selection set."
+  [node-ids]
+  (-> (empty-session)
+      (assoc-in [:selection :nodes] (set node-ids))
+      (assoc-in [:selection :focus] (first node-ids))))
+
+(defn session-with-zoom
+  "Create a session with zoom-root set."
+  [zoom-root]
+  (assoc-in (empty-session) [:ui :zoom-root] zoom-root))
+
+(defn session-with-zoom-and-editing
+  "Create a session with zoom-root and editing-block-id set."
+  [zoom-root editing-id]
+  (-> (empty-session)
+      (assoc-in [:ui :zoom-root] zoom-root)
+      (assoc-in [:ui :editing-block-id] editing-id)))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -31,7 +70,7 @@
 (deftest delete-archives-to-trash
   (testing "Delete intent compiles to :place under :trash"
     (let [db (build-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :delete :id "a"})
+          {:keys [ops]} (intent/apply-intent db nil {:type :delete :id "a"})
           res (tx/interpret db ops)]
       (is (empty? (:issues res))
           "Delete operation should not generate issues")
@@ -45,11 +84,11 @@
   (testing "Indent followed by outdent restores original structure"
     (let [db (build-doc)
           ;; Indent b under a: doc1 -> [a -> [b]]
-          {:keys [ops]} (intent/apply-intent db {:type :indent :id "b"})
+          {:keys [ops]} (intent/apply-intent db nil {:type :indent :id "b"})
           r1 (tx/interpret db ops)
           db1 (:db r1)
           ;; Outdent b back to doc1: doc1 -> [a, b]
-          {:keys [ops]} (intent/apply-intent db1 {:type :outdent :id "b"})
+          {:keys [ops]} (intent/apply-intent db1 nil {:type :outdent :id "b"})
           r2 (tx/interpret db1 ops)]
       (is (empty? (:issues r1))
           "Indent operation should not generate issues")
@@ -64,21 +103,21 @@
   (testing "Indent on first child returns empty ops (no-op safety)"
     (let [db (build-doc)
           first-id (first (get-in db [:children-by-parent "doc1"]))
-          {:keys [ops]} (intent/apply-intent db {:type :indent :id first-id})]
+          {:keys [ops]} (intent/apply-intent db nil {:type :indent :id first-id})]
       (is (= [] ops)
           "Cannot indent first child (no previous sibling)")))
 
   (testing "Outdent on direct child of root returns empty ops"
     (let [db (build-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "doc1"})]
+          {:keys [ops]} (intent/apply-intent db nil {:type :outdent :id "doc1"})]
       (is (= [] ops)
           "Cannot outdent top-level document (no grandparent)"))))
 
 (deftest compile-multiple-intents
   (testing "Multiple intents compile into sequential ops"
     (let [db (build-doc)
-          {ops1 :ops} (intent/apply-intent db {:type :indent :id "b"})
-          {ops2 :ops} (intent/apply-intent db {:type :delete :id "a"})
+          {ops1 :ops} (intent/apply-intent db nil {:type :indent :id "b"})
+          {ops2 :ops} (intent/apply-intent db nil {:type :delete :id "a"})
           all-ops (concat ops1 ops2)]
       (is (= 2 (count all-ops))
           "Two intents should produce two ops")
@@ -88,7 +127,7 @@
 (deftest unknown-intent-type-is-noop
   (testing "Unknown intent type returns empty ops"
     (let [db (build-doc)
-          result (intent/apply-intent db {:type :unknown-intent :id "a"})]
+          result (intent/apply-intent db nil {:type :unknown-intent :id "a"})]
       (is (= [] (:ops result))
           "Unknown intent should have no ops")
       (is (= db (:db result))
@@ -124,9 +163,8 @@
   move-up-climb-out-semantics
   (testing "Move up on first child climbs out to parent's level"
     (let [db (build-nested-doc)
-          ;; Set child-a as editing block (simulates selection)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-a")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          session (session-with-editing "child-a")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Climb operation should not generate issues")
@@ -139,9 +177,8 @@
 (deftest move-up-normal-case
   (testing "Move up on non-first child moves before previous sibling"
     (let [db (build-nested-doc)
-          ;; Set child-b as editing block
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-b")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          session (session-with-editing "child-b")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Move up should not generate issues")
@@ -153,9 +190,8 @@
   move-down-descend-semantics
   (testing "Move down on last child descends into parent's next sibling"
     (let [db (build-nested-doc)
-          ;; Set child-c as editing block (last child)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-c")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          session (session-with-editing "child-c")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Descend operation should not generate issues")
@@ -168,9 +204,8 @@
 (deftest move-down-normal-case
   (testing "Move down on non-last child moves after next sibling"
     (let [db (build-nested-doc)
-          ;; Set child-a as editing block
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-a")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          session (session-with-editing "child-a")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Move down should not generate issues")
@@ -181,9 +216,8 @@
 (deftest move-up-climb-multi-select
   (testing "Move up with multi-select climbs all selected nodes together"
     (let [db (build-nested-doc)
-          ;; Select child-a and child-b (first two children)
-          db (assoc-in db [:nodes const/session-selection-id :props :nodes] #{"child-a" "child-b"})
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          session (session-with-selection ["child-a" "child-b"])
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Multi-select climb should not generate issues")
@@ -196,9 +230,8 @@
 (deftest move-down-descend-multi-select
   (testing "Move down with multi-select descends all selected nodes together"
     (let [db (build-nested-doc)
-          ;; Select child-b and child-c (last two children)
-          db (assoc-in db [:nodes const/session-selection-id :props :nodes] #{"child-b" "child-c"})
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          session (session-with-selection ["child-b" "child-c"])
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           result (tx/interpret db ops)]
       (is (empty? (:issues result))
           "Multi-select descend should not generate issues")
@@ -211,9 +244,8 @@
 (deftest move-up-at-top-level-noop
   (testing "Move up on first child at top level is no-op"
     (let [db (build-nested-doc)
-          ;; Set parent as editing block (first child of doc, which is a root)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "parent")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          session (session-with-editing "parent")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           result (tx/interpret db ops)]
       (is (= [] ops)
           "Cannot climb out of root-level parent")
@@ -223,14 +255,12 @@
 (deftest move-down-no-uncle-noop
   (testing "Move down on last child with no uncle is no-op"
     (let [db (build-nested-doc)
-          ;; Set uncle as editing block (last child of doc, no next sibling)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "uncle")
           ;; Add a child to uncle so we can test moving its last child
           {:keys [db]} (tx/interpret db
                                      [{:op :create-node :id "nephew" :type :block :props {:text "Nephew"}}
                                       {:op :place :id "nephew" :under "uncle" :at :last}])
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "nephew")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          session (session-with-editing "nephew")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           result (tx/interpret db ops)]
       (is (= [] ops)
           "Cannot descend when parent has no next sibling")
@@ -240,12 +270,13 @@
 ;; ── Zoom Boundary Tests (FR-Scope-02) ────────────────────────────────────────
 
 (defn build-zoomed-doc
-  "Creates a test DB with zoom set:
+  "Creates a test DB for zoom tests:
    doc -> [page]
    page -> [parent]
    parent -> [child-a, child-b]
 
-   Zoom root: parent (cannot operate outside parent)"
+   Note: Zoom root is set via session, not in DB.
+   Use session-with-zoom or session-with-zoom-and-editing in tests."
   []
   (let [DB0 (D/empty-db)
         {:keys [db issues]} (tx/interpret DB0
@@ -256,11 +287,7 @@
                                            {:op :create-node :id "child-a" :type :block :props {:text "Child A"}}
                                            {:op :place :id "child-a" :under "parent" :at :last}
                                            {:op :create-node :id "child-b" :type :block :props {:text "Child B"}}
-                                           {:op :place :id "child-b" :under "parent" :at :last}
-                                           ;; Set zoom root to "parent"
-                                           {:op :update-node
-                                            :id const/session-ui-id
-                                            :props {:zoom-root "parent"}}])]
+                                           {:op :place :id "child-b" :under "parent" :at :last}])]
     (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
     db))
 
@@ -268,8 +295,9 @@
   outdent-blocked-by-zoom-boundary
   (testing "FR-Scope-02: Outdent is no-op when grandparent is outside zoom root"
     (let [db (build-zoomed-doc)
+          session (session-with-zoom "parent")
           ;; Try to outdent child-a (would move it under "page", outside zoom root "parent")
-          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "child-a"})
+          {:keys [ops]} (intent/apply-intent db session {:type :outdent :id "child-a"})
           result (tx/interpret db ops)]
       (is (= [] ops)
           "Outdent should be blocked when grandparent is outside zoom root")
@@ -280,8 +308,8 @@
   (testing "FR-Scope-02: Move up (climb) is no-op when grandparent is outside zoom root"
     (let [db (build-zoomed-doc)
           ;; Set child-a as editing block (first child, will try to climb out)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-a")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up})
+          session (session-with-zoom-and-editing "parent" "child-a")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           result (tx/interpret db ops)]
       (is (= [] ops)
           "Move up (climb) should be blocked when grandparent is outside zoom root")
@@ -296,8 +324,8 @@
                                      [{:op :create-node :id "uncle" :type :block :props {:text "Uncle"}}
                                       {:op :place :id "uncle" :under "page" :at {:after "parent"}}])
           ;; Set child-b as editing block (last child, will try to descend into uncle)
-          db (assoc-in db [:nodes const/session-ui-id :props :editing-block-id] "child-b")
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down})
+          session (session-with-zoom-and-editing "parent" "child-b")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           result (tx/interpret db ops)]
       (is (= [] ops)
           "Move down (descend) should be blocked when target is outside zoom root")
@@ -307,12 +335,13 @@
 (deftest operations-allowed-within-zoom-scope
   (testing "FR-Scope-01: Operations within zoom scope work normally"
     (let [db (build-zoomed-doc)
-          ;; Outdent child-b (stays within zoom root "parent")
-          ;; This should work because grandparent is child-a (within zoom)
+          ;; Outdent child-c from under child-a (stays within zoom root "parent")
+          ;; This should work because grandparent is "parent" (the zoom root)
           {:keys [db]} (tx/interpret db
                                      [{:op :create-node :id "child-c" :type :block :props {:text "Child C"}}
                                       {:op :place :id "child-c" :under "child-a" :at :last}])
-          {:keys [ops]} (intent/apply-intent db {:type :outdent :id "child-c"})
+          session (session-with-zoom "parent")
+          {:keys [ops]} (intent/apply-intent db session {:type :outdent :id "child-c"})
           result (tx/interpret db ops)]
       (is (not (empty? ops))
           "Outdent should work when staying within zoom scope")

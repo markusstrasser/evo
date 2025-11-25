@@ -105,9 +105,8 @@
           intent (second dispatch-effect)]
       (is (= :navigate-with-cursor-memory (:type intent))
           "Should dispatch navigate-with-cursor-memory intent")
-      (is (= "b" (:block-id intent)) "Should preserve block-id")
-      (is (= :up (:direction intent)) "Should set direction to :up")
-      (is (= :first (:cursor-row intent)) "Should preserve cursor-row"))))
+      (is (= "b" (:current-block-id intent)) "Should preserve block-id as current-block-id")
+      (is (= :up (:direction intent)) "Should set direction to :up"))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-down-dispatches-correct-intent
@@ -117,9 +116,8 @@
           dispatch-effect (first (filter #(= :effects/dispatch-intent (first %)) effects))
           intent (second dispatch-effect)]
       (is (= :navigate-with-cursor-memory (:type intent)))
-      (is (= "b" (:block-id intent)))
-      (is (= :down (:direction intent)) "Should set direction to :down")
-      (is (= :last (:cursor-row intent))))))
+      (is (= "b" (:current-block-id intent)) "Should preserve block-id as current-block-id")
+      (is (= :down (:direction intent)) "Should set direction to :down"))))
 
 (deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
   extend-selection-prev-dispatches-correct-intent
@@ -129,8 +127,7 @@
           dispatch-effect (first (filter #(= :effects/dispatch-intent (first %)) effects))
           intent (second dispatch-effect)]
       (is (= :selection (:type intent)))
-      (is (= :extend (:mode intent)) "Should extend selection")
-      (is (= :prev (:direction intent)) "Should extend upward"))))
+      (is (= :extend-prev (:mode intent)) "Should extend selection upward"))))
 
 (deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
   extend-selection-next-dispatches-correct-intent
@@ -140,17 +137,16 @@
           dispatch-effect (first (filter #(= :effects/dispatch-intent (first %)) effects))
           intent (second dispatch-effect)]
       (is (= :selection (:type intent)))
-      (is (= :extend (:mode intent)))
-      (is (= :next (:direction intent)) "Should extend downward"))))
+      (is (= :extend-next (:mode intent)) "Should extend selection downward"))))
 
 (deftest ^{:fr/ids #{:fr.edit/smart-split}}
   smart-split-dispatches-correct-intent
-  (testing "smart-split produces :smart-split intent"
+  (testing "smart-split produces :context-aware-enter intent"
     (let [state (sample-db)
           effects (nexus/smart-split state {:block-id "b" :cursor-pos 5})
           dispatch-effect (first (filter #(= :effects/dispatch-intent (first %)) effects))
           intent (second dispatch-effect)]
-      (is (= :smart-split (:type intent)))
+      (is (= :context-aware-enter (:type intent)))
       (is (= "b" (:block-id intent)))
       (is (= 5 (:cursor-pos intent)) "Should preserve cursor position"))))
 
@@ -163,28 +159,30 @@
       (is (= :exit-edit (:type intent))))))
 
 ;; ── Effect Tests ──────────────────────────────────────────────────────────────
+;; NOTE: dispatch-intent effect requires browser context (session atom).
+;; These tests verify DB-only behavior via api/dispatch directly.
 
-(deftest dispatch-intent-effect-applies-to-db
-  (testing "dispatch-intent effect correctly applies intent to DB"
+(deftest dispatch-intent-applies-db-operations
+  (testing "api/dispatch applies DB operations for valid intents"
     (let [db (sample-db)
-          !db (atom db)
-          intent {:type :exit-edit}
-          _ (nexus/dispatch-intent nil !db intent)
-          result @!db]
-      ;; exit-edit should clear editing-block-id
-      (is (nil? (get-in result [:nodes "session/ui" :props :editing-block-id]))
-          "Should apply intent to DB"))))
+          session {}
+          intent {:type :update-content :block-id "a" :text "modified"}
+          result (api/dispatch db session intent)
+          new-db (:db result)]
+      ;; update-content should change the block text
+      (is (= "modified" (get-in new-db [:nodes "a" :props :text]))
+          "Should apply intent operations to DB"))))
 
-(deftest dispatch-intent-handles-invalid-intents
-  (testing "dispatch-intent handles invalid intents gracefully"
+(deftest dispatch-handles-invalid-intents-gracefully
+  (testing "api/dispatch handles invalid intents gracefully"
     (let [db (sample-db)
-          !db (atom db)
+          session {}
           invalid-intent {:type :nonexistent-intent-type}
-          _ (nexus/dispatch-intent nil !db invalid-intent)
-          result @!db]
-      ;; Invalid intent should not crash or mutate DB in unexpected ways
-      (is (map? result) "DB should still be a valid map")
-      (is (contains? result :nodes) "DB structure should be preserved"))))
+          result (api/dispatch db session invalid-intent)
+          new-db (:db result)]
+      ;; Invalid intent should not crash or mutate DB unexpectedly
+      (is (map? new-db) "DB should still be a valid map")
+      (is (contains? new-db :nodes) "DB structure should be preserved"))))
 
 ;; ── Single Dispatch Guarantee Tests ──────────────────────────────────────────
 
@@ -219,17 +217,17 @@
 ;; ── Regression Tests ──────────────────────────────────────────────────────────
 
 (deftest navigate-actions-preserve-block-id
-  (testing "Navigation actions preserve block-id in intent"
+  (testing "Navigation actions preserve block-id as :current-block-id in intent"
     (let [state (sample-db)]
       (doseq [block-id ["a" "b" "c"]]
         (let [up-effects (nexus/navigate-up state {:block-id block-id :cursor-row :first})
               up-intent (second (first (filter #(= :effects/dispatch-intent (first %)) up-effects)))
               down-effects (nexus/navigate-down state {:block-id block-id :cursor-row :last})
               down-intent (second (first (filter #(= :effects/dispatch-intent (first %)) down-effects)))]
-          (is (= block-id (:block-id up-intent))
-              (str "navigate-up should preserve block-id: " block-id))
-          (is (= block-id (:block-id down-intent))
-              (str "navigate-down should preserve block-id: " block-id)))))))
+          (is (= block-id (:current-block-id up-intent))
+              (str "navigate-up should preserve block-id as :current-block-id: " block-id))
+          (is (= block-id (:current-block-id down-intent))
+              (str "navigate-down should preserve block-id as :current-block-id: " block-id)))))))
 
 (deftest selection-actions-include-direction
   (testing "Selection actions include direction metadata for tracking"

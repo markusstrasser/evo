@@ -1,7 +1,6 @@
 (ns view.block-navigation-view-test
   "View-level coverage for navigation scenarios (Logseq parity triad)."
   (:require [clojure.test :refer [deftest testing is]]
-            [kernel.constants :as const]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [components.block :as block]
@@ -9,27 +8,31 @@
 
 (defn- nav-boundary-db
   "Minimal DB for NAV-BOUNDARY-LEFT-01.
-   Parent A with child B; editing B so `.content-edit` span should exist."
+   Parent A with child B."
   []
   (let [ops [{:op :create-node :id "a" :type :block :props {:text "Parent"}}
              {:op :place :id "a" :under :doc :at :last}
              {:op :create-node :id "b" :type :block :props {:text "Child"}}
              {:op :place :id "b" :under "a" :at :last}]
-        base (db/empty-db)
-        db* (:db (tx/interpret base ops))]
-    (assoc-in db* [:nodes const/session-ui-id :props :editing-block-id] "b")))
+        base (db/empty-db)]
+    (:db (tx/interpret base ops))))
 
-(defn- render-block [db block-id]
-  (block/Block {:db db
-                :block-id block-id
-                :depth 0
-                :on-intent (constantly nil)}))
+(defn- render-block
+  "Render a block with optional editing state.
+   Pass is-editing: true to render in edit mode."
+  ([db block-id] (render-block db block-id false))
+  ([db block-id is-editing?]
+   (block/Block {:db db
+                 :block-id block-id
+                 :depth 0
+                 :is-editing is-editing?
+                 :on-intent (constantly nil)})))
 
 (deftest ^{:fr/ids #{:fr.nav/horizontal-boundary}}
   scenario-nav-boundary-left-01-view
   ;; Scenario ID matches docs/specs/logseq_behaviors.md
   (let [db (nav-boundary-db)
-        hiccup (render-block db "b")
+        hiccup (render-block db "b" true) ; is-editing = true
         edit-el (vu/find-element hiccup :.content-edit)]
     (testing "Editing span is present for NAV-BOUNDARY-LEFT-01"
       (is (some? edit-el) "Missing .content-edit span prevents boundary navigation"))

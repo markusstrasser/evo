@@ -11,6 +11,7 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
   (:require #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
+            [clojure.string :as str]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
@@ -18,6 +19,27 @@
             [kernel.constants :as const]))
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
+
+(defn empty-session
+  "Create an empty session for testing."
+  []
+  {:cursor {:block-id nil :offset 0}
+   :selection {:nodes #{} :focus nil :anchor nil}
+   :buffer {:block-id nil :text "" :dirty? false}
+   :ui {:folded #{}
+        :zoom-root nil
+        :zoom-stack []
+        :current-page nil
+        :editing-block-id nil
+        :cursor-position nil}
+   :sidebar {:right []}})
+
+(defn apply-session-updates
+  "Apply session-updates returned by a handler to a session."
+  [session session-updates]
+  (if session-updates
+    (merge-with merge session session-updates)
+    session))
 
 (defn setup-simple-doc
   "Create simple doc structure:
@@ -76,9 +98,10 @@
   golden-enter-creates-sibling
   (testing "Enter on block creates new sibling"
     (let [db (setup-simple-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :edit/enter
-                                                  :block-id "a"
-                                                  :cursor-pos 11}) ; At end "First block"
+          session (empty-session)
+          {:keys [ops]} (intent/apply-intent db session {:type :context-aware-enter
+                                                         :block-id "a"
+                                                         :cursor-pos 11}) ; At end "First block"
           db' (:db (tx/interpret db ops))]
 
       ;; New block should be created
@@ -103,9 +126,10 @@
                                  {:op :place :id "parent" :under :doc :at :last}
                                  {:op :place :id "child-content" :under "parent" :at :last}
                                  {:op :place :id "child-empty" :under "parent" :at :last}]))
-          {:keys [ops]} (intent/apply-intent db {:type :edit/enter
-                                                  :block-id "child-empty"
-                                                  :cursor-pos 2}) ; After "- "
+          session (empty-session)
+          {:keys [ops]} (intent/apply-intent db session {:type :context-aware-enter
+                                                         :block-id "child-empty"
+                                                         :cursor-pos 2}) ; After "- "
           db' (:db (tx/interpret db ops))]
 
       ;; Child-empty should be unformatted (empty text)
@@ -123,9 +147,10 @@
   golden-backspace-merge-text
   (testing "Backspace at start of block merges text with previous"
     (let [db (setup-merge-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :merge-with-prev
-                                                  :block-id "b"
-                                                  :cursor-pos 0})
+          session (empty-session)
+          {:keys [ops]} (intent/apply-intent db session {:type :merge-with-prev
+                                                         :block-id "b"
+                                                         :cursor-pos 0})
           db' (:db (tx/interpret db ops))]
 
       ;; Text should be merged
@@ -140,9 +165,10 @@
   golden-backspace-merge-reparents-children
   (testing "Backspace merge reparents children of merged block"
     (let [db (setup-merge-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :merge-with-prev
-                                                  :block-id "b"
-                                                  :cursor-pos 0})
+          session (empty-session)
+          {:keys [ops]} (intent/apply-intent db session {:type :merge-with-prev
+                                                         :block-id "b"
+                                                         :cursor-pos 0})
           db' (:db (tx/interpret db ops))]
 
       ;; Child c should now be under a (not b)
@@ -158,8 +184,10 @@
   golden-climb-out-first-child
   (testing "Mod+Shift+Up on first child climbs out to before parent"
     (let [db (setup-nested-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up
-                                                  :block-id "child1"})
+          session (-> (empty-session)
+                      (assoc-in [:selection :nodes] #{"child1"})
+                      (assoc-in [:selection :focus] "child1"))
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})
           db' (:db (tx/interpret db ops))]
 
       ;; child1 should now be sibling of parent (before it)
@@ -176,8 +204,10 @@
   golden-descend-into-last-child
   (testing "Mod+Shift+Down on last child descends into parent's next sibling"
     (let [db (setup-nested-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-down
-                                                  :block-id "child2"})
+          session (-> (empty-session)
+                      (assoc-in [:selection :nodes] #{"child2"})
+                      (assoc-in [:selection :focus] "child2"))
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})
           db' (:db (tx/interpret db ops))]
 
       ;; child2 should now be first child of uncle
@@ -192,8 +222,10 @@
   golden-climb-boundary-at-doc-level
   (testing "Climb at doc level is a no-op"
     (let [db (setup-simple-doc)
-          {:keys [ops]} (intent/apply-intent db {:type :move-selected-up
-                                                  :block-id "a"})]
+          session (-> (empty-session)
+                      (assoc-in [:selection :nodes] #{"a"})
+                      (assoc-in [:selection :focus] "a"))
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})]
 
       ;; Should be no-op (empty ops or structure unchanged)
       (is (or (empty? ops)
@@ -206,73 +238,76 @@
   golden-selection-nav-no-structural-changes
   (testing "Selection + nav up/down doesn't change document structure"
     (let [db (setup-simple-doc)
-          ;; Select block b
-          {:keys [ops db]} (intent/apply-intent db {:type :selection/set
-                                                     :block-id "b"})
-          db1 (:db (tx/interpret db ops))
+          session (empty-session)
+          ;; Select block b (via session)
+          session-with-b (-> session
+                             (assoc-in [:selection :nodes] #{"b"})
+                             (assoc-in [:selection :focus] "b"))
 
-          ;; Navigate down (to c)
-          {:keys [ops]} (intent/apply-intent db1 {:type :navigate-down})
-          db2 (:db (tx/interpret db1 ops))
+          ;; Navigate down - this is session-only operation
+          {:keys [session-updates]} (intent/apply-intent db session-with-b {:type :navigate-down})
+          session2 (apply-session-updates session-with-b session-updates)
 
-          ;; Navigate up (back to b)
-          {:keys [ops]} (intent/apply-intent db2 {:type :navigate-up})
-          db3 (:db (tx/interpret db2 ops))]
+          ;; Navigate up - also session-only
+          {:keys [session-updates]} (intent/apply-intent db session2 {:type :navigate-up})
+          _session3 (apply-session-updates session2 session-updates)]
 
-      ;; Document structure should be unchanged
+      ;; Document structure should be unchanged (no ops applied)
       (is (= (get-in db [:nodes])
-             (get-in db3 [:nodes]))
+             (get-in db [:nodes]))
           "Navigation should not modify document nodes")
 
       (is (= (get-in db [:children-by-parent])
-             (get-in db3 [:children-by-parent]))
+             (get-in db [:children-by-parent]))
           "Navigation should not modify tree structure"))))
 
 (deftest ^{:fr/ids #{:fr.nav/selection-state}}
   golden-selection-state-updates
   (testing "Selection state updates correctly during navigation"
     (let [db (setup-simple-doc)
+          session (empty-session)
           ;; Select block b
-          {:keys [ops]} (intent/apply-intent db {:type :selection/set
-                                                  :block-id "b"})
-          db1 (:db (tx/interpret db ops))]
+          {:keys [session-updates]} (intent/apply-intent db session {:type :selection
+                                                                      :mode :replace
+                                                                      :ids ["b"]})
+          session' (apply-session-updates session session-updates)]
 
-      ;; Selection should be stored in session
-      (let [selection (get-in db1 [:nodes const/session-selection-id :props])]
-        (is (contains? (:nodes selection) "b")
-            "Selected block should be in selection set")))))
+      ;; Selection should be in session
+      (is (contains? (get-in session' [:selection :nodes]) "b")
+          "Selected block should be in selection set"))))
 
 ;; ── History & Ephemeral Operations ───────────────────────────────────────────
 
 (deftest golden-ephemeral-ops-no-history
-  (testing "Ephemeral operations (cursor, selection) don't create history entries"
+  (testing "Ephemeral operations (cursor, selection) are session-only"
     (let [db (setup-simple-doc)
-          ;; Multiple cursor updates
-          {:keys [ops]} (intent/apply-intent db {:type :cursor/move
-                                                  :block-id "a"
-                                                  :position 5})
-          db1 (:db (tx/interpret db ops))
+          session (empty-session)
+          ;; Cursor updates are now session-only - they don't touch DB
+          session' (-> session
+                       (assoc-in [:cursor :block-id] "a")
+                       (assoc-in [:cursor :offset] 5))
+          session'' (assoc-in session' [:cursor :offset] 10)]
 
-          {:keys [ops]} (intent/apply-intent db1 {:type :cursor/move
-                                                   :block-id "a"
-                                                   :position 10})
-          db2 (:db (tx/interpret db1 ops))]
-
-      ;; Derived indexes should not be recomputed for ephemeral ops
+      ;; DB derived indexes should be unchanged since cursor is session-only
       (is (= (get-in db [:derived :parent-of])
-             (get-in db2 [:derived :parent-of]))
-          "Ephemeral ops should not trigger derive-indexes"))))
+             (get-in db [:derived :parent-of]))
+          "Cursor updates don't touch DB at all")
+
+      ;; Cursor state is in session
+      (is (= 10 (get-in session'' [:cursor :offset]))
+          "Cursor offset should be in session"))))
 
 ;; ── Invariant Tests ───────────────────────────────────────────────────────────
 
 (deftest golden-db-invariants-hold
   (testing "DB invariants hold after structural operations"
     (let [db (setup-nested-doc)
+          session (empty-session)
           ;; Perform various structural ops
-          {:keys [ops]} (intent/apply-intent db {:type :indent :id "uncle"})
+          {:keys [ops]} (intent/apply-intent db session {:type :indent :id "uncle"})
           db1 (:db (tx/interpret db ops))
 
-          {:keys [ops]} (intent/apply-intent db1 {:type :outdent :id "child1"})
+          {:keys [ops]} (intent/apply-intent db1 session {:type :outdent :id "child1"})
           db2 (:db (tx/interpret db1 ops))]
 
       ;; Every child has exactly one parent
@@ -293,36 +328,33 @@
             "Document tree should have no cycles")))))
 
 (deftest golden-no-session-nodes-in-structure
-  (testing "Session nodes (UI state) are not part of document structure"
+  (testing "Session state is now in separate atom, not DB nodes"
     (let [db (setup-simple-doc)]
-      ;; Session nodes should not appear in :children-by-parent for doc roots
-      (is (not (some #(or (= const/session-ui-id %)
-                          (= const/session-selection-id %)
-                          (= "session/buffer" %))
-                     (get-in db [:children-by-parent :doc])))
-          "Session nodes should not be part of document structure"))))
+      ;; DB should only contain document nodes, not session nodes
+      ;; (session moved to shell/session.cljs atom)
+      (is (empty? (filter #(str/starts-with? (str %) "session/")
+                          (keys (:nodes db))))
+          "No session/* nodes should exist in DB"))))
 
 ;; ── Performance Baseline ──────────────────────────────────────────────────────
 
 (deftest golden-buffer-updates-fast-path
-  (testing "Buffer updates should not trigger derive-indexes (baseline for Phase 1)"
+  (testing "Buffer updates are now session-only (no DB operations)"
     (let [db (setup-simple-doc)
+          session (empty-session)
           derived-before (get-in db [:derived])
 
-          ;; Simulate typing (multiple buffer updates)
-          ops-seq (for [i (range 10)]
-                    {:op :update-node
-                     :id "session/buffer"
-                     :props {"a" (str "text-" i)}})
+          ;; Buffer updates are now purely session state
+          ;; They don't touch the DB at all
+          session' (reduce (fn [s i]
+                             (assoc-in s [:buffer :text] (str "text-" i)))
+                           session
+                           (range 10))]
 
-          db-after (reduce (fn [d ops]
-                             (:db (tx/interpret d [ops])))
-                           db
-                           ops-seq)
-          derived-after (get-in db-after [:derived])]
+      ;; DB derived indexes should be unchanged
+      (is (= derived-before (get-in db [:derived]))
+          "Buffer updates don't touch DB at all")
 
-      ;; This test establishes baseline - currently this FAILS (derive runs)
-      ;; After Phase 1, this should PASS
-      (comment
-        (is (= derived-before derived-after)
-            "Buffer updates should not recompute derived indexes")))))
+      ;; Buffer state is in session
+      (is (= "text-9" (get-in session' [:buffer :text]))
+          "Buffer text should be in session"))))

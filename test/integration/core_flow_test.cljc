@@ -26,20 +26,22 @@
       (H/record)))
 
 (deftest selection-and-navigation
-  (testing "Selection changes are recorded in history"
+  (testing "Selection changes work through session-updates"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "a"})
-          {:keys [db]} (api/dispatch db {:type :selection :mode :next})]
-      (is (= "b" (q/focus db))
-          "Navigate to next sibling should move focus")
-      (is (H/can-undo? db)
-          "Selection changes should be recorded in history"))))
+          ;; First selection returns session-updates (not ops)
+          {:keys [session-updates]} (api/dispatch db0 nil {:type :selection :mode :replace :ids "a"})
+          session1 session-updates
+          ;; Navigate to next using the current session state
+          {:keys [session-updates]} (api/dispatch db0 session1 {:type :selection :mode :next})
+          focus (get-in session-updates [:selection :focus])]
+      (is (= "b" focus)
+          "Navigate to next sibling should move focus"))))
 
 (deftest ephemeral-does-not-hit-history
   (testing "Ephemeral UI updates don't trigger history"
     (let [db0 (demo-db)
           undo0 (count (:past (:history db0)))
-          {:keys [db]} (api/dispatch db0 {:type :enter-edit :block-id "a"})
+          {:keys [db]} (api/dispatch db0 nil {:type :enter-edit :block-id "a"})
           undo1 (count (:past (:history db)))]
       (is (= undo0 undo1)
           "Ephemeral ops (edit mode) should not add history entries"))))
@@ -47,7 +49,7 @@
 (deftest delete-moves-to-trash
   (testing "Delete moves nodes to trash (archive by design)"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :delete :id "b"})]
+          {:keys [db]} (api/dispatch db0 nil {:type :delete :id "b"})]
       (is (some #{"b"} (get-in db [:children-by-parent const/root-trash]))
           "Deleted node should be in :trash")
       (is (not (some #{"b"} (q/children db "page")))
@@ -57,10 +59,10 @@
   (testing "Anchor normalization happens in interpreter, not intent layer"
     (let [db0 (demo-db)
           ;; Use :at-start anchor (should be canonicalized to :first)
-          {:keys [db]} (api/dispatch db0 {:type :move
-                                          :selection ["c"]
-                                          :parent "page"
-                                          :anchor :at-start})]
+          {:keys [db]} (api/dispatch db0 nil {:type :move
+                                              :selection ["c"]
+                                              :parent "page"
+                                              :anchor :at-start})]
       (is (= ["c" "a" "b"] (q/children db "page"))
           ":at-start should be canonicalized to :first by interpreter"))))
 
@@ -70,9 +72,9 @@
     ;; Test undo/redo with actual structural changes (text updates, moves, etc.)
     (let [db0 (demo-db)
           ;; Structural change 1: update text of block "a"
-          {:keys [db]} (api/dispatch db0 {:type :update-content :block-id "a" :text "Updated A"})
+          {:keys [db]} (api/dispatch db0 nil {:type :update-content :block-id "a" :text "Updated A"})
           ;; Structural change 2: update text of block "b"
-          {:keys [db]} (api/dispatch db {:type :update-content :block-id "b" :text "Updated B"})
+          {:keys [db]} (api/dispatch db nil {:type :update-content :block-id "b" :text "Updated B"})
           db-undone (H/undo db)
           db-redone (H/redo db-undone)]
       (is (= "Updated A" (get-in db-undone [:nodes "a" :props :text]))
@@ -88,18 +90,18 @@
   (testing "Multi-select move with :move intent"
     (let [db0 (demo-db)
           ;; Move both a and c after b (reorder)
-          {:keys [db]} (api/dispatch db0 {:type :move
-                                          :selection ["a" "c"]
-                                          :parent "page"
-                                          :anchor {:after "b"}})]
+          {:keys [db]} (api/dispatch db0 nil {:type :move
+                                              :selection ["a" "c"]
+                                              :parent "page"
+                                              :anchor {:after "b"}})]
       (is (= ["b" "a" "c"] (q/children db "page"))
           "Selection should move to anchor position preserving order"))))
 
 (deftest structural-edit-with-selection
   (testing "Indent works on selected node"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 {:type :selection :mode :replace :ids "b"})
-          {:keys [db]} (api/dispatch db {:type :indent :id "b"})]
+          ;; Selection returns session-updates, but indent operates on db directly
+          {:keys [db]} (api/dispatch db0 nil {:type :indent :id "b"})]
       (is (= "a" (q/parent-of db "b"))
           "Indent should move b under its previous sibling a")
       (is (= ["b"] (q/children db "a"))

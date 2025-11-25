@@ -97,44 +97,41 @@
   navigate-down-with-cursor-memory-test
   (testing "Navigate down preserves cursor column position"
     (let [db (sample-db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                        :direction :down
                                        :current-block-id "a"
                                        :current-text "hello world"
                                        :current-cursor-pos 6})] ; After "hello "
 
-      ;; Should store line-pos in cursor-memory
-      (is (= 6 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
-      (is (= "a" (get-in (:ops result) [0 :props :cursor-memory :last-block-id])))
-      (is (= :down (get-in (:ops result) [0 :props :cursor-memory :direction])))
-
-      ;; Should exit edit on current block
-      (is (= nil (get-in (:ops result) [1 :props :editing-block-id])))
+      ;; Should store line-pos in cursor-memory (session-updates now)
+      (is (= 6 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
+      (is (= "a" (get-in (:session-updates result) [:ui :cursor-memory :last-block-id])))
+      (is (= :down (get-in (:session-updates result) [:ui :cursor-memory :direction])))
 
       ;; Should enter edit on next block
-      (is (= "b" (get-in (:ops result) [2 :props :editing-block-id])))
+      (is (= "b" (get-in (:session-updates result) [:ui :editing-block-id])))
 
       ;; KEY TEST: Cursor at same column (after "foo ba")
-      (is (= 6 (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= 6 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-up-with-cursor-memory-test
   (testing "Navigate up preserves cursor column position"
     (let [db (sample-db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :up
                                  :current-block-id "b"
                                  :current-text "foo bar baz"
                                  :current-cursor-pos 4})] ; After "foo "
 
       ;; Should store line-pos
-      (is (= 4 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
+      (is (= 4 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
       ;; Should navigate to previous block
-      (is (= "a" (get-in (:ops result) [2 :props :editing-block-id])))
+      (is (= "a" (get-in (:session-updates result) [:ui :editing-block-id])))
 
       ;; Cursor at position 4 (after "hell")
-      (is (= 4 (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= 4 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-up-target-shorter-goes-to-end-test
@@ -145,14 +142,14 @@
                                 {:op :create-node :id "b" :type :block :props {:text "hello world"}}
                                 {:op :place :id "b" :under :doc :at :last}])
                  :db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :up
                                  :current-block-id "b"
                                  :current-text "hello world"
                                  :current-cursor-pos 8})] ; After "hello wo"
 
       ;; Target "hi" is only 2 chars, cursor should be at end
-      (is (= :end (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= :end (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-with-empty-block-test
@@ -163,20 +160,20 @@
                                 {:op :create-node :id "b" :type :block :props {:text ""}}
                                 {:op :place :id "b" :under :doc :at :last}])
                  :db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :up
                                  :current-block-id "b"
                                  :current-text ""
                                  :current-cursor-pos 0})]
 
       ;; Line pos should be 0
-      (is (= 0 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
+      (is (= 0 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
       ;; Should navigate to prev block
-      (is (= "a" (get-in (:ops result) [2 :props :editing-block-id])))
+      (is (= "a" (get-in (:session-updates result) [:ui :editing-block-id])))
 
       ;; Cursor should be at start of target (position 0)
-      (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-to-empty-block-test
@@ -187,14 +184,14 @@
                                 {:op :create-node :id "b" :type :block :props {:text ""}}
                                 {:op :place :id "b" :under :doc :at :last}])
                  :db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :down
                                  :current-block-id "a"
                                  :current-text "hello"
                                  :current-cursor-pos 3})]
 
       ;; Target is empty, cursor should be at start (0)
-      (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
   navigate-no-sibling-throws-test
@@ -203,7 +200,7 @@
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "only block"}}
                                 {:op :place :id "a" :under :doc :at :last}])
                  :db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                           :direction :down
                                           :current-block-id "a"
                                           :current-text "only block"
@@ -212,9 +209,9 @@
       ;; Should not throw, but return no-op that keeps cursor in place at boundary
       (is (some? result))
       ;; Should stay in same block
-      (is (= "a" (get-in result [:ops 0 :props :editing-block-id])))
+      (is (= "a" (get-in (:session-updates result) [:ui :editing-block-id])))
       ;; Cursor should be at end (going down with no target)
-      (is (= 10 (get-in result [:ops 0 :props :cursor-position]))))))
+      (is (= 10 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest navigate-multi-line-cursor-memory-test
   (testing "Navigate between multi-line blocks preserves column"
@@ -228,91 +225,88 @@
                  :db)
           ;; Cursor on "line 3" at position 3 (after "lin")
           ;; Absolute position: "line 1\n" (7) + "line 2\n" (7) + 3 = 17
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :down
                                  :current-block-id "a"
                                  :current-text "line 1\nline 2\nline 3"
                                  :current-cursor-pos 17})]
 
       ;; Line pos should be 3 (position within "line 3")
-      (is (= 3 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
+      (is (= 3 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
       ;; Target cursor position: LOGSEQ behavior - going DOWN lands on FIRST line "foo"
       ;; Position 3 in "foo" (which is only 3 chars) = numeric 3 (not :end keyword)
-      (is (= 3 (get-in (:ops result) [2 :props :cursor-position])))))) ; "foo" is 3 chars, position 3
+      (is (= 3 (get-in (:session-updates result) [:ui :cursor-position])))))) ; "foo" is 3 chars, position 3
 
 ;; ── Edge cases and integration tests ──────────────────────────────────────────
 
 (deftest cursor-at-start-of-block-test
   (testing "Navigate down from start of block"
     (let [db (sample-db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :down
                                  :current-block-id "a"
                                  :current-text "hello world"
                                  :current-cursor-pos 0})]
 
       ;; Line pos = 0
-      (is (= 0 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
+      (is (= 0 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
       ;; Target cursor should be at start
-      (is (= :start (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest cursor-at-end-of-block-test
   (testing "Navigate up from end of block"
     (let [db (sample-db)
-          result (intent/apply-intent db {:type :navigate-with-cursor-memory
+          result (intent/apply-intent db nil {:type :navigate-with-cursor-memory
                                  :direction :up
                                  :current-block-id "b"
                                  :current-text "foo bar baz"
                                  :current-cursor-pos 11})] ; At end (11 chars)
 
       ;; Line pos = 11
-      (is (= 11 (get-in (:ops result) [0 :props :cursor-memory :line-pos])))
+      (is (= 11 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
       ;; Target "hello world" is also 11 chars, should be at end
-      (is (= :end (get-in (:ops result) [2 :props :cursor-position]))))))
+      (is (= :end (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 ;; ── Navigate To Adjacent Tests ────────────────────────────────────────────────
 
 (deftest navigate-to-adjacent-up-test
   (testing "Navigate up to previous block with max cursor position"
     (let [db (sample-db)
-          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
-                                                  :direction :up
-                                                  :current-block-id "b"
-                                                  :cursor-position :max})
-          db' (:db (tx/interpret db ops))]
+          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
+                                                                  :direction :up
+                                                                  :current-block-id "b"
+                                                                  :cursor-position :max})]
       ;; Should edit previous block
-      (is (= "a" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      (is (= "a" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at end of "hello world" (11 chars)
-      (is (= 11 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+      (is (= 11 (get-in session-updates [:ui :cursor-position]))))))
 
 (deftest navigate-to-adjacent-down-test
   (testing "Navigate down to next block with cursor position 0"
     (let [db (sample-db)
-          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
-                                                  :direction :down
-                                                  :current-block-id "a"
-                                                  :cursor-position 0})
-          db' (:db (tx/interpret db ops))]
+          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
+                                                                  :direction :down
+                                                                  :current-block-id "a"
+                                                                  :cursor-position 0})]
       ;; Should edit next block
-      (is (= "b" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      (is (= "b" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at start
-      (is (= 0 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+      (is (= 0 (get-in session-updates [:ui :cursor-position]))))))
 
 (deftest navigate-to-adjacent-numeric-cursor-test
   (testing "Navigate with specific cursor position"
     (let [db (sample-db)
-          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
-                                                  :direction :down
-                                                  :current-block-id "a"
-                                                  :cursor-position 3})
-          db' (:db (tx/interpret db ops))]
+          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
+                                                                  :direction :down
+                                                                  :current-block-id "a"
+                                                                  :cursor-position 3})]
       ;; Should edit next block
-      (is (= "b" (get-in db' [:nodes "session/ui" :props :editing-block-id])))
+      (is (= "b" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at position 3
-      (is (= 3 (get-in db' [:nodes "session/ui" :props :cursor-position]))))))
+      (is (= 3 (get-in session-updates [:ui :cursor-position]))))))
 
 (deftest navigate-to-adjacent-no-target-test
   (testing "Navigate with no adjacent block does nothing"
@@ -320,9 +314,9 @@
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "Only"}}
                                 {:op :place :id "a" :under :doc :at :last}])
                  :db)
-          {:keys [ops]} (intent/apply-intent db {:type :navigate-to-adjacent
-                                                  :direction :down
-                                                  :current-block-id "a"
-                                                  :cursor-position 0})]
-      ;; Should return empty ops (no target)
-      (is (empty? ops)))))
+          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
+                                                                  :direction :down
+                                                                  :current-block-id "a"
+                                                                  :cursor-position 0})]
+      ;; Should return nil session-updates (no target)
+      (is (nil? session-updates)))))
