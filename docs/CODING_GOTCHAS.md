@@ -27,26 +27,33 @@ rg "def root-" src/kernel/constants.cljc
 
 ---
 
-### Session UI ID is String, Not Keyword
+### Session State is Separate from DB
 
-❌ **Wrong:**
+❌ **Wrong (outdated):**
 ```clojure
-(get-in db [:nodes :session-ui :props :editing-block-id])
+;; Session state no longer lives in DB nodes!
+(get-in db [:nodes "session/ui" :props :editing-block-id])
 ```
 
 ✅ **Correct:**
 ```clojure
-(get-in db [:nodes "session/ui" :props :editing-block-id])
+(require '[kernel.query :as q])
+
+;; Query session state using kernel.query functions
+(q/editing-block-id session)
+(q/selection session)
+(q/folded? session "block-id")
 ```
 
-**Why:** Defined as `(def session-ui-id "session/ui")` - a string with slash
-- Selection node: `"session/selection"`
-- UI node: `"session/ui"`
+**Why:** Session state moved to separate atom (`shell/session.cljs`).
+DB only contains persistent document graph.
 
-**Fix:** Use the constant:
+**Handler signature:**
 ```clojure
-(require '[kernel.constants :as const])
-(get-in db [:nodes const/session-ui-id :props ...])
+;; Handlers receive both db and session
+(fn [db session intent]
+  {:ops [...]                          ; DB operations
+   :session-updates {:ui {...}}})      ; Session changes
 ```
 
 ---
@@ -175,6 +182,8 @@ When writing complex `case` or `cond` with nested maps/vectors:
 
 **Always check before using:**
 - Constants: `rg "^\\(def " src/kernel/constants.cljc`
-- Session IDs: `const/session-ui-id`, `const/session-selection-id`
+- Session queries: `q/selection`, `q/editing-block-id`, `q/folded?` (from `kernel.query`)
 - Derived indexes: `:parent-of`, `:next-id-of`, `:prev-id-of` (not `:first-child-of`)
-- Root IDs: `:doc`, `:trash`, `:session` (no prefix)
+- Root IDs: `:doc`, `:trash` (no prefix)
+
+**Session state lives in separate atom, not DB!**

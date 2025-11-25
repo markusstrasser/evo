@@ -263,16 +263,19 @@ This guarantees one dispatch per event and keeps DOM-only facts close to the com
 ;; ✅ CORRECT: Use bare keywords
 {:op :place :id "a" :under :trash :at :last}
 
-;; ❌ WRONG: Session UI ID is a string
-(get-in db [:nodes :session-ui :props :editing-block-id])
+;; ❌ WRONG (outdated): Session state no longer lives in DB!
+(get-in db [:nodes "session/ui" :props :editing-block-id])
 
-;; ✅ CORRECT: Use the constant
-(require '[kernel.constants :as const])
-(get-in db [:nodes const/session-ui-id :props :editing-block-id])
-;; const/session-ui-id => "session/ui" (a string!)
+;; ✅ CORRECT: Use kernel.query with session atom
+(require '[kernel.query :as q])
+(q/editing-block-id session)
+(q/selection session)
+(q/folded? session "block-id")
 ```
 
-**Root constants**: `:doc`, `:trash`, `:session` (defined in `src/kernel/constants.cljc`)
+**Root constants**: `:doc`, `:trash` (defined in `src/kernel/constants.cljc`)
+
+**Session state** lives in a separate atom (see `shell/session.cljs`). Query via `kernel.query`.
 
 ### Keyboard & Selection
 - Use the Nexus dispatcher for **all** keyboard actions. Do not add new handlers directly to `handle-global-keydown` or components without routing through Nexus.
