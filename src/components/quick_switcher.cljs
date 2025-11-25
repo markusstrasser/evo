@@ -1,6 +1,6 @@
 (ns components.quick-switcher
   "Quick switcher overlay component."
-  (:require [kernel.constants :as const]))
+  (:require [shell.session :as session]))
 
 (defn QuickSwitcher
   "Quick switcher overlay for searching pages and blocks.
@@ -8,7 +8,7 @@
    Displays a centered modal with search input and filtered results.
    Keyboard navigation: arrows move selection, Enter opens, Esc closes."
   [{:keys [db on-intent]}]
-  (when-let [switcher (get-in db [:nodes const/session-ui-id :props :quick-switcher])]
+  (when-let [switcher (get-in (session/get-session) [:ui :quick-switcher])]
     (let [{:keys [query results selected-idx]} switcher]
       [:div.quick-switcher-overlay
        {:style {:position "fixed"

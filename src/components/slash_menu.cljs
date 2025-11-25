@@ -1,9 +1,9 @@
 (ns components.slash-menu
   "Slash command menu UI component.
-   
+
    Renders as an inline popup menu anchored to the cursor position."
   (:require [replicant.dom :as d]
-            [kernel.constants :as const]))
+            [shell.session :as session]))
 
 (defn- get-caret-coordinates
   "Get the current caret position coordinates for menu positioning."
@@ -50,11 +50,11 @@
 
 (defn SlashMenu
   "Slash command menu component.
-   
+
    Shows available commands filtered by search text.
    Positioned at cursor location."
   [{:keys [db on-intent]}]
-  (when-let [menu (get-in db [:nodes const/session-ui-id :props :slash-menu])]
+  (when-let [menu (get-in (session/get-session) [:ui :slash-menu])]
     (let [{:keys [results selected-idx search-text]} menu
           coords (get-caret-coordinates)
           has-results? (seq results)]

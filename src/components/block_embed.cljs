@@ -3,7 +3,7 @@
 
    Similar to block references but shows the entire block structure,
    not just inline text."
-  (:require [kernel.query :as q]))
+  (:require [shell.session :as session]))
 
 (defn BlockEmbed
   "Render an embedded block with its full tree structure.
@@ -74,22 +74,28 @@
 
       ;; Normal embed - render full block tree
       :else
-      [:div.block-embed
-       {:style {:border "1px solid rgb(233, 236, 239)"
-                :padding "8px"
-                :margin "4px 0"
-                :background-color "rgb(248, 249, 250)"
-                :border-radius "4px"}
-        :title (str "Embedded block: " block-id)
-        :data-block-id block-id}
-       ;; Render the full block tree using the Block component
-       ;; Pass updated embed-set to track the chain
-       (when Block
-         (Block {:db db
-                 :block-id block-id
-                 :depth 0  ; Reset depth for the embedded tree
-                 :is-focused (= (q/focus db) block-id)
-                 :is-selected (q/selected? db block-id)
-                 :embed-set (conj (or embed-set #{}) block-id)
-                 :embed-depth (inc depth)
-                 :on-intent on-intent}))])))
+      (let [focus-id (session/focus-id)
+            selection-set (session/selection-nodes)
+            editing-id (session/editing-block-id)
+            folded-set (session/folded)]
+        [:div.block-embed
+         {:style {:border "1px solid rgb(233, 236, 239)"
+                  :padding "8px"
+                  :margin "4px 0"
+                  :background-color "rgb(248, 249, 250)"
+                  :border-radius "4px"}
+          :title (str "Embedded block: " block-id)
+          :data-block-id block-id}
+         ;; Render the full block tree using the Block component
+         ;; Pass updated embed-set to track the chain
+         (when Block
+           (Block {:db db
+                   :block-id block-id
+                   :depth 0  ; Reset depth for the embedded tree
+                   :is-focused (= focus-id block-id)
+                   :is-selected (contains? selection-set block-id)
+                   :is-editing (= editing-id block-id)
+                   :is-folded (contains? folded-set block-id)
+                   :embed-set (conj (or embed-set #{}) block-id)
+                   :embed-depth (inc depth)
+                   :on-intent on-intent}))]))))

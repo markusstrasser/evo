@@ -264,7 +264,7 @@
 
    Otherwise delegates to normal editing handlers."
   [e db block-id on-intent]
-  (let [slash-menu-active? (get-in db [:nodes const/session-ui-id :props :slash-menu])
+  (let [slash-menu-active? (get-in (session/get-session) [:ui :slash-menu])
         key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
@@ -526,6 +526,8 @@
    - depth: nesting depth (for indentation)
    - is-focused: boolean, true if this block has focus (passed from parent)
    - is-selected: boolean, true if this block is in selection set (passed from parent)
+   - is-editing: boolean, true if this block is in edit mode (passed from parent)
+   - is-folded: boolean, true if this block is folded (passed from parent)
    - on-intent: callback for dispatching intents
    - embed-set: Set of block IDs in current embed chain (for cycle detection)
    - embed-depth: Current embed nesting depth (for limiting recursion)
@@ -533,12 +535,12 @@
    ARCHITECTURE:
    - View mode: Pure controlled rendering from DB
    - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input"
-  [{:keys [db block-id depth is-focused is-selected on-intent embed-set embed-depth]
-    :or {embed-set #{} embed-depth 0 is-focused false is-selected false}}]
+  [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent embed-set embed-depth]
+    :or {embed-set #{} embed-depth 0 is-focused false is-selected false is-editing false is-folded false}}]
   (let [children (get-in db [:children-by-parent block-id] [])
         selected? is-selected
         focus? is-focused
-        editing? (= (q/editing-block-id db) block-id)
+        editing? is-editing
         text (get-in db [:nodes block-id :props :text] "")
 
         container-props
@@ -561,7 +563,7 @@
 
         ;; Fold indicator bullet
         has-children? (seq (q/children db block-id))
-        folded? (q/folded? db block-id)
+        folded? is-folded
         bullet [:span {:style {:margin-right "8px"
                                :cursor (if has-children? "pointer" "default")
                                :user-select "none"}
@@ -595,7 +597,7 @@
             ;; On mount: Set text once, focus, position cursor
             :replicant/on-mount
             (fn [{:replicant/keys [node]}]
-              (let [initial-cursor (q/cursor-position db)
+              (let [initial-cursor (session/cursor-position)
                     cursor-pos (cond
                                  (number? initial-cursor) initial-cursor
                                  (= initial-cursor :start) 0
@@ -672,6 +674,12 @@
                             (on-intent {:type :enter-edit :block-id block-id})
                             (on-intent {:type :selection :mode :replace :ids block-id})))}}])
 
+        ;; Session state for children (computed once per render)
+        editing-block-id (session/editing-block-id)
+        focus-block-id (session/focus-id)
+        selection-set (session/selection-nodes)
+        folded-set (session/folded)
+
         children-el
         (when (seq children)
           (into [:div {:style {:margin-top "2px"}}]
@@ -679,8 +687,10 @@
                        (Block {:db db
                                :block-id child-id
                                :depth (inc depth)
-                               :is-focused (= (q/focus db) child-id)
-                               :is-selected (q/selected? db child-id)
+                               :is-focused (= focus-block-id child-id)
+                               :is-selected (contains? selection-set child-id)
+                               :is-editing (= editing-block-id child-id)
+                               :is-folded (contains? folded-set child-id)
                                :embed-set embed-set
                                :embed-depth embed-depth
                                :on-intent on-intent}))
