@@ -57,7 +57,9 @@
                [:type [:= :select]]
                [:ids [:vector :string]]]
         :fr/ids #{:fr.selection/edit-view-exclusive}
-        :handler (fn [db {:keys [ids]}]
+        :handler (fn [db session {:keys [ids]}]
+                   ;; Handler receives db, session, and destructured intent
+                   ;; Use kernel.query functions with session parameter
                    [{:op :update-node :id \"session/selection\" :props {...}}])})"
   [kw {:keys [doc spec handler fr/ids] :as config}]
   ;; Soft warnings for uncited intents (Gemini's approach)
@@ -143,29 +145,51 @@
    Dispatch Pipeline (Interceptor Pattern):
    1. Validate intent (if *validate-intents* enabled)
    2. Lookup handler
-   3. Execute handler → ops
-   4. Return {:db db :ops ops}
+   3. Execute handler → result
+   4. Return {:db db :ops ops :session-updates {...}}
 
-   Returns: {:db unchanged-db :ops [operations]}
+   Returns: {:db unchanged-db :ops [operations] :session-updates {...}}
 
-   The caller is responsible for interpreting the ops through tx/interpret.
-   All intents (structural + session) now go through the ops pipeline.
+   The caller is responsible for:
+   - Interpreting :ops through tx/interpret (DB changes)
+   - Applying :session-updates to session atom (ephemeral state)
+
+   Args:
+     db      - Current database (persistent document graph)
+     session - Current session state (ephemeral UI state: cursor, selection, fold, zoom)
+     intent  - Intent map (e.g., {:type :indent :id \"a\"})
+
+   Handler Signature (Phase 6):
+     (fn [db session intent] -> [ops] | {:ops [...] :session-updates {...}})
+
+   Handlers can return:
+   - Vector of ops (backward compatible, no session updates)
+   - Map with :ops and/or :session-updates keys
 
    Example:
-     (apply-intent db {:type :indent :id \"a\"})
-     ;=> {:db db :ops [{:op :place ...}]}
+     (apply-intent db session {:type :indent :id \"a\"})
+     ;=> {:db db :ops [{:op :place ...}] :session-updates nil}
 
-     (apply-intent db {:type :select :ids [\"a\"]})
-     ;=> {:db db :ops [{:op :update-node :id \"session/selection\" ...}]}"
-  [db intent]
+     (apply-intent db session {:type :selection :mode :extend-next})
+     ;=> {:db db :ops [] :session-updates {:selection {:nodes #{...} :focus \"a\"}}}"
+  [db session intent]
   ;; Validation interceptor (when enabled)
   (when *validate-intents*
     (validate-intent! intent))
 
   ;; Lookup and execute handler
   (if-let [handler (get-in @!intents [(:type intent) :handler])]
-    {:db db :ops (vec (or (handler db intent) []))}
-    {:db db :ops []}))
+    (let [result (handler db session intent)]
+      (if (map? result)
+        ;; Handler returned map with :ops and/or :session-updates
+        {:db db
+         :ops (vec (or (:ops result) []))
+         :session-updates (:session-updates result)}
+        ;; Handler returned vector of ops (backward compatible)
+        {:db db
+         :ops (vec (or result []))
+         :session-updates nil}))
+    {:db db :ops [] :session-updates nil}))
 
 ;; ── REPL Introspection Helpers ───────────────────────────────────────────────
 
@@ -234,9 +258,11 @@
     {:errors {:type [(str "Unknown intent type: " type)]}}))
 
 (defn intent->ops
-  "DEPRECATED: Use apply-intent instead. Kept for backward compatibility."
+  "DEPRECATED: Use apply-intent instead. Kept for backward compatibility.
+
+   Note: Passes nil for session. Handlers that need session will not work correctly."
   [db intent]
-  (:ops (apply-intent db intent)))
+  (:ops (apply-intent db nil intent)))
 
 ;; ── FR Coverage Audit (REPL Introspection) ───────────────────────────────────
 
