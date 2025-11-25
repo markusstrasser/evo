@@ -10,7 +10,6 @@ Quick reference for commonly used constants. Saves grep time.
 ;; Root nodes (keywords, no prefix)
 :doc          ; Main document root
 :trash        ; Deleted blocks go here
-:session      ; Session-specific data (selection, UI state)
 ```
 
 **Usage:**
@@ -19,19 +18,38 @@ Quick reference for commonly used constants. Saves grep time.
 {:op :place :id deleted-id :under :trash :at :last}  ; NOT :root-trash!
 ```
 
-## Session Node IDs
+## Session State (Separate Atom)
+
+**IMPORTANT**: Session state no longer lives in DB. It's in a separate atom managed by `shell/session.cljs`.
 
 ```clojure
-;; Session nodes (strings with slash)
-"session/selection"   ; const/session-selection-id
-"session/ui"          ; const/session-ui-id
+;; Session state structure (in session atom, NOT db)
+{:cursor {:block-id nil :offset 0}
+ :selection {:nodes #{} :focus nil :anchor nil :direction nil}
+ :buffer {:block-id nil :text "" :dirty? false}
+ :ui {:folded #{}
+      :zoom-root nil
+      :editing-block-id nil
+      :cursor-position nil
+      :cursor-memory nil}
+ :sidebar {:right []}}
 ```
 
-**Usage:**
+**Query session state:**
 ```clojure
-(get-in db [:nodes "session/ui" :props :editing-block-id])
-;; Or use constant:
-(get-in db [:nodes const/session-ui-id :props :editing-block-id])
+(require '[kernel.query :as q])
+
+;; Get editing block
+(q/editing-block-id session)
+
+;; Get selection
+(q/selection session)           ; #{...} set of selected IDs
+(q/selected? session "a")       ; Check if block selected
+(q/focus session)               ; Current focus block
+
+;; Get fold state
+(q/folded? session "a")         ; Check if block folded
+(q/zoom-root session)           ; Current zoom root
 ```
 
 ## Derived Index Keys
@@ -45,7 +63,7 @@ Available in `[:derived ...]`:
 :next-id-of      ; {:map-of Id [:maybe Id]}
 :pre             ; Pre-order traversal positions
 :post            ; Post-order traversal positions
-:id-by-pre       ; Reverse lookup: position → ID
+:id-by-pre       ; Reverse lookup: position -> ID
 :doc/pre         ; Doc-only pre-order
 :doc/id-by-pre   ; Doc-only reverse lookup
 ```
@@ -74,14 +92,14 @@ Available in `[:derived ...]`:
 (= :trash (get-in db [:derived :parent-of block-id]))
 ```
 
-### Get editing block ID
+### Check if block is being edited
 ```clojure
-(get-in db [:nodes const/session-ui-id :props :editing-block-id])
+(= "a" (q/editing-block-id session))
 ```
 
 ### Get selected block IDs
 ```clojure
-(get-in db [:nodes const/session-selection-id :props :ids])
+(q/selection session)  ; Returns #{...}
 ```
 
 ### Place block in trash

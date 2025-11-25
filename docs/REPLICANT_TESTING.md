@@ -1,5 +1,9 @@
 # Replicant Testing Best Practices
 
+> **Architecture Note (2025-11)**: Session state (selection, editing, folding) now lives in a
+> separate atom, not in DB nodes. Components receive session-derived props. Tests should pass
+> session state as props rather than embedding in DB. See `shell/session.cljs` for session shape.
+
 ## Philosophy
 
 **Replicant's superpower**: Because UI is pure data (hiccup), you can test everything without a browser:

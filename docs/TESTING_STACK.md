@@ -1,5 +1,10 @@
 # Testing Stack
 
+> **Architecture Note (2025-11)**: Session state (selection, editing, folding) now lives in a
+> separate atom, not in DB nodes. Components receive session-derived props. Tests should pass
+> session state as props rather than embedding in DB. See `shell/session.cljs` for session shape.
+> Code examples in this doc that show `"session/ui"` in DB are **outdated** patterns.
+
 Merged reference covering philosophy, headless tiers, redundancy analysis, and historical bug lessons. Use this as the single source when planning coverage.
 
 ## Philosophy & Best Practices

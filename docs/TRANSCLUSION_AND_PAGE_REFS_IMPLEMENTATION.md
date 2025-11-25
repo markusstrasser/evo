@@ -1,5 +1,9 @@
 # Transclusion and Page References Implementation
 
+> **Architecture Note (2025-11)**: Session state (editing, cursor, folding, current-page) now lives
+> in a separate atom, not in DB nodes. Code examples showing `const/session-ui-id` in DB are
+> **outdated**. See `shell/session.cljs` for session shape.
+
 ## Overview
 
 This document summarizes the implementation of Logseq-style transclusion and page reference features in the evo outliner. The implementation adds three key features:
