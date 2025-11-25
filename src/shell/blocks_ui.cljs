@@ -76,7 +76,9 @@
   "Single intent dispatcher - handles both intent maps and Nexus action vectors.
 
    This is the ONLY place intents are dispatched.
-   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions."
+   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions.
+
+   Phase 6: Passes session to api/dispatch and applies session-updates."
   [intent-or-actions]
   (cond
     ;; Nexus action vector: dispatch through Nexus
@@ -85,19 +87,28 @@
 
     ;; Intent map: dispatch directly through kernel
     (map? intent-or-actions)
-    (do
-      (swap! !db (fn [db]
-                   (let [db-before db
-                         result (api/dispatch db intent-or-actions)
-                         db-after (:db result)
-                         issues (:issues result)
-                         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-or-actions)))]
-                     (when (seq issues)
-                       (js/console.error "Intent validation failed:" (pr-str issues)))
-                     (when should-log?
-                       (dev/log-dispatch! intent-or-actions db-before db-after))
-                     ;; Phases 4 & 5: No session sync - session is source of truth
-                     db-after))))
+    (let [current-session (session/get-session)
+          db-before @!db
+          result (api/dispatch db-before current-session intent-or-actions)
+          db-after (:db result)
+          issues (:issues result)
+          session-updates (:session-updates result)
+          should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-or-actions)))]
+
+      ;; Report any validation issues
+      (when (seq issues)
+        (js/console.error "Intent validation failed:" (pr-str issues)))
+
+      ;; Apply DB changes
+      (reset! !db db-after)
+
+      ;; Apply session updates if any (Phase 6)
+      (when session-updates
+        (session/swap-session! #(merge-with merge % session-updates)))
+
+      ;; Log dispatch for devtools
+      (when should-log?
+        (dev/log-dispatch! intent-or-actions db-before db-after)))
 
     ;; Keyword: wrap in :type map
     :else
@@ -119,8 +130,8 @@
         key (.-key e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         shift? (.-shiftKey e)
-        focus-id (q/focus db)
-        editing? (q/editing-block-id db)
+        focus-id (session/focus-id)
+        editing? (session/editing-block-id)
         idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
         intent-type (keymap/resolve-intent-type event db)
 
@@ -273,14 +284,20 @@
 (defn Outline
   "Render outline tree by composing Block components."
   [{:keys [db root-id on-intent]}]
-  (let [children (get-in db [:children-by-parent root-id] [])]
+  (let [children (get-in db [:children-by-parent root-id] [])
+        editing-block-id (session/editing-block-id)
+        focus-block-id (session/focus-id)
+        selection-set (session/selection-nodes)
+        folded-set (session/folded)]
     (into [:div.outline]
           (map (fn [child-id]
                  (block/Block {:db db
                                :block-id child-id
                                :depth 0
-                               :is-focused (= (q/focus db) child-id)
-                               :is-selected (q/selected? db child-id)
+                               :is-focused (= focus-block-id child-id)
+                               :is-selected (contains? selection-set child-id)
+                               :is-editing (= editing-block-id child-id)
+                               :is-folded (contains? folded-set child-id)
                                :on-intent on-intent}))
                children))))
 
@@ -330,7 +347,7 @@
 (defn App []
   "Main app - pure composition, no business logic."
   (let [db @!db
-        current-page-id (pages/current-page db)
+        current-page-id (session/current-page)
         page-title (when current-page-id (pages/page-title db current-page-id))]
     [:div.app
      {:style {:display "flex"
@@ -350,7 +367,7 @@
        ;; Blocks call stopPropagation, so this only fires for empty background clicks
        :on {:click (fn [e]
                      ;; Only clear if not editing and clicking empty background
-                     (when-not (q/editing-block-id db)
+                     (when-not (session/editing-block-id)
                        (handle-intent {:type :selection :mode :clear})))}}
 
       ;; Mock-text for cursor detection
@@ -405,14 +422,17 @@
   "Reset database to empty state for E2E tests with one empty block.
    Exposed on window.TEST_HELPERS for Playwright."
   []
+  ;; Reset DB (document only, no session data)
   (reset! !db (-> (DB/empty-db)
                   (tx/interpret [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
                                  {:op :place :id "test-page" :under :doc :at :last}
                                  {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
-                                 {:op :place :id "test-block-1" :under "test-page" :at :last}
-                                 {:op :update-node :id "session/ui" :props {:current-page "test-page"}}])
+                                 {:op :place :id "test-block-1" :under "test-page" :at :last}])
                   :db
-                  (H/record))))
+                  (H/record)))
+  ;; Reset session and set current page
+  (session/reset-session!)
+  (session/swap-session! assoc-in [:ui :current-page] "test-page"))
 
 (defn main []
   (js/console.log "Blocks UI starting with proper architecture...")
@@ -466,17 +486,19 @@
   ;; Set up global keyboard listener (Cmd+Z, etc)
   (.addEventListener js/document "keydown" handle-global-keydown)
 
-  ;; Set up auto-render on state changes
+  ;; Set up auto-render on state changes (both DB and session)
   (add-watch !db :render (fn [_ _ _ _] (render!)))
+  (add-watch session/!session :render (fn [_ _ _ _] (render!)))
 
   ;; Initialize Dataspex for DB inspection
   (dataspex/inspect "App DB" !db {:track-changes? true})
 
   ;; Apply text selection effects from formatting operations
-  (add-watch !db :text-selection-effects
-             (fn [_ _ _ new-db]
+  ;; Watch session for pending-selection instead of DB
+  (add-watch session/!session :text-selection-effects
+             (fn [_ _ _ new-session]
                (when-let [{:keys [block-id start end]}
-                          (get-in new-db [:nodes "session/ui" :props :pending-selection])]
+                          (get-in new-session [:ui :pending-selection])]
                  (js/requestAnimationFrame
                   (fn []
                     (when-let [editable-el (.querySelector js/document
@@ -493,6 +515,6 @@
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
                     ;; Clear pending selection after applying
-                    (swap! !db assoc-in [:nodes "session/ui" :props :pending-selection] nil))))))
+                    (session/swap-session! assoc-in [:ui :pending-selection] nil))))))
 
   (render!))
