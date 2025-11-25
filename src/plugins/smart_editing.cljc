@@ -85,7 +85,7 @@
                                  [:input-char :string]]
 
                           :handler
-                          (fn [db {:keys [block-id cursor-pos input-char] :as _intent}]
+                          (fn [db _session {:keys [block-id cursor-pos input-char] :as _intent}]
                             (let [text (get-block-text db block-id)
                                   next-char (when (< cursor-pos (count text))
                                               (str (nth text cursor-pos)))
@@ -95,10 +95,8 @@
          ;; Closing char and next char matches - skip over
                                 (and (contains? (set (vals pairs)) input-char)
                                      (= next-char input-char))
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:editing-block-id block-id
-                                          :cursor-position (inc cursor-pos)}}]
+                                {:session-updates {:ui {:editing-block-id block-id
+                                                        :cursor-position (inc cursor-pos)}}}
 
          ;; Opening char - insert both and position cursor between
                                 closing-char
@@ -106,26 +104,22 @@
                                                     input-char
                                                     closing-char
                                                     (subs text cursor-pos))]
-                                  [{:op :update-node
-                                    :id block-id
-                                    :props {:text new-text}}
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id block-id
-                                            :cursor-position (+ cursor-pos (count input-char))}}])
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position (+ cursor-pos (count input-char))}}})
 
          ;; Not a paired char - just insert
                                 :else
                                 (let [new-text (str (subs text 0 cursor-pos)
                                                     input-char
                                                     (subs text cursor-pos))]
-                                  [{:op :update-node
-                                    :id block-id
-                                    :props {:text new-text}}
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id block-id
-                                            :cursor-position (+ cursor-pos (count input-char))}}]))))})
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position (+ cursor-pos (count input-char))}}}))))})
 
 (intent/register-intent! :delete-with-pair-check
                          {:doc "Delete character, removing paired closing char if present.
@@ -141,7 +135,7 @@
                                  [:cursor-pos :int]]
 
                           :handler
-                          (fn [db {:keys [block-id cursor-pos]}]
+                          (fn [db _session {:keys [block-id cursor-pos]}]
                             (when (pos? cursor-pos)
                               (let [text (get-block-text db block-id)
              ;; Check for matching pairs - try multi-char first, then single-char
@@ -166,31 +160,27 @@
                                   (let [{:keys [open-len close-len]} pair-match
                                         new-text (str (subs text 0 (- cursor-pos open-len))
                                                       (subs text (+ cursor-pos close-len)))]
-                                    [{:op :update-node
-                                      :id block-id
-                                      :props {:text new-text}}
-                                     {:op :update-node
-                                      :id const/session-ui-id
-                                      :props {:editing-block-id block-id
-                                              :cursor-position (- cursor-pos open-len)}}])
+                                    {:ops [{:op :update-node
+                                            :id block-id
+                                            :props {:text new-text}}]
+                                     :session-updates {:ui {:editing-block-id block-id
+                                                            :cursor-position (- cursor-pos open-len)}}})
 
            ;; Normal backspace - delete one char
                                   (let [new-text (str (subs text 0 (dec cursor-pos))
                                                       (subs text cursor-pos))]
-                                    [{:op :update-node
-                                      :id block-id
-                                      :props {:text new-text}}
-                                     {:op :update-node
-                                      :id const/session-ui-id
-                                      :props {:editing-block-id block-id
-                                              :cursor-position (dec cursor-pos)}}])))))})
+                                    {:ops [{:op :update-node
+                                            :id block-id
+                                            :props {:text new-text}}]
+                                     :session-updates {:ui {:editing-block-id block-id
+                                                            :cursor-position (dec cursor-pos)}}})))))})
 
 ;; ── Merge Operations ──────────────────────────────────────────────────────────
 
 (intent/register-intent! :merge-with-next
                          {:doc "Merge block with next sibling, delete next block."
                           :spec [:map [:type [:= :merge-with-next]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      (let [next-id (get-in db [:derived :next-id-of block-id])
                                            curr-text (get-block-text db block-id)
                                            next-text (get-block-text db next-id)
@@ -212,7 +202,7 @@
 (intent/register-intent! :unformat-empty-list
                          {:doc "Remove list marker from empty list item (becomes plain block)."
                           :spec [:map [:type [:= :unformat-empty-list]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)]
                                        (when (list-marker? text)
                                          [{:op :update-node :id block-id :props {:text ""}}])))})
@@ -222,7 +212,7 @@
                           :spec [:map [:type [:= :split-with-list-increment]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
-                          :handler (fn [db {:keys [block-id cursor-pos]}]
+                          :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            before (subs text 0 cursor-pos)
                                            after (subs text cursor-pos)
@@ -242,7 +232,7 @@
 (intent/register-intent! :toggle-checkbox
                          {:doc "Toggle checkbox state in block text ([ ] <-> [x])."
                           :spec [:map [:type [:= :toggle-checkbox]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)
                                            new-text (toggle-checkbox-text text)]
                                        (when (not= text new-text)
@@ -265,7 +255,7 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]]
                           :handler
-                          (fn [db {:keys [block-id cursor-pos]}]
+                          (fn [db _session {:keys [block-id cursor-pos]}]
                             (let [text (get-block-text db block-id)
                                   before (subs text 0 cursor-pos)
                                   after (subs text cursor-pos)
@@ -279,11 +269,9 @@
          ;; LOGSEQ PARITY: Inside code fence → insert newline (don't split)
                                 code-block-ctx
                                 (let [new-text (str before "\n" after)]
-                                  [{:op :update-node :id block-id :props {:text new-text}}
+                                  {:ops [{:op :update-node :id block-id :props {:text new-text}}]
             ;; Position cursor after newline
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:cursor-position (inc cursor-pos)}}])
+                                   :session-updates {:ui {:cursor-position (inc cursor-pos)}}})
 
          ;; Empty list marker - just unformat
                                 (and (empty? after) (list-marker? before))
@@ -340,7 +328,7 @@
                                  [:cursor-pos :int]]
 
                           :handler
-                          (fn [db {:keys [block-id cursor-pos]}]
+                          (fn [db _session {:keys [block-id cursor-pos]}]
                             (let [text (get-block-text db block-id)
                                   context (ctx/context-at-cursor text cursor-pos)
                                   parent (get-in db [:derived :parent-of block-id])]
@@ -350,35 +338,27 @@
          ;; Inside markup - exit markup first (move cursor after closing marker)
                                 :markup
                                 (let [exit-pos (:end context)]
-                                  [{:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id block-id
-                                            :cursor-position exit-pos}}])
+                                  {:session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position exit-pos}}})
 
          ;; Inside code block - insert newline (don't create new block)
                                 :code-block
                                 (let [new-text (str (subs text 0 cursor-pos)
                                                     "\n"
                                                     (subs text cursor-pos))]
-                                  [{:op :update-node
-                                    :id block-id
-                                    :props {:text new-text}}
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id block-id
-                                            :cursor-position (inc cursor-pos)}}])
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position (inc cursor-pos)}}})
 
          ;; Inside block-ref - open in sidebar (TODO: implement sidebar)
                                 :block-ref
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:sidebar-opened-ref (:uuid context)}}]
+                                {:session-updates {:ui {:sidebar-opened-ref (:uuid context)}}}
 
          ;; Inside page-ref - navigate to page (TODO: implement page navigation)
                                 :page-ref
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:navigate-to-page (:page-name context)}}]
+                                {:session-updates {:ui {:navigate-to-page (:page-name context)}}}
 
          ;; Checkbox - check for empty
                                 :checkbox
@@ -393,15 +373,13 @@
                                         new-id (str "block-" (random-uuid))
                  ;; New block gets unchecked checkbox
                                         new-text (str "- [ ] " after)
-                                        marker-len (count (:marker context))]
+                                        _marker-len (count (:marker context))]
                                     (when parent
-                                      [{:op :update-node :id block-id :props {:text before}}
-                                       {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                       {:op :place :id new-id :under parent :at {:after block-id}}
-                                       {:op :update-node
-                                        :id const/session-ui-id
-                                        :props {:editing-block-id new-id
-                                                :cursor-position 6}}]))) ; After "- [ ] "
+                                      {:ops [{:op :update-node :id block-id :props {:text before}}
+                                             {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                             {:op :place :id new-id :under parent :at {:after block-id}}]
+                                       :session-updates {:ui {:editing-block-id new-id
+                                                              :cursor-position 6}}}))) ; After "- [ ] "
 
 ;; List item - check for empty
                                 :list-item
@@ -413,13 +391,11 @@
                                   (let [grandparent (when parent (get-in db [:derived :parent-of parent]))
                                         new-id (str "block-" (random-uuid))]
                                     (when grandparent
-                                      [{:op :update-node :id block-id :props {:text ""}}
-                                       {:op :create-node :id new-id :type :block :props {:text ""}}
-                                       {:op :place :id new-id :under grandparent :at {:after parent}}
-                                       {:op :update-node
-                                        :id const/session-ui-id
-                                        :props {:editing-block-id new-id
-                                                :cursor-position 0}}]))
+                                      {:ops [{:op :update-node :id block-id :props {:text ""}}
+                                             {:op :create-node :id new-id :type :block :props {:text ""}}
+                                             {:op :place :id new-id :under grandparent :at {:after parent}}]
+                                       :session-updates {:ui {:editing-block-id new-id
+                                                              :cursor-position 0}}}))
            ;; List with content - continue pattern
                                   (let [before (subs text 0 cursor-pos)
                                         after (subs text cursor-pos)
@@ -429,22 +405,18 @@
                  ;; Numbered list - increment
                                         (let [new-number (inc (:number context))
                                               new-text (str new-number ". " after)]
-                                          [{:op :update-node :id block-id :props {:text before}}
-                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}
-                                           {:op :update-node
-                                            :id const/session-ui-id
-                                            :props {:editing-block-id new-id
-                                                    :cursor-position (+ (count (str new-number)) 2)}}])
+                                          {:ops [{:op :update-node :id block-id :props {:text before}}
+                                                 {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
+                                           :session-updates {:ui {:editing-block-id new-id
+                                                                  :cursor-position (+ (count (str new-number)) 2)}}})
                  ;; Simple list - continue with same marker
                                         (let [new-text (str (:marker context) after)]
-                                          [{:op :update-node :id block-id :props {:text before}}
-                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}
-                                           {:op :update-node
-                                            :id const/session-ui-id
-                                            :props {:editing-block-id new-id
-                                                    :cursor-position (count (:marker context))}}])))))
+                                          {:ops [{:op :update-node :id block-id :props {:text before}}
+                                                 {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
+                                           :session-updates {:ui {:editing-block-id new-id
+                                                                  :cursor-position (count (:marker context))}}})))))
 
          ;; Plain text - check if cursor at position 0 (Logseq parity)
                                 :none
@@ -454,21 +426,17 @@
                                   (when parent
                                     (if (zero? cursor-pos)
                ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
-                                      [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                       {:op :place :id new-id :under parent :at {:before block-id}}
-                                       {:op :update-node
-                                        :id const/session-ui-id
-                                        :props {:editing-block-id block-id
-                                                :cursor-position 0}}]
+                                      {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                             {:op :place :id new-id :under parent :at {:before block-id}}]
+                                       :session-updates {:ui {:editing-block-id block-id
+                                                              :cursor-position 0}}}
                ;; Normal split - create block BELOW
-                                      [{:op :update-node :id block-id :props {:text before}}
+                                      {:ops [{:op :update-node :id block-id :props {:text before}}
                 ;; LOGSEQ PARITY: Left-trim second block text
-                                       {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
-                                       {:op :place :id new-id :under parent :at {:after block-id}}
-                                       {:op :update-node
-                                        :id const/session-ui-id
-                                        :props {:editing-block-id new-id
-                                                :cursor-position 0}}])))
+                                             {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
+                                             {:op :place :id new-id :under parent :at {:after block-id}}]
+                                       :session-updates {:ui {:editing-block-id new-id
+                                                              :cursor-position 0}}})))
 
          ;; Default (shouldn't happen) - normal split
                                 (let [before (subs text 0 cursor-pos)

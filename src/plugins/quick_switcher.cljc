@@ -69,13 +69,12 @@
                          {:doc "Open quick switcher overlay (Cmd+K / Cmd+P)."
                           :spec [:map [:type [:= :quick-switcher/open]]]
                           :handler
-                          (fn [db _]
+                          (fn [db _session _intent]
                             (let [results (search-all db "")]
-                              [{:op :update-node
-                                :id const/session-ui-id
-                                :props {:quick-switcher {:query ""
-                                                         :results results
-                                                         :selected-idx 0}}}]))})
+                              {:session-updates
+                               {:ui {:quick-switcher {:query ""
+                                                      :results results
+                                                      :selected-idx 0}}}}))})
 
 (intent/register-intent! :quick-switcher/update-query
                          {:doc "Update quick switcher search query and filter results."
@@ -83,74 +82,64 @@
                                  [:type [:= :quick-switcher/update-query]]
                                  [:query :string]]
                           :handler
-                          (fn [db {:keys [query]}]
-                            (when (get-in db [:nodes const/session-ui-id :props :quick-switcher])
+                          (fn [db session {:keys [query]}]
+                            (when (get-in session [:ui :quick-switcher])
                               (let [results (search-all db query)]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:quick-switcher {:query query
-                                                           :results results
-                                                           :selected-idx 0}}}])))})
+                                {:session-updates
+                                 {:ui {:quick-switcher {:query query
+                                                        :results results
+                                                        :selected-idx 0}}}})))})
 
 (intent/register-intent! :quick-switcher/next
                          {:doc "Select next result (Down / Ctrl+N)."
                           :spec [:map [:type [:= :quick-switcher/next]]]
                           :handler
-                          (fn [db _]
-                            (when-let [switcher (get-in db [:nodes const/session-ui-id :props :quick-switcher])]
+                          (fn [_db session _intent]
+                            (when-let [switcher (get-in session [:ui :quick-switcher])]
                               (let [idx (:selected-idx switcher)
                                     total (count (:results switcher))
                                     next-idx (if (< idx (dec total)) (inc idx) 0)]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:quick-switcher (assoc switcher :selected-idx next-idx)}}])))})
+                                {:session-updates
+                                 {:ui {:quick-switcher (assoc switcher :selected-idx next-idx)}}})))})
 
 (intent/register-intent! :quick-switcher/prev
                          {:doc "Select previous result (Up / Ctrl+P)."
                           :spec [:map [:type [:= :quick-switcher/prev]]]
                           :handler
-                          (fn [db _]
-                            (when-let [switcher (get-in db [:nodes const/session-ui-id :props :quick-switcher])]
+                          (fn [_db session _intent]
+                            (when-let [switcher (get-in session [:ui :quick-switcher])]
                               (let [idx (:selected-idx switcher)
                                     total (count (:results switcher))
                                     prev-idx (if (pos? idx) (dec idx) (dec total))]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:quick-switcher (assoc switcher :selected-idx prev-idx)}}])))})
+                                {:session-updates
+                                 {:ui {:quick-switcher (assoc switcher :selected-idx prev-idx)}}})))})
 
 (intent/register-intent! :quick-switcher/select
                          {:doc "Open selected result and close switcher (Enter)."
                           :spec [:map [:type [:= :quick-switcher/select]]]
                           :handler
-                          (fn [db _]
-                            (when-let [switcher (get-in db [:nodes const/session-ui-id :props :quick-switcher])]
+                          (fn [_db session _intent]
+                            (when-let [switcher (get-in session [:ui :quick-switcher])]
                               (let [{:keys [results selected-idx]} switcher
                                     selected (nth results selected-idx nil)]
                                 (when selected
                                   (case (:type selected)
                                     ;; For pages, navigate to that page
                                     :page
-                                    [{:op :update-node
-                                      :id const/session-ui-id
-                                      :props {:quick-switcher nil
-                                              :current-page (:id selected)}}]
+                                    {:session-updates
+                                     {:ui {:quick-switcher nil
+                                           :current-page (:id selected)}}}
 
                                     ;; For blocks, navigate to page + scroll to block (simplified: just close for now)
                                     :block
-                                    [{:op :update-node
-                                      :id const/session-ui-id
-                                      :props {:quick-switcher nil}}]
+                                    {:session-updates {:ui {:quick-switcher nil}}}
 
                                     ;; Default: just close
-                                    [{:op :update-node
-                                      :id const/session-ui-id
-                                      :props {:quick-switcher nil}}])))))})
+                                    {:session-updates {:ui {:quick-switcher nil}}})))))})
 
 (intent/register-intent! :quick-switcher/close
                          {:doc "Close quick switcher without selecting (Esc)."
                           :spec [:map [:type [:= :quick-switcher/close]]]
                           :handler
-                          (fn [db _]
-                            [{:op :update-node
-                              :id const/session-ui-id
-                              :props {:quick-switcher nil}}])})
+                          (fn [_db _session _intent]
+                            {:session-updates {:ui {:quick-switcher nil}}})})

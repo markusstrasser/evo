@@ -201,7 +201,7 @@
                                  [:current-text :string]
                                  [:current-cursor-pos :int]]
                           :handler
-                          (fn [db {:keys [direction current-block-id current-text current-cursor-pos]}]
+                          (fn [db _session {:keys [direction current-block-id current-text current-cursor-pos]}]
                             (let [;; Calculate and store cursor memory
                                   line-pos (get-line-pos current-text current-cursor-pos)
 
@@ -214,10 +214,9 @@
                               ;; This prevents exceptions at document edges (Logseq behavior)
                               (if-not target-id
                                 ;; No target block - stay in current block with cursor at boundary
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:editing-block-id current-block-id
-                                          :cursor-position (if (= direction :up) 0 (count current-text))}}]
+                                {:session-updates
+                                 {:ui {:editing-block-id current-block-id
+                                       :cursor-position (if (= direction :up) 0 (count current-text))}}}
 
                                 ;; Target exists - navigate to it
                                 (let [target-text (get-block-text db target-id)
@@ -231,24 +230,13 @@
                                                   (>= target-pos (count target-text)) :end
                                                   :else target-pos)]
 
-                                  ;; Return ops
-                                  [;; Update cursor memory (in :ui, ephemeral)
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:cursor-memory {:line-pos line-pos
-                                                            :last-block-id current-block-id
-                                                            :direction direction}}}
-
-                                   ;; Exit edit on current block
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id nil}}
-
-                                   ;; Enter edit on target block WITH cursor position
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id target-id
-                                            :cursor-position cursor-at}}]))))})
+                                  ;; Return session-updates (ephemeral UI state)
+                                  {:session-updates
+                                   {:ui {:cursor-memory {:line-pos line-pos
+                                                         :last-block-id current-block-id
+                                                         :direction direction}
+                                         :editing-block-id target-id
+                                         :cursor-position cursor-at}}}))))})
 
 (intent/register-intent! :navigate-to-adjacent
                          {:doc "Navigate to adjacent block (for left/right arrows at boundaries).
@@ -261,7 +249,7 @@
                                  [:current-block-id :string]
                                  [:cursor-position [:or :int [:enum :max]]]]
                           :handler
-                          (fn [db {:keys [direction current-block-id cursor-position]}]
+                          (fn [db _session {:keys [direction current-block-id cursor-position]}]
                             (let [target-id (case direction
                                               :up (q/prev-block-dom-order db current-block-id)
                                               :down (q/next-block-dom-order db current-block-id))]
@@ -270,10 +258,6 @@
                                       actual-pos (if (= cursor-position :max)
                                                    (count target-text)
                                                    cursor-position)]
-                                  [{:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id nil}}
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id target-id
-                                            :cursor-position actual-pos}}]))))})
+                                  {:session-updates
+                                   {:ui {:editing-block-id target-id
+                                         :cursor-position actual-pos}}}))))})

@@ -35,7 +35,7 @@
           [:start :int]
           [:end :int]
           [:marker :string]]
-   :handler (fn [db {:keys [block-id start end marker]}]
+   :handler (fn [db _session {:keys [block-id start end marker]}]
               (let [current-text (get-in db [:nodes block-id :props :text] "")
                     {:keys [text selection-start selection-end]}
                     (toggle-text-range {:text current-text

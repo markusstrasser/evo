@@ -31,26 +31,43 @@
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
-(defn- get-folded-set
-  "Get the set of folded block IDs from session state.
+;; ── Session State Access ──────────────────────────────────────────────────────
+;;
+;; ARCHITECTURAL NOTE (Phase 6):
+;; This plugin computes :visible-order as a derived index during transaction.
+;; However, fold/zoom state lives in session (not DB), and the derive-indexes
+;; phase doesn't have access to session.
+;;
+;; Current workaround: Return empty/nil (all blocks visible, no zoom boundary)
+;; This means navigation works but doesn't respect folding or zoom.
+;;
+;; Future options:
+;; 1. Pass session to derive-indexes (breaking change to transaction pipeline)
+;; 2. Compute visibility lazily in UI layer (remove this derived index)
+;; 3. Make fold/zoom state part of DB (architectural regression)
+;;
+;; For now, the UI works because navigation falls back to tree traversal.
 
-   TODO Phase 4-5: Needs session parameter - returning empty for now."
-  [db]
-  #{})  ;; Return empty - no blocks folded
+(defn- get-folded-set
+  "Get the set of folded block IDs.
+
+   NOTE: Returns empty until session access is added to derive-indexes."
+  [_db]
+  #{})
 
 (defn- get-zoom-root
   "Get the current zoom root (rendering root block ID).
 
-   TODO Phase 4-5: Needs session parameter - returning nil for now."
-  [db]
-  nil)  ;; Return nil - not zoomed
+   NOTE: Returns nil until session access is added to derive-indexes."
+  [_db]
+  nil)
 
 (defn- get-current-page
   "Get the current active page ID.
 
-   TODO Phase 4-5: Needs session parameter - returning nil for now."
-  [db]
-  nil)  ;; Return nil - no page selected
+   NOTE: Returns nil until session access is added to derive-indexes."
+  [_db]
+  nil)
 
 (defn- active-outline-root
   "Get the active outline root for navigation and rendering.

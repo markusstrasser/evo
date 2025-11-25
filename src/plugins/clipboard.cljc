@@ -84,7 +84,7 @@
                                  [:pasted-text :string]]
 
                           :handler
-                          (fn [db {:keys [block-id cursor-pos pasted-text]}]
+                          (fn [db _session {:keys [block-id cursor-pos pasted-text]}]
                             (let [current-text (get-block-text db block-id)
                                   before (subs current-text 0 cursor-pos)
                                   after (subs current-text cursor-pos)
@@ -95,13 +95,11 @@
                                 (not (has-blank-lines? pasted-text))
                                 (let [new-text (str before pasted-text after)
                                       new-cursor-pos (+ cursor-pos (count pasted-text))]
-                                  [{:op :update-node
-                                    :id block-id
-                                    :props {:text new-text}}
-                                   {:op :update-node
-                                    :id const/session-ui-id
-                                    :props {:editing-block-id block-id
-                                            :cursor-position new-cursor-pos}}])
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position new-cursor-pos}}})
 
                                 ;; Has blank lines → split into multiple blocks
                                 :else
@@ -147,17 +145,11 @@
                                                       block-id)
                                       final-cursor-pos (if (empty? after)
                                                         (count (str/trim (last remaining-paras)))
-                                                        (count first-block-text))
+                                                        (count first-block-text))]
 
-                                      cursor-op {:op :update-node
-                                                :id const/session-ui-id
-                                                :props {:editing-block-id final-block-id
-                                                        :cursor-position final-cursor-pos}}]
-
-                                  (concat [update-current-op]
-                                         create-ops
-                                         place-ops
-                                         [cursor-op])))))})
+                                  {:ops (vec (concat [update-current-op] create-ops place-ops))
+                                   :session-updates {:ui {:editing-block-id final-block-id
+                                                          :cursor-position final-cursor-pos}}}))))})
 
 (intent/register-intent! :copy-block
                          {:doc "Copy block content to clipboard.
@@ -165,36 +157,30 @@
          Returns nil (actual clipboard operation must be handled by UI layer
          using browser Clipboard API)."
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      ;; Return block text in clipboard-compatible format
                                      ;; UI layer will handle navigator.clipboard.writeText()
                                      (let [text (get-block-text db block-id)]
-                                       [{:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:clipboard-text text}}]))})
+                                       {:session-updates {:ui {:clipboard-text text}}}))})
 
 (intent/register-intent! :copy-block-ref
                          {:doc "Copy block reference ((block-id)) to clipboard (Cmd+Option+C).
 
          UI layer must handle actual clipboard operation."
                           :spec [:map [:type [:= :copy-block-ref]] [:block-id :string]]
-                          :handler (fn [_db {:keys [block-id]}]
+                          :handler (fn [_db _session {:keys [block-id]}]
                                      (let [ref-text (str "((" block-id "))")]
-                                       [{:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:clipboard-text ref-text}}]))})
+                                       {:session-updates {:ui {:clipboard-text ref-text}}}))})
 
 (intent/register-intent! :cut-block
                          {:doc "Cut block (copy + delete).
 
          Moves block to trash after copying to clipboard."
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)]
-                                       [{:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:clipboard-text text}}
-                                        {:op :place
-                                         :id block-id
-                                         :under const/root-trash
-                                         :at :last}]))})
+                                       {:ops [{:op :place
+                                               :id block-id
+                                               :under const/root-trash
+                                               :at :last}]
+                                        :session-updates {:ui {:clipboard-text text}}}))})

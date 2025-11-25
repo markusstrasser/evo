@@ -22,90 +22,76 @@
          Optional :cursor-at can be :start or :end to position cursor.
          Clears selection to maintain edit/view mode mutual exclusivity."
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
-                          :handler (fn [_db {:keys [block-id cursor-at]}]
-                                     [;; INVARIANT: Clear selection before entering edit mode
-                                      {:op :update-node
-                                       :id const/session-selection-id
-                                       :props {:nodes #{} :focus nil :anchor nil}}
-                                      ;; Then set editing-block-id
-                                      {:op :update-node
-                                       :id const/session-ui-id
-                                       :props {:editing-block-id block-id
-                                               :cursor-position cursor-at}}])})
+                          :handler (fn [_db _session {:keys [block-id cursor-at]}]
+                                     {:session-updates
+                                      {:selection {:nodes #{} :focus nil :anchor nil}
+                                       :ui {:editing-block-id block-id
+                                            :cursor-position cursor-at}}})})
 
 (intent/register-intent! :exit-edit
                          {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
                           :spec [:map [:type [:= :exit-edit]]]
-                          :handler (fn [_db _intent]
-                                     [{:op :update-node :id const/session-ui-id :props {:editing-block-id nil :cursor-position nil}}])})
+                          :handler (fn [_db _session _intent]
+                                     {:session-updates {:ui {:editing-block-id nil :cursor-position nil}}})})
 
 (intent/register-intent! :exit-edit-and-select
                          {:doc "Exit edit mode and select the block (Logseq parity).
                                 This is the default Escape behavior in Logseq."
                           :spec [:map [:type [:= :exit-edit-and-select]]]
-                          :handler (fn [db _intent]
-                                     (when-let [editing-block-id (get-in db [:nodes const/session-ui-id :props :editing-block-id])]
-                                       [{:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:editing-block-id nil :cursor-position nil}}
-                                        {:op :update-node
-                                         :id const/session-selection-id
-                                         :props {:nodes #{editing-block-id}
-                                                 :focus editing-block-id
-                                                 :anchor editing-block-id}}]))})
+                          :handler (fn [_db session _intent]
+                                     (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
+                                       {:session-updates
+                                        {:ui {:editing-block-id nil :cursor-position nil}
+                                         :selection {:nodes #{editing-block-id}
+                                                     :focus editing-block-id
+                                                     :anchor editing-block-id}}}))})
 
 (intent/register-intent! :enter-edit-selected
                          {:doc "Enter edit mode in selected block at end of text (Logseq parity).
                                 Does NOT create a new block."
                           :spec [:map [:type [:= :enter-edit-selected]]]
-                          :handler (fn [db _intent]
-                                     (let [focused-block (get-in db [:nodes const/session-selection-id :props :focus])]
-                                       (when focused-block
-                                         (let [text-length (count (get-in db [:nodes focused-block :props :text] ""))]
-                                           [{:op :update-node
-                                             :id const/session-selection-id
-                                             :props {:nodes #{} :focus nil :anchor nil}}
-                                            {:op :update-node
-                                             :id const/session-ui-id
-                                             :props {:editing-block-id focused-block
-                                                     :cursor-position text-length}}]))))})
+                          :handler (fn [db session _intent]
+                                     (when-let [focused-block (get-in session [:selection :focus])]
+                                       (let [text-length (count (get-in db [:nodes focused-block :props :text] ""))]
+                                         {:session-updates
+                                          {:selection {:nodes #{} :focus nil :anchor nil}
+                                           :ui {:editing-block-id focused-block
+                                                :cursor-position text-length}}})))})
 
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
                           :spec [:map [:type [:= :clear-cursor-position]]]
-                          :handler (fn [_db _intent]
-                                     [{:op :update-node :id const/session-ui-id :props {:cursor-position nil}}])})
+                          :handler (fn [_db _session _intent]
+                                     {:session-updates {:ui {:cursor-position nil}}})})
 
 (intent/register-intent! :update-cursor-state
                          {:doc "Update cursor position state for boundary detection. Ephemeral - not in history."
                           :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
-                          :handler (fn [db {:keys [block-id first-row? last-row?]}]
-                                     (let [current-cursor (get-in db [:nodes const/session-ui-id :props :cursor] {})
+                          :handler (fn [_db session {:keys [block-id first-row? last-row?]}]
+                                     (let [current-cursor (get-in session [:ui :cursor] {})
                                            updated-cursor (assoc current-cursor block-id {:first-row? first-row? :last-row? last-row?})]
-                                       [{:op :update-node :id const/session-ui-id :props {:cursor updated-cursor}}]))})
+                                       {:session-updates {:ui {:cursor updated-cursor}}}))})
 
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
 (intent/register-intent! :update-content
                          {:doc "Update block text content."
                           :spec [:map [:type [:= :update-content]] [:block-id :string] [:text :string]]
-                          :handler (fn [_db {:keys [block-id text]}]
+                          :handler (fn [_db _session {:keys [block-id text]}]
                                      [{:op :update-node :id block-id :props {:text text}}])})
 
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
                                 LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text."
                           :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
-                          :handler (fn [db {:keys [block-id cursor-pos]}]
+                          :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            new-text (str (subs text 0 cursor-pos)
                                                         "\n"
                                                         (subs text cursor-pos))]
-                                       [{:op :update-node :id block-id :props {:text new-text}}
-                                        {:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:editing-block-id block-id
-                                                 :cursor-position (inc cursor-pos)}}]))})
+                                       {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                                        :session-updates {:ui {:editing-block-id block-id
+                                                               :cursor-position (inc cursor-pos)}}}))})
 
 (intent/register-intent! :merge-with-prev
                          {:doc "Merge block with previous sibling, placing cursor at merge point.
@@ -115,43 +101,33 @@
                           :fr/ids #{:fr.edit/backspace-merge}
 
                           :spec [:map [:type [:= :merge-with-prev]] [:block-id :string]]
-                          :handler (fn [db {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id]}]
                                      (let [prev-id (get-in db [:derived :prev-id-of block-id])
                                            prev-text (get-block-text db prev-id)
                                            curr-text (get-block-text db block-id)
                                            merged-text (str prev-text curr-text)
                     ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
-                    ;; NOTE: In browsers, cursor position is based on UTF-16 code units, not graphemes
-                    ;; Multi-byte characters (emoji) will naturally be handled correctly by .length
                                            cursor-at #?(:cljs (.-length prev-text)
                                                        :clj (count prev-text))
-
                     ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]
                                        (when prev-id
-                                         (concat
-                                           ;; Update prev block with merged text
-                                           [{:op :update-node :id prev-id :props {:text merged-text}}]
-
-                                           ;; CRITICAL: Re-parent children of deleted block to prev block
-                                           ;; This prevents data loss - children would otherwise go to trash!
-                                           (mapv (fn [child-id]
-                                                   {:op :place :id child-id :under prev-id :at :last})
-                                                 curr-children)
-
-                                           ;; Move current block to trash (now empty of children)
-                                           [{:op :place :id block-id :under const/root-trash :at :last}
-
-                    ;; Store cursor position for entering prev block
-                                            {:op :update-node
-                                             :id const/session-ui-id
-                                             :props {:editing-block-id prev-id
-                                                     :cursor-position cursor-at}}]))))})
+                                         {:ops (vec (concat
+                                                     ;; Update prev block with merged text
+                                                     [{:op :update-node :id prev-id :props {:text merged-text}}]
+                                                     ;; Re-parent children of deleted block to prev block
+                                                     (mapv (fn [child-id]
+                                                             {:op :place :id child-id :under prev-id :at :last})
+                                                           curr-children)
+                                                     ;; Move current block to trash
+                                                     [{:op :place :id block-id :under const/root-trash :at :last}]))
+                                          :session-updates {:ui {:editing-block-id prev-id
+                                                                 :cursor-position cursor-at}}})))})
 
 (intent/register-intent! :split-at-cursor
                          {:doc "Split block at cursor position into two blocks."
                           :spec [:map [:type [:= :split-at-cursor]] [:block-id :string] [:cursor-pos :int]]
-                          :handler (fn [db {:keys [block-id cursor-pos]}]
+                          :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            before (subs text 0 cursor-pos)
                                            after (subs text cursor-pos)
@@ -179,7 +155,7 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]
                                  [:has-selection? :boolean]]
-                          :handler (fn [db {:keys [block-id cursor-pos has-selection?]}]
+                          :handler (fn [db _session {:keys [block-id cursor-pos has-selection?]}]
                                      (let [text (get-block-text db block-id)
                                            at-end? (= cursor-pos (count text))]
                                        (cond
@@ -195,34 +171,24 @@
                                            (when target-id
                                              (let [target-text (get-block-text db target-id)
                                                    merged-text (str text target-text)
-                                                   ;; If merging with child, move child's children up
                                                    target-children (get-in db [:children-by-parent target-id] [])]
-                                               (concat
-                                                ;; Update current block with merged text
-                                                [{:op :update-node :id block-id :props {:text merged-text}}]
-                                                ;; Move target's children to current block
-                                                (map (fn [child-id]
-                                                       {:op :place :id child-id :under block-id :at :last})
-                                                     target-children)
-                                                ;; Delete target block
-                                                [{:op :place :id target-id :under const/root-trash :at :last}]
-                                                ;; Cursor stays at original position (end of original text)
-                                                [{:op :update-node
-                                                  :id const/session-ui-id
-                                                  :props {:editing-block-id block-id
-                                                          :cursor-position (count text)}}]))))
+                                               {:ops (vec (concat
+                                                           [{:op :update-node :id block-id :props {:text merged-text}}]
+                                                           (map (fn [child-id]
+                                                                  {:op :place :id child-id :under block-id :at :last})
+                                                                target-children)
+                                                           [{:op :place :id target-id :under const/root-trash :at :last}]))
+                                                :session-updates {:ui {:editing-block-id block-id
+                                                                       :cursor-position (count text)}}})))
 
                                          ;; Middle of text - delete next character
                                          :else
-                                         (let [;; Handle multi-byte characters (emoji, CJK)
-                                               next-char-len (text/grapheme-length-at text cursor-pos)
+                                         (let [next-char-len (text/grapheme-length-at text cursor-pos)
                                                new-text (str (subs text 0 cursor-pos)
                                                             (subs text (+ cursor-pos next-char-len)))]
-                                           [{:op :update-node :id block-id :props {:text new-text}}
-                                            {:op :update-node
-                                             :id const/session-ui-id
-                                             :props {:editing-block-id block-id
-                                                     :cursor-position cursor-pos}}]))))})
+                                           {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                                            :session-updates {:ui {:editing-block-id block-id
+                                                                   :cursor-position cursor-pos}}}))))})
 
 ;; ── Word Navigation Intents ──────────────────────────────────────────────────
 
@@ -233,27 +199,23 @@
    :spec [:map
           [:type [:= :move-cursor-forward-word]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position])
+                    cursor-pos (get-in session [:ui :cursor-position])
                     next-pos (text/find-next-word-boundary block-text (or cursor-pos 0))]
-                [{:op :update-node
-                  :id const/session-ui-id
-                  :props {:cursor-position next-pos}}]))})
+                {:session-updates {:ui {:cursor-position next-pos}}}))})
 
 (intent/register-intent! :move-cursor-backward-word
   {:doc "Move cursor to start of previous word (Alt+B / Ctrl+Shift+B on Mac)."
    :spec [:map
           [:type [:= :move-cursor-backward-word]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position])
+                    cursor-pos (get-in session [:ui :cursor-position])
                     prev-pos (text/find-prev-word-boundary block-text (or cursor-pos 0))]
                 (when prev-pos
-                  [{:op :update-node
-                    :id const/session-ui-id
-                    :props {:cursor-position prev-pos}}])))})
+                  {:session-updates {:ui {:cursor-position prev-pos}}})))})
 
 ;; ── Kill Commands (Emacs-style) ──────────────────────────────────────────────
 
@@ -264,11 +226,9 @@
    :spec [:map
           [:type [:= :clear-block-content]]
           [:block-id :string]]
-   :handler (fn [_db {:keys [block-id]}]
-              [{:op :update-node :id block-id :props {:text ""}}
-               {:op :update-node
-                :id const/session-ui-id
-                :props {:cursor-position 0}}])})
+   :handler (fn [_db _session {:keys [block-id]}]
+              {:ops [{:op :update-node :id block-id :props {:text ""}}]
+               :session-updates {:ui {:cursor-position 0}}})})
 
 (intent/register-intent! :kill-to-beginning
   {:doc "Kill from cursor to beginning of block (Cmd+U).
@@ -277,17 +237,15 @@
    :spec [:map
           [:type [:= :kill-to-beginning]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position] 0)
+                    cursor-pos (get-in session [:ui :cursor-position] 0)
                     killed-text (subs block-text 0 cursor-pos)
                     new-text (subs block-text cursor-pos)]
                 ;; TODO: Copy killed-text to clipboard (requires browser API or MCP)
-                (js/console.log "Killed:" killed-text)
-                [{:op :update-node :id block-id :props {:text new-text}}
-                 {:op :update-node
-                  :id const/session-ui-id
-                  :props {:cursor-position 0}}]))})
+                #?(:cljs (js/console.log "Killed:" killed-text))
+                {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                 :session-updates {:ui {:cursor-position 0}}}))})
 
 (intent/register-intent! :kill-to-end
   {:doc "Kill from cursor to end of block (Cmd+K).
@@ -296,12 +254,12 @@
    :spec [:map
           [:type [:= :kill-to-end]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position] 0)
+                    cursor-pos (get-in session [:ui :cursor-position] 0)
                     killed-text (subs block-text cursor-pos)
                     new-text (subs block-text 0 cursor-pos)]
-                (js/console.log "Killed:" killed-text)
+                #?(:cljs (js/console.log "Killed:" killed-text))
                 [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-forward
@@ -311,14 +269,14 @@
    :spec [:map
           [:type [:= :kill-word-forward]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position] 0)
+                    cursor-pos (get-in session [:ui :cursor-position] 0)
                     next-pos (text/find-next-word-boundary block-text cursor-pos)
                     killed-text (subs block-text cursor-pos next-pos)
                     new-text (str (subs block-text 0 cursor-pos)
                                  (subs block-text next-pos))]
-                (js/console.log "Killed:" killed-text)
+                #?(:cljs (js/console.log "Killed:" killed-text))
                 [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-backward
@@ -328,16 +286,14 @@
    :spec [:map
           [:type [:= :kill-word-backward]]
           [:block-id :string]]
-   :handler (fn [db {:keys [block-id]}]
+   :handler (fn [db session {:keys [block-id]}]
               (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in db [:nodes const/session-ui-id :props :cursor-position] 0)
+                    cursor-pos (get-in session [:ui :cursor-position] 0)
                     prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
                 (when prev-pos
                   (let [killed-text (subs block-text prev-pos cursor-pos)
                         new-text (str (subs block-text 0 prev-pos)
                                      (subs block-text cursor-pos))]
-                    (js/console.log "Killed:" killed-text)
-                    [{:op :update-node :id block-id :props {:text new-text}}
-                     {:op :update-node
-                      :id const/session-ui-id
-                      :props {:cursor-position prev-pos}}]))))})
+                    #?(:cljs (js/console.log "Killed:" killed-text))
+                    {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                     :session-updates {:ui {:cursor-position prev-pos}}}))))})
