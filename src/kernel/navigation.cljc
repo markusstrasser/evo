@@ -72,7 +72,7 @@
 (defn has-visible-children?
   "Check if a node has any visible children."
   [db parent-id]
-  (seq (visible-children db parent-id)))
+  (boolean (seq (visible-children db parent-id))))
 
 (defn visible?
   "Check if a node is visible (not hidden by folding/zoom).

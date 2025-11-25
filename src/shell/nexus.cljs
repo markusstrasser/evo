@@ -15,6 +15,7 @@
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
             [kernel.api :as api]
+            [shell.session :as session]
             [dev.tooling :as dev]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
@@ -22,19 +23,22 @@
 (defn dispatch-intent
   "Effect that dispatches kernel intents.
 
-   Temporary wrapper around handle-intent during migration.
-   Later this will call api/dispatch directly."
+   Gets current session, passes to api/dispatch, applies session-updates."
   [_ !db intent-map]
-  (let [db-before @!db
-        {:keys [db issues]} (api/dispatch db-before intent-map)
+  (let [current-session (session/get-session)
+        db-before @!db
+        {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
         db-after db
         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
-    ;; Log to devtools (same as blocks_ui/handle-intent)
+    (reset! !db db-after)
+    ;; Apply session-updates returned from handler
+    (when session-updates
+      (session/swap-session! #(merge-with merge % session-updates)))
+    ;; Log to devtools
     (when should-log?
-      (dev/log-dispatch! intent-map db-before db-after))
-    (reset! !db db)))
+      (dev/log-dispatch! intent-map db-before db-after))))
 
 (defn log-devtools
   "Effect that logs actions + intents to window.__nexusLog (dev only)."
