@@ -1,26 +1,21 @@
 (ns plugins.selection
-  "Selection state management via session nodes.
+  "Selection state management via session atom.
 
    READER GUIDE:
    ─────────────
    This is the unified selection reducer. One intent (:selection) with modes.
    Modes: :replace, :extend, :deselect, :toggle, :clear, :next, :prev, :parent, :all-siblings
-   Selection stored in session/selection node {:nodes #{...} :focus id :anchor id}
-   All changes emit :update-node ops → enables undo/redo of selection.
+   Selection stored in session atom {:selection {:nodes #{...} :focus id :anchor id}}
 
-   ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props.
+   Phase 6 Architecture:
+   - Handler receives (db session intent)
+   - Handler returns {:session-updates {:selection new-props}}
+   - Caller (shell layer) applies session-updates to session atom
 
-   Special behavior: :extend with single ID triggers range selection (doc-range from anchor to new-focus)"
+   ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props."
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
-            [kernel.constants :as const]
-            [kernel.query :as tree]))
-
-;; Private helper for internal use
-;; TODO Phase 4-5: This needs session parameter, but handlers don't have access to session
-;; Temporarily return empty state to allow compilation
-(defn- get-selection-state [db]
-  {:nodes #{} :focus nil :anchor nil})
+            [kernel.query :as q]))
 
 ;; ── Pure Selection Property Calculators ──────────────────────────────────────
 
@@ -33,16 +28,11 @@
     {:nodes ids-set :focus new-focus :anchor new-focus}))
 
 (defn- calc-extend-props
-  "Pure: calculate props for extending selection with given IDs.
-
-   NOTE: Range selection (Shift+Click) temporarily disabled after Phase 4-5
-   refactor. Will be re-enabled when session state is accessible to intent handlers."
+  "Pure: calculate props for extending selection with given IDs."
   [current-state ids]
   (let [ids-vec (if (coll? ids) (vec ids) [ids])
         new-focus (last ids-vec)
         anchor (:anchor current-state)
-        ;; TODO: Re-enable range selection with visible-range once session is available
-        ;; For now, just union the sets (no range expansion)
         new-nodes (set/union (:nodes current-state) (set ids-vec))]
     {:nodes new-nodes
      :focus new-focus
@@ -66,29 +56,52 @@
 
 (defn- get-dom-nav-fn
   "Return the DOM order navigation function for the given direction.
-   
+
    CRITICAL: Uses DOM order (pre-order traversal), NOT sibling order.
-   This ensures selection includes children, not just siblings.
-   
-   Uses public helpers from kernel.query (moved from private versions here)."
+   This ensures selection includes children, not just siblings."
   [direction]
   (case direction
-    :next tree/next-block-dom-order
-    :prev tree/prev-block-dom-order))
+    :next q/next-block-dom-order
+    :prev q/prev-block-dom-order))
+
+(def ^:private container-types
+  "Node types that are containers and should not be included in block selection."
+  #{:doc :page})
+
+(defn- is-selectable-block?
+  "Check if a node is a selectable block (not a container like :doc or :page).
+
+   Non-container types (:block, :p, :heading, etc.) are selectable."
+  [db node-id]
+  (let [node-type (get-in db [:nodes node-id :type])]
+    (not (contains? container-types node-type))))
+
+(defn- next-selectable-block
+  "Get the next selectable block in DOM order, skipping containers.
+
+   Continues navigation until finding a :block type node or reaching boundary."
+  [db current-id direction]
+  (let [nav-fn (get-dom-nav-fn direction)]
+    (loop [current current-id]
+      (when-let [next-id (nav-fn db current)]
+        (if (is-selectable-block? db next-id)
+          next-id
+          (recur next-id))))))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
    direction: :next (first) or :prev (last)
-   
-   Uses q/zoom-root for correct zoom context (spec §3.4)."
-  [db direction]
-  (let [root-id (or (tree/zoom-root db)
-                    (get-in db [:nodes const/session-ui-id :props :current-page]))
-        children (when root-id (tree/children db root-id))]
+
+   Uses session for zoom-root and current-page (spec §3.4)."
+  [db session direction]
+  (let [root-id (or (q/zoom-root session)
+                    (q/current-page session)
+                    :doc)
+        children (q/children db root-id)]
     (when (seq children)
       (case direction
-        :next (first children) ; Down arrow → first block
-        :prev (last children))))) ; Up arrow → last block ; Up arrow → last block
+        :next (first children)
+        :prev (last children)))))
 
 (defn- calc-navigate-props
   "Pure: calculate props for navigating in a direction with incremental selection.
@@ -97,12 +110,12 @@
 
    Incremental extension (Logseq parity):
    - First Shift+Arrow: set anchor and direction
-   - Same direction: add next visible block (contract = false, expand selection)
-   - Opposite direction: remove trailing block (contract = true, shrink selection)
+   - Same direction: add next visible block (expand selection)
+   - Opposite direction: remove trailing block (shrink selection)
    - When only one block remains, flip direction and start extending other way
 
    Non-extend mode: When no block is focused, select first/last visible block."
-  [db state direction extend?]
+  [db session state direction extend?]
   (if extend?
     ;; Incremental extension mode
     (let [current-focus (:focus state)
@@ -114,14 +127,14 @@
           contracting? (and current-direction
                             (not= current-direction direction))
 
-          ;; Get next block in the specified direction
+          ;; Get next selectable block in the specified direction (skip containers)
           next-block (when current-focus
-                       ((get-dom-nav-fn direction) db current-focus))]
+                       (next-selectable-block db current-focus direction))]
 
       (cond
         ;; No focus → start fresh selection
         (nil? current-focus)
-        (when-let [first-or-last (get-first-last-visible-block db direction)]
+        (when-let [first-or-last (get-first-last-visible-block db session direction)]
           {:nodes #{first-or-last}
            :focus first-or-last
            :anchor first-or-last
@@ -140,7 +153,6 @@
         (if (> (count current-nodes) 1)
           ;; Remove the current focus, move focus toward anchor
           (let [new-nodes (disj current-nodes current-focus)
-                ;; Find the block that's now at the edge (closest to old focus in anchor direction)
                 new-focus ((get-dom-nav-fn (case current-direction
                                              :next :prev
                                              :prev :next))
@@ -148,7 +160,7 @@
             {:nodes new-nodes
              :focus (or new-focus current-anchor)
              :anchor current-anchor
-             :direction current-direction}) ;; Keep direction until only anchor remains
+             :direction current-direction})
           ;; Only anchor remains → flip direction and start extending
           (when next-block
             {:nodes #{current-anchor next-block}
@@ -165,12 +177,12 @@
            :direction current-direction})))
 
     ;; Non-extend mode (plain arrow navigation)
-    (if-let [current (tree/focus db)]
-      ;; Normal case: navigate from current focus
-      (when-let [next-id ((get-dom-nav-fn direction) db current)]
+    (if-let [current (:focus state)]
+      ;; Normal case: navigate from current focus (skip containers)
+      (when-let [next-id (next-selectable-block db current direction)]
         (calc-select-props next-id))
       ;; Edge case: no focus (after Escape) → select first/last block
-      (when-let [first-or-last (get-first-last-visible-block db direction)]
+      (when-let [first-or-last (get-first-last-visible-block db session direction)]
         (calc-select-props first-or-last)))))
 
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
@@ -204,7 +216,7 @@
                                     :fr.nav/view-arrows
                                     :fr.nav/idle-first-last}
 
-                          ;; Mode-conditional validation: :ids required for certain modes
+                          ;; Mode-conditional validation
                           :spec [:multi {:dispatch :mode}
                                  [:replace [:map
                                             [:type [:= :selection]]
@@ -221,7 +233,7 @@
                                  [:toggle [:map
                                            [:type [:= :selection]]
                                            [:mode [:= :toggle]]
-                                           [:ids :string]]] ;; toggle expects single ID
+                                           [:ids :string]]]
                                  [:clear [:map
                                           [:type [:= :selection]]
                                           [:mode [:= :clear]]]]
@@ -246,50 +258,44 @@
                                  [:all-in-view [:map
                                                 [:type [:= :selection]]
                                                 [:mode [:= :all-in-view]]]]]
-                          :handler (fn [db {:keys [mode ids]}]
-                                     (let [is-editing? false  ;; TODO Phase 4-5: Fix (tree/editing? requires session)
-                                           state (get-selection-state db)
+
+                          :handler (fn [db session {:keys [mode ids]}]
+                                     ;; Get current selection state from session
+                                     (let [state (q/selection-state session)
+
+                                           ;; Calculate new selection props based on mode
                                            props (case mode
                                                    :replace (calc-select-props ids)
                                                    :extend (calc-extend-props state ids)
                                                    :deselect (calc-deselect-props state ids)
-                                                   :toggle (let [id ids ;; toggle expects single ID
+                                                   :toggle (let [id ids
                                                                  selected? (contains? (:nodes state) id)]
                                                              (if selected?
                                                                (calc-deselect-props state id)
                                                                (calc-extend-props state id)))
                                                    :clear (calc-clear-props)
-                                                   :next (calc-navigate-props db state :next false)
-                                                   :prev (calc-navigate-props db state :prev false)
-                                                   :extend-next (calc-navigate-props db state :next true)
-                                                   :extend-prev (calc-navigate-props db state :prev true)
-                                                   :parent (let [selection (tree/selection db)
-                                                                 parents (set (keep #(tree/parent-of db %) selection))]
+                                                   :next (calc-navigate-props db session state :next false)
+                                                   :prev (calc-navigate-props db session state :prev false)
+                                                   :extend-next (calc-navigate-props db session state :next true)
+                                                   :extend-prev (calc-navigate-props db session state :prev true)
+                                                   :parent (let [selection (:nodes state)
+                                                                 parents (set (keep #(q/parent-of db %) selection))]
                                                              (when (= 1 (count parents))
                                                                (calc-select-props (first parents))))
-                                                   :all-siblings (when-let [current (tree/focus db)]
-                                                                   (when-let [parent (tree/parent-of db current)]
-                                                                     (let [all-siblings (tree/children db parent)]
-                                                                       (calc-select-props all-siblings))))
-                                                   :all-in-view (let [root-id (or (tree/zoom-root db)
-                                                                                  (get-in db [:nodes const/session-ui-id :props :current-page]))
-                                                                      all-blocks (when root-id
-                                                                                   (->> (tree-seq
-                                                                                         (fn [id] (seq (tree/children db id)))
-                                                                                         (fn [id] (tree/children db id))
-                                                                                         root-id)
-                                                                                        (filter #(= :block (get-in db [:nodes % :type])))))]
+                                                   :all-siblings (when-let [current (:focus state)]
+                                                                   (when-let [parent (q/parent-of db current)]
+                                                                     (calc-select-props (q/children db parent))))
+                                                   :all-in-view (let [root-id (or (q/zoom-root session)
+                                                                                  (q/current-page session)
+                                                                                  :doc)
+                                                                      all-blocks (->> (tree-seq
+                                                                                       (fn [id] (seq (q/children db id)))
+                                                                                       (fn [id] (q/children db id))
+                                                                                       root-id)
+                                                                                      (filter #(= :block (get-in db [:nodes % :type]))))]
                                                                   (when (seq all-blocks)
                                                                     (calc-select-props all-blocks))))]
-                                       (when props
-                                         (let [ops (cond-> []
-                    ;; INVARIANT: Exit edit mode before applying selection
-                                                     is-editing? (conj {:op :update-node
-                                                                        :id const/session-ui-id
-                                                                        :props {:editing-block-id nil}})
-                    ;; Then apply the selection change
-                                                     true (conj {:op :update-node
-                                                                 :id const/session-selection-id
-                                                                 :props props}))]
-                                           ops))))})
 
+                                       ;; Return session updates (selection state goes to session, not DB)
+                                       (when props
+                                         {:session-updates {:selection props}})))})

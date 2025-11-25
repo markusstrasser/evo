@@ -145,17 +145,17 @@
 ;; ══════════════════════════════════════════════════════════════════════════════
 
 (defn execute-command
-  "Execute a slash command, returning operations and new cursor position.
-   
+  "Execute a slash command, returning operations and session updates.
+
    Args:
    - db: Current database
    - command: Command map from slash-commands
    - block-id: ID of block being edited
    - trigger-pos: Position where / was typed
    - cursor-pos: Current cursor position
-   
+
    Returns:
-   - Vector of operations"
+   - Map with :ops and :session-updates"
   [db command block-id trigger-pos cursor-pos]
   (let [text (get-in db [:nodes block-id :props :text] "")
         before (subs text 0 trigger-pos)
@@ -167,25 +167,21 @@
       :prepend-marker
       (let [new-text (str value before after)
             new-cursor-pos (count value)]
-        [{:op :update-node
-          :id block-id
-          :props {:text new-text}}
-         {:op :update-node
-          :id const/session-ui-id
-          :props {:slash-menu nil
-                  :cursor-position new-cursor-pos}}])
+        {:ops [{:op :update-node
+                :id block-id
+                :props {:text new-text}}]
+         :session-updates {:ui {:slash-menu nil
+                                :cursor-position new-cursor-pos}}})
 
       ;; Insert text (bold, italic, etc.) - remove slash, insert markers
       :insert-text
       (let [new-text (str before value after)
             new-cursor-pos (+ (count before) (count value) (or cursor-offset 0))]
-        [{:op :update-node
-          :id block-id
-          :props {:text new-text}}
-         {:op :update-node
-          :id const/session-ui-id
-          :props {:slash-menu nil
-                  :cursor-position new-cursor-pos}}]))))
+        {:ops [{:op :update-node
+                :id block-id
+                :props {:text new-text}}]
+         :session-updates {:ui {:slash-menu nil
+                                :cursor-position new-cursor-pos}}}))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Intent Handlers
@@ -193,7 +189,7 @@
 
 (intent/register-intent! :slash-menu/open
                          {:doc "Open slash command menu.
-         
+
          Triggered when / is typed at start or after whitespace."
                           :fr/ids #{:fr.ui/slash-palette}
                           :spec [:map
@@ -201,14 +197,13 @@
                                  [:block-id :string]
                                  [:trigger-pos :int]]
                           :handler
-                          (fn [db {:keys [block-id trigger-pos]}]
-                            [{:op :update-node
-                              :id const/session-ui-id
-                              :props {:slash-menu {:block-id block-id
-                                                   :trigger-pos trigger-pos
-                                                   :search-text ""
-                                                   :selected-idx 0
-                                                   :results slash-commands}}}])})
+                          (fn [_db _session {:keys [block-id trigger-pos]}]
+                            {:session-updates
+                             {:ui {:slash-menu {:block-id block-id
+                                                :trigger-pos trigger-pos
+                                                :search-text ""
+                                                :selected-idx 0
+                                                :results slash-commands}}}})})
 
 (intent/register-intent! :slash-menu/update-search
                          {:doc "Update slash menu search query and filter results."
@@ -218,59 +213,56 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]]
                           :handler
-                          (fn [db {:keys [block-id cursor-pos]}]
-                            (when-let [menu (get-in db [:nodes const/session-ui-id :props :slash-menu])]
+                          (fn [db session {:keys [block-id cursor-pos]}]
+                            (when-let [menu (get-in session [:ui :slash-menu])]
                               (let [text (get-in db [:nodes block-id :props :text] "")
                                     trigger-pos (:trigger-pos menu)
              ;; Search text is everything after the /
                                     search-text (subs text (inc trigger-pos) cursor-pos)
                                     results (filter-commands search-text slash-commands)]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:slash-menu (assoc menu
-                                                             :search-text search-text
-                                                             :results results
-                                                             :selected-idx 0)}}])))})
+                                {:session-updates
+                                 {:ui {:slash-menu (assoc menu
+                                                          :search-text search-text
+                                                          :results results
+                                                          :selected-idx 0)}}})))})
 
 (intent/register-intent! :slash-menu/next
                          {:doc "Select next command in menu (Down / Ctrl+N)."
                           :fr/ids #{:fr.ui/slash-navigate}
                           :spec [:map [:type [:= :slash-menu/next]]]
                           :handler
-                          (fn [db _]
-                            (when-let [menu (get-in db [:nodes const/session-ui-id :props :slash-menu])]
+                          (fn [_db session _intent]
+                            (when-let [menu (get-in session [:ui :slash-menu])]
                               (let [idx (:selected-idx menu)
                                     total-count (count (:results menu))
                                     next-idx (if (< idx (dec total-count)) (inc idx) 0)]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:slash-menu (assoc menu :selected-idx next-idx)}}])))})
+                                {:session-updates
+                                 {:ui {:slash-menu (assoc menu :selected-idx next-idx)}}})))})
 
 (intent/register-intent! :slash-menu/prev
                          {:doc "Select previous command in menu (Up / Ctrl+P)."
                           :fr/ids #{:fr.ui/slash-navigate}
                           :spec [:map [:type [:= :slash-menu/prev]]]
                           :handler
-                          (fn [db _]
-                            (when-let [menu (get-in db [:nodes const/session-ui-id :props :slash-menu])]
+                          (fn [_db session _intent]
+                            (when-let [menu (get-in session [:ui :slash-menu])]
                               (let [idx (:selected-idx menu)
                                     total-count (count (:results menu))
                                     prev-idx (if (pos? idx) (dec idx) (dec total-count))]
-                                [{:op :update-node
-                                  :id const/session-ui-id
-                                  :props {:slash-menu (assoc menu :selected-idx prev-idx)}}])))})
+                                {:session-updates
+                                 {:ui {:slash-menu (assoc menu :selected-idx prev-idx)}}})))})
 
 (intent/register-intent! :slash-menu/select
                          {:doc "Select current command and execute it (Enter)."
                           :fr/ids #{:fr.ui/slash-select}
                           :spec [:map [:type [:= :slash-menu/select]]]
                           :handler
-                          (fn [db _]
-                            (when-let [menu (get-in db [:nodes const/session-ui-id :props :slash-menu])]
+                          (fn [db session _intent]
+                            (when-let [menu (get-in session [:ui :slash-menu])]
                               (let [{:keys [results selected-idx block-id trigger-pos]} menu
                                     command (nth results selected-idx nil)]
                                 (when command
-                                  (let [cursor-pos (q/cursor-position db)]
+                                  (let [cursor-pos (get-in session [:ui :cursor-position] 0)]
                                     (execute-command db command block-id trigger-pos cursor-pos))))))})
 
 (intent/register-intent! :slash-menu/close
@@ -278,7 +270,5 @@
                           :fr/ids #{:fr.ui/slash-close}
                           :spec [:map [:type [:= :slash-menu/close]]]
                           :handler
-                          (fn [db _]
-                            [{:op :update-node
-                              :id const/session-ui-id
-                              :props {:slash-menu nil}}])})
+                          (fn [_db _session _intent]
+                            {:session-updates {:ui {:slash-menu nil}}})})

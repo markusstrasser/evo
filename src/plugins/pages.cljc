@@ -14,8 +14,8 @@
 
 (defn current-page
   "Get ID of the currently active page from session/ui state."
-  [db]
-  (get-in db [:nodes const/session-ui-id :props :current-page]))
+  [session]
+  (get-in session [:ui :current-page]))
 
 (defn all-pages
   "Get list of all page IDs (direct children of :doc root)."
@@ -50,25 +50,21 @@
 
 (defn- handle-switch-page
   "Switch to a specific page by ID."
-  [db {:keys [page-id]}]
-  [{:op :update-node
-    :id const/session-ui-id
-    :props {:current-page page-id}}])
+  [_db _session {:keys [page-id]}]
+  {:session-updates {:ui {:current-page page-id}}})
 
 (defn- handle-navigate-to-page
   "Navigate to page by name (from page ref click).
 
    Finds page with matching title (case-insensitive).
    Logs warning if page not found."
-  [db {:keys [page-name]}]
+  [db _session {:keys [page-name]}]
   (if-let [page-id (find-page-by-name db page-name)]
-    [{:op :update-node
-      :id const/session-ui-id
-      :props {:current-page page-id}}]
+    {:session-updates {:ui {:current-page page-id}}}
     (do
       #?(:cljs (js/console.warn (str "Page not found: " page-name))
          :clj  (println (str "Page not found: " page-name)))
-      [])))
+      nil)))
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
@@ -95,7 +91,7 @@
           [:block-id :string]
           [:cursor-pos :int]]
    :handler
-   (fn [db {:keys [block-id cursor-pos]}]
+   (fn [db _session {:keys [block-id cursor-pos]}]
      (let [text (get-in db [:nodes block-id :props :text] "")
            context (ctx/context-at-cursor text cursor-pos)]
 
@@ -104,28 +100,25 @@
          :page-ref
          (let [page-name (:page-name context)]
            (if-let [page-id (find-page-by-name db page-name)]
-             [{:op :update-node
-               :id const/session-ui-id
-               :props {:current-page page-id}}]
+             {:session-updates {:ui {:current-page page-id}}}
              (do
                #?(:cljs (js/console.warn (str "Page not found: " page-name))
                   :clj (println (str "Page not found: " page-name)))
-               [])))
+               nil)))
 
          ;; Block reference → select/focus block
          :block-ref
          (let [block-uuid (:uuid context)]
            ;; For now, just select the block. Future: could scroll to it
            (if (get-in db [:nodes block-uuid])
-             [{:op :update-node
-               :id const/session-selection-id
-               :props {:nodes #{block-uuid}
-                       :focus block-uuid
-                       :anchor block-uuid}}]
+             {:session-updates
+              {:selection {:nodes #{block-uuid}
+                           :focus block-uuid
+                           :anchor block-uuid}}}
              (do
                #?(:cljs (js/console.warn (str "Block not found: " block-uuid))
                   :clj (println (str "Block not found: " block-uuid)))
-               [])))
+               nil)))
 
          ;; No reference under cursor → no-op
-         [])))})
+         nil)))})
