@@ -136,7 +136,8 @@
      (buffer-text \"block-123\")
      ;=> \"current typing text...\""
   [block-id]
-  (get-in @!session [:buffer (keyword block-id)]))
+  ;; Use string block-id consistently (not keyword) to match DB convention
+  (get-in @!session [:buffer block-id]))
 
 (defn buffer-dirty?
   "Check if buffer has uncommitted changes."

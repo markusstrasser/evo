@@ -1,10 +1,20 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 
+/**
+ * Headless mode configuration:
+ * - Default: headless=true (browsers run in background, no UI)
+ * - Set PLAYWRIGHT_HEADLESS=false to see browser windows
+ * - CI always runs headless
+ *
+ * npm scripts:
+ * - npm run test:e2e          → headless (default)
+ * - npm run test:e2e:headed   → shows browser windows
+ * - npm run test:e2e:debug    → debug mode with browser visible
+ * - npm run test:e2e:ui       → Playwright UI mode
+ */
 const headless =
-  process.env.PLAYWRIGHT_HEADLESS
-    ? process.env.PLAYWRIGHT_HEADLESS !== 'false'
-    : !!process.env.CI;
+  process.env.PLAYWRIGHT_HEADLESS !== 'false';  // Default to headless=true
 
 const shouldStartWebServer = process.env.PW_SKIP_WEB_SERVER !== '1';
 

@@ -2,6 +2,7 @@
   "Unified API façade for intent dispatch.
 
    Single entry point for all state changes:
+   - Validates intent against current UI state (state machine)
    - Compiles intents to ops
    - Records history
    - Interprets ops through transaction pipeline
@@ -12,8 +13,9 @@
             [kernel.transaction :as tx]
             [kernel.history :as H]
             [kernel.db :as db]
-            [kernel.constants :as const]
-            [clojure.string :as str])
+            [kernel.state-machine :as sm]
+            [clojure.string :as str]
+            #?(:clj [clojure.java.io :as io]))
   #?(:clj (:import [java.io File])))
 
 ;; ── Journal for REPL Timetravel ──────────────────────────────────────────────
@@ -64,45 +66,24 @@
          (catch Exception e
            (println "Warning: Failed to write journal:" (.getMessage e)))))))
 
-#?(:clj
-   (defn replay-journal
-     "Replay all transactions from journal file.
-
-      Returns final DB state after replaying all recorded transactions.
-      Useful for REPL timetravel and debugging.
-
-      Note: Replays with nil session - handlers that depend on session state
-      will not work correctly during replay. For full replay, store session
-      snapshots alongside intents in the journal.
-
-      Example:
-        (set-journal! true)
-        ;; ... do some work ...
-        (def db' (replay-journal (db/empty-db)))
-        ;; db' now has all journaled changes applied"
-     [initial-db]
-     (let [journal (journal-path)]
-       (if (.exists (File. journal))
-         (with-open [rdr (clojure.java.io/reader journal)]
-           (reduce
-            (fn [db line]
-              (when-not (str/blank? line)
-                (try
-                  (let [{:keys [intent]} (read-string line)]
-                    ;; Replay with nil session - session-dependent intents may fail
-                    (:db (dispatch db nil intent)))
-                  (catch Exception e
-                    (println "Warning: Failed to replay transaction:" (.getMessage e))
-                    db))))
-            initial-db
-            (line-seq rdr)))
-         (do
-           (println "No journal file found at" journal)
-           initial-db)))))
-
 ;; Phases 4 & 5: ephemeral-op? removed - session nodes no longer in DB
 ;; All ops are now structural (affect document graph only)
 ;; Ephemeral state (cursor, selection, fold, zoom, buffer) lives purely in shell.session
+
+;; ── State Machine Configuration ─────────────────────────────────────────────
+
+(def ^:dynamic *enforce-state-machine*
+  "When true, validate intents against state machine before dispatch.
+
+   If intent is not allowed in current state, dispatch returns {:db db :ops [] :issues []}
+   without executing the intent (silent no-op, matching Logseq behavior).
+
+   Default: true (enabled)
+
+   Override in tests:
+     (binding [api/*enforce-state-machine* false]
+       (dispatch db session intent))"
+  true)
 
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
@@ -115,9 +96,16 @@
    - intent: Intent map (e.g., {:type :select :ids \"a\"})
    - opts: Optional map with:
      - :history/enabled? - Set to false to disable history recording (default: true)
+     - :state-machine/enforce? - Override *enforce-state-machine* (default: use dynamic var)
 
    Returns:
    - {:db new-db :issues [] :trace [...]} - Full result with trace
+
+   State Machine Enforcement (LOGSEQ PARITY):
+   - When *enforce-state-machine* is true (default), validates intent against current state
+   - Invalid intents return no-op result (no changes, no errors) - matches Logseq behavior
+   - Idle state guard: Enter/Backspace/Tab/etc. do nothing from idle state
+   - Edit-only intents blocked when in selection mode and vice versa
 
    Example:
      (dispatch* db session {:type :selection :mode :extend-next})
@@ -133,17 +121,39 @@
        (println \"Trace:\" trace)
        db)"
   ([db session intent] (dispatch* db session intent nil))
-  ([db session intent {:keys [history/enabled?] :as _opts}]
-   (let [{:keys [ops session-updates]} (intent/apply-intent db session intent)
-         ;; Only record history when there are actual structural ops
-         ;; Ephemeral intents (session-updates only) don't trigger history
-         record? (and (not (false? enabled?)) (seq ops))
-         db0 (if record? (H/record db) db)]
-     #?(:clj (journal-tx! intent ops))
-     ;; DB ops go through normal transaction pipeline
-     ;; Session updates are returned for caller to apply
-     (-> (tx/interpret db0 ops)
-         (assoc :session-updates session-updates)))))
+  ([db session intent {:keys [history/enabled? state-machine/enforce?] :as _opts}]
+   (let [enforce? (if (some? enforce?) enforce? *enforce-state-machine*)]
+
+     ;; STATE MACHINE GUARD (LOGSEQ PARITY)
+     ;; Check if intent is allowed in current state
+     ;; If not, return silent no-op (matches Logseq's behavior)
+     (if (and enforce?
+              session  ; Can't validate state without session
+              (or (sm/idle-guard session intent)
+                  (not (sm/intent-allowed? session intent))))
+       ;; Intent blocked by state machine - return no-op
+       {:db db
+        :issues []
+        :trace [{:tx-id #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
+                 :ops []
+                 :applied-ops []
+                 :num-applied 0
+                 :notes (str "State machine blocked: "
+                             (:type intent) " not allowed in "
+                             (sm/current-state session) " state")}]
+        :session-updates nil}
+
+       ;; Intent allowed - proceed with dispatch
+       (let [{:keys [ops session-updates]} (intent/apply-intent db session intent)
+             ;; Only record history when there are actual structural ops
+             ;; Ephemeral intents (session-updates only) don't trigger history
+             record? (and (not (false? enabled?)) (seq ops))
+             db0 (if record? (H/record db) db)]
+         #?(:clj (journal-tx! intent ops))
+         ;; DB ops go through normal transaction pipeline
+         ;; Session updates are returned for caller to apply
+         (-> (tx/interpret db0 ops)
+             (assoc :session-updates session-updates)))))))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
@@ -248,3 +258,42 @@
              (println \"  -\" err)))))"
   [db]
   (db/validate db))
+
+;; ── Journal Replay (depends on dispatch*) ────────────────────────────────────
+
+#?(:clj
+   (defn replay-journal
+     "Replay all transactions from journal file.
+
+      Returns final DB state after replaying all recorded transactions.
+      Useful for REPL timetravel and debugging.
+
+      Note: Replays with nil session - handlers that depend on session state
+      will not work correctly during replay. For full replay, store session
+      snapshots alongside intents in the journal.
+
+      Example:
+        (set-journal! true)
+        ;; ... do some work ...
+        (def db' (replay-journal (db/empty-db)))
+        ;; db' now has all journaled changes applied"
+     [initial-db]
+     (let [journal (journal-path)]
+       (if (.exists (File. journal))
+         (with-open [rdr (io/reader journal)]
+           (reduce
+            (fn [current-db line]
+              (if-not (str/blank? line)
+                (try
+                  (let [{:keys [intent]} (read-string line)]
+                    ;; Replay with nil session - session-dependent intents may fail
+                    (:db (dispatch* current-db nil intent)))
+                  (catch Exception e
+                    (println "Warning: Failed to replay transaction:" (.getMessage e))
+                    current-db))
+                current-db))
+            initial-db
+            (line-seq rdr)))
+         (do
+           (println "No journal file found at" journal)
+           initial-db)))))

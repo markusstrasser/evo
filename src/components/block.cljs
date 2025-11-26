@@ -606,17 +606,24 @@
                                  :else (count text))]
                 ;; Set text content (browser owns this from now on)
                 (set! (.-textContent node) text)
-                ;; Focus
+
+                ;; EDGE CASE FIX: Empty blocks have no text node after setting textContent=""
+                ;; Create an empty text node so cursor positioning works
+                (when (zero? (.-length (.-childNodes node)))
+                  (.appendChild node (.createTextNode js/document "")))
+
+                ;; Focus UNCONDITIONALLY (required side effect, never conditional)
                 (.focus node)
-                ;; Position cursor
-                (when-let [text-node (.-firstChild node)]
-                  (let [range (.createRange js/document)
-                        sel (.getSelection js/window)
-                        safe-pos (min cursor-pos (count text))]
-                    (.setStart range text-node safe-pos)
-                    (.setEnd range text-node safe-pos)
-                    (.removeAllRanges sel)
-                    (.addRange sel range)))))
+
+                ;; Position cursor - now safe because text node always exists
+                (let [text-node (.-firstChild node)
+                      range (.createRange js/document)
+                      sel (.getSelection js/window)
+                      safe-pos (min cursor-pos (count text))]
+                  (.setStart range text-node safe-pos)
+                  (.setEnd range text-node safe-pos)
+                  (.removeAllRanges sel)
+                  (.addRange sel range))))
 
             ;; On render: Only maintain focus, NEVER touch text
             :replicant/on-render
@@ -629,7 +636,8 @@
                           (let [target (.-target e)
                                 new-text (.-textContent target)]
                             ;; Phase 3: Update session directly (instant, no dispatch overhead)
-                            (session/swap-session! assoc-in [:buffer (keyword block-id)] new-text)))
+                            ;; NOTE: Use string block-id consistently (not keyword) to match DB convention
+                            (session/swap-session! assoc-in [:buffer block-id] new-text)))
 
                  ;; Blur handler: Commit to canonical DB
                  :blur (fn [e]

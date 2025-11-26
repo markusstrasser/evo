@@ -22,7 +22,15 @@
     "lint:scenarios": "bb lint:scenarios",
     "lint:e2e-keyboard": "node scripts/lint-e2e-keyboard.js",
     "test": "bb test",
-    "test:e2e": "bb e2e",
+    "test:unit": "bb test",
+    "test:view": "bb test:view",
+    "test:e2e": "PLAYWRIGHT_HEADLESS=true npx playwright test",
+    "test:e2e:headless": "PLAYWRIGHT_HEADLESS=true npx playwright test",
+    "test:e2e:headed": "PLAYWRIGHT_HEADLESS=false npx playwright test",
+    "test:e2e:debug": "PLAYWRIGHT_HEADLESS=false npx playwright test --debug",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:chromium": "PLAYWRIGHT_HEADLESS=true npx playwright test --project=chromium",
+    "test:all": "npm run test:unit && npm run test:e2e",
     "kb:thin": "uv run ~/Projects/best/thin_repos.py"
   },
   "devDependencies": {
