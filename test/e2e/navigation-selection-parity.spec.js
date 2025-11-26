@@ -44,7 +44,7 @@ async function setCursorPosition(page, position) {
 
 test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/');
+    await page.goto('/index.html');
     // Wait for blocks to render (they start in view mode, not edit mode)
     await page.waitForSelector('[data-block-id]');
     navIds = await page.evaluate(() => {

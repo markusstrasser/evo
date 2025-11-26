@@ -446,7 +446,18 @@
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
-        #js {:resetToEmptyDb reset-to-empty-db!})
+        #js {:resetToEmptyDb reset-to-empty-db!
+             :dispatchIntent (fn [intent-js]
+                              ;; Convert JS object to Clojure map, ensuring keyword fields are keywords
+                              (let [raw (js->clj intent-js :keywordize-keys true)
+                                    ;; Fields that need keyword values (not just keys)
+                                    intent (cond-> raw
+                                             (:type raw) (update :type keyword)
+                                             (:mode raw) (update :mode keyword)
+                                             (:at raw)   (update :at keyword))]
+                                (handle-intent intent)))
+             :getDb (fn [] (clj->js @!db))
+             :getSession (fn [] (clj->js (session/get-session)))})
 
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) session/!session)

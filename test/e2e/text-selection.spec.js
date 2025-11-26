@@ -17,7 +17,7 @@ import { pressKeyOnContentEditable } from './helpers/keyboard.js';
 test.describe('Text Selection Utilities', () => {
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/blocks.html');
+    await page.goto('/blocks.html');
     await page.waitForLoadState('networkidle');
 
     // Wait for app to initialize
@@ -248,7 +248,7 @@ test.describe('Text Selection Utilities', () => {
 test.describe('Text Selection Integration with Block Component', () => {
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/blocks.html');
+    await page.goto('/blocks.html');
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('.block', { timeout: 5000 });
   });

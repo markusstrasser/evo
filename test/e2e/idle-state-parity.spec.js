@@ -15,7 +15,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Idle State Guard (FR-Idle-01..03)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/blocks.html');
+    await page.goto('/blocks.html');
     await page.waitForSelector('[data-block-id]');
   });
 
