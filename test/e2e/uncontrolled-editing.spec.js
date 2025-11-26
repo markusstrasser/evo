@@ -40,7 +40,7 @@ async function enterEditMode(page, blockLocator) {
 
 test.describe('Uncontrolled Editing Architecture', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080');
+    await page.goto('/index.html');
     await page.waitForSelector('[data-block-id]', { timeout: 10000 });
     // Wait for app to fully initialize (plugins loaded, etc.)
     await page.waitForTimeout(500);

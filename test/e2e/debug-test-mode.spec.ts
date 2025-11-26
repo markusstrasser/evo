@@ -14,7 +14,7 @@ test.describe('Debug Test Mode Detection', () => {
     });
 
     // Load with test mode
-    await page.goto('/?test=true');
+    await page.goto('/index.html?test=true');
 
     // Wait a bit for initialization
     await page.waitForTimeout(2000);

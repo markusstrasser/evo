@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Diagnostic', () => {
   test('check what renders on the page', async ({ page }) => {
-    await page.goto('http://localhost:8080/');
+    await page.goto('/index.html');
 
     // Wait a bit for any rendering
     await page.waitForTimeout(3000);

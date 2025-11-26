@@ -3,18 +3,68 @@
  */
 
 /**
+ * Select a page from the sidebar to load blocks.
+ * The app requires a page to be selected before blocks appear.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} [pageName='Projects'] - Name of the page to select
+ * @returns {Promise<void>}
+ */
+export async function selectPage(page, pageName = 'Projects') {
+  // Map display names to page IDs (demo data uses lowercase IDs)
+  const pageIdMap = {
+    'Projects': 'projects',
+    'Tasks': 'tasks',
+    'Notes': 'notes'
+  };
+  const pageId = pageIdMap[pageName] || pageName.toLowerCase();
+
+  // Use TEST_HELPERS.dispatchIntent to bypass UI (overlays, etc)
+  await page.evaluate((id) => {
+    if (window.TEST_HELPERS?.dispatchIntent) {
+      // Close any open overlays first
+      window.TEST_HELPERS.dispatchIntent({type: 'quick-switcher/close'});
+      window.TEST_HELPERS.dispatchIntent({type: 'slash-menu/close'});
+      // Switch to the page
+      window.TEST_HELPERS.dispatchIntent({type: 'switch-page', 'page-id': id});
+    } else {
+      console.error('TEST_HELPERS.dispatchIntent not found - is the app loaded?');
+    }
+  }, pageId);
+
+  // Wait a moment for re-render
+  await page.waitForTimeout(300);
+
+  // Wait for blocks to appear (using data-block-id attribute)
+  await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+}
+
+/**
  * Enter edit mode on the first available block
  * @param {import('@playwright/test').Page} page
  * @returns {Promise<void>}
  */
 export async function enterEditMode(page) {
-  // Wait for blocks to load
-  await page.waitForSelector('.block', { timeout: 5000 });
+  // Ensure a page is selected and blocks are loaded
+  const hasBlocks = await page.locator('[data-block-id]').count();
+  if (hasBlocks === 0) {
+    await selectPage(page);
+  }
 
-  // IMPORTANT: Two-click system (see src/components/block.cljs:751-756)
-  // First click selects the block, second click enters edit mode
-  // Using dblclick instead of two separate clicks
-  await page.dblclick('.block');
+  // The two-click system requires state to update between clicks:
+  // 1. First click selects the block (sets focus)
+  // 2. Second click (when focused) enters edit mode
+  // dblclick happens too fast - state doesn't update between clicks
+  // Instead, use TEST_HELPERS.dispatchIntent to enter edit mode directly
+
+  // Get the first block's ID and dispatch enter-edit directly
+  const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
+  await page.evaluate((id) => {
+    if (window.TEST_HELPERS?.dispatchIntent) {
+      // First select the block, then enter edit mode
+      window.TEST_HELPERS.dispatchIntent({type: 'selection', mode: 'replace', ids: id});
+      window.TEST_HELPERS.dispatchIntent({type: 'enter-edit', 'block-id': id});
+    }
+  }, blockId);
 
   // Wait for contenteditable to appear
   await page.waitForSelector('[contenteditable="true"]', { timeout: 2000 });

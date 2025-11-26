@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Foundational Editing Parity', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/blocks.html');
+    await page.goto('/blocks.html');
     await page.waitForSelector('[contenteditable]');
   });
 

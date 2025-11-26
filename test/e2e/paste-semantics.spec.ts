@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   test.beforeEach(async ({ page }) => {
     // Load with test mode to get empty database
-    await page.goto('/?test=true');
+    await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
 
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
