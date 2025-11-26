@@ -165,7 +165,12 @@
 (deftest dispatch-intent-applies-db-operations
   (testing "api/dispatch applies DB operations for valid intents"
     (let [db (sample-db)
-          session {}
+          ;; State machine requires :editing state for :update-content
+          ;; Session must have editing-block-id set to allow the intent
+          session {:ui {:editing-block-id "a"}
+                   :selection {:nodes #{} :focus nil :anchor nil}
+                   :cursor {:block-id "a" :offset 0}
+                   :buffer {}}
           intent {:type :update-content :block-id "a" :text "modified"}
           result (api/dispatch db session intent)
           new-db (:db result)]
