@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { selectPage } from './helpers/edit-mode.js';
 
 /**
  * Logseq Parity: Idle State Guard (FR-Idle-01..03)
@@ -16,6 +17,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Idle State Guard (FR-Idle-01..03)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/blocks.html');
+    await selectPage(page); // Close overlays
     await page.waitForSelector('[data-block-id]');
   });
 

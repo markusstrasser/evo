@@ -20,10 +20,12 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { selectPage } from './helpers/edit-mode.js';
 
 test.describe('Enter Key - Selected Block Behavior', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
+    await selectPage(page); // Close overlays
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
@@ -180,6 +182,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 test.describe('Escape Key - Editing Behavior', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
+    await selectPage(page); // Close overlays
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
@@ -297,6 +300,7 @@ test.describe('Escape Key - Editing Behavior', () => {
 test.describe('Enter and Escape - Integration Flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
+    await selectPage(page); // Close overlays
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

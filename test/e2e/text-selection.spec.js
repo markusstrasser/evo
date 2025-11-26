@@ -13,20 +13,22 @@
 
 import { test, expect } from '@playwright/test';
 import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+import { selectPage, enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Text Selection Utilities', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/blocks.html');
     await page.waitForLoadState('networkidle');
+    await selectPage(page); // Close overlays
 
     // Wait for app to initialize
-    await page.waitForSelector('.block', { timeout: 5000 });
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
   test('preserves cursor position during text input', async ({ page }) => {
     // Click on first block to enter edit mode
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.waitForTimeout(100);
 
@@ -48,7 +50,7 @@ test.describe('Text Selection Utilities', () => {
 
   test('handles text selection correctly', async ({ page }) => {
     // Enter edit mode and type text
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Hello world');
     await page.waitForTimeout(100);
@@ -74,7 +76,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('cursor positioning works with Enter key (BR elements)', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
 
     // Type first line
@@ -98,7 +100,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('arrow keys maintain cursor position correctly', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Hello world');
     await page.waitForTimeout(100);
@@ -124,7 +126,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('text extraction handles complex DOM', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
 
     // Type text with special characters
@@ -162,7 +164,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('position tracking during rapid typing', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.waitForTimeout(100);
 
@@ -188,7 +190,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('selection collapse on arrow keys', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Hello world');
     await page.waitForTimeout(100);
@@ -221,7 +223,7 @@ test.describe('Text Selection Utilities', () => {
   });
 
   test('handles paste with position tracking', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Hello ');
 
@@ -255,7 +257,7 @@ test.describe('Text Selection Integration with Block Component', () => {
 
   test('cursor positioning after navigation', async ({ page }) => {
     // Enter edit mode on first block
-    const firstBlock = page.locator('.block').first();
+    const firstBlock = page.locator('[data-block-id]').first();
     await firstBlock.click();
     await page.keyboard.type('First block');
 
@@ -276,7 +278,7 @@ test.describe('Text Selection Integration with Block Component', () => {
   });
 
   test('maintains cursor during block operations', async ({ page }) => {
-    const block = page.locator('.block').first();
+    const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Test content');
 

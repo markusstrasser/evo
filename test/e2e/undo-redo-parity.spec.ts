@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterEditModeAndClick, selectPage } from './helpers/edit-mode.js';
 
 /**
  * E2E Tests for Undo/Redo Cursor and Selection Restoration (FR-Undo-01)
@@ -16,6 +17,7 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
     // Load with test mode to get empty database
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
+    await selectPage(page); // Close overlays
 
     // Wait for the app to be ready
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
