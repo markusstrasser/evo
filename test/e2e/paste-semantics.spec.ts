@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { selectPage } from './helpers/edit-mode.js';
 
 /**
  * E2E Tests for Paste Semantics (FR-Clipboard-03)
@@ -16,6 +17,7 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
     // Load with test mode to get empty database
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
+    await selectPage(page); // Close overlays
 
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
