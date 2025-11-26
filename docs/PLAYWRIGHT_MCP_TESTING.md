@@ -70,9 +70,12 @@ Each test should:
 - Use `test.beforeEach()` for setup
 
 ```javascript
+import { selectPage, enterEditModeAndClick } from './helpers/edit-mode.js';
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/blocks.html');
-  await enterEditMode(page);
+  await selectPage(page); // Close overlays (quick-switcher, slash-menu)
+  await enterEditModeAndClick(page); // Enter edit mode on first block
 });
 ```
 
@@ -88,7 +91,7 @@ For contenteditable-based UI (like our outliner):
 await page.locator('[contenteditable="true"]:has-text("Block text")').click();
 
 // Good: uses semantic structure
-const blocks = await page.locator('.block').all();
+const blocks = await page.locator('[data-block-id]').all();
 ```
 
 ### 5. Handle Timing Properly
