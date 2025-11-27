@@ -1,7 +1,7 @@
 # Logseq Behavior Specs
 
 Logseq parity behaviors serve as end-to-end tests for the Evo kernel’s plugin surface. This spec consolidates the previous parity tables, spec gaps, and navigation notes into the triad format (Keymap slice → Intent contract → Scenario ledger). Each trio captures the *input trigger*, the *system contract*, and the *user-visible outcome* so we preserve the exact “feel” of Logseq without locking in implementation details.\
-Ground truth lives in `dev/specs/LOGSEQ_SPEC.md`; use `docs/specs/LOGSEQ_PARITY_EVO.md` for guardrails and open gaps, then document concrete behaviors here.
+Ground truth lives in `docs/LOGSEQ_SPEC.md`; use `docs/LOGSEQ_PARITY_EVO.md` for guardrails and open gaps, then document concrete behaviors here.
 
 ## Parity Snapshot (2025-11-14)
 

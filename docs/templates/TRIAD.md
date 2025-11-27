@@ -1,6 +1,6 @@
 # Triad Spec Template
 
-Each feature spec lives under `docs/specs/` and must follow this structure so humans and AI agents can parse it deterministically.
+Each feature spec lives under `docs/` and must follow this structure so humans and AI agents can parse it deterministically.
 
 ```
 feature_id: <GLOBAL-ID>

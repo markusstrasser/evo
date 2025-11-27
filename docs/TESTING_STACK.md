@@ -479,7 +479,7 @@ With data handlers:
 To make the above stack actionable for AI agents (and humans), we’re standardizing on three explicit entry points. Each maps to the tiers in this document and keeps feedback loops under a second whenever possible.
 
 1. `bb test:view` – runs only the hiccup/unit namespaces (Block, Sidebar, helpers). This suite depends solely on `clojure.test` and executes entirely headlessly, so agents can iterate without opening a browser. Because Replicant’s dispatcher always surfaces DOM data via `:replicant/trigger` and `:replicant/dom-event`, assertions can safely stub placeholders rather than invoking actual events. citeturn0search3
-2. `bb test:int` – executes the render → action → apply loop described earlier. These integration tests still run in-process, but they wire the same Nexus path production uses. We’ll add helpers like `(integration/run-scenario NAV-BOUNDARY-LEFT-01 state overrides)` so contributors can reference spec IDs directly, mirroring the scenario ledger in `docs/specs/logseq_behaviors.md`.
+2. `bb test:int` – executes the render → action → apply loop described earlier. These integration tests still run in-process, but they wire the same Nexus path production uses. We'll add helpers like `(integration/run-scenario NAV-BOUNDARY-LEFT-01 state overrides)` so contributors can reference spec IDs directly, mirroring the scenario ledger in `docs/logseq_behaviors.md`.
 3. `bb test:e2e NAV-…` – thin Playwright smoke runs (chromium-only) filtered by scenario ID. Each Playwright `describe` block now includes the triad ID in its title so you can target exactly the behaviors that still need a real browser (cursor/selection, IME, accessibility).
 
 ### Watch mode support
@@ -488,7 +488,7 @@ The June 2025 ClojureScript release switched watch builds to Java’s virtual th
 
 ### Scenario-aware lint
 
-Every scenario ID in `docs/specs/logseq_behaviors.md` must appear in at least one view or integration test namespace. A lightweight lint (`bb lint:scenarios`) will scan for missing IDs and fail fast if a spec row lacks coverage, keeping the Keymap → Intent → Scenario triad executable end to end.
+Every scenario ID in `docs/logseq_behaviors.md` must appear in at least one view or integration test namespace. A lightweight lint (`bb lint:scenarios`) will scan for missing IDs and fail fast if a spec row lacks coverage, keeping the Keymap → Intent → Scenario triad executable end to end.
 10. **Fuzz testing** - Random hiccup generation
 
 ## Resources
