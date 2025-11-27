@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { selectPage } from './helpers/edit-mode.js';
+import {
+  selectPage,
+  enterEditMode,
+  waitForBlocks,
+  getFirstBlockId
+} from './helpers/index.js';
 
 /**
  * E2E Tests for Paste Semantics (FR-Clipboard-03)
@@ -9,7 +14,7 @@ import { selectPage } from './helpers/edit-mode.js';
  * - Blank lines (\n\n) → split into multiple blocks
  * - Preserve list markers and checkboxes
  *
- * Reference: dev/specs/LOGSEQ_SPEC.md §9.7
+ * Reference: docs/LOGSEQ_SPEC.md §9.7
  */
 
 test.describe('Paste Semantics (FR-Clipboard-03)', () => {
@@ -18,15 +23,12 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
     await selectPage(page); // Close overlays
-
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await waitForBlocks(page);
   });
 
   test('single newline paste stays inline', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Type some text
     await page.keyboard.type('Before');
@@ -44,16 +46,15 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
     // Verify: Still one block with literal newlines
     const blocks = page.locator('[data-block-id]');
     await expect(blocks).toHaveCount(1);
-    await expect(firstBlock).toContainText('BeforeLine 1');
-    await expect(firstBlock).toContainText('Line 2');
-    await expect(firstBlock).toContainText('Line 3');
+    const block = page.locator(`[data-block-id="${blockId}"]`);
+    await expect(block).toContainText('BeforeLine 1');
+    await expect(block).toContainText('Line 2');
+    await expect(block).toContainText('Line 3');
   });
 
   test('blank line paste creates multiple blocks', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('First block text');
 
@@ -76,10 +77,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste with list markers preserves formatting', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Simulate paste with list markers
     await page.evaluate(() => {
@@ -100,10 +99,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste with checkboxes preserves formatting', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Simulate paste with checkboxes
     await page.evaluate(() => {
@@ -124,10 +121,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste at cursor position splits correctly', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('Start End');
 
@@ -154,10 +149,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste with numbered list increments correctly', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Simulate paste with numbered list
     await page.evaluate(() => {
@@ -178,10 +171,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste with mixed content creates correct blocks', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Simulate paste with mixed content
     await page.evaluate(() => {
@@ -203,10 +194,8 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
   });
 
   test('paste replaces selected text before inserting', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('Replace this text');
 
@@ -227,15 +216,14 @@ test.describe('Paste Semantics (FR-Clipboard-03)', () => {
     });
 
     // Verify: Text replaced
-    await expect(firstBlock).toContainText('Replace that text');
-    await expect(firstBlock).not.toContainText('this');
+    const block = page.locator(`[data-block-id="${blockId}"]`);
+    await expect(block).toContainText('Replace that text');
+    await expect(block).not.toContainText('this');
   });
 
   test('cursor positioned correctly after multi-block paste', async ({ page }) => {
-    // Enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+    await enterEditMode(page, blockId);
 
     // Simulate paste that creates multiple blocks
     await page.evaluate(() => {

@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick, selectPage } from './helpers/edit-mode.js';
+import {
+  selectPage,
+  selectBlock,
+  enterEditMode,
+  waitForBlocks,
+  getFirstBlockId
+} from './helpers/index.js';
 
 /**
  * E2E Tests for Undo/Redo Cursor and Selection Restoration (FR-Undo-01)
@@ -9,7 +15,10 @@ import { enterEditModeAndClick, selectPage } from './helpers/edit-mode.js';
  * - Cursor position within the block
  * - Selection state (if any)
  *
- * Reference: dev/specs/LOGSEQ_SPEC.md §9.8
+ * Reference: docs/LOGSEQ_SPEC.md §9.8
+ *
+ * NOTE: These tests use real keyboard events (not intent dispatch) because
+ * we're testing the actual undo/redo behavior including cursor restoration.
  */
 
 test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
@@ -18,18 +27,16 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
     await selectPage(page); // Close overlays
-
-    // Wait for the app to be ready
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await waitForBlocks(page);
   });
 
   test('undo restores cursor position after text edit', async ({ page }) => {
-    // Get first block
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
+    const blockId = await getFirstBlockId(page);
 
-    // Enter edit mode and type some text
-    await page.keyboard.press('Enter');
+    // Enter edit mode via intent (reliable)
+    await enterEditMode(page, blockId);
+
+    // Type some text (real keyboard for testing input flow)
     await page.keyboard.type('Hello World');
 
     // Move cursor to middle (after "Hello")
@@ -41,7 +48,8 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
     await page.keyboard.type(' Beautiful');
 
     // Verify text is "Hello Beautiful World"
-    await expect(firstBlock).toContainText('Hello Beautiful World');
+    const block = page.locator(`[data-block-id="${blockId}"]`);
+    await expect(block).toContainText('Hello Beautiful World');
 
     // Undo the edit (Cmd+Z on Mac, Ctrl+Z elsewhere)
     const isMac = process.platform === 'darwin';
@@ -49,7 +57,8 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
 
     // Verify:
     // 1. Text is back to "Hello World"
-    await expect(firstBlock).toContainText('Hello World');
+    await expect(block).toContainText('Hello World');
+
     // 2. Cursor is still in edit mode at the same position (after "Hello")
     const selection = await page.evaluate(() => {
       const sel = window.getSelection();
@@ -63,10 +72,10 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   });
 
   test('undo restores editing block after Enter split', async ({ page }) => {
-    // Get first block and enter edit mode
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
 
     // Type text and split the block
     await page.keyboard.type('First part');
@@ -93,10 +102,10 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   });
 
   test('redo restores cursor position', async ({ page }) => {
-    // Setup: Type text, undo, then redo
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('Test');
 
@@ -104,14 +113,15 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
 
     // Undo
     await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
-    await expect(firstBlock).not.toContainText('Test');
+    const block = page.locator(`[data-block-id="${blockId}"]`);
+    await expect(block).not.toContainText('Test');
 
     // Redo
     await page.keyboard.press(isMac ? 'Meta+Shift+z' : 'Control+Shift+z');
 
     // Verify:
     // 1. Text is back
-    await expect(firstBlock).toContainText('Test');
+    await expect(block).toContainText('Test');
 
     // 2. Cursor is at end of "Test" (where it was when we made the edit)
     const cursorPos = await page.evaluate(() => {
@@ -122,10 +132,10 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   });
 
   test('undo restores cursor after merge (Backspace at start)', async ({ page }) => {
-    // Create two blocks
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('First');
     await page.keyboard.press('Enter');
@@ -164,13 +174,13 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   });
 
   test('undo/redo cycle maintains cursor position', async ({ page }) => {
-    // Make several edits, undo them all, then redo them all
-    // Cursor should be restored correctly at each step
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
 
     const isMac = process.platform === 'darwin';
+    const block = page.locator(`[data-block-id="${blockId}"]`);
 
     // Edit 1: Type "A"
     await page.keyboard.type('A');
@@ -184,47 +194,47 @@ test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
     await page.keyboard.type('C');
 
     // Should have "ABC"
-    await expect(firstBlock).toContainText('ABC');
+    await expect(block).toContainText('ABC');
 
     // Undo edit 3 (remove "C")
     await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
-    await expect(firstBlock).toContainText('AB');
+    await expect(block).toContainText('AB');
     let cursorPos = await page.evaluate(() => window.getSelection()?.anchorOffset);
     expect(cursorPos).toBe(posAfterAB);
 
     // Undo edit 2 (remove "B")
     await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
-    await expect(firstBlock).toContainText('A');
+    await expect(block).toContainText('A');
     cursorPos = await page.evaluate(() => window.getSelection()?.anchorOffset);
     expect(cursorPos).toBe(posAfterA);
 
     // Undo edit 1 (remove "A")
     await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
-    await expect(firstBlock).not.toContainText('A');
+    await expect(block).not.toContainText('A');
 
     // Now redo all
     // Redo edit 1 (add "A" back)
     await page.keyboard.press(isMac ? 'Meta+Shift+z' : 'Control+Shift+z');
-    await expect(firstBlock).toContainText('A');
+    await expect(block).toContainText('A');
     cursorPos = await page.evaluate(() => window.getSelection()?.anchorOffset);
     expect(cursorPos).toBe(posAfterA);
 
     // Redo edit 2 (add "B" back)
     await page.keyboard.press(isMac ? 'Meta+Shift+z' : 'Control+Shift+z');
-    await expect(firstBlock).toContainText('AB');
+    await expect(block).toContainText('AB');
     cursorPos = await page.evaluate(() => window.getSelection()?.anchorOffset);
     expect(cursorPos).toBe(posAfterAB);
 
     // Redo edit 3 (add "C" back)
     await page.keyboard.press(isMac ? 'Meta+Shift+z' : 'Control+Shift+z');
-    await expect(firstBlock).toContainText('ABC');
+    await expect(block).toContainText('ABC');
   });
 
   test('undo after block movement restores position', async ({ page }) => {
-    // Create two blocks
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.press('Enter');
+    const blockId = await getFirstBlockId(page);
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
 
     await page.keyboard.type('Block 1');
     await page.keyboard.press('Enter');
