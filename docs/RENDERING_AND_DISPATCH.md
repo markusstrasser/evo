@@ -1762,7 +1762,7 @@ Distributed under the [MIT License](https://opensource.org/license/mit).
 
 - Keep event handlers serializable: the data vectors described above should always dispatch via `shell.nexus/dispatch!` so headless tests can walk hiccup and assert intent wiring.
 - Lifecycle hooks (`:replicant/on-mount`, etc.) pair naturally with Nexus effects: store DOM references with `:replicant/remember`, then trigger follow-up actions through dispatch data.
-- Editing shortcuts follow the single-dispatcher rule (see `docs/specs/logseq_behaviors.md`) so parity specs can link directly to handler data.
+- Editing shortcuts follow the single-dispatcher rule (see `docs/logseq_behaviors.md`) so parity specs can link directly to handler data.
 
 ## Upstream Release Notes (2025)
 

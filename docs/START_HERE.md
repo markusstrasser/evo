@@ -21,7 +21,7 @@ Need a clean-room reset? Run `npm run clean && npm run watch`.
 ## 3. Load the Reference Stack
 
 - Rendering + dispatch pipeline: `docs/RENDERING_AND_DISPATCH.md`
-- Functional requirements + specs: `dev/specs/LOGSEQ_SPEC.md`, `docs/specs/LOGSEQ_PARITY_EVO.md`
+- Functional requirements + specs: `docs/LOGSEQ_SPEC.md`, `docs/LOGSEQ_PARITY_EVO.md`
 - Testing tiers + scenarios: `docs/TESTING_STACK.md`
 
 ## 4. Quality Tools & Linting
@@ -54,7 +54,7 @@ bb check            # lint + format check + compile
 **Browser guard** (auto-loaded in dev):
 - Validates focus/cursor after keyboard navigation
 - Detects cursor resets and DB/DOM mismatches
-- See `docs/CONTENTEDITABLE_DEBUGGING.md` for details
+- See `docs/TEXT_SELECTION.md` for contenteditable utilities
 
 **DevTools UI** (intent logs + DB diffs):
 - Add `?devtools` to URL to show dev panel
