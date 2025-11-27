@@ -40,7 +40,8 @@
             ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
             [plugins.pages :as pages]
             [keymap.core :as keymap]
-            [keymap.bindings :as bindings]))
+            [keymap.bindings :as bindings]
+            [kernel.state-machine :as sm]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -465,7 +466,38 @@
              :getBlockText (fn [block-id]
                             (get-in @!db [:nodes block-id :props :text] ""))
              :getDb (fn [] (clj->js @!db))
-             :getSession (fn [] (clj->js (session/get-session)))})
+             :getSession (fn [] (clj->js (session/get-session)))
+
+             ;; ── Debug Helpers (for E2E test diagnostics) ────────────────────────
+             ;; Debug an intent - check if it would be allowed and why
+             :debugIntent (fn [intent-js]
+                           (let [raw (js->clj intent-js :keywordize-keys true)
+                                 intent (cond-> raw
+                                          (:type raw) (update :type keyword)
+                                          (:mode raw) (update :mode keyword))
+                                 current-session (session/get-session)
+                                 state (sm/current-state current-session)
+                                 allowed? (sm/intent-allowed? current-session intent)
+                                 requirements (get sm/intent-state-requirements (:type intent))]
+                             #js {:allowed allowed?
+                                  :currentState (name state)
+                                  :intentType (name (:type intent))
+                                  :requiredStates (when requirements
+                                                    (clj->js (mapv name requirements)))
+                                  :reason (when-not allowed?
+                                            (str "Intent :" (:type intent)
+                                                 " requires states " (pr-str requirements)
+                                                 " but current state is :" state))}))
+
+             ;; Get a snapshot of current app state for debugging
+             :snapshot (fn []
+                        (let [current-session (session/get-session)]
+                          #js {:state (name (sm/current-state current-session))
+                               :editingBlockId (get-in current-session [:ui :editing-block-id])
+                               :selectedIds (clj->js (vec (get-in current-session [:selection :nodes] #{})))
+                               :focusId (get-in current-session [:selection :focus])
+                               :bufferBlockId (get-in current-session [:buffer :block-id])
+                               :bufferDirty (get-in current-session [:buffer :dirty?])}))})
 
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) session/!session)
