@@ -127,13 +127,14 @@
    NOT here. The block component dispatches :navigate-with-cursor-memory intents."
   (let [event (keymap/parse-dom-event e)
         db @!db
+        current-session (session/get-session)
         key (.-key e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         shift? (.-shiftKey e)
         focus-id (session/focus-id)
         editing? (session/editing-block-id)
         idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
-        intent-type (keymap/resolve-intent-type event db)
+        intent-type (keymap/resolve-intent-type event current-session)
 
         ;; Editable element for text formatting
         editable-el (when editing? (.-activeElement js/document))

@@ -75,9 +75,12 @@
 ;; ── Context Resolution ────────────────────────────────────────────────────────
 
 (defn- resolve-context
-  "Determine current input context from app state."
-  [db]
-  (if (q/editing? db) :editing :non-editing))
+  "Determine current input context from session state.
+
+   IMPORTANT: Session state (not db) contains :ui :editing-block-id.
+   The db only contains document data, not ephemeral UI state."
+  [session]
+  (if (q/editing? session) :editing :non-editing))
 
 ;; ── Resolver ──────────────────────────────────────────────────────────────────
 
@@ -86,7 +89,7 @@
 
    Args:
      event - Event map with :key, :mod, :shift, :alt
-     db - Current database (for context detection)
+     session - Current session state (contains :ui :editing-block-id)
 
    Returns:
      - intent-type keyword if binding found
@@ -95,8 +98,8 @@
    Priority order:
      1. Context-specific bindings (:editing or :non-editing)
      2. Global bindings (:global)"
-  [event db]
-  (let [context (resolve-context db)
+  [event session]
+  (let [context (resolve-context session)
         registry @!keymap-registry
         context-bindings (get registry context)
         global-bindings (get registry :global)]
