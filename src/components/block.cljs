@@ -225,7 +225,16 @@
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
-  ;; Emit Nexus action instead of intent
+  ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
+  ;; Read from session buffer (more reliable than DOM textContent with Playwright)
+  (let [buffer-text (get-in @session/!session [:buffer block-id])
+        dom-text (.-textContent (.-target e))
+        final-text (or buffer-text dom-text)]
+    (when final-text
+      (on-intent {:type :update-content
+                  :block-id block-id
+                  :text final-text})))
+  ;; Then exit edit mode via Nexus action
   (on-intent [[:editing/escape {:block-id block-id}]]))
 
 (defn handle-backspace [e db block-id on-intent]
