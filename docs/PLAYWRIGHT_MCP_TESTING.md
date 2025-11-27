@@ -256,10 +256,39 @@ Comprehensive tests for all editing/navigation features:
 
 Reusable test utilities:
 - `keyboard.js`: **Keyboard event dispatch for contenteditable elements** (ALWAYS use for block interactions)
-- `edit-mode.js`: Enter edit mode helpers
+- `edit-mode.js`: Enter edit mode helpers with overlay handling
 - `cursor.js`: Cursor position and selection helpers
 - `blocks.js`: Block traversal and structure helpers
 - `debug.js`: Debugging utilities for E2E tests
+
+**CRITICAL: Always use `selectPage()` in `beforeEach`**
+
+The app loads with overlays (quick-switcher, slash menu) that block UI interactions. Always call `selectPage()` to close overlays before tests:
+
+```javascript
+import { selectPage, enterEditModeAndClick } from './helpers/edit-mode.js';
+
+test.beforeEach(async ({ page }) => {
+  await page.goto('/blocks.html');
+  await selectPage(page); // CRITICAL: Closes overlays, selects a page
+  await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+});
+```
+
+**Using `TEST_HELPERS.dispatchIntent` for Direct Intent Dispatch**
+
+For test setup that requires bypassing the UI entirely, use the `dispatchIntent` helper:
+
+```javascript
+await page.evaluate((id) => {
+  if (window.TEST_HELPERS?.dispatchIntent) {
+    window.TEST_HELPERS.dispatchIntent({type: 'selection', mode: 'replace', ids: id});
+    window.TEST_HELPERS.dispatchIntent({type: 'enter-edit', 'block-id': id});
+  }
+}, blockId);
+```
+
+This bypasses keyboard events and directly dispatches intents to the kernel.
 
 ## Running Tests
 
