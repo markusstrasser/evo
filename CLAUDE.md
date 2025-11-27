@@ -14,7 +14,7 @@ Key characteristics:
 - AI-native design: LLMs generate operations, not DOM
 - Framework-agnostic core with thin UI adapters
 - Correctness over performance, simple over clever
-- Docs entrypoint: open `docs/DX_INDEX.md` → read `dev/specs/LOGSEQ_SPEC.md` (ground truth) → skim `docs/specs/LOGSEQ_PARITY_EVO.md` (Evo guardrails) → use triads in `docs/specs/logseq_behaviors.md` when implementing.
+- Docs entrypoint: open `docs/DX_INDEX.md` → read `docs/LOGSEQ_SPEC.md` (ground truth) → skim `docs/LOGSEQ_PARITY_EVO.md` (Evo guardrails) → use triads in `docs/logseq_behaviors.md` when implementing.
 
 ## Essential Commands
 
@@ -250,7 +250,7 @@ Without proper `:replicant/key`, Replicant may reuse DOM elements when switching
 2. Component calls `(nexus/dispatch! [:editing/navigate-up payload])`.
 3. Nexus handler translates the action into an intent and routes it through the kernel.
 
-This guarantees one dispatch per event and keeps DOM-only facts close to the component. See `docs/RENDERING_AND_DISPATCH.md` + `dev/specs/LOGSEQ_EDITING_SELECTION_PARITY.md` before touching keyboard logic.
+This guarantees one dispatch per event and keeps DOM-only facts close to the component. See `docs/RENDERING_AND_DISPATCH.md` + `docs/logseq_behaviors.md` before touching keyboard logic.
 
 ## Common Gotchas
 
@@ -484,8 +484,10 @@ For the complete philosophy (headless tiers, redundancy analysis, browser-only g
 - `docs/DX_INDEX.md` - Canonical doc map for humans + agents
 - `VISION.md` - Project philosophy and architectural ideas
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant + Nexus reference (event handlers, lifecycle, dispatch data)
-- `docs/specs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
+- `docs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
 - `docs/TESTING_STACK.md` - Unified testing guide (view/integration tiers, redundancy analysis, UX gap appendix)
+- `docs/E2E_TESTING.md` - E2E testing patterns, helpers reference, troubleshooting
+- `docs/STATE_MACHINE.md` - UI state machine (idle/selection/editing), intent validation
 - `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
 - `docs/PLAYWRIGHT_MCP_TESTING.md` - E2E testing with MCP
 - `dev/repl/init.cljc` - REPL utilities and initialization
