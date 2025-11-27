@@ -455,8 +455,15 @@
                                     intent (cond-> raw
                                              (:type raw) (update :type keyword)
                                              (:mode raw) (update :mode keyword)
-                                             (:at raw)   (update :at keyword))]
+                                             (:at raw)   (update :at keyword)
+                                             (:cursor-at raw) (update :cursor-at keyword))]
                                 (handle-intent intent)))
+             ;; Direct DB manipulation for test fixture setup
+             ;; Bypasses state machine (appropriate for setting initial state)
+             :setBlockText (fn [block-id text]
+                            (swap! !db assoc-in [:nodes block-id :props :text] text))
+             :getBlockText (fn [block-id]
+                            (get-in @!db [:nodes block-id :props :text] ""))
              :getDb (fn [] (clj->js @!db))
              :getSession (fn [] (clj->js (session/get-session)))})
 
