@@ -352,10 +352,6 @@
                                    :session-updates {:ui {:editing-block-id block-id
                                                           :cursor-position (inc cursor-pos)}}})
 
-         ;; Inside block-ref - open in sidebar (TODO: implement sidebar)
-                                :block-ref
-                                {:session-updates {:ui {:sidebar-opened-ref (:uuid context)}}}
-
          ;; Inside page-ref - navigate to page (TODO: implement page navigation)
                                 :page-ref
                                 {:session-updates {:ui {:navigate-to-page (:page-name context)}}}

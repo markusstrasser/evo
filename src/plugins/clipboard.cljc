@@ -163,15 +163,6 @@
                                      (let [text (get-block-text db block-id)]
                                        {:session-updates {:ui {:clipboard-text text}}}))})
 
-(intent/register-intent! :copy-block-ref
-                         {:doc "Copy block reference ((block-id)) to clipboard (Cmd+Option+C).
-
-         UI layer must handle actual clipboard operation."
-                          :spec [:map [:type [:= :copy-block-ref]] [:block-id :string]]
-                          :handler (fn [_db _session {:keys [block-id]}]
-                                     (let [ref-text (str "((" block-id "))")]
-                                       {:session-updates {:ui {:clipboard-text ref-text}}}))})
-
 (intent/register-intent! :cut-block
                          {:doc "Cut block (copy + delete).
 

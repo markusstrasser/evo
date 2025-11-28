@@ -88,36 +88,6 @@
   (testing "Incomplete markup (only opening)"
     (is (nil? (ctx/detect-markup-at-cursor "**incomplete" 5)))))
 
-;; ── Block Reference Detection Tests ───────────────────────────────────────────
-
-(deftest detect-block-ref-test
-  (testing "Valid block reference"
-    (is (= {:type :block-ref
-            :start 4
-            :end 19
-            :inner-start 6
-            :inner-end 17
-            :complete? true
-            :uuid "abc-123-def"}
-           (ctx/detect-block-ref-at-cursor "See ((abc-123-def)) for details" 10))))
-
-  (testing "Cursor at start of uuid"
-    (is (= "abc-123-def"
-           (:uuid (ctx/detect-block-ref-at-cursor "((abc-123-def))" 2)))))
-
-  (testing "Cursor at end of uuid"
-    (is (= "abc-123-def"
-           (:uuid (ctx/detect-block-ref-at-cursor "((abc-123-def))" 13)))))
-
-  (testing "Outside block reference"
-    (is (nil? (ctx/detect-block-ref-at-cursor "See ((abc-123-def)) for details" 0))))
-
-  (testing "Invalid uuid format - rejects non-uuid text"
-    (is (nil? (ctx/detect-block-ref-at-cursor "((Not A UUID))" 5))))
-
-  (testing "Empty block reference"
-    (is (nil? (ctx/detect-block-ref-at-cursor "(())" 2)))))
-
 ;; ── Page Reference Detection Tests ────────────────────────────────────────────
 
 (deftest detect-page-ref-test
@@ -257,9 +227,6 @@
 
   (testing "Code block context"
     (is (= :code-block (:type (ctx/context-at-cursor "```\ncode\n```" 6)))))
-
-  (testing "Block ref context"
-    (is (= :block-ref (:type (ctx/context-at-cursor "((abc-123))" 5)))))
 
   (testing "Page ref context"
     (is (= :page-ref (:type (ctx/context-at-cursor "[[page]]" 3)))))
