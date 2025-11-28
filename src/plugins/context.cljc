@@ -15,7 +15,6 @@
   #{:markup           ; **bold**, __italic__, ~~strike~~, ^^highlight^^
     :code-block       ; ```lang\n...\n```
     :admonition       ; #+BEGIN_NOTE ... #+END
-    :block-ref        ; ((uuid))
     :page-ref         ; [[page name]]
     :property-drawer  ; :PROPERTIES:\n:key: value\n:END:
     :list-item        ; - item, * item, 1. item
@@ -117,22 +116,6 @@
           (when-let [bounds (find-enclosing-pair text cursor-pos marker)]
             (assoc bounds :type :markup :marker marker :markup-type type)))
         markup-patterns))
-
-(defn detect-block-ref-at-cursor
-  "Detect if cursor is inside ((block-ref)).
-
-   Example:
-     text: 'See ((abc-123-def)) for details'
-     cursor-pos: 10 (inside uuid)
-     => {:type :block-ref :start 4 :end 18 :uuid 'abc-123-def'}"
-  [text cursor-pos]
-  (when-let [bounds (find-enclosing-pair text cursor-pos "((" "))")]
-    (let [inner-text (subs text (:inner-start bounds) (:inner-end bounds))
-          is-uuid? (re-matches #"[a-f0-9-]+" inner-text)]
-      (when is-uuid?
-        (assoc bounds
-               :type :block-ref
-               :uuid inner-text)))))
 
 (defn detect-page-ref-at-cursor
   "Detect if cursor is inside [[page-ref]].
@@ -267,7 +250,7 @@
    Priority order (higher priority first):
    1. Code blocks (contain literal text, markup inside is not active)
    2. Markup
-   3. Block/page refs
+   3. Page refs
    4. List items
 
    Args:
@@ -280,7 +263,6 @@
   [text cursor-pos]
   (or (detect-code-block-at-cursor text cursor-pos)     ; Highest priority
       (detect-markup-at-cursor text cursor-pos)
-      (detect-block-ref-at-cursor text cursor-pos)
       (detect-page-ref-at-cursor text cursor-pos)
       (detect-list-item-at-cursor text cursor-pos)
       {:type :none}))

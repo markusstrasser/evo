@@ -8,11 +8,7 @@
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [kernel.constants :as const]
-            [parser.block-refs :as block-refs]
-            [parser.embeds :as embeds]
             [parser.page-refs :as page-refs]
-            [components.block-ref :as block-ref]
-            [components.block-embed :as block-embed]
             [components.page-ref :as page-ref]
             [util.text-selection :as text-sel]
             [shell.session :as session]))
@@ -264,57 +260,16 @@
 (defn handle-keydown
   "Handle keyboard events while editing a block.
 
-   Routes to slash menu when active, otherwise handles normal editing.
-
-   Slash menu gets priority for:
-   - Arrow keys (navigation)
-   - Enter (selection)
-   - Escape (close)
-
-   Otherwise delegates to normal editing handlers."
+   Delegates to editing handlers for navigation, splits, and escapes."
   [e db block-id on-intent]
-  (let [slash-menu-active? (get-in (session/get-session) [:ui :slash-menu])
-        key (.-key e)
+  (let [key (.-key e)
         shift? (.-shiftKey e)
         mod? (or (.-metaKey e) (.-ctrlKey e))
         alt? (.-altKey e)
         ctrl? (.-ctrlKey e)
         target (.-target e)]
 
-    (if slash-menu-active?
-      ;; === SLASH MENU ACTIVE - Route keys to menu ===
-      (cond
-        ;; Arrow down / Ctrl+N - next command
-        (or (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-            (and (= key "n") ctrl? (not shift?) (not alt?)))
-        (do (.preventDefault e)
-            (on-intent {:type :slash-menu/next}))
-
-        ;; Arrow up / Ctrl+P - previous command
-        (or (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-            (and (= key "p") ctrl? (not shift?) (not alt?)))
-        (do (.preventDefault e)
-            (on-intent {:type :slash-menu/prev}))
-
-        ;; Enter - select command
-        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-        (do (.preventDefault e)
-            (on-intent {:type :slash-menu/select}))
-
-        ;; Escape - close menu
-        (= key "Escape")
-        (do (.preventDefault e)
-            (on-intent {:type :slash-menu/close}))
-
-        ;; Backspace - update search (let it propagate, input handler will update)
-        (= key "Backspace")
-        nil ; Let browser handle, input event will trigger search update
-
-        ;; Other keys - let them propagate (typing updates search)
-        :else nil)
-
-      ;; === NORMAL EDITING (No slash menu) ===
-      (cond
+    (cond
         ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
         (and (= key "a") ctrl? (not shift?) (not alt?))
         (do (.preventDefault e)
@@ -428,42 +383,24 @@
         (and (= key "Delete") (not shift?) (not mod?) (not alt?))
         (handle-delete e db block-id on-intent)
 
-        :else nil))))
+        :else nil)))
 
-;; ── Content Rendering with Block References, Embeds, and Page Refs ────────────
+;; ── Content Rendering with Page Refs ─────────────────────────────────────────
 
-(defn- parse-all-refs
-  "Parse text for all reference types: embeds, block refs, and page refs.
+(defn- parse-page-refs
+  "Parse text for page references [[page-name]].
 
    Returns vector of segments with :type and type-specific data.
-   Types: :text, :embed, :ref, :page-ref
-
-   Embeds are parsed first (highest priority), then block refs, then page refs.
-   This prevents ambiguity in overlapping patterns."
+   Types: :text, :page-ref"
   [text]
   (when text
-    ;; Find all matches with their positions
-    (let [embed-matches (map (fn [[match id]]
-                               {:type :embed
-                                :match match
-                                :id id
-                                :start (.indexOf text match)})
-                             (embeds/extract-embeds text))
-          block-ref-matches (map (fn [[match id]]
-                                   {:type :ref
-                                    :match match
-                                    :id id
-                                    :start (.indexOf text match)})
-                                 (block-refs/extract-refs text))
-          page-ref-matches (map (fn [[match page]]
+    (let [page-ref-matches (map (fn [[match page]]
                                   {:type :page-ref
                                    :match match
                                    :page page
                                    :start (.indexOf text match)})
                                 (page-refs/extract-refs text))
-
-          ;; Combine all matches and sort by position
-          all-matches (->> (concat embed-matches block-ref-matches page-ref-matches)
+          all-matches (->> page-ref-matches
                            (filter #(>= (:start %) 0))
                            (sort-by :start))]
 
@@ -484,41 +421,19 @@
           (cond-> result
             (not (empty? remaining)) (conj {:type :text :value remaining})))))))
 
-(declare Block) ; Forward declaration for BlockEmbed
-
-(defn render-text-with-refs
-  "Parse text for all reference types and render with appropriate components.
+(defn render-text-with-page-refs
+  "Parse text for page references and render with PageRef components.
 
    Handles:
-   - Block embeds: {{embed ((block-id))}} - full tree rendering
-   - Block refs: ((block-id)) - inline text transclusion
    - Page refs: [[page-name]] - page links
 
    Returns a seq of strings and components mixed together (NOT wrapped in a container).
-   The parent component is responsible for providing the container.
-   Uses ref-set for cycle detection and embed-depth for limiting recursion."
-  [db text ref-set embed-depth on-intent]
-  (let [segments (parse-all-refs text)]
+   The parent component is responsible for providing the container."
+  [db text on-intent]
+  (let [segments (parse-page-refs text)]
     (map (fn [segment]
            (case (:type segment)
              :text (:value segment)
-
-             :ref (block-ref/BlockRef {:db db
-                                       :block-id (:id segment)
-                                       :ref-set ref-set})
-
-             :embed [:div.inline-embed
-                     {:style {:display "inline-block"
-                              :vertical-align "top"
-                              :width "100%"}}
-                     (block-embed/BlockEmbed {:db db
-                                              :block-id (:id segment)
-                                              :embed-set ref-set
-                                              :depth (or embed-depth 0)
-                                              :max-depth 3
-                                              :Block Block
-                                              :on-intent on-intent})]
-
              :page-ref (page-ref/PageRef {:db db
                                           :page-name (:page segment)
                                           :on-intent on-intent})))
@@ -538,14 +453,12 @@
    - is-editing: boolean, true if this block is in edit mode (passed from parent)
    - is-folded: boolean, true if this block is folded (passed from parent)
    - on-intent: callback for dispatching intents
-   - embed-set: Set of block IDs in current embed chain (for cycle detection)
-   - embed-depth: Current embed nesting depth (for limiting recursion)
 
    ARCHITECTURE:
    - View mode: Pure controlled rendering from DB
    - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input"
-  [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent embed-set embed-depth]
-    :or {embed-set #{} embed-depth 0 is-focused false is-selected false is-editing false is-folded false}}]
+  [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent]
+    :or {is-focused false is-selected false is-editing false is-folded false}}]
   (let [children (get-in db [:children-by-parent block-id] [])
         selected? is-selected
         focus? is-focused
@@ -708,8 +621,6 @@
                                :is-selected (contains? selection-set child-id)
                                :is-editing (= editing-block-id child-id)
                                :is-folded (contains? folded-set child-id)
-                               :embed-set embed-set
-                               :embed-depth embed-depth
                                :on-intent on-intent}))
                      children)))]
 
