@@ -41,7 +41,7 @@ See [docs/START_HERE.md](docs/START_HERE.md) for the latest onboarding steps and
 ```
 src/kernel/         # Pure kernel (db, ops, interpret, schema, errors)
 src/plugins/        # Intent handlers and derived indexes
-src/components/     # Replicant components (Block, Sidebar, Quick Switcher, etc.)
+src/components/     # Replicant components (Block, PageRef, etc.)
 src/shell/          # UI adapters / composition glue
 test/               # Unit/property + view/integration tests (CLJS + Playwright)
 dev/                # REPL helpers, specs, diagnostics, fixtures
