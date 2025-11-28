@@ -18,12 +18,9 @@ export async function selectPage(page, pageName = 'Projects') {
   };
   const pageId = pageIdMap[pageName] || pageName.toLowerCase();
 
-  // Use TEST_HELPERS.dispatchIntent to bypass UI (overlays, etc)
+  // Use TEST_HELPERS.dispatchIntent to bypass UI
   await page.evaluate((id) => {
     if (window.TEST_HELPERS?.dispatchIntent) {
-      // Close any open overlays first
-      window.TEST_HELPERS.dispatchIntent({type: 'quick-switcher/close'});
-      window.TEST_HELPERS.dispatchIntent({type: 'slash-menu/close'});
       // Switch to the page
       window.TEST_HELPERS.dispatchIntent({type: 'switch-page', 'page-id': id});
     } else {

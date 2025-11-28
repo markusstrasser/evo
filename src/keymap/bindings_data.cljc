@@ -91,7 +91,4 @@
                  ;; Smart editing
             [{:key "Enter" :mod true} {:type :toggle-checkbox}]
                  ;; Follow link (Logseq parity)
-            [{:key "o" :mod true} {:type :follow-link-under-cursor :block-id :editing-block-id :cursor-pos :cursor-pos}]
-                ;; Quick switcher (Logseq parity)
-            [{:key "k" :mod true} {:type :quick-switcher/open}]
-            [{:key "p" :mod true} {:type :quick-switcher/open}]]})
+            [{:key "o" :mod true} {:type :follow-link-under-cursor :block-id :editing-block-id :cursor-pos :cursor-pos}]]})

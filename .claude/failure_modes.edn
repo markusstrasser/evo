@@ -1,5 +1,5 @@
 {:format-version 1
- :last-updated "2025-01-14"
+ :last-updated "2025-11-27"
  :description "Database of known failure modes with symptoms, causes, and fixes"
 
  :modes
@@ -186,4 +186,40 @@
    "Lint declarative text in contenteditable elements"
    :related [:cursor-reset]
    :verified true
-   :example-fix "src/components/block.cljs:598 - removed declarative text"}}}
+   :example-fix "src/components/block.cljs:598 - removed declarative text"}
+
+  :keyboard-event-not-triggering
+  {:name "Keyboard Events Don't Trigger Replicant Handlers on Contenteditable"
+   :severity :high
+   :symptoms
+   ["Pressing Backspace at position 0 doesn't merge blocks"
+    "Keyboard shortcuts work in non-editing mode but not while editing"
+    "E2E tests pass with dispatchIntent but fail with page.keyboard.press()"
+    "defaultPrevented stays false throughout event lifecycle"]
+   :root-causes
+   ["Playwright keyboard events may not properly interact with Replicant's event delegation"
+    "Replicant attaches handlers via addEventListener but synthetic events may bypass"
+    "Event reaches DOM but Replicant's internal dispatch never fires"
+    "Gap between E2E test coverage and real keyboard interaction"]
+   :detection
+   ["Add capturing listener: document.addEventListener('keydown', e => console.log(e.defaultPrevented), {capture: true})"
+    "If defaultPrevented stays false, handler never called .preventDefault()"
+    "Compare: dispatchIntent works but keyboard.press() doesn't"]
+   :fixes
+   ["Use TEST_HELPERS.dispatchIntent() in E2E tests (workaround)"
+    "Investigate Replicant's internal event capture mechanism"
+    "Consider adding global keydown handler as fallback for contenteditable"]
+   :tests
+   ["Manual browser test: click block, press Backspace at start"
+    "Compare unit test results with actual browser behavior"
+    "Log in handle-keydown to verify if it's being called"]
+   :prevention
+   "Document limitation in REPLICANT_TESTING.md - E2E tests have coverage gap"
+   :testing-implications
+   ["Unit tests verify intent handlers work"
+    "dispatchIntent E2E tests verify DOM updates"
+    "Keyboard→intent binding is NOT tested by current test suite"]
+   :related [:duplicate-event-dispatch]
+   :verified true
+   :investigation-date "2025-11-27"
+   :example-workaround "test/e2e/critical-fixes.spec.js - uses dispatchIntent instead of keyboard"}}}

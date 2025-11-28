@@ -3,13 +3,10 @@
  plugins.editing
  plugins.clipboard
  plugins.navigation
- plugins.slash-commands
- plugins.quick-switcher
  plugins.struct
  plugins.folding
  plugins.smart-editing
  plugins.text-formatting
  plugins.visible-order
  plugins.pages
- plugins.buffer
 ]

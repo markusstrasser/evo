@@ -29,13 +29,7 @@
 ;;              :zoom-root nil                   ; Current zoom root
 ;;              :current-page nil                ; Active page
 ;;              :editing-block-id nil            ; Block in edit mode
-;;              :cursor-position nil             ; Cursor position for enter-edit
-;;              :slash-menu {:open? false        ; Slash command menu state
-;;                           :search ""
-;;                           :selected-idx 0}
-;;              :quick-switcher {:open? false    ; Quick switcher state
-;;                               :query ""
-;;                               :selected-idx 0}}
+;;              :cursor-position nil}            ; Cursor position for enter-edit
 ;;  :sidebar   {:right []}}                      ; Right sidebar items
 
 (defonce !session
@@ -47,9 +41,7 @@
                 :zoom-root nil
                 :current-page nil
                 :editing-block-id nil
-                :cursor-position nil
-                :slash-menu {:open? false :search "" :selected-idx 0}
-                :quick-switcher {:open? false :query "" :selected-idx 0}}
+                :cursor-position nil}
     :sidebar   {:right []}}))
 
 ;; ── Public API ────────────────────────────────────────────────────────────────
@@ -85,9 +77,7 @@
                        :zoom-root nil
                        :current-page nil
                        :editing-block-id nil
-                       :cursor-position nil
-                       :slash-menu {:open? false :search "" :selected-idx 0}
-                       :quick-switcher {:open? false :query "" :selected-idx 0}}
+                       :cursor-position nil}
            :sidebar   {:right []}}))
 
 ;; ── Query Helpers (Session equivalents of kernel.query) ──────────────────────

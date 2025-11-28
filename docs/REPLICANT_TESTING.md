@@ -4,6 +4,27 @@
 > separate atom, not in DB nodes. Components receive session-derived props. Tests should pass
 > session state as props rather than embedding in DB. See `shell/session.cljs` for session shape.
 
+> **Replicant Version**: This project uses Replicant ~2025.06.21. See [replicant.fun](https://replicant.fun/)
+> for official docs and [GitHub](https://github.com/cjohansen/replicant) for source.
+
+## Event Handler Syntax (CRITICAL)
+
+**Always use `:on {:event-name handler}` NOT `:on-event-name handler`**
+
+```clojure
+;; ✅ CORRECT - Replicant parses the :on map
+[:button {:on {:click (fn [e] ...)}} "Click"]
+
+;; ❌ WRONG - Replicant ignores :on-click attributes
+[:button {:on-click (fn [e] ...)} "Click"]
+```
+
+Replicant passes event names directly to `addEventListener`. Handler names must match browser event names:
+`:click`, `:keydown`, `:input`, `:blur`, etc.
+
+**Console Warning**: If you see "Event handler attributes are not supported. Instead of :on-click set :on {:click ,,,}"
+you have code using the wrong format.
+
 ## Philosophy
 
 **Replicant's superpower**: Because UI is pure data (hiccup), you can test everything without a browser:
@@ -470,10 +491,95 @@ With data handlers:
 9. **Performance benchmarks** - Render performance for large trees
 10. **Fuzz testing** - Random hiccup generation
 
+## set-dispatch! API
+
+Replicant uses `set-dispatch!` to handle both DOM events and lifecycle hooks. Our implementation:
+
+```clojure
+(replicant.dom/set-dispatch!
+ (fn [event-data handler-data]
+   (cond
+     ;; Lifecycle hooks (:replicant/on-mount, :replicant/on-render, etc.)
+     (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
+     (when (fn? handler-data)
+       (handler-data event-data))
+
+     ;; DOM events (click, keydown, input, etc.)
+     (= :replicant.trigger/dom-event (:replicant/trigger event-data))
+     (cond
+       ;; Data-driven actions [[:action/foo ...]]
+       (vector? handler-data)
+       (nexus/dispatch! !db event-data handler-data)
+
+       ;; Function handlers (fn [e] ...)
+       (fn? handler-data)
+       (handler-data (:replicant/dom-event event-data))))))
+```
+
+**event-data keys**:
+- `:replicant/trigger` - `:replicant.trigger/dom-event` or `:replicant.trigger/life-cycle`
+- `:replicant/dom-event` - The raw JavaScript event object
+- `:replicant/node` - The DOM node
+
+**handler-data**: Whatever was passed in `:on {:click handler-data}` - function or data.
+
+## Known E2E Testing Limitation: Keyboard Events on contenteditable
+
+**IMPORTANT**: Playwright's `page.keyboard.press()` does NOT reliably trigger Replicant's `:on {:keydown ...}`
+handlers on contenteditable elements. This is a known limitation.
+
+### The Problem
+
+```javascript
+// ❌ This does NOT trigger Replicant handlers on contenteditable
+await page.keyboard.press('Backspace');
+
+// Event reaches DOM (defaultPrevented: false at both capture and bubble)
+// But Replicant's handler never fires
+```
+
+### What Works vs What Doesn't
+
+| Method | Works? | Use Case |
+|--------|--------|----------|
+| Unit tests (intent handlers) | ✅ | Test business logic |
+| E2E via `TEST_HELPERS.dispatchIntent()` | ✅ | Test DOM after intent |
+| E2E via `page.keyboard.press()` on buttons | ✅ | Non-contenteditable |
+| E2E via `page.keyboard.press()` on contenteditable | ❌ | **Does not work** |
+| Synthetic `dispatchEvent` | ❌ | **Does not work** |
+
+### Workaround for E2E Tests
+
+Use `TEST_HELPERS.dispatchIntent()` to bypass keyboard bindings:
+
+```javascript
+// Instead of pressing Backspace at cursor position 0:
+await page.evaluate(() => {
+  window.TEST_HELPERS?.dispatchIntent({
+    type: 'merge-with-prev',
+    'block-id': 'block-b'
+  });
+});
+```
+
+### What This Means
+
+**Unit tests + dispatchIntent E2E tests verify**:
+- Intent handlers work correctly
+- DOM updates after intent
+
+**What's NOT tested**:
+- Keyboard event → intent binding
+- The full user interaction path
+
+See `test/e2e/helpers/keyboard.js` for the `pressKeyOnContentEditable()` helper that attempts
+synthetic event dispatch, but note it may not work for all cases.
+
 ## Resources
 
-- **replicant-todomvc**: `~/Projects/best/replicant-todomvc/test/`
-- **Replicant docs**: https://replicant.fun/
+- **Replicant official**: [replicant.fun](https://replicant.fun/) - Official documentation
+- **GitHub**: [github.com/cjohansen/replicant](https://github.com/cjohansen/replicant)
+- **Event handlers guide**: [replicant.fun/event-handlers/](https://replicant.fun/event-handlers/)
 - **Our kernel tests**: `test/core_transaction_test.cljc` (excellent examples)
 - **Our plugin tests**: `test/plugins/editing_test.cljc` (good patterns)
 
