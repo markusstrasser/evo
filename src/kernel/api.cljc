@@ -14,6 +14,7 @@
             [kernel.history :as H]
             [kernel.db :as db]
             [kernel.state-machine :as sm]
+            [kernel.constants :as const]
             [clojure.string :as str]
             #?(:clj [clojure.java.io :as io]))
   #?(:clj (:import [java.io File])))
@@ -148,7 +149,16 @@
              ;; Only record history when there are actual structural ops
              ;; Ephemeral intents (session-updates only) don't trigger history
              record? (and (not (false? enabled?)) (seq ops))
-             db0 (if record? (H/record db) db)]
+             ;; LOGSEQ PARITY (FR-Undo-01): Capture session state in DB snapshot
+             ;; before recording to history so undo/redo restores cursor position
+             db-with-session (if (and record? session)
+                               (-> db
+                                   (assoc-in [:nodes const/session-ui-id :props :editing-block-id]
+                                             (get-in session [:ui :editing-block-id]))
+                                   (assoc-in [:nodes const/session-ui-id :props :cursor-position]
+                                             (get-in session [:ui :cursor-position])))
+                               db)
+             db0 (if record? (H/record db-with-session) db)]
          #?(:clj (journal-tx! intent ops))
          ;; DB ops go through normal transaction pipeline
          ;; Session updates are returned for caller to apply

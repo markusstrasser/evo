@@ -12,6 +12,7 @@
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
+            [kernel.constants :as const]
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.slash-menu :as slash-menu]
@@ -189,11 +190,38 @@
       (do (.preventDefault e)
           (cond
             ;; Undo/Redo - special handling (modify DB directly, not via operations)
+            ;; LOGSEQ PARITY (FR-Undo-01): Restore cursor/editing state to session
             (= intent-type :undo)
-            (swap! !db (fn [db] (or (H/undo db) db)))
+            (let [new-db (H/undo @!db)]
+              (when new-db
+                (reset! !db new-db)
+                ;; Restore editing state from historical snapshot to session
+                (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
+                      cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
+                  (session/swap-session!
+                   (fn [s]
+                     (-> s
+                         (assoc-in [:ui :editing-block-id] editing-id)
+                         (assoc-in [:ui :cursor-position] cursor-pos)
+                         ;; Clear selection when restoring edit state
+                         (assoc-in [:selection :nodes] (if editing-id #{} (:nodes (:selection s))))
+                         (assoc-in [:selection :focus] (when-not editing-id (:focus (:selection s))))))))))
 
             (= intent-type :redo)
-            (swap! !db (fn [db] (or (H/redo db) db)))
+            (let [new-db (H/redo @!db)]
+              (when new-db
+                (reset! !db new-db)
+                ;; Restore editing state from future snapshot to session
+                (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
+                      cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
+                  (session/swap-session!
+                   (fn [s]
+                     (-> s
+                         (assoc-in [:ui :editing-block-id] editing-id)
+                         (assoc-in [:ui :cursor-position] cursor-pos)
+                         ;; Clear selection when restoring edit state
+                         (assoc-in [:selection :nodes] (if editing-id #{} (:nodes (:selection s))))
+                         (assoc-in [:selection :focus] (when-not editing-id (:focus (:selection s))))))))))
 
             ;; All other intents - go through normal intent dispatch
             :else
