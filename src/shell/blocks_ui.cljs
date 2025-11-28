@@ -6,7 +6,8 @@
    - Components use getters and dispatch intents
    - App just composes components and routes intents"
   (:require-macros [shell.plugin-manifest :refer [require-specs]])
-  (:require [replicant.dom :as d]
+  (:require [clojure.string :as str]
+            [replicant.dom :as d]
             [kernel.db :as DB]
             [kernel.api :as api]
             [kernel.query :as q]
@@ -70,6 +71,20 @@
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
+(defn- assert-derived-fresh!
+  "DEBUG: Assert that derived indexes are consistent after DB reset.
+   Throws if inconsistent to immediately catch the corruption source."
+  [db label]
+  (when ^boolean goog.DEBUG
+    (when-let [inconsistency (DB/check-parent-of-consistency db)]
+      (js/console.error "🚨🚨🚨 DERIVED INDEX CORRUPTION DETECTED 🚨🚨🚨"
+                        "\nLabel:" label
+                        "\nInconsistency:" (pr-str inconsistency)
+                        "\nDB hash:" (hash db)
+                        "\nchildren-by-parent keys:" (pr-str (keys (:children-by-parent db))))
+      ;; Log stack trace to find the caller
+      (js/console.trace "Stack trace for corruption detection"))))
+
 (defn handle-intent
   "Single intent dispatcher - handles both intent maps and Nexus action vectors.
 
@@ -85,20 +100,34 @@
 
     ;; Intent map: dispatch directly through kernel
     (map? intent-or-actions)
-    (let [current-session (session/get-session)
+    (let [intent-type (:type intent-or-actions)
+          ;; DEBUG: Log ALL direct intent dispatches
+          _ (js/console.log "🔶 DIRECT dispatch:" (pr-str intent-type)
+                            "- DB hash:" (hash @!db))
+          ;; Structural operations that may cause DOM re-render and blur
+          structural? (contains? #{:indent-selected :outdent-selected
+                                   :move-selected-up :move-selected-down
+                                   :delete-selected} intent-type)
+          _ (when structural?
+              ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
+              (session/suppress-blur-exit!))
+          current-session (session/get-session)
           db-before @!db
           result (api/dispatch db-before current-session intent-or-actions)
           db-after (:db result)
           issues (:issues result)
           session-updates (:session-updates result)
-          should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-or-actions)))]
+          should-log? (not (contains? #{:inspect-dataspex :clear-log} intent-type))]
 
       ;; Report any validation issues
       (when (seq issues)
         (js/console.error "Intent validation failed:" (pr-str issues)))
 
-      ;; Apply DB changes
+;; Apply DB changes
       (reset! !db db-after)
+
+      ;; DEBUG: Assert derived indexes are fresh after reset
+      (assert-derived-fresh! db-after (str "after DIRECT dispatch: " intent-type))
 
       ;; Apply session updates if any (Phase 6)
       (when session-updates
@@ -191,6 +220,8 @@
             (let [new-db (H/undo @!db)]
               (when new-db
                 (reset! !db new-db)
+                ;; DEBUG: Assert derived indexes are fresh after undo
+                (assert-derived-fresh! new-db "after undo")
                 ;; Restore editing state from historical snapshot to session
                 (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
                       cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
@@ -207,6 +238,8 @@
             (let [new-db (H/redo @!db)]
               (when new-db
                 (reset! !db new-db)
+                ;; DEBUG: Assert derived indexes are fresh after redo
+                (assert-derived-fresh! new-db "after redo")
                 ;; Restore editing state from future snapshot to session
                 (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
                       cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
@@ -431,6 +464,22 @@
   (d/render (js/document.getElementById "root")
             (App)))
 
+;; Batched render using requestAnimationFrame to prevent nested render warnings.
+;; When multiple state changes (DB + session) happen in the same frame,
+;; this coalesces them into a single render call.
+(defonce ^:private render-scheduled? (atom false))
+
+(defn request-render!
+  "Request a render on the next animation frame.
+   Multiple calls in the same frame are coalesced into one render."
+  []
+  (when-not @render-scheduled?
+    (reset! render-scheduled? true)
+    (js/requestAnimationFrame
+     (fn []
+       (reset! render-scheduled? false)
+       (render!)))))
+
 ;; ── Test Helpers ──────────────────────────────────────────────────────────────
 
 (defn reset-to-empty-db!
@@ -464,53 +513,69 @@
         #js {:resetToEmptyDb reset-to-empty-db!
              :dispatchIntent (fn [intent-js]
                               ;; Convert JS object to Clojure map, ensuring keyword fields are keywords
-                              (let [raw (js->clj intent-js :keywordize-keys true)
+                               (let [raw (js->clj intent-js :keywordize-keys true)
                                     ;; Fields that need keyword values (not just keys)
-                                    intent (cond-> raw
-                                             (:type raw) (update :type keyword)
-                                             (:mode raw) (update :mode keyword)
-                                             (:at raw)   (update :at keyword)
-                                             (:cursor-at raw) (update :cursor-at keyword))]
-                                (handle-intent intent)))
+                                     intent (cond-> raw
+                                              (:type raw) (update :type keyword)
+                                              (:mode raw) (update :mode keyword)
+                                              (:at raw) (update :at keyword)
+                                              (:cursor-at raw) (update :cursor-at keyword))]
+                                 (handle-intent intent)))
              ;; Direct DB manipulation for test fixture setup
              ;; Bypasses state machine (appropriate for setting initial state)
              :setBlockText (fn [block-id text]
-                            (swap! !db assoc-in [:nodes block-id :props :text] text))
+                             (swap! !db assoc-in [:nodes block-id :props :text] text))
              :getBlockText (fn [block-id]
-                            (get-in @!db [:nodes block-id :props :text] ""))
+                             (get-in @!db [:nodes block-id :props :text] ""))
              :getDb (fn [] (clj->js @!db))
              :getSession (fn [] (clj->js (session/get-session)))
+             ;; Transact raw ops (for test setup - creates blocks, places them, etc.)
+             :transact (fn [ops-js]
+                         (let [ops (js->clj ops-js :keywordize-keys true)
+                              ;; Convert special string values to keywords
+                               ops (mapv (fn [op]
+                                           (cond-> op
+                                             (:op op) (update :op keyword)
+                                             (:type op) (update :type keyword)
+                                             (:at op) (update :at keyword)
+                                            ;; Handle :under as keyword for special roots
+                                             (and (:under op) (string? (:under op))
+                                                  (#{"doc" ":doc" "trash" ":trash"} (:under op)))
+                                             (update :under #(keyword (str/replace % #"^:" "")))))
+                                         ops)
+                               result (tx/interpret @!db ops)]
+                           (reset! !db (H/record (:db result)))))
 
              ;; ── Debug Helpers (for E2E test diagnostics) ────────────────────────
              ;; Debug an intent - check if it would be allowed and why
              :debugIntent (fn [intent-js]
-                           (let [raw (js->clj intent-js :keywordize-keys true)
-                                 intent (cond-> raw
-                                          (:type raw) (update :type keyword)
-                                          (:mode raw) (update :mode keyword))
-                                 current-session (session/get-session)
-                                 state (sm/current-state current-session)
-                                 allowed? (sm/intent-allowed? current-session intent)
-                                 requirements (get sm/intent-state-requirements (:type intent))]
-                             #js {:allowed allowed?
-                                  :currentState (name state)
-                                  :intentType (name (:type intent))
-                                  :requiredStates (when requirements
-                                                    (clj->js (mapv name requirements)))
-                                  :reason (when-not allowed?
-                                            (str "Intent :" (:type intent)
-                                                 " requires states " (pr-str requirements)
-                                                 " but current state is :" state))}))
+                            (let [raw (js->clj intent-js :keywordize-keys true)
+                                  intent (cond-> raw
+                                           (:type raw) (update :type keyword)
+                                           (:mode raw) (update :mode keyword))
+                                  current-session (session/get-session)
+                                  state (sm/current-state current-session)
+                                  allowed? (sm/intent-allowed? current-session intent)
+                                  requirements (get sm/intent-state-requirements (:type intent))]
+                              #js {:allowed allowed?
+                                   :currentState (name state)
+                                   :intentType (name (:type intent))
+                                   :requiredStates (when requirements
+                                                     (clj->js (mapv name requirements)))
+                                   :reason (when-not allowed?
+                                             (str "Intent :" (:type intent)
+                                                  " requires states " (pr-str requirements)
+                                                  " but current state is :" state))}))
 
              ;; Get a snapshot of current app state for debugging
              :snapshot (fn []
-                        (let [current-session (session/get-session)]
-                          #js {:state (name (sm/current-state current-session))
-                               :editingBlockId (get-in current-session [:ui :editing-block-id])
-                               :selectedIds (clj->js (vec (get-in current-session [:selection :nodes] #{})))
-                               :focusId (get-in current-session [:selection :focus])
-                               :bufferBlockId (get-in current-session [:buffer :block-id])
-                               :bufferDirty (get-in current-session [:buffer :dirty?])}))})
+                         (let [current-session (session/get-session)]
+                           #js {:state (name (sm/current-state current-session))
+                                :editingBlockId (get-in current-session [:ui :editing-block-id])
+                                :selectedIds (clj->js (vec (get-in current-session [:selection :nodes] #{})))
+                                :focusId (get-in current-session [:selection :focus])
+                                :bufferBlockId (get-in current-session [:buffer :block-id])
+                                :bufferDirty (get-in current-session [:buffer :dirty?])}))})
 
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) session/!session)
@@ -551,8 +616,9 @@
   (.addEventListener js/document "keydown" handle-global-keydown)
 
   ;; Set up auto-render on state changes (both DB and session)
-  (add-watch !db :render (fn [_ _ _ _] (render!)))
-  (add-watch session/!session :render (fn [_ _ _ _] (render!)))
+  ;; Uses request-render! to batch multiple changes into single render (prevents nested render warnings)
+  (add-watch !db :render (fn [_ _ _ _] (request-render!)))
+  (add-watch session/!session :render (fn [_ _ _ _] (request-render!)))
 
   ;; Initialize Dataspex for DB inspection
   (dataspex/inspect "App DB" !db {:track-changes? true})
