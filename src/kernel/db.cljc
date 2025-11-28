@@ -208,6 +208,30 @@
 ;; Public tree utilities (used by transaction, struct, etc.)
 ;; =============================================================================
 
+(defn check-parent-of-consistency
+  "DEBUG: Check if :derived :parent-of matches :children-by-parent.
+
+   Returns nil if consistent, or a map describing the inconsistency.
+   Use this when debugging validation errors caused by stale derived indexes."
+  [db]
+  (let [expected-parent-of (compute-parent-of (:children-by-parent db))
+        actual-parent-of (get-in db [:derived :parent-of])
+        mismatches (for [[child expected-parent] expected-parent-of
+                         :let [actual-parent (get actual-parent-of child)]
+                         :when (not= expected-parent actual-parent)]
+                     {:child child
+                      :expected-parent expected-parent
+                      :actual-parent actual-parent})
+        ;; Also check for entries in actual that shouldn't exist
+        orphans (for [[child actual-parent] actual-parent-of
+                      :when (and (not (contains? expected-parent-of child))
+                                 (not (nil? actual-parent)))]
+                  {:child child
+                   :orphan-parent actual-parent})]
+    (when (or (seq mismatches) (seq orphans))
+      {:mismatches (vec mismatches)
+       :orphans (vec orphans)})))
+
 (defn valid-parent?
   "Check if parent is valid (either a root or an existing node)."
   [db parent]
