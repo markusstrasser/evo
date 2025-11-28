@@ -99,6 +99,49 @@
       (is (= ["a" "b"] (get-in r2 [:db :children-by-parent "doc1"]))
           "After outdent, structure should be restored"))))
 
+(deftest ^{:fr/ids #{:fr.struct/indent-outdent}}
+  logical-outdenting-right-siblings-stay
+  (testing "LOGSEQ PARITY: Logical outdenting leaves right siblings under parent"
+    ;; Build structure:
+    ;; - doc1 (document node under :doc root)
+    ;;   - parent
+    ;;     - child-a
+    ;;     - child-b  <- will outdent this
+    ;;     - child-c
+    ;;     - child-d
+    (let [db (-> (D/empty-db)
+                 (tx/interpret
+                  [{:op :create-node :id "doc1" :type :doc :props {}}
+                   {:op :place :id "doc1" :under :doc :at :last}
+                   {:op :create-node :id "parent" :type :block :props {:text "Parent"}}
+                   {:op :place :id "parent" :under "doc1" :at :last}
+                   {:op :create-node :id "child-a" :type :block :props {:text "A"}}
+                   {:op :place :id "child-a" :under "parent" :at :last}
+                   {:op :create-node :id "child-b" :type :block :props {:text "B"}}
+                   {:op :place :id "child-b" :under "parent" :at :last}
+                   {:op :create-node :id "child-c" :type :block :props {:text "C"}}
+                   {:op :place :id "child-c" :under "parent" :at :last}
+                   {:op :create-node :id "child-d" :type :block :props {:text "D"}}
+                   {:op :place :id "child-d" :under "parent" :at :last}])
+                 :db)
+          ;; Verify initial structure
+          _ (is (= ["child-a" "child-b" "child-c" "child-d"]
+                   (get-in db [:children-by-parent "parent"])))
+          ;; Outdent child-b
+          {:keys [ops]} (intent/apply-intent db nil {:type :outdent :id "child-b"})
+          {:keys [db issues]} (tx/interpret db ops)]
+      (is (empty? issues))
+      ;; child-b should now be sibling of parent (under doc1)
+      (is (= "doc1" (get-in db [:derived :parent-of "child-b"]))
+          "child-b should be under doc1 after outdent")
+      ;; child-b should be positioned RIGHT AFTER parent
+      (is (= ["parent" "child-b"] (get-in db [:children-by-parent "doc1"]))
+          "child-b should appear after parent in doc1 children")
+      ;; CRITICAL: Right siblings (C, D) should STAY under parent
+      (is (= ["child-a" "child-c" "child-d"]
+             (get-in db [:children-by-parent "parent"]))
+          "Right siblings C and D should stay under parent (no kidnapping)"))))
+
 (deftest safety-noop-when-not-applicable
   (testing "Indent on first child returns empty ops (no-op safety)"
     (let [db (build-doc)
