@@ -23,7 +23,8 @@
   (:require [clojure.set :as set]
             [malli.core :as m]
             [malli.error :as me]
-            [spec-registry :as fr]))
+            [spec-registry :as fr]
+            [kernel.db :as db]))
 
 ;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────
 
@@ -174,6 +175,18 @@
      (apply-intent db session {:type :selection :mode :extend-next})
      ;=> {:db db :ops [] :session-updates {:selection {:nodes #{...} :focus \"a\"}}}"
   [db session intent]
+;; DEBUG: Check for stale derived indexes before processing intent
+  ;; This helps detect the root cause of :anchor-not-sibling validation errors
+  #?(:cljs
+     (when ^boolean goog.DEBUG
+       (when-let [inconsistency (db/check-parent-of-consistency db)]
+         (js/console.error "🚨🚨🚨 STALE DERIVED INDEXES detected BEFORE intent processing! 🚨🚨🚨"
+                           "\nIntent:" (pr-str (:type intent))
+                           "\nFull intent:" (pr-str intent)
+                           "\nInconsistency:" (pr-str inconsistency)
+                           "\nDB hash:" (hash db))
+         (js/console.trace "Stack trace - DB was already corrupted when intent started"))))
+
   ;; Validation interceptor (when enabled)
   (when *validate-intents*
     (validate-intent! intent))
@@ -364,15 +377,15 @@
         test-scan #?(:clj (try
                            ;; Try to resolve dev.test-scanner/scan-tests-for-frs function
                            ;; This will only work if the namespace is already loaded (dev/test context)
-                           (if-let [scan-fn (resolve 'dev.test-scanner/scan-tests-for-frs)]
-                             (scan-fn)
-                             {:verified-frs #{}
-                              :tests-by-fr {}})
-                           (catch Exception _
-                             {:verified-frs #{}
-                              :tests-by-fr {}}))
-                      :cljs {:verified-frs #{}
-                             :tests-by-fr {}})
+                            (if-let [scan-fn (resolve 'dev.test-scanner/scan-tests-for-frs)]
+                              (scan-fn)
+                              {:verified-frs #{}
+                               :tests-by-fr {}})
+                            (catch Exception _
+                              {:verified-frs #{}
+                               :tests-by-fr {}}))
+                     :cljs {:verified-frs #{}
+                            :tests-by-fr {}})
         verified-frs (:verified-frs test-scan)
         tests-by-fr (:tests-by-fr test-scan)
 
