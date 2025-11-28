@@ -1,6 +1,8 @@
 (ns macros.editing-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [macros.editing :as edit]
+            [macros.script :as script]
             [kernel.transaction :as tx]
             [kernel.db :as db]
             [kernel.constants :as const]
@@ -225,7 +227,7 @@
     (let [db (sample-blocks-db)
 
           text "Multi\nLine\nPaste"
-          lines (remove empty? (clojure.string/split-lines text))
+          lines (remove empty? (str/split-lines text))
           new-ids (repeatedly (count lines) #(str (random-uuid)))
 
           ;; Run macro manually to get scratch DB
@@ -243,7 +245,7 @@
                           :at :last})
                        new-ids)]
 
-          macro-result (macros.script/run db steps)
+          macro-result (script/run db steps)
 
           ;; Commit to real DB
           tx-result (tx/interpret db (:ops macro-result))]
