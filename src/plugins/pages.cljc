@@ -5,7 +5,8 @@
    - Intent handlers for switching pages
    - Query helpers for current page
    - Page creation and navigation"
-  (:require [kernel.intent :as intent]
+  (:require [clojure.string :as str]
+            [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
             [plugins.context :as ctx]))
@@ -34,16 +35,16 @@
   [db page-name]
   (when page-name
     (let [normalized-name (-> page-name
-                              clojure.string/trim
-                              clojure.string/lower-case)
+                              str/trim
+                              str/lower-case)
           pages (all-pages db)]
       (->> pages
            (filter (fn [page-id]
                      (let [title (page-title db page-id)]
                        (= normalized-name
                           (-> title
-                              clojure.string/trim
-                              clojure.string/lower-case)))))
+                              str/trim
+                              str/lower-case)))))
            first))))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
