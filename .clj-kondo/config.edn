@@ -72,4 +72,5 @@
                 core.interpret #{core.db core.ops core.schema medley.core}
                 core.schema    #{}}
 
- :skip-lint ["test/fixtures" "dev/repl" "dev/test_scanner.cljc" "dev/diff_ops.cljc"]}
+ ;; Skip files with REPL-only examples in comment blocks
+ :skip-comments true}

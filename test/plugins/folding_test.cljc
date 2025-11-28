@@ -5,8 +5,7 @@
             [kernel.transaction :as tx]
             [kernel.query :as q]
             [kernel.intent :as intent]
-            [plugins.folding]  ;; Load to register intents
-            [plugins.folding :as fold]))
+            [plugins.folding :as fold]))  ;; Also loads intent registrations
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
 
