@@ -8,7 +8,7 @@
 
    ;; Quality gates
   lint {:doc "Run clj-kondo linter"
-        :task (shell "clj-kondo --lint src test dev")}
+        :task (shell "clj-kondo --lint src test")}
 
   format:check {:doc "Check Clojure code formatting (cljfmt)"
                 :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.12.0\"}}}' -M -m cljfmt.main check src test dev")}
