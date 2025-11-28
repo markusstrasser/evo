@@ -178,6 +178,76 @@ When writing complex `case` or `cond` with nested maps/vectors:
 
 ---
 
+## Higher-Order Function Arity Safety
+
+### Uniform Signatures for Op-fns
+
+❌ **Wrong (arity mismatch risk):**
+```clojure
+;; Different signatures = silent failures when passed to HOF
+(defn indent-ops [db id] ...)         ; 2 args
+(defn outdent-ops [db session id] ...)  ; 3 args
+
+;; HOF can't know which to call
+(mapcat #(op-fn db session %) targets)  ; Breaks indent-ops!
+```
+
+✅ **Correct:**
+```clojure
+;; Uniform signature: all op-fns take (db session id)
+(defn indent-ops [db _session id] ...)   ; 3 args, ignores session
+(defn outdent-ops [db session id] ...)   ; 3 args, uses session
+
+;; HOF always passes 3 args
+(mapcat #(op-fn db session %) targets)   ; Works for both!
+```
+
+**Why:** Clojure's dynamic typing + HOFs = arity mismatches fail silently.
+`clj-kondo` can't track function arities through `mapcat`, `map`, etc.
+
+**Fix:** Use uniform signatures. See `plugins.struct` namespace docstring.
+
+---
+
+## Derived Index Debugging
+
+### Stale :parent-of Validation Errors
+
+If you see `:anchor-not-sibling` validation errors with messages like:
+```
+Anchor X is not a sibling under parent Y
+```
+
+This indicates `:derived :parent-of` doesn't match `:children-by-parent`.
+
+**Debug assertions are in place to detect corruption:**
+- `kernel/intent.cljc:apply-intent` - Checks BEFORE intent processing
+- `shell/blocks_ui.cljs:handle-intent` - Checks AFTER DB reset
+- `shell/nexus.cljs:dispatch-intent` - Checks AFTER Nexus dispatch
+
+**When triggered, you'll see:**
+```
+🚨🚨🚨 DERIVED INDEX CORRUPTION DETECTED 🚨🚨🚨
+Label: after DIRECT dispatch: :context-aware-enter
+Inconsistency: {:mismatches [{:child "block-xxx" :expected-parent "task-1" :actual-parent "tasks"}]}
+```
+
+**Plus a stack trace** to identify the source.
+
+**Root cause investigation (2025-11):**
+- Bug is intermittent - hard to reproduce
+- Corruption happens BETWEEN transactions (DB hash changes unexpectedly)
+- All dispatch paths go through transaction pipeline which calls `derive-indexes`
+- No direct DB modifications found outside transaction pipeline
+
+**If you reproduce the bug:**
+1. Check the console for 🚨 corruption messages
+2. The label tells you which dispatch path caused it
+3. Stack trace shows the call chain
+4. Share the full console output for debugging
+
+---
+
 ## Quick Reference
 
 **Always check before using:**
