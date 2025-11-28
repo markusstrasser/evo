@@ -20,7 +20,8 @@
 
      ;; Session intent (compiles to ops on session nodes)
      (apply-intent db {:type :select :ids [\"a\" \"b\"]})"
-  (:require [malli.core :as m]
+  (:require [clojure.set :as set]
+            [malli.core :as m]
             [malli.error :as me]
             [spec-registry :as fr]))
 
@@ -299,8 +300,8 @@
         cited-frs (set (mapcat val intent-citations))
 
         ;; Uncited FRs
-        uncited-frs (clojure.set/difference all-frs cited-frs)
-        critical-uncited (clojure.set/intersection critical-frs uncited-frs)
+        uncited-frs (set/difference all-frs cited-frs)
+        critical-uncited (set/intersection critical-frs uncited-frs)
 
         ;; Coverage percentage
         implementation-pct (if (zero? (count all-frs))

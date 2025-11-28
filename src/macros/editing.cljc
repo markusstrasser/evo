@@ -10,7 +10,8 @@
    - Insert Block: Create + place + focus in one action
 
    All macros return operations for atomic commit via tx/interpret."
-  (:require [macros.script :as script]
+  (:require [clojure.string :as str]
+            [macros.script :as script]
             [kernel.query :as q]))
 
 ;; ── Smart Backspace ────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@
                                :at :last}))
      (tx/interpret db ops)"
   [db {:keys [text under at]}]
-  (let [lines (remove empty? (clojure.string/split-lines text))
+  (let [lines (remove empty? (str/split-lines text))
         ;; Generate IDs upfront (before macro runs)
         new-ids (repeatedly (count lines) #(str (random-uuid)))]
 

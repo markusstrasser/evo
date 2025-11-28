@@ -2,7 +2,8 @@
   "Parser for page references in text.
 
    Page references use the syntax [[page-name]] to link to other pages,
-   inspired by Logseq.")
+   inspired by Logseq."
+  (:require [clojure.string :as str]))
 
 (def page-ref-pattern
   "Regex pattern matching [[page-name]] references.
@@ -77,5 +78,5 @@
   [page-name]
   (when page-name
     (-> page-name
-        clojure.string/trim
-        clojure.string/lower-case)))
+        str/trim
+        str/lower-case)))
