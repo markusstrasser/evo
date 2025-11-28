@@ -45,7 +45,7 @@
        {:type :merge-with-next :block-id \"a\"}
        [{:op :update-node :id \"a\" :props {:text \"merged\"}}])"
   [db intent expected-ops]
-  (let [{:keys [ops]} (intent/apply-intent db intent)]
+  (let [{:keys [ops]} (intent/apply-intent db nil intent)]
     (when-not (= expected-ops ops)
       (println "\n=== INTENT ASSERTION FAILED ===")
       (println "Intent:" (pr-str intent))
@@ -101,7 +101,7 @@
    Example:
      (apply-intent-and-interpret db {:type :select :ids [\"a\"]})"
   [db intent]
-  (let [{:keys [ops]} (intent/apply-intent db intent)]
+  (let [{:keys [ops]} (intent/apply-intent db nil intent)]
     (:db (tx/interpret db ops))))
 
 (defn intent-chain
