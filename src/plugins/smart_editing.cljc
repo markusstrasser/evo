@@ -331,7 +331,21 @@
                           (fn [db _session {:keys [block-id cursor-pos]}]
                             (let [text (get-block-text db block-id)
                                   context (ctx/context-at-cursor text cursor-pos)
-                                  parent (get-in db [:derived :parent-of block-id])]
+                                  parent (get-in db [:derived :parent-of block-id])
+                                  ;; DEBUG: Always log for UUID blocks (newly created)
+                                  _ #?(:cljs
+                                       (when (str/starts-with? (str block-id) "block-")
+                                         (let [children-of-parent (get-in db [:children-by-parent parent] [])
+                                               block-in-children? (some #{block-id} children-of-parent)]
+                                           (js/console.log "📍 context-aware-enter on UUID block:"
+                                                           "\n  block-id:" block-id
+                                                           "\n  parent (from derived):" parent
+                                                           "\n  children of parent:" (pr-str children-of-parent)
+                                                           "\n  block in children?:" (boolean block-in-children?)
+                                                           "\n  context:" (:type context))
+                                           (when (and parent (not block-in-children?))
+                                             (js/console.error "🚨 MISMATCH: block not in parent's children!"))))
+                                       :clj nil)]
 
                               (case (:type context)
 
@@ -385,7 +399,23 @@
            ;; 1. Removes the list marker from current block
            ;; 2. Creates a new empty peer block after the parent
                                   (let [grandparent (when parent (get-in db [:derived :parent-of parent]))
-                                        new-id (str "block-" (random-uuid))]
+                                        new-id (str "block-" (random-uuid))
+                                        ;; DEBUG: Verify grandparent→parent relationship (only logs errors)
+                                        _ #?(:cljs
+                                             (when ^boolean goog.DEBUG
+                                               (when grandparent
+                                                 (let [children-of-gp (get-in db [:children-by-parent grandparent] [])
+                                                       parent-in-children? (some #{parent} children-of-gp)]
+                                                   (when-not parent-in-children?
+                                                     (js/console.error
+                                                      "🚨 GRANDPARENT MISMATCH!"
+                                                      "\nblock-id:" block-id
+                                                      "\nparent:" parent
+                                                      "\ngrandparent:" grandparent
+                                                      "\nchildren of grandparent:" (pr-str children-of-gp)
+                                                      "\nparent NOT in grandparent's children!"
+                                                      "\nThis will cause :anchor-not-sibling validation error!")))))
+                                             :clj nil)]
                                     (when grandparent
                                       {:ops [{:op :update-node :id block-id :props {:text ""}}
                                              {:op :create-node :id new-id :type :block :props {:text ""}}
@@ -418,7 +448,15 @@
                                 :none
                                 (let [before (subs text 0 cursor-pos)
                                       after (subs text cursor-pos)
-                                      new-id (str "block-" (random-uuid))]
+                                      new-id (str "block-" (random-uuid))
+                                      ;; DEBUG: Log the place op that will be generated
+                                      _ #?(:cljs
+                                           (js/console.log "📝 :none context - generating place op:"
+                                                           "\n  block-id:" block-id
+                                                           "\n  parent:" parent
+                                                           "\n  new-id:" new-id
+                                                           "\n  place under:" parent "at {:after" block-id "}")
+                                           :clj nil)]
                                   (when parent
                                     (if (zero? cursor-pos)
                ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
