@@ -564,13 +564,19 @@
                  ;; Blur handler: Commit to canonical DB
                  :blur (fn [e]
                          (let [target (.-target e)
-                               final-text (.-textContent target)]
+                               final-text (.-textContent target)
+                               suppress? (session/suppress-blur-exit?)
+                               same-block? (= (session/editing-block-id) block-id)]
                            ;; Commit to canonical DB
                            (on-intent {:type :update-content
                                        :block-id block-id
                                        :text final-text})
-                           ;; Exit edit mode
-                           (on-intent {:type :exit-edit})))
+                           ;; Only exit edit mode if:
+                           ;; 1. We're still editing THIS block
+                           ;; 2. Not in a structural operation (indent/outdent/move)
+                           ;; The suppress flag prevents blur from exiting during re-render
+                           (when (and same-block? (not suppress?))
+                             (on-intent {:type :exit-edit}))))
 
                  ;; Keydown: Keyboard shortcuts
                  :keydown (fn [e]

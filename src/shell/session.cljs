@@ -29,7 +29,8 @@
 ;;              :zoom-root nil                   ; Current zoom root
 ;;              :current-page nil                ; Active page
 ;;              :editing-block-id nil            ; Block in edit mode
-;;              :cursor-position nil}            ; Cursor position for enter-edit
+;;              :cursor-position nil             ; Cursor position for enter-edit
+;;              :suppress-blur-exit false}       ; Prevent blur from exiting edit (during structural ops)
 ;;  :sidebar   {:right []}}                      ; Right sidebar items
 
 (defonce !session
@@ -41,7 +42,8 @@
                 :zoom-root nil
                 :current-page nil
                 :editing-block-id nil
-                :cursor-position nil}
+                :cursor-position nil
+                :suppress-blur-exit false}
     :sidebar   {:right []}}))
 
 ;; ── Public API ────────────────────────────────────────────────────────────────
@@ -133,6 +135,25 @@
   "Check if buffer has uncommitted changes."
   []
   (get-in @!session [:buffer :dirty?]))
+
+(defn suppress-blur-exit?
+  "Check if blur should NOT exit edit mode.
+
+   This is set during structural operations (indent, outdent, move)
+   to prevent the blur handler from exiting edit mode when the DOM
+   re-renders and the contenteditable temporarily loses focus."
+  []
+  (get-in @!session [:ui :suppress-blur-exit]))
+
+(defn suppress-blur-exit!
+  "Set flag to prevent blur from exiting edit mode during structural ops.
+
+   The flag auto-clears after a delay to ensure it doesn't get stuck.
+   200ms covers the re-render + blur cycle with margin for safety."
+  []
+  (swap-session! assoc-in [:ui :suppress-blur-exit] true)
+  ;; Auto-clear after delay - 200ms covers re-render cycle with margin
+  (js/setTimeout #(swap-session! assoc-in [:ui :suppress-blur-exit] false) 200))
 
 ;; ── Debug Helpers ─────────────────────────────────────────────────────────────
 
