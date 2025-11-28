@@ -108,10 +108,10 @@ bb repomix                 # Creates repomix-output.txt with full codebase
 
 ```
 src/kernel/          # Pure kernel: db, ops, transaction, schema, errors
-src/plugins/         # Intent handlers: navigation, editing, selection, refs
+src/plugins/         # Intent handlers: navigation, editing, selection
 src/shell/           # UI adapters: Replicant components
 src/keymap/          # Keybinding definitions and dispatch
-src/parser/          # Block refs, page refs, embeds
+src/parser/          # Page refs
 src/components/      # Replicant UI components
 resources/specs.edn  # FR registry (44 functional requirements)
 resources/plugins.edn   # Declarative plugin manifest consumed by shell.plugin-manifest
