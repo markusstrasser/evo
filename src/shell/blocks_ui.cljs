@@ -15,8 +15,6 @@
             [kernel.constants :as const]
             [components.block :as block]
             [components.sidebar :as sidebar]
-            [components.slash-menu :as slash-menu]
-            [components.quick-switcher :as quick-switcher]
             [components.devtools :as devtools]
             [dataspex.core :as dataspex]
             [dev.tooling :as dev]
@@ -31,8 +29,6 @@
             [plugins.editing]
             [plugins.clipboard]
             [plugins.navigation]
-            [plugins.slash-commands]
-            [plugins.quick-switcher]
             [plugins.struct]
             [plugins.folding]
             [plugins.smart-editing]
@@ -402,12 +398,6 @@
 
       ;; Mock-text for cursor detection
       (MockText)
-
-      ;; Slash command menu (renders when active)
-      (slash-menu/SlashMenu {:db db :on-intent handle-intent})
-
-      ;; Quick switcher overlay (renders when active)
-      (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent})
 
       [:h2 "Blocks UI - Multi-Page Demo"]
       [:p {:style {:color "#666"}}

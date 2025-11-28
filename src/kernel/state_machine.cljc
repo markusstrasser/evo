@@ -87,14 +87,7 @@
    :zoom-in                 nil
    :zoom-out                nil
    :undo                    nil
-   :redo                    nil
-
-   ;; Slash menu (editing sub-state)
-   :slash-menu/open         #{:editing}
-   :slash-menu/close        #{:editing}
-   :slash-menu/next         #{:editing}
-   :slash-menu/prev         #{:editing}
-   :slash-menu/select       #{:editing}})
+   :redo                    nil})
 
 ;; ── State Transitions ───────────────────────────────────────────────────────
 
