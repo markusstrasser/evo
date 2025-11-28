@@ -121,19 +121,32 @@
           "'b' should be child of 'a'"))))
 
 (deftest test-shift-tab-outdent
-  (testing "Shift+Tab: Outdent prevented at root level (design constraint)"
+  (testing "Shift+Tab: Outdent nested block to become sibling of parent"
     (let [db (make-tree)
-          ;; Set up session with selection of "b1"
+          ;; Set up session with selection of "b1" (child of "b")
           session {:selection {:nodes #{"b1"} :focus "b1" :anchor "b1"}}
           ;; Simulate Shift+Tab keypress
           result (api/dispatch db session {:type :outdent-selected})
           final-db (:db result)]
-      ;; Outdent is prevented because grandparent (:doc) is a root
-      ;; "b1" should remain under "b"
-      (is (= "b" (get-in final-db [:derived :parent-of "b1"]))
-          "'b1' should remain under 'b' (outdent prevented at root level)")
-      (is (= ["b1" "b2"] (children-of final-db "b"))
-          "'b1' should still be child of 'b'"))))
+      ;; b1 was under "b", outdenting makes it sibling of "b" under :doc
+      (is (= :doc (get-in final-db [:derived :parent-of "b1"]))
+          "'b1' should become child of :doc (sibling of 'b')")
+      (is (= ["b2"] (children-of final-db "b"))
+          "'b' should only have 'b2' as child after b1 was outdented"))))
+
+(deftest test-shift-tab-outdent-at-root
+  (testing "Shift+Tab: Outdent prevented when already at root level"
+    (let [db (make-tree)
+          ;; Set up session with selection of "a" (direct child of :doc)
+          session {:selection {:nodes #{"a"} :focus "a" :anchor "a"}}
+          ;; Simulate Shift+Tab keypress
+          result (api/dispatch db session {:type :outdent-selected})
+          final-db (:db result)]
+      ;; "a" is already a direct child of :doc, can't outdent further
+      (is (= :doc (get-in final-db [:derived :parent-of "a"]))
+          "'a' should remain under :doc (can't outdent from root level)")
+      (is (= ["a" "b" "c"] (children-of final-db :doc))
+          ":doc should still have same children"))))
 
 ;; ── Move Tests ────────────────────────────────────────────────────────────────
 
