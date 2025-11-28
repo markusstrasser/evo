@@ -146,3 +146,62 @@
                                                          :has-selection? true})]
       ;; Should return empty ops (component handles)
       (is (empty? ops)))))
+
+;; ── Merge With Prev Tests (Backspace at start) ──────────────────────────────
+
+(deftest merge-with-prev-basic-test
+  (testing "Backspace at start merges with previous sibling"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "First"}}
+                                 {:op :place :id "a" :under :doc :at :last}
+                                 {:op :create-node :id "b" :type :block :props {:text "Second"}}
+                                 {:op :place :id "b" :under :doc :at :last}]))
+          session (empty-session)
+          {:keys [db session]} (run-intent db session {:type :merge-with-prev
+                                                       :block-id "b"})]
+      ;; Should merge with previous
+      (is (= "FirstSecond" (get-in db [:nodes "a" :props :text])))
+      ;; Block "b" should be deleted
+      (is (= :trash (get-in db [:derived :parent-of "b"])))
+      ;; Cursor should be at merge point
+      (is (= 5 (get-in session [:ui :cursor-position])))
+      ;; Should be editing previous block
+      (is (= "a" (get-in session [:ui :editing-block-id]))))))
+
+(deftest merge-with-prev-reparents-children-test
+  (testing "CRITICAL: Backspace merge re-parents children to prev block"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "Block A"}}
+                                 {:op :place :id "a" :under :doc :at :last}
+                                 {:op :create-node :id "b" :type :block :props {:text "Block B"}}
+                                 {:op :place :id "b" :under :doc :at :last}
+                                 ;; Children of block B
+                                 {:op :create-node :id "child1" :type :block :props {:text "Child 1"}}
+                                 {:op :place :id "child1" :under "b" :at :last}
+                                 {:op :create-node :id "child2" :type :block :props {:text "Child 2"}}
+                                 {:op :place :id "child2" :under "b" :at :last}]))
+          session (empty-session)
+          ;; Before merge: children under "b"
+          _ (is (= ["child1" "child2"] (q/children db "b")))
+          {:keys [db]} (run-intent db session {:type :merge-with-prev
+                                               :block-id "b"})]
+      ;; Text merged
+      (is (= "Block ABlock B" (get-in db [:nodes "a" :props :text])))
+      ;; Block B trashed
+      (is (= :trash (get-in db [:derived :parent-of "b"])))
+      ;; CRITICAL: Children should now be under "a" (not deleted!)
+      (is (= "a" (get-in db [:derived :parent-of "child1"])))
+      (is (= "a" (get-in db [:derived :parent-of "child2"])))
+      ;; Children should be visible in "a"'s children list
+      (is (= ["child1" "child2"] (q/children db "a"))))))
+
+(deftest merge-with-prev-no-prev-test
+  (testing "Backspace at start with no previous block does nothing"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "Only block"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          result (intent/apply-intent db session {:type :merge-with-prev
+                                                  :block-id "a"})]
+      ;; Handler returns nil → apply-intent wraps as empty ops
+      (is (empty? (:ops result))))))
