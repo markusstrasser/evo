@@ -10,6 +10,18 @@
    Design principle: Delete is archive by design - nodes are moved to :trash,
    never destroyed. This maintains referential integrity and enables undo.
 
+   ## Op-fn Convention (arity safety)
+
+   All per-node operation functions (delete-ops, indent-ops, outdent-ops) use
+   uniform signature: `(fn [db session id])`. This prevents arity mismatch bugs
+   when passed to `apply-to-active-targets`. Even if a function doesn't need
+   session, it accepts and ignores it:
+
+     (defn my-ops [db _session id] ...)  ; Always 3 args
+
+   This convention eliminates the class of silent failures where a 2-arg function
+   is called with 3 args (or vice versa) through higher-order function dispatch.
+
    Includes movement/reordering logic (merged from plugins.permute)."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
@@ -38,14 +50,18 @@
     true))
 
 (defn delete-ops
-  "Compiles a delete intent into a :place operation that moves the node to :trash."
-  [_DB id]
+  "Compiles a delete intent into a :place operation that moves the node to :trash.
+
+   Signature: [db session id] - uniform with all op-fns for apply-to-active-targets."
+  [_db _session id]
   [{:op :place :id id :under const/root-trash :at :last}])
 
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
-   under its previous sibling."
-  [db id]
+   under its previous sibling.
+
+   Signature: [db session id] - uniform with all op-fns for apply-to-active-targets."
+  [db _session id]
   (if-let [sib (q/prev-sibling db id)]
     [{:op :place :id id :under sib :at :last}]
     []))
@@ -94,16 +110,17 @@
    Note: Direct outdenting (where B kidnaps C and D as children) can be added
    via config flag when user preference plumbing exists.
 
-   FR-Scope-02: Prevents outdenting if grandparent is a root container (already
+   FR-Scope-02: Prevents outdenting if parent is a root container (already
    at top level) OR if grandparent is outside the current zoom scope."
   [db session id]
   (let [p (q/parent-of db id)
         gp (when p (q/parent-of db p))
         roots (set (:roots db const/roots))]
-    ;; Can outdent if: has parent, has grandparent, grandparent is NOT a root,
+    ;; Can outdent if: has parent, has grandparent, parent is NOT a root,
     ;; AND grandparent is within zoom scope
+    ;; Note: parent-is-root means block is already at top level (can't outdent further)
     (if (and p gp
-             (not (contains? roots gp))
+             (not (contains? roots p))
              (within-zoom-scope? db session gp))
       ;; Logical outdenting: move to position RIGHT AFTER parent (as sibling of parent)
       ;; Right siblings stay under parent (not kidnapped)
@@ -115,14 +132,14 @@
 (intent/register-intent! :delete
                          {:doc "Delete node by moving to :trash."
                           :spec [:map [:type [:= :delete]] [:id :string]]
-                          :handler (fn [db _session {:keys [id]}]
-                                     (delete-ops db id))})
+                          :handler (fn [db session {:keys [id]}]
+                                     (delete-ops db session id))})
 
 (intent/register-intent! :indent
                          {:doc "Indent node under previous sibling."
                           :spec [:map [:type [:= :indent]] [:id :string]]
-                          :handler (fn [db _session {:keys [id]}]
-                                     (indent-ops db id))})
+                          :handler (fn [db session {:keys [id]}]
+                                     (indent-ops db session id))})
 
 (intent/register-intent! :outdent
                          {:doc "Outdent node to be sibling of parent."
@@ -178,10 +195,13 @@
     (vec (sort-by-doc-order db targets))))
 
 (defn- apply-to-active-targets
-  "Apply op-fn to each active target node, returning combined ops vector."
+  "Apply op-fn to each active target node, returning combined ops vector.
+
+   All op-fns MUST have uniform signature: (fn [db session id]).
+   This eliminates arity mismatch bugs - no conditional dispatch needed."
   [db session op-fn]
   (->> (active-targets db session)
-       (mapcat #(op-fn db %))
+       (mapcat #(op-fn db session %))
        vec))
 
 (defn- same-parent?
@@ -321,7 +341,12 @@
 
                           :spec [:map [:type [:= :indent-selected]]]
                           :handler (fn [db session _intent]
-                                     (apply-to-active-targets db session indent-ops))})
+                                     (let [editing-id (q/editing-block-id session)
+                                           ops (apply-to-active-targets db session indent-ops)]
+                                       ;; Preserve editing state if we're editing a block
+                                       {:ops ops
+                                        :session-updates (when editing-id
+                                                           {:ui {:editing-block-id editing-id}})}))})
 
 (intent/register-intent! :outdent-selected
                          {:doc "Outdent all selected nodes (or editing block if no selection)."
@@ -330,7 +355,12 @@
 
                           :spec [:map [:type [:= :outdent-selected]]]
                           :handler (fn [db session _intent]
-                                     (apply-to-active-targets db session outdent-ops))})
+                                     (let [editing-id (q/editing-block-id session)
+                                           ops (apply-to-active-targets db session outdent-ops)]
+                                       ;; Preserve editing state if we're editing a block
+                                       {:ops ops
+                                        :session-updates (when editing-id
+                                                           {:ui {:editing-block-id editing-id}})}))})
 
 (intent/register-intent! :move-selected-up
                          {:doc "Move selected nodes up one sibling position."
