@@ -363,12 +363,7 @@
     [:div
      [:h5 "Undo/Redo"]
      [:div.hotkey-item "⌘/Ctrl+Z - Undo"]
-     [:div.hotkey-item "⌘/Ctrl+Shift+Z - Redo"]]
-    [:div
-     [:h5 "Quick Access"]
-     [:div.hotkey-item "/ - Slash command menu"]
-     [:div.hotkey-item "⌘+K - Quick switcher"]
-     [:div.hotkey-item "⌘+P - Quick switcher"]]]])
+     [:div.hotkey-item "⌘/Ctrl+Shift+Z - Redo"]]]])
 
 (defn App []
   "Main app - pure composition, no business logic."
@@ -401,7 +396,7 @@
 
       [:h2 "Blocks UI - Multi-Page Demo"]
       [:p {:style {:color "#666"}}
-       "Features: Block refs " [:code "((id))"] ", Embeds " [:code "{{embed ((id))}}"] ", Page refs " [:code "[[Page]]"]]
+       "Features: Page refs " [:code "[[Page]]"]]
 
       ;; Current page title and outline
       (if current-page-id

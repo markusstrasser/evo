@@ -82,7 +82,6 @@
 
          Detects context at cursor and navigates accordingly:
          - Page ref [[Page]] → switch to that page
-         - Block ref ((id)) → select/focus that block (TODO)
          - No ref → no-op
 
          Mirrors Logseq's Cmd+O behavior."
@@ -104,20 +103,6 @@
              (do
                #?(:cljs (js/console.warn (str "Page not found: " page-name))
                   :clj (println (str "Page not found: " page-name)))
-               nil)))
-
-         ;; Block reference → select/focus block
-         :block-ref
-         (let [block-uuid (:uuid context)]
-           ;; For now, just select the block. Future: could scroll to it
-           (if (get-in db [:nodes block-uuid])
-             {:session-updates
-              {:selection {:nodes #{block-uuid}
-                           :focus block-uuid
-                           :anchor block-uuid}}}
-             (do
-               #?(:cljs (js/console.warn (str "Block not found: " block-uuid))
-                  :clj (println (str "Block not found: " block-uuid)))
                nil)))
 
          ;; No reference under cursor → no-op
