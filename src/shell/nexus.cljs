@@ -15,10 +15,23 @@
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
             [kernel.api :as api]
+            [kernel.db :as db]
             [shell.session :as session]
-            [dev.tooling :as dev]))
+            [dev.tooling :as dev]
+            [clojure.string :as str]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
+
+(defn- assert-derived-fresh!
+  "DEBUG: Assert that derived indexes are consistent after DB reset."
+  [db-val label]
+  (when ^boolean goog.DEBUG
+    (when-let [inconsistency (db/check-parent-of-consistency db-val)]
+      (js/console.error "🚨🚨🚨 DERIVED INDEX CORRUPTION DETECTED 🚨🚨🚨"
+                        "\nLabel:" label
+                        "\nInconsistency:" (pr-str inconsistency)
+                        "\nDB hash:" (hash db-val))
+      (js/console.trace "Stack trace for corruption detection"))))
 
 (defn dispatch-intent
   "Effect that dispatches kernel intents.
@@ -27,12 +40,31 @@
   [_ !db intent-map]
   (let [current-session (session/get-session)
         db-before @!db
+        ;; DEBUG: Log ALL intent dispatches through Nexus
+        _ (js/console.log "🔷 NEXUS dispatch:" (pr-str (:type intent-map))
+                          "- DB hash:" (hash db-before))
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
         db-after db
         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
     (reset! !db db-after)
+
+    ;; DEBUG: Assert derived indexes are fresh after reset
+    (assert-derived-fresh! db-after (str "after NEXUS dispatch: " (:type intent-map)))
+
+    ;; DEBUG: Log after reset for context-aware-enter
+    (when (= (:type intent-map) :context-aware-enter)
+      (js/console.log "🔍 AFTER context-aware-enter - DB hash:" (hash @!db)
+                      "\n  children-by-parent keys:" (pr-str (keys (:children-by-parent @!db))))
+      ;; Check for UUID blocks and their parents
+      (doseq [[child parent] (get-in @!db [:derived :parent-of])]
+        (when (str/starts-with? (str child) "block-")
+          (let [children-of-parent (get-in @!db [:children-by-parent parent] [])
+                in-children? (some #{child} children-of-parent)]
+            (js/console.log "📊 Block parent:" child "→" parent
+                            "| in children?:" (boolean in-children?))))))
+
     ;; Apply session-updates returned from handler
     (when session-updates
       (session/swap-session! #(merge-with merge % session-updates)))
