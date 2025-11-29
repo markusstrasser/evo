@@ -17,7 +17,8 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 - `docs/logseq_behaviors.md` – Triad entries (keymap slices, intent contracts, scenario ledger rows). Scenario IDs reference tests.
 
 ## Testing Stack
-- `docs/TESTING_STACK.md` – data-driven testing philosophy, tier mapping, redundancy analysis, and scenario ↔ test matrix.
+- `docs/TESTING_STACK.md` – testing philosophy, tier mapping, redundancy analysis.
+- `docs/E2E_TESTING.md` – **practical E2E guide** (helpers, patterns, troubleshooting).
 
 ## Tooling & Debugging
 - `docs/CODING_GOTCHAS.md` – **Quick reference** (intent catalog, session shape, derived indexes, cookbook) + common pitfalls.
