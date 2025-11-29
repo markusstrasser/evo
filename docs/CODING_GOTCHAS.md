@@ -136,6 +136,28 @@ DB only contains persistent document graph.
 
 ---
 
+## Replicant Components
+
+### Event Handler Syntax
+
+**Always use `:on {:event-name handler}` NOT `:on-event-name handler`**
+
+❌ **Wrong:**
+```clojure
+[:button {:on-click (fn [e] ...)} "Click"]
+```
+
+✅ **Correct:**
+```clojure
+[:button {:on {:click (fn [e] ...)}} "Click"]
+```
+
+**Console warning:** `"Event handler attributes are not supported. Instead of :on-click set :on {:click ,,,}"`
+
+Handler names must match browser events: `:click`, `:keydown`, `:input`, `:blur`, etc.
+
+---
+
 ## Testing
 
 ### Test ID Format Matters
