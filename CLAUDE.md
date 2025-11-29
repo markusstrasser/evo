@@ -68,6 +68,7 @@ bb lint:e2e-keyboard       # Check E2E tests for problematic keyboard usage
 bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fail on gaps)
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
+bb lint:intents            # Regenerate intent catalog (--update to write)
 ```
 
 ### Cache & Index Management
@@ -243,7 +244,7 @@ See `src/macros/script.cljc` for implementation, `test/macros/` for examples.
 [:span.edit {:replicant/key (str id "-edit")} ...]
 ```
 
-Without proper `:replicant/key`, Replicant may reuse DOM elements when switching between modes (e.g., edit ↔ view), causing `:on-mount` to not fire. See `docs/REPLICANT_KEY_FIX.md` for details.
+Without proper `:replicant/key`, Replicant may reuse DOM elements when switching between modes (e.g., edit ↔ view), causing `:on-mount` to not fire. See `docs/CODING_GOTCHAS.md` for details.
 
 **Nexus workflow:**
 1. Component receives a DOM event → computes context (cursor offsets, row info).
@@ -358,7 +359,7 @@ This matches Logseq's one-step workflow for exiting nested list contexts.
   [:span.view {:replicant/key (str id "-view")} ...])
 ```
 
-**Why**: Replicant's `reusable?` function only checks `:replicant/key` (not `:key`). Without proper keys, elements with the same tag name get reused instead of recreated, preventing lifecycle hooks from firing. See `docs/REPLICANT_KEY_FIX.md`.
+**Why**: Replicant's `reusable?` function only checks `:replicant/key` (not `:key`). Without proper keys, elements with the same tag name get reused instead of recreated, preventing lifecycle hooks from firing. See `docs/CODING_GOTCHAS.md`.
 
 ### Variable Shadowing
 
