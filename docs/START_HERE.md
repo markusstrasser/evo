@@ -12,11 +12,11 @@ Single-page orientation for humans and agents picking up Evo for the first time.
 
 ```bash
 npm install
-npm run watch    # fast path; falls back to cache-aware clean if needed
+npm start        # Clean + watch CLJS + watch CSS (prevents stale errors)
 # visit http://localhost:8080/blocks.html once [CLJS] Build completed
 ```
 
-Need a clean-room reset? Run `npm run clean && npm run watch`.
+Fast restart (skip clean): `npm run dev:fast`
 
 ## 3. Load the Reference Stack
 
