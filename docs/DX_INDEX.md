@@ -20,6 +20,7 @@ Single landing page for humans and AI agents. Follow the lifecycle order below; 
 - `docs/TESTING_STACK.md` – data-driven testing philosophy, tier mapping, redundancy analysis, and scenario ↔ test matrix.
 
 ## Tooling & Debugging
+- `docs/CODING_GOTCHAS.md` – **Quick reference** (intent catalog, session shape, derived indexes, cookbook) + common pitfalls.
 - `docs/PLAYWRIGHT_MCP_TESTING.md` – how to run/extend browser automation.
 - `docs/TEXT_SELECTION.md` – contenteditable text selection utilities and cursor APIs.
 - `.architect/RECURRING_PROBLEM_ANALYSIS.md` – historical investigation of cursor/contenteditable issues.
