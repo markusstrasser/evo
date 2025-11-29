@@ -271,119 +271,119 @@
 
     (cond
         ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
-        (and (= key "a") ctrl? (not shift?) (not alt?))
-        (do (.preventDefault e)
-            (let [text-content (.-textContent target)
-                  selection (.getSelection js/window)
-                  cursor-pos (.-anchorOffset selection)
-                  line-start (loop [pos (dec cursor-pos)]
-                               (cond
-                                 (< pos 0) 0
-                                 (= (nth text-content pos) \newline) (inc pos)
-                                 :else (recur (dec pos))))]
-              (when-let [text-node (.-firstChild target)]
-                (let [range (.createRange js/document)
-                      sel (.getSelection js/window)]
-                  (.setStart range text-node line-start)
-                  (.setEnd range text-node line-start)
-                  (.removeAllRanges sel)
-                  (.addRange sel range)))))
-
-        (and (= key "e") ctrl? (not shift?) (not alt?))
-        (do (.preventDefault e)
-            (let [text-content (.-textContent target)
-                  selection (.getSelection js/window)
-                  cursor-pos (.-anchorOffset selection)
-                  text-length (count text-content)
-                  line-end (loop [pos cursor-pos]
+      (and (= key "a") ctrl? (not shift?) (not alt?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)
+                line-start (loop [pos (dec cursor-pos)]
                              (cond
-                               (>= pos text-length) text-length
-                               (= (nth text-content pos) \newline) pos
-                               :else (recur (inc pos))))]
-              (when-let [text-node (.-firstChild target)]
-                (let [range (.createRange js/document)
-                      sel (.getSelection js/window)]
-                  (.setStart range text-node line-end)
-                  (.setEnd range text-node line-end)
-                  (.removeAllRanges sel)
-                  (.addRange sel range)))))
-
-        ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
-        (and (= key "a") alt? (not shift?) (not ctrl?))
-        (do (.preventDefault e)
+                               (< pos 0) 0
+                               (= (nth text-content pos) \newline) (inc pos)
+                               :else (recur (dec pos))))]
             (when-let [text-node (.-firstChild target)]
               (let [range (.createRange js/document)
                     sel (.getSelection js/window)]
-                (.setStart range text-node 0)
-                (.setEnd range text-node 0)
+                (.setStart range text-node line-start)
+                (.setEnd range text-node line-start)
                 (.removeAllRanges sel)
-                (.addRange sel range))))
+                (.addRange sel range)))))
 
-        (and (= key "e") alt? (not shift?) (not ctrl?))
-        (do (.preventDefault e)
-            (let [text-content (.-textContent target)
-                  text-length (count text-content)]
-              (when-let [text-node (.-firstChild target)]
-                (let [range (.createRange js/document)
-                      sel (.getSelection js/window)]
-                  (.setStart range text-node text-length)
-                  (.setEnd range text-node text-length)
-                  (.removeAllRanges sel)
-                  (.addRange sel range)))))
+      (and (= key "e") ctrl? (not shift?) (not alt?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)
+                text-length (count text-content)
+                line-end (loop [pos cursor-pos]
+                           (cond
+                             (>= pos text-length) text-length
+                             (= (nth text-content pos) \newline) pos
+                             :else (recur (inc pos))))]
+            (when-let [text-node (.-firstChild target)]
+              (let [range (.createRange js/document)
+                    sel (.getSelection js/window)]
+                (.setStart range text-node line-end)
+                (.setEnd range text-node line-end)
+                (.removeAllRanges sel)
+                (.addRange sel range)))))
+
+        ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
+      (and (= key "a") alt? (not shift?) (not ctrl?))
+      (do (.preventDefault e)
+          (when-let [text-node (.-firstChild target)]
+            (let [range (.createRange js/document)
+                  sel (.getSelection js/window)]
+              (.setStart range text-node 0)
+              (.setEnd range text-node 0)
+              (.removeAllRanges sel)
+              (.addRange sel range))))
+
+      (and (= key "e") alt? (not shift?) (not ctrl?))
+      (do (.preventDefault e)
+          (let [text-content (.-textContent target)
+                text-length (count text-content)]
+            (when-let [text-node (.-firstChild target)]
+              (let [range (.createRange js/document)
+                    sel (.getSelection js/window)]
+                (.setStart range text-node text-length)
+                (.setEnd range text-node text-length)
+                (.removeAllRanges sel)
+                (.addRange sel range)))))
 
         ;; Shift+Arrow - text selection OR block selection at boundaries
-        (and (= key "ArrowUp") shift? (not mod?) (not alt?))
-        (handle-shift-arrow-up e db block-id on-intent)
+      (and (= key "ArrowUp") shift? (not mod?) (not alt?))
+      (handle-shift-arrow-up e db block-id on-intent)
 
-        (and (= key "ArrowDown") shift? (not mod?) (not alt?))
-        (handle-shift-arrow-down e db block-id on-intent)
+      (and (= key "ArrowDown") shift? (not mod?) (not alt?))
+      (handle-shift-arrow-down e db block-id on-intent)
 
         ;; Ctrl+P/N - Emacs-style navigation aliases
-        (and (= key "p") ctrl? (not shift?) (not alt?))
-        (handle-arrow-up e db block-id on-intent)
+      (and (= key "p") ctrl? (not shift?) (not alt?))
+      (handle-arrow-up e db block-id on-intent)
 
-        (and (= key "n") ctrl? (not shift?) (not alt?))
-        (handle-arrow-down e db block-id on-intent)
+      (and (= key "n") ctrl? (not shift?) (not alt?))
+      (handle-arrow-down e db block-id on-intent)
 
         ;; Plain arrows - navigate between blocks while editing
-        (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-up e db block-id on-intent)
+      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-up e db block-id on-intent)
 
-        (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-down e db block-id on-intent)
+      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-down e db block-id on-intent)
 
-        (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-left e db block-id on-intent)
+      (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-left e db block-id on-intent)
 
-        (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-right e db block-id on-intent)
+      (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
+      (handle-arrow-right e db block-id on-intent)
 
         ;; LOGSEQ PARITY: Shift+Enter inserts literal newline
-        (and (= key "Enter") shift? (not mod?) (not alt?))
-        (do (.preventDefault e)
-            (let [selection (.getSelection js/window)
-                  cursor-pos (.-anchorOffset selection)]
-              (on-intent {:type :insert-newline
-                          :block-id block-id
-                          :cursor-pos cursor-pos})))
+      (and (= key "Enter") shift? (not mod?) (not alt?))
+      (do (.preventDefault e)
+          (let [selection (.getSelection js/window)
+                cursor-pos (.-anchorOffset selection)]
+            (on-intent {:type :insert-newline
+                        :block-id block-id
+                        :cursor-pos cursor-pos})))
 
         ;; Enter - create new block
-        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-        (handle-enter e db block-id on-intent)
+      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+      (handle-enter e db block-id on-intent)
 
         ;; Escape - exit edit mode
-        (= key "Escape")
-        (handle-escape e db block-id on-intent)
+      (= key "Escape")
+      (handle-escape e db block-id on-intent)
 
         ;; Backspace - delete/merge at cursor boundary
-        (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
-        (handle-backspace e db block-id on-intent)
+      (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
+      (handle-backspace e db block-id on-intent)
 
         ;; Delete at end - merge with next block
-        (and (= key "Delete") (not shift?) (not mod?) (not alt?))
-        (handle-delete e db block-id on-intent)
+      (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+      (handle-delete e db block-id on-intent)
 
-        :else nil)))
+      :else nil)))
 
 ;; ── Content Rendering with Page Refs ─────────────────────────────────────────
 
@@ -547,11 +547,36 @@
                   (.removeAllRanges sel)
                   (.addRange sel range))))
 
-            ;; On render: Only maintain focus, NEVER touch text
+            ;; On render: Maintain focus AND apply pending cursor position
+            ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
+            ;; We need to apply it to the DOM here since on-mount only fires on first render
             :replicant/on-render
             (fn [{:replicant/keys [node]}]
+              ;; Focus if needed
               (when (not= (.-activeElement js/document) node)
-                (.focus node)))
+                (.focus node))
+
+              ;; Apply pending cursor position from session (set by undo/redo)
+              (when-let [pending-cursor (session/cursor-position)]
+                (let [text-content (.-textContent node)
+                      text-length (count text-content)
+                      cursor-pos (cond
+                                   (number? pending-cursor) (min pending-cursor text-length)
+                                   (= pending-cursor :start) 0
+                                   (= pending-cursor :end) text-length
+                                   (= pending-cursor :max) text-length
+                                   :else nil)]
+                  (when (and cursor-pos (.-firstChild node))
+                    (let [text-node (.-firstChild node)
+                          range (.createRange js/document)
+                          sel (.getSelection js/window)
+                          safe-pos (min cursor-pos text-length)]
+                      (.setStart range text-node safe-pos)
+                      (.setEnd range text-node safe-pos)
+                      (.removeAllRanges sel)
+                      (.addRange sel range)))
+                  ;; Clear the pending cursor position to prevent reapplication
+                  (session/swap-session! assoc-in [:ui :cursor-position] nil))))
 
             ;; Input handler: Update session directly (Phase 3: no intent dispatch)
             :on {:input (fn [e]
