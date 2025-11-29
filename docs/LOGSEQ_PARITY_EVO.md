@@ -31,9 +31,9 @@ Pulled directly from the last refactor of `LOGSEQ_EDITING_SELECTION_PARITY.md`.
 | **G-Clipboard-Segments** | FR-Clipboard-02 | Paste semantics | ⚠ In progress | Multi-paragraph paste should split blocks while preserving list markers. See `handler/paste.cljs`. |
 | **G-Pointer-Hover** | FR-Pointer-02 | Block ref hover preview | Deferred | Requires popover component + sidebar wiring. |
 | **G-Slash / G-QuickSwitch** | FR-Slash-01..05 / FR-QuickSwitch-01 | Slash palette & quick switcher | ⚠ In progress | Inline palette wired via `:slash-menu/*` intents + tests (`plugins.slash-commands-test`). Still missing actual quick switcher UI. |
-| **G-Undo-Cursor** | FR-Undo-01 | Undo/redo caret memory | ⚠ In progress | Kernel/history stores hints but cursor restoration still flaky (see `.architect/RECURRING_PROBLEM_ANALYSIS.md`). |
+| **G-Undo-Cursor** | FR-Undo-01 | Undo/redo caret memory | ✅ Fixed | Block on-render applies pending cursor-position; api/dispatch captures intent cursor-pos. |
 
-**Resolved gaps:** idle guard, base navigation memory, Shift+Arrow direction tracking, Enter/Shift+Enter parity (see commits referenced in latest `source-auto-overview*.md`).
+**Resolved gaps:** idle guard, base navigation memory, Shift+Arrow direction tracking, Enter/Shift+Enter parity, type-to-edit (§7.1), undo cursor restore (FR-Undo-01). See commits referenced in latest `source-auto-overview*.md`.
 
 ### 3.1 Regression Notes (2025‑11‑15 verification)
 - **Navigation scope isolation:** ensure `visible-blocks-in-dom-order` treats current page as implicit zoom root.
