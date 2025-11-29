@@ -58,6 +58,26 @@
                                            :ui {:editing-block-id focused-block
                                                 :cursor-position text-length}}})))})
 
+(intent/register-intent! :enter-edit-with-char
+                         {:doc "Enter edit mode and append a character (type-to-edit).
+         
+         LOGSEQ PARITY §7.1: When a block is selected (but not editing), 
+         pressing any printable key instantly enters edit mode, appends 
+         that character, and positions the caret after it."
+                          :spec [:map
+                                 [:type [:= :enter-edit-with-char]]
+                                 [:block-id :string]
+                                 [:char :string]]
+                          :handler (fn [db _session {:keys [block-id char]}]
+                                     (let [current-text (get-block-text db block-id)
+                                           new-text (str current-text char)
+                                           new-cursor-pos (count new-text)]
+                                       {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                                        :session-updates
+                                        {:selection {:nodes #{} :focus nil :anchor nil}
+                                         :ui {:editing-block-id block-id
+                                              :cursor-position new-cursor-pos}}}))})
+
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
                           :spec [:map [:type [:= :clear-cursor-position]]]
@@ -87,8 +107,8 @@
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            new-text (str (subs text 0 cursor-pos)
-                                                        "\n"
-                                                        (subs text cursor-pos))]
+                                                         "\n"
+                                                         (subs text cursor-pos))]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates {:ui {:editing-block-id block-id
                                                                :cursor-position (inc cursor-pos)}}}))})
@@ -108,7 +128,7 @@
                                            merged-text (str prev-text curr-text)
                     ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
                                            cursor-at #?(:cljs (.-length prev-text)
-                                                       :clj (count prev-text))
+                                                        :clj (count prev-text))
                     ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]
                                        (when prev-id
@@ -185,7 +205,7 @@
                                          :else
                                          (let [next-char-len (text/grapheme-length-at text cursor-pos)
                                                new-text (str (subs text 0 cursor-pos)
-                                                            (subs text (+ cursor-pos next-char-len)))]
+                                                             (subs text (+ cursor-pos next-char-len)))]
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                             :session-updates {:ui {:editing-block-id block-id
                                                                    :cursor-position cursor-pos}}}))))})
@@ -193,107 +213,107 @@
 ;; ── Word Navigation Intents ──────────────────────────────────────────────────
 
 (intent/register-intent! :move-cursor-forward-word
-  {:doc "Move cursor to start of next word (Alt+F / Ctrl+Shift+F on Mac).
+                         {:doc "Move cursor to start of next word (Alt+F / Ctrl+Shift+F on Mac).
 
          Uses word boundary detection (stops at spaces/newlines)."
-   :spec [:map
-          [:type [:= :move-cursor-forward-word]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position])
-                    next-pos (text/find-next-word-boundary block-text (or cursor-pos 0))]
-                {:session-updates {:ui {:cursor-position next-pos}}}))})
+                          :spec [:map
+                                 [:type [:= :move-cursor-forward-word]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position])
+                                           next-pos (text/find-next-word-boundary block-text (or cursor-pos 0))]
+                                       {:session-updates {:ui {:cursor-position next-pos}}}))})
 
 (intent/register-intent! :move-cursor-backward-word
-  {:doc "Move cursor to start of previous word (Alt+B / Ctrl+Shift+B on Mac)."
-   :spec [:map
-          [:type [:= :move-cursor-backward-word]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position])
-                    prev-pos (text/find-prev-word-boundary block-text (or cursor-pos 0))]
-                (when prev-pos
-                  {:session-updates {:ui {:cursor-position prev-pos}}})))})
+                         {:doc "Move cursor to start of previous word (Alt+B / Ctrl+Shift+B on Mac)."
+                          :spec [:map
+                                 [:type [:= :move-cursor-backward-word]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position])
+                                           prev-pos (text/find-prev-word-boundary block-text (or cursor-pos 0))]
+                                       (when prev-pos
+                                         {:session-updates {:ui {:cursor-position prev-pos}}})))})
 
 ;; ── Kill Commands (Emacs-style) ──────────────────────────────────────────────
 
 (intent/register-intent! :clear-block-content
-  {:doc "Clear entire block content (Cmd+L).
+                         {:doc "Clear entire block content (Cmd+L).
 
          Sets text to empty string, cursor to position 0."
-   :spec [:map
-          [:type [:= :clear-block-content]]
-          [:block-id :string]]
-   :handler (fn [_db _session {:keys [block-id]}]
-              {:ops [{:op :update-node :id block-id :props {:text ""}}]
-               :session-updates {:ui {:cursor-position 0}}})})
+                          :spec [:map
+                                 [:type [:= :clear-block-content]]
+                                 [:block-id :string]]
+                          :handler (fn [_db _session {:keys [block-id]}]
+                                     {:ops [{:op :update-node :id block-id :props {:text ""}}]
+                                      :session-updates {:ui {:cursor-position 0}}})})
 
 (intent/register-intent! :kill-to-beginning
-  {:doc "Kill from cursor to beginning of block (Cmd+U).
+                         {:doc "Kill from cursor to beginning of block (Cmd+U).
 
          Deletes text before cursor, copies to clipboard."
-   :spec [:map
-          [:type [:= :kill-to-beginning]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position] 0)
-                    killed-text (subs block-text 0 cursor-pos)
-                    new-text (subs block-text cursor-pos)]
+                          :spec [:map
+                                 [:type [:= :kill-to-beginning]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position] 0)
+                                           killed-text (subs block-text 0 cursor-pos)
+                                           new-text (subs block-text cursor-pos)]
                 ;; TODO: Copy killed-text to clipboard (requires browser API or MCP)
-                #?(:cljs (js/console.log "Killed:" killed-text))
-                {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                 :session-updates {:ui {:cursor-position 0}}}))})
+                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                                        :session-updates {:ui {:cursor-position 0}}}))})
 
 (intent/register-intent! :kill-to-end
-  {:doc "Kill from cursor to end of block (Cmd+K).
+                         {:doc "Kill from cursor to end of block (Cmd+K).
 
          Deletes text after cursor, copies to clipboard."
-   :spec [:map
-          [:type [:= :kill-to-end]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position] 0)
-                    killed-text (subs block-text cursor-pos)
-                    new-text (subs block-text 0 cursor-pos)]
-                #?(:cljs (js/console.log "Killed:" killed-text))
-                [{:op :update-node :id block-id :props {:text new-text}}]))})
+                          :spec [:map
+                                 [:type [:= :kill-to-end]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position] 0)
+                                           killed-text (subs block-text cursor-pos)
+                                           new-text (subs block-text 0 cursor-pos)]
+                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-forward
-  {:doc "Kill next word (Cmd+Delete).
+                         {:doc "Kill next word (Cmd+Delete).
 
          Deletes from cursor to next word boundary, copies to clipboard."
-   :spec [:map
-          [:type [:= :kill-word-forward]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position] 0)
-                    next-pos (text/find-next-word-boundary block-text cursor-pos)
-                    killed-text (subs block-text cursor-pos next-pos)
-                    new-text (str (subs block-text 0 cursor-pos)
-                                 (subs block-text next-pos))]
-                #?(:cljs (js/console.log "Killed:" killed-text))
-                [{:op :update-node :id block-id :props {:text new-text}}]))})
+                          :spec [:map
+                                 [:type [:= :kill-word-forward]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position] 0)
+                                           next-pos (text/find-next-word-boundary block-text cursor-pos)
+                                           killed-text (subs block-text cursor-pos next-pos)
+                                           new-text (str (subs block-text 0 cursor-pos)
+                                                         (subs block-text next-pos))]
+                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-backward
-  {:doc "Kill previous word (Alt+Delete / Option+Delete on Mac).
+                         {:doc "Kill previous word (Alt+Delete / Option+Delete on Mac).
 
          Deletes from cursor back to previous word boundary, copies to clipboard."
-   :spec [:map
-          [:type [:= :kill-word-backward]]
-          [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}]
-              (let [block-text (get-block-text db block-id)
-                    cursor-pos (get-in session [:ui :cursor-position] 0)
-                    prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
-                (when prev-pos
-                  (let [killed-text (subs block-text prev-pos cursor-pos)
-                        new-text (str (subs block-text 0 prev-pos)
-                                     (subs block-text cursor-pos))]
-                    #?(:cljs (js/console.log "Killed:" killed-text))
-                    {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                     :session-updates {:ui {:cursor-position prev-pos}}}))))})
+                          :spec [:map
+                                 [:type [:= :kill-word-backward]]
+                                 [:block-id :string]]
+                          :handler (fn [db session {:keys [block-id]}]
+                                     (let [block-text (get-block-text db block-id)
+                                           cursor-pos (get-in session [:ui :cursor-position] 0)
+                                           prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
+                                       (when prev-pos
+                                         (let [killed-text (subs block-text prev-pos cursor-pos)
+                                               new-text (str (subs block-text 0 prev-pos)
+                                                             (subs block-text cursor-pos))]
+                                           #?(:cljs (js/console.log "Killed:" killed-text))
+                                           {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+                                            :session-updates {:ui {:cursor-position prev-pos}}}))))})
