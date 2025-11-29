@@ -67,6 +67,12 @@
                                        (str " " (str/join " " *command-line-args*)))]
                          (shell (str "bb scripts/lint_fr_tests.clj" arg-str)))}
 
+  lint:intents {:doc "Regenerate intent catalog in CODING_GOTCHAS.md (--update to write)"
+                :task (let [args (if (seq *command-line-args*)
+                                   (str/join " " *command-line-args*)
+                                   "")]
+                        (shell (str "bb scripts/generate_intent_catalog.clj " args)))}
+
   docs:verify {:doc "Verify all file references in docs/DX_INDEX.md exist"
                :task (shell "bb scripts/verify-docs.clj")}
 

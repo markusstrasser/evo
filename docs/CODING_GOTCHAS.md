@@ -252,50 +252,99 @@ Inconsistency: {:mismatches [{:child "block-xxx" :expected-parent "task-1" :actu
 
 ### Intent Catalog
 
-Intents are dispatched via `api/dispatch`. Grouped by domain:
+_Auto-generated from source. Run `bb lint:intents` to regenerate._
 
-**Editing (enter/exit modes):**
-| Intent | Key Params | Effect |
-|--------|------------|--------|
-| `:enter-edit` | `:block-id`, `:cursor-at` | Enter edit mode |
-| `:exit-edit` | — | Exit edit, no selection |
-| `:exit-edit-and-select` | — | Exit edit, select block |
-| `:enter-edit-selected` | — | Edit focused block at end |
-| `:enter-edit-with-char` | `:block-id`, `:char` | Type-to-edit (§7.1) |
+Intents are dispatched via `api/dispatch`. Grouped by plugin:
 
-**Content modification:**
-| Intent | Key Params | Effect |
-|--------|------------|--------|
-| `:update-content` | `:block-id`, `:text` | Set block text |
-| `:split-at-cursor` | `:block-id`, `:cursor-pos` | Split into two blocks |
-| `:smart-split` | `:block-id`, `:cursor-pos` | Context-aware Enter |
-| `:merge-with-prev` | `:block-id` | Backspace at start |
-| `:delete-forward` | `:block-id`, `:cursor-pos` | Delete key |
-| `:insert-newline` | `:block-id`, `:cursor-pos` | Shift+Enter |
+**Editing:**
+| Intent | Description |
+|--------|-------------|
+| `:enter-edit` | Enter edit mode for a block. Ephemeral - not in un... |
+| `:exit-edit` | Exit edit mode WITHOUT selecting block. Ephemeral ... |
+| `:exit-edit-and-select` | Exit edit mode and select the block (Logseq parity... |
+| `:enter-edit-selected` | Enter edit mode in selected block at end of text (... |
+| `:enter-edit-with-char` | Enter edit mode and append a character (type-to-ed... |
+| `:clear-cursor-position` | Clear cursor-position from session state. Used aft... |
+| `:update-cursor-state` | Update cursor position state for boundary detectio... |
+| `:update-content` | Update block text content. |
+| `:insert-newline` | Insert a literal newline character at cursor posit... |
+| `:merge-with-prev` | Merge block with previous sibling, placing cursor ... |
+| `:split-at-cursor` | Split block at cursor position into two blocks. |
+| `:delete-forward` | Handle Delete key (forward delete). Behaviors: - H... |
+| `:move-cursor-forward-word` | Move cursor to start of next word (Alt+F / Ctrl+Sh... |
+| `:move-cursor-backward-word` | Move cursor to start of previous word (Alt+B / Ctr... |
+| `:clear-block-content` | Clear entire block content (Cmd+L). Sets text to e... |
+| `:kill-to-beginning` | Kill from cursor to beginning of block (Cmd+U). De... |
+| `:kill-to-end` | Kill from cursor to end of block (Cmd+K). Deletes ... |
+| `:kill-word-forward` | Kill next word (Cmd+Delete). Deletes from cursor t... |
+| `:kill-word-backward` | Kill previous word (Alt+Delete / Option+Delete on ... |
 
-**Structure (indent/move):**
-| Intent | Key Params | Effect |
-|--------|------------|--------|
-| `:indent` / `:outdent` | `:id` | Single block |
-| `:indent-selected` / `:outdent-selected` | — | Selection or editing |
-| `:move-selected-up` / `:move-selected-down` | — | Mod+Shift+Arrow |
-| `:move` | `:id`, `:under`, `:at` | Arbitrary placement |
-| `:delete` / `:delete-selected` | `:id` / — | Move to trash |
 
-**Navigation & Selection:**
-| Intent | Key Params | Effect |
-|--------|------------|--------|
-| `:selection` | `:mode` | `:next`, `:prev`, `:extend-next`, etc. |
-| `:navigate-to-adjacent` | `:direction`, `:block-id` | Arrow in edit mode |
-| `:navigate-with-cursor-memory` | `:direction` | Up/Down with column memory |
+**Navigation:**
+| Intent | Description |
+|--------|-------------|
+| `:navigate-with-cursor-memory` | Navigate to adjacent block, preserving cursor colu... |
+| `:navigate-to-adjacent` | Navigate to adjacent block (for left/right arrows ... |
 
-**Folding & Zoom:**
-| Intent | Key Params | Effect |
-|--------|------------|--------|
-| `:toggle-fold` | `:id` | Cmd+. |
-| `:collapse` | `:id` | Cmd+, |
-| `:expand-all` | `:id` | Expand subtree |
-| `:zoom-to` / `:zoom-out` / `:reset-zoom` | `:id` | Zoom navigation |
+
+**Selection:**
+| Intent | Description |
+|--------|-------------|
+| `:selection` | Unified selection reducer with modes. Modes: - :re... |
+
+
+**Structure:**
+| Intent | Description |
+|--------|-------------|
+| `:delete` | Delete node by moving to :trash. |
+| `:indent` | Indent node under previous sibling. |
+| `:outdent` | Outdent node to be sibling of parent. |
+| `:create-and-place` | Create new block and place it under parent. |
+| `:create-and-enter-edit` | Create new block after focus and immediately enter... |
+| `:delete-selected` | Delete all selected nodes (or editing block if no ... |
+| `:indent-selected` | Indent all selected nodes (or editing block if no ... |
+| `:outdent-selected` | Outdent all selected nodes (or editing block if no... |
+| `:move-selected-up` | Move selected nodes up one sibling position. |
+| `:move-selected-down` | Move selected nodes down one sibling position. |
+| `:move` | Move selection to target parent at anchor position... |
+| `:move-block-up-while-editing` | Move current editing block up, preserving edit mod... |
+| `:move-block-down-while-editing` | Move current editing block down, preserving edit m... |
+
+
+**Smart Editing:**
+| Intent | Description |
+|--------|-------------|
+| `:insert-paired-char` | Insert character with auto-closing pair. If openin... |
+| `:delete-with-pair-check` | Delete character, removing paired closing char if ... |
+| `:merge-with-next` | Merge block with next sibling, delete next block. |
+| `:unformat-empty-list` | Remove list marker from empty list item (becomes p... |
+| `:split-with-list-increment` | Split block at cursor, incrementing numbered list ... |
+| `:toggle-checkbox` | Toggle checkbox state in block text ([ ] <-> [x]). |
+| `:smart-split` | Context-aware block splitting on Enter (Logseq par... |
+| `:context-aware-enter` | Handle Enter key with full context awareness. Uses... |
+
+
+**Folding:**
+| Intent | Description |
+|--------|-------------|
+| `:toggle-fold` | Toggle expand/collapse state for a block. |
+| `:expand-all` | Recursively expand a block and all descendants. |
+| `:collapse` | Collapse a block (hide children). |
+| `:toggle-subtree` | Toggle entire subtree (Alt+Click on bullet - Logse... |
+| `:toggle-all-folds` | Toggle all folds on a page. Expand all if any coll... |
+| `:zoom-in` | Zoom into a block (make it the rendering root). |
+| `:zoom-out` | Zoom out to previous level. |
+| `:zoom-to` | Zoom to specific block in zoom stack (breadcrumb c... |
+| `:reset-zoom` | Reset zoom to root (clear zoom stack). |
+
+
+**Clipboard:**
+| Intent | Description |
+|--------|-------------|
+| `:paste-text` | Paste text into editing block (Logseq parity). Beh... |
+| `:copy-block` | Copy block content to clipboard. Returns nil (actu... |
+| `:cut-block` | Cut block (copy + delete). Moves block to trash af... |
+
 
 ---
 
