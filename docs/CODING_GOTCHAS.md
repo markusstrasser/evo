@@ -250,10 +250,150 @@ Inconsistency: {:mismatches [{:child "block-xxx" :expected-parent "task-1" :actu
 
 ## Quick Reference
 
-**Always check before using:**
-- Constants: `rg "^\\(def " src/kernel/constants.cljc`
-- Session queries: `q/selection`, `q/editing-block-id`, `q/folded?` (from `kernel.query`)
-- Derived indexes: `:parent-of`, `:next-id-of`, `:prev-id-of` (not `:first-child-of`)
-- Root IDs: `:doc`, `:trash` (no prefix)
+### Intent Catalog
 
-**Session state lives in separate atom, not DB!**
+Intents are dispatched via `api/dispatch`. Grouped by domain:
+
+**Editing (enter/exit modes):**
+| Intent | Key Params | Effect |
+|--------|------------|--------|
+| `:enter-edit` | `:block-id`, `:cursor-at` | Enter edit mode |
+| `:exit-edit` | — | Exit edit, no selection |
+| `:exit-edit-and-select` | — | Exit edit, select block |
+| `:enter-edit-selected` | — | Edit focused block at end |
+| `:enter-edit-with-char` | `:block-id`, `:char` | Type-to-edit (§7.1) |
+
+**Content modification:**
+| Intent | Key Params | Effect |
+|--------|------------|--------|
+| `:update-content` | `:block-id`, `:text` | Set block text |
+| `:split-at-cursor` | `:block-id`, `:cursor-pos` | Split into two blocks |
+| `:smart-split` | `:block-id`, `:cursor-pos` | Context-aware Enter |
+| `:merge-with-prev` | `:block-id` | Backspace at start |
+| `:delete-forward` | `:block-id`, `:cursor-pos` | Delete key |
+| `:insert-newline` | `:block-id`, `:cursor-pos` | Shift+Enter |
+
+**Structure (indent/move):**
+| Intent | Key Params | Effect |
+|--------|------------|--------|
+| `:indent` / `:outdent` | `:id` | Single block |
+| `:indent-selected` / `:outdent-selected` | — | Selection or editing |
+| `:move-selected-up` / `:move-selected-down` | — | Mod+Shift+Arrow |
+| `:move` | `:id`, `:under`, `:at` | Arbitrary placement |
+| `:delete` / `:delete-selected` | `:id` / — | Move to trash |
+
+**Navigation & Selection:**
+| Intent | Key Params | Effect |
+|--------|------------|--------|
+| `:selection` | `:mode` | `:next`, `:prev`, `:extend-next`, etc. |
+| `:navigate-to-adjacent` | `:direction`, `:block-id` | Arrow in edit mode |
+| `:navigate-with-cursor-memory` | `:direction` | Up/Down with column memory |
+
+**Folding & Zoom:**
+| Intent | Key Params | Effect |
+|--------|------------|--------|
+| `:toggle-fold` | `:id` | Cmd+. |
+| `:collapse` | `:id` | Cmd+, |
+| `:expand-all` | `:id` | Expand subtree |
+| `:zoom-to` / `:zoom-out` / `:reset-zoom` | `:id` | Zoom navigation |
+
+---
+
+### Session State Shape
+
+```clojure
+;; shell/session.cljs atom structure
+{:ui {:editing-block-id nil      ; Currently editing block or nil
+      :cursor-position nil       ; Pending cursor pos (number, :start, :end)
+      :folded #{}                ; Set of folded block IDs
+      :zoom-root nil             ; Zoomed block ID or nil
+      :cursor {}}                ; Per-block cursor state for boundary detection
+
+ :selection {:nodes #{}          ; Selected block IDs
+             :focus nil          ; Last selected (for keyboard nav)
+             :anchor nil}        ; Selection anchor (for extend)
+
+ :buffer {:block-id nil          ; Block being buffered
+          :text ""               ; Buffer text
+          :dirty? false}         ; Has unsaved changes
+
+ :sidebar {:right []}}           ; Sidebar block refs
+```
+
+**Query functions** (from `kernel.query`):
+```clojure
+(q/editing-block-id session)     ; → string or nil
+(q/selection session)            ; → #{...} set of IDs
+(q/focus session)                ; → focused block ID
+(q/folded? session "id")         ; → boolean
+(q/zoom-root session)            ; → zoomed ID or nil
+```
+
+---
+
+### Derived Indexes
+
+Computed by `kernel.db/derive-indexes` after every transaction:
+
+| Index | Type | Use Case |
+|-------|------|----------|
+| `:parent-of` | `{child-id → parent-id}` | Find block's parent |
+| `:next-id-of` | `{id → next-sibling-id}` | Sibling navigation |
+| `:prev-id-of` | `{id → prev-sibling-id}` | Backspace merge target |
+| `:index-of` | `{id → position-in-parent}` | Ordering |
+| `:pre` | `{id → pre-order-number}` | DOM order traversal |
+| `:post` | `{id → post-order-number}` | Bottom-up traversal |
+| `:id-by-pre` | `{pre-number → id}` | Reverse lookup |
+
+**When to use which:**
+- **Parent lookup:** `(get-in db [:derived :parent-of id])`
+- **Next sibling:** `(get-in db [:derived :next-id-of id])`
+- **Children:** `(get-in db [:children-by-parent id])` (not derived, direct)
+- **DOM order:** Use `navigation/visible-blocks-in-dom-order`
+
+---
+
+### Common Operations Cookbook
+
+**Move block under another:**
+```clojure
+{:op :place :id "block-a" :under "parent-b" :at :last}
+;; :at options: :first, :last, {:before "sibling"}, {:after "sibling"}
+```
+
+**Get visible blocks in DOM order:**
+```clojure
+(require '[kernel.navigation :as nav])
+(nav/visible-blocks-in-dom-order db session)  ; → ["id1" "id2" ...]
+```
+
+**Check if in edit mode:**
+```clojure
+(require '[shell.session :as session])
+(session/editing-block-id)  ; → "block-id" or nil
+```
+
+**Dispatch intent from component:**
+```clojure
+(require '[shell.nexus :as nexus])
+(nexus/dispatch! [:editing/split {:block-id id :cursor-pos pos}])
+```
+
+**Create block and enter edit:**
+```clojure
+{:type :create-and-enter-edit :under parent-id :at {:after sibling-id}}
+```
+
+---
+
+### Root Constants
+
+From `kernel/constants.cljc`:
+
+| Constant | Value | Use |
+|----------|-------|-----|
+| `const/root-doc` | `:doc` | Document root |
+| `const/root-trash` | `:trash` | Trash root |
+| `const/session-ui-id` | `"session/ui"` | Session snapshot in history |
+
+**Always use keywords in ops:** `:doc`, `:trash` (not `:root-doc`)
