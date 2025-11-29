@@ -315,9 +315,13 @@
                   :else
                   (handle-intent {:type enriched-intent}))))))
 
-      ;; Printable character - Enter edit mode (Logseq-style "start typing")
+      ;; Printable character - Enter edit mode AND append character (Logseq-style "start typing")
+      ;; LOGSEQ PARITY §7.1: pressing any printable key instantly enters edit mode,
+      ;; appends that character, and positions the caret after it
       (and printable? focus-id (not editing?))
-      (handle-intent {:type :enter-edit :block-id focus-id}))))
+      (do
+        (.preventDefault e)
+        (handle-intent {:type :enter-edit-with-char :block-id focus-id :char key})))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
