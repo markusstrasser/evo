@@ -129,7 +129,7 @@
      ;; Check if intent is allowed in current state
      ;; If not, return silent no-op (matches Logseq's behavior)
      (if (and enforce?
-              session  ; Can't validate state without session
+              session ; Can't validate state without session
               (or (sm/idle-guard session intent)
                   (not (sm/intent-allowed? session intent))))
        ;; Intent blocked by state machine - return no-op
@@ -151,12 +151,15 @@
              record? (and (not (false? enabled?)) (seq ops))
              ;; LOGSEQ PARITY (FR-Undo-01): Capture session state in DB snapshot
              ;; before recording to history so undo/redo restores cursor position
+             ;; Priority: intent cursor-pos > session cursor-position (intent has actual position)
+             cursor-pos-for-history (or (:cursor-pos intent)
+                                        (get-in session [:ui :cursor-position]))
              db-with-session (if (and record? session)
                                (-> db
                                    (assoc-in [:nodes const/session-ui-id :props :editing-block-id]
                                              (get-in session [:ui :editing-block-id]))
                                    (assoc-in [:nodes const/session-ui-id :props :cursor-position]
-                                             (get-in session [:ui :cursor-position])))
+                                             cursor-pos-for-history))
                                db)
              db0 (if record? (H/record db-with-session) db)]
          #?(:clj (journal-tx! intent ops))
