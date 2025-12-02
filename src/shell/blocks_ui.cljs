@@ -507,10 +507,15 @@
   (js/console.log "Current URL:" (.-href js/location))
 
   ;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
-  (when (test-mode?)
-    (js/console.log "Test mode detected - resetting to empty DB")
-    (reset-to-empty-db!)
-    (js/console.log "DB after reset - block count:" (count (get-in @!db [:nodes]))))
+  (if (test-mode?)
+    (do
+      (js/console.log "Test mode detected - resetting to empty DB")
+      (reset-to-empty-db!)
+      (js/console.log "DB after reset - block count:" (count (get-in @!db [:nodes]))))
+    ;; Normal mode: auto-select first page (Projects) for demo data
+    (do
+      (js/console.log "Normal mode - auto-selecting Projects page")
+      (session/swap-session! assoc-in [:ui :current-page] "projects")))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
@@ -592,6 +597,14 @@
 
   ;; Phases 4 & 5: Session is independent, no init from DB needed
   (js/console.log "Session initialized (independent of DB)")
+
+  ;; Set initial current page to first page (for navigation scope)
+  ;; Fixes G-Nav-Visibility: navigation must respect current page boundary
+  (when-not (test-mode?)
+    (let [first-page (first (q/children @!db :doc))]
+      (when first-page
+        (session/swap-session! assoc-in [:ui :current-page] first-page)
+        (js/console.log "Initial page set to:" first-page))))
 
   (js/console.log "Registered plugins:" (clj->js plugin-manifest/manifest))
 

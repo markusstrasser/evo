@@ -53,8 +53,8 @@
    When exiting edit mode via Shift+Arrow at a boundary, selection state is empty.
    We seed it with the editing block so :selection :mode :extend-*
    has the same anchor Logseq uses."
-  [db block-id on-intent]
-  (when-not (q/selected? db block-id)
+  [session block-id on-intent]
+  (when-not (q/selected? session block-id)
     (on-intent {:type :selection :mode :replace :ids block-id})))
 
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
@@ -112,43 +112,41 @@
 (defn handle-shift-arrow-up
   "Handle Shift+Up: text selection within block OR block selection at boundary.
 
-   Logseq parity (§4.1):
+   Logseq parity (LOGSEQ_SPEC.md §3):
    - NOT at first row → Let browser handle (text selection)
-   - At first row → Collapse text selection to start, extend block selection upward"
+   - At first row → Exit edit mode, seed selection, extend upward"
   [e db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:first-row? cursor-pos)
       (.preventDefault e)
-      ;; Collapse text selection to start before extending block selection
+      ;; Collapse text selection before exiting
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToStart sel)))
-      ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
-      ;; This prevents jumping to page top when extending from editing mode
-      (ensure-block-selected! db block-id on-intent)
-      ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
+      ;; LOGSEQ PARITY (§3): Exit edit mode AND select block, then extend
+      (on-intent {:type :exit-edit-and-select})
+      ;; Now extend from the (now-selected) block
       (on-intent {:type :selection :mode :extend-prev}))))
 
 (defn handle-shift-arrow-down
   "Handle Shift+Down: text selection within block OR block selection at boundary.
 
-   Logseq parity (§4.1):
+   Logseq parity (LOGSEQ_SPEC.md §3):
    - NOT at last row → Let browser handle (text selection)
-   - At last row → Collapse text selection to end, extend block selection downward"
+   - At last row → Exit edit mode, seed selection, extend downward"
   [e db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)]
     (when (:last-row? cursor-pos)
       (.preventDefault e)
-      ;; Collapse text selection to end before extending block selection
+      ;; Collapse text selection before exiting
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToEnd sel)))
-      ;; LOGSEQ PARITY §4.4: Seed selection with current block if empty
-      ;; This prevents jumping to page bottom when extending from editing mode
-      (ensure-block-selected! db block-id on-intent)
-      ;; LOGSEQ PARITY: Incremental selection extension (with direction tracking)
+      ;; LOGSEQ PARITY (§3): Exit edit mode AND select block, then extend
+      (on-intent {:type :exit-edit-and-select})
+      ;; Now extend from the (now-selected) block
       (on-intent {:type :selection :mode :extend-next}))))
 
 (defn handle-arrow-left
@@ -480,7 +478,15 @@
          :on {:click (fn [e]
                        (.stopPropagation e)
                        (if (.-shiftKey e)
-                         (on-intent {:type :selection :mode :extend :ids block-id})
+                         ;; LOGSEQ PARITY (FR-Pointer-01): Shift+Click selects visible range
+                         ;; Calculate range from anchor to clicked block (respects folding/zoom/page)
+                         (let [session @shell.session/!session
+                               anchor (get-in session [:selection :anchor])
+                               ;; If no anchor, use current block as both anchor and end
+                               range-ids (if anchor
+                                           (q/visible-range db session anchor block-id)
+                                           #{block-id})]
+                           (on-intent {:type :selection :mode :extend :ids range-ids}))
                          (on-intent {:type :selection :mode :replace :ids block-id})))}}
 
         ;; Fold indicator bullet

@@ -42,7 +42,4 @@
  {:op :place :id "note-4" :under "notes" :at :last}
  {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
  {:op :place :id "note-4-1" :under "note-4" :at :last}
-
- ;; Set initial current page to Projects
- {:op :update-node :id "session/ui" :props {:current-page "projects"}}
 ]
