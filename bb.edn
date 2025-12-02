@@ -142,19 +142,14 @@
                     (shell cmd-str))}
 
    ;; Cache & index management
-  clean {:doc "Clear all caches and semantic search index"
+  clean {:doc "Clear all caches"
          :task (do
                  (println "Clearing caches...")
                  (fs/delete-tree ".shadow-cljs")
                  (fs/delete-tree ".cpcache")
                  (when (fs/exists? "node_modules/.cache")
                    (fs/delete-tree "node_modules/.cache"))
-                 (println "Cleaning semantic search index...")
-                 (shell "ck --clean-orphans .")
-                 (doseq [dir (fs/glob "." "**/.ck")]
-                   (println (str "  Removing " dir))
-                   (fs/delete-tree dir))
-                 (println "✓ Caches and index cleaned"))}
+                 (println "✓ Caches cleaned"))}
 
   index {:doc "Rebuild ck (semantic search) embeddings index"
          :task (do
