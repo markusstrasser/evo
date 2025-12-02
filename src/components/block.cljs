@@ -124,10 +124,8 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToStart sel)))
-      ;; LOGSEQ PARITY (§3): Exit edit mode AND select block, then extend
-      (on-intent {:type :exit-edit-and-select})
-      ;; Now extend from the (now-selected) block
-      (on-intent {:type :selection :mode :extend-prev}))))
+      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend upward atomically
+      (on-intent {:type :exit-edit-and-extend :direction :prev}))))
 
 (defn handle-shift-arrow-down
   "Handle Shift+Down: text selection within block OR block selection at boundary.
@@ -144,10 +142,8 @@
       (when-let [sel (.getSelection js/window)]
         (when (and sel (pos? (.-rangeCount sel)))
           (.collapseToEnd sel)))
-      ;; LOGSEQ PARITY (§3): Exit edit mode AND select block, then extend
-      (on-intent {:type :exit-edit-and-select})
-      ;; Now extend from the (now-selected) block
-      (on-intent {:type :selection :mode :extend-next}))))
+      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend downward atomically
+      (on-intent {:type :exit-edit-and-extend :direction :next}))))
 
 (defn handle-arrow-left
   "Handle left arrow key.
@@ -464,7 +460,7 @@
         text (get-in db [:nodes block-id :props :text] "")
 
         container-props
-        {:key block-id
+        {:replicant/key block-id
          :data-block-id block-id
          :style {:margin-left (str (* depth 20) "px")
                  :padding "4px 8px"
