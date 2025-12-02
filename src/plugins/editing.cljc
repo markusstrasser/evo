@@ -6,6 +6,7 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.history :as H]
+            [kernel.query :as q]
             [utils.text :as text]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
@@ -45,6 +46,28 @@
                                          :selection {:nodes #{editing-block-id}
                                                      :focus editing-block-id
                                                      :anchor editing-block-id}}}))})
+
+(intent/register-intent! :exit-edit-and-extend
+                         {:doc "Exit edit mode and extend selection (Shift+Arrow boundary behavior).
+                                Atomically: exit edit, select block, extend in direction."
+                          :spec [:map
+                                 [:type [:= :exit-edit-and-extend]]
+                                 [:direction [:enum :next :prev]]]
+                          :handler (fn [db session {:keys [direction]}]
+                                     (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
+                                       (let [nav-fn (case direction
+                                                      :next q/next-block-dom-order
+                                                      :prev q/prev-block-dom-order)
+                                             next-block (nav-fn db session editing-block-id)
+                                             extended-selection (when next-block
+                                                                  {:nodes #{editing-block-id next-block}
+                                                                   :focus next-block
+                                                                   :anchor editing-block-id
+                                                                   :direction direction})]
+                                         (when extended-selection
+                                           {:session-updates
+                                            {:ui {:editing-block-id nil :cursor-position nil}
+                                             :selection extended-selection}}))))})
 
 (intent/register-intent! :enter-edit-selected
                          {:doc "Enter edit mode in selected block at end of text (Logseq parity).
