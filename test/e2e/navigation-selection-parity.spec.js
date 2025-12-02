@@ -14,6 +14,24 @@ let navIds;
  * - §4.4: Shift+Arrow anchoring in edit mode
  */
 
+// Helper to find exact block by text content (not parent blocks)
+async function findBlockByText(page, text) {
+  const blockId = await page.evaluate((searchText) => {
+    const blocks = Array.from(document.querySelectorAll('[data-block-id]'));
+    const target = blocks.find(el => {
+      const contentEl = el.querySelector('.content-view');
+      return contentEl?.textContent?.trim() === searchText;
+    });
+    return target?.getAttribute('data-block-id');
+  }, text);
+
+  if (!blockId) {
+    throw new Error(`Block with exact text "${text}" not found`);
+  }
+
+  return page.locator(`div.block[data-block-id="${blockId}"]`);
+}
+
 // Helper to enter edit mode on a specific block
 async function enterEditModeOn(page, block) {
   await block.click();
@@ -100,11 +118,18 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(currentBlockId).toBe(navIds.last);
 
       // Verify we didn't jump to Tasks page
-      const stillOnProjectsPage = await page.evaluate(() => {
-        const db = window.DEBUG?.state?.();
-        return db?.nodes?.['session/ui']?.props?.['current-page'] === 'projects';
+      const currentPageAfter = await page.evaluate(() => {
+        if (window.DEBUG && typeof window.DEBUG.currentPage === 'function') {
+          return window.DEBUG.currentPage();
+        }
+        // Fallback: check DOM for active page indicator (strip emoji)
+        const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
+        const text = activePageItem?.textContent?.trim()?.toLowerCase() || '';
+        // Strip emoji (match only letters)
+        return text.match(/[a-z]+/)?.[0] || text;
       });
-      expect(stillOnProjectsPage).toBe(true);
+
+      expect(currentPageAfter).toBe('projects');
     });
 
     test('arrow navigation up from first block stays at page boundary', async ({ page }) => {
@@ -290,8 +315,8 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
   test.describe('§4.4: Shift+Arrow Anchoring in Edit Mode', () => {
     test('Shift+ArrowDown at boundary extends from current block (not page top)', async ({ page }) => {
-      // Double-click to enter edit mode
-      const block = page.locator('div.block').filter({ hasText: 'Using event sourcing architecture' }).first();
+      // Enter edit mode on the exact block (not parent)
+      const block = await findBlockByText(page, 'Using event sourcing architecture');
       await enterEditModeOn(page, block);
 
       // Ensure we're at end
@@ -300,6 +325,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       // Position at last row (for single-line blocks, this is automatic)
       // Press Shift+Down to extend selection
       await pressKeyCombo(page, 'ArrowDown', ['Shift']);
+
+      // Wait for render to complete (requestAnimationFrame)
+      await page.waitForTimeout(100);
 
       // Check selection includes current block + next
       const selection = await page.evaluate(() => {
@@ -315,8 +343,8 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     });
 
     test('Shift+ArrowUp at boundary extends from current block (not page bottom)', async ({ page }) => {
-      // Double-click to enter edit mode
-      const block = page.locator('div.block').filter({ hasText: 'Using event sourcing architecture' }).first();
+      // Enter edit mode on the exact block (not parent)
+      const block = await findBlockByText(page, 'Using event sourcing architecture');
       await enterEditModeOn(page, block);
 
       // Position at start (first row)
@@ -324,6 +352,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Press Shift+Up to extend selection upward
       await pressKeyCombo(page, 'ArrowUp', ['Shift']);
+
+      // Wait for render to complete (requestAnimationFrame)
+      await page.waitForTimeout(100);
 
       // Check selection includes current block + previous
       const selection = await page.evaluate(() => {
