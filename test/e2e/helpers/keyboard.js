@@ -1,11 +1,15 @@
 /**
  * Keyboard Event Helpers for E2E Testing
  *
- * IMPORTANT: Playwright's `page.keyboard.press()` API does NOT properly trigger
- * keyboard event handlers on contenteditable elements in this application.
+ * IMPORTANT: Always use these helpers for keyboard interactions with contenteditable elements.
  *
- * Always use these helpers instead of `page.keyboard.press()` when testing
- * keyboard interactions with contenteditable blocks.
+ * These helpers wrap Playwright's keyboard API with:
+ * - Contenteditable focus verification
+ * - Correct modifier key syntax ('+' notation instead of modifiers array)
+ * - Better error messages
+ *
+ * CRITICAL: Playwright's `page.keyboard.press(key, { modifiers: [...] })` does NOT work!
+ * The modifiers option is silently ignored. You MUST use '+' notation: 'Shift+ArrowDown'
  *
  * For non-contenteditable elements (modals, buttons, etc.), `page.keyboard.press()`
  * works fine and can be used directly.
@@ -54,9 +58,9 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
     altKey = false
   } = options;
 
-  await page.evaluate(({ key, shiftKey, ctrlKey, metaKey, altKey }) => {
+  // Verify contenteditable is focused
+  await page.evaluate(() => {
     const elem = document.activeElement;
-
     if (!elem || !elem.getAttribute('contenteditable')) {
       throw new Error(
         `No contenteditable element is focused. ` +
@@ -64,39 +68,24 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
         `Tip: Use page.keyboard.press() for non-contenteditable elements.`
       );
     }
+  });
 
-    // Map key names to key codes (for legacy compatibility)
-    const keyCodeMap = {
-      'ArrowLeft': 37,
-      'ArrowUp': 38,
-      'ArrowRight': 39,
-      'ArrowDown': 40,
-      'Home': 36,
-      'End': 35,
-      'Enter': 13,
-      'Escape': 27,
-      'Backspace': 8,
-      'Delete': 46,
-      'Tab': 9
-    };
+  // Use Playwright's native keyboard API which generates real browser events
+  // that work with Replicant's event system (unlike synthetic KeyboardEvent)
 
-    const keyCode = keyCodeMap[key] || key.charCodeAt(0);
+  // Build key combination string (e.g., "Shift+ArrowDown")
+  // Playwright's .press() uses '+' notation for modifier combinations
+  const modifierParts = [];
+  if (shiftKey) modifierParts.push('Shift');
+  if (ctrlKey) modifierParts.push('Control');
+  if (metaKey) modifierParts.push('Meta');
+  if (altKey) modifierParts.push('Alt');
 
-    const event = new KeyboardEvent('keydown', {
-      key,
-      code: key,
-      keyCode,
-      which: keyCode,
-      shiftKey,
-      ctrlKey,
-      metaKey,
-      altKey,
-      bubbles: true,
-      cancelable: true
-    });
+  const keyCombo = modifierParts.length > 0
+    ? `${modifierParts.join('+')}+${key}`
+    : key;
 
-    elem.dispatchEvent(event);
-  }, { key, shiftKey, ctrlKey, metaKey, altKey });
+  await page.keyboard.press(keyCombo);
 }
 
 /**
