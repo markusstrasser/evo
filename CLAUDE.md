@@ -278,6 +278,19 @@ This guarantees one dispatch per event and keeps DOM-only facts close to the com
 
 **Session state** lives in a separate atom (see `shell/session.cljs`). Query via `kernel.query`.
 
+**CRITICAL: Query function signatures vary!** Not all query functions take a session parameter:
+```clojure
+;; ❌ WRONG: Passing session to function that doesn't expect it
+(let [next-block (q/next-block-dom-order db session block-id)]  ; WRONG!
+  ...)
+
+;; ✅ CORRECT: Check signature first
+(let [next-block (q/next-block-dom-order db block-id)]  ; Only [db current-id]
+  ...)
+```
+
+Always check `src/kernel/query.cljc` for the actual signature. ClojureScript won't error on wrong arity - it will silently use wrong values as parameters, causing `null` returns.
+
 ### Keyboard & Selection
 - Use the Nexus dispatcher for **all** keyboard actions. Do not add new handlers directly to `handle-global-keydown` or components without routing through Nexus.
 - Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
@@ -430,16 +443,26 @@ bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 
 **CRITICAL: Keyboard Events on `contenteditable` Elements**
 
-Playwright's `page.keyboard.press()` does **NOT** reliably trigger keyboard event handlers on `contenteditable` elements. Always use the `pressKeyOnContentEditable()` helper from `test/e2e/helpers/keyboard.js`:
+Playwright's keyboard API **DOES** work on contenteditable, but you must use the keyboard helpers and proper syntax:
 
 ```javascript
-// ❌ WRONG: May silently fail to trigger handlers
-await page.keyboard.press('ArrowLeft');
+import { pressKeyOnContentEditable, pressKeyCombo } from './helpers/keyboard.js';
 
-// ✅ CORRECT: Guaranteed to dispatch events properly
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
-await pressKeyOnContentEditable(page, 'ArrowLeft');
+// ✅ CORRECT: Use keyboard helpers
+await pressKeyOnContentEditable(page, 'Enter');
+await pressKeyCombo(page, 'ArrowDown', ['Shift']);  // Shift+ArrowDown
+
+// ❌ WRONG: Playwright's modifiers option doesn't work!
+await page.keyboard.press('ArrowDown', { modifiers: ['Shift'] });  // Modifiers ignored!
+
+// ✅ WORKS: Playwright's '+' notation (but prefer helper for focus checks)
+await page.keyboard.press('Shift+ArrowDown');
 ```
+
+**Why keyboard helpers?**
+- Verify contenteditable is focused before pressing keys
+- Use Playwright's `'+'` notation internally (which works, unlike `modifiers` array)
+- Better error messages if element isn't focused
 
 Use `bb lint:e2e-keyboard` to detect problematic keyboard usage in tests.
 
