@@ -327,7 +327,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       await pressKeyCombo(page, 'ArrowDown', ['Shift']);
 
       // Wait for render to complete (requestAnimationFrame)
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(200);
 
       // Check selection includes current block + next
       const selection = await page.evaluate(() => {
