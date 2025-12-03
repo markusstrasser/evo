@@ -58,7 +58,7 @@
                                        (let [nav-fn (case direction
                                                       :next q/next-block-dom-order
                                                       :prev q/prev-block-dom-order)
-                                             next-block (nav-fn db session editing-block-id)
+                                             next-block (nav-fn db editing-block-id)
                                              extended-selection (when next-block
                                                                   {:nodes #{editing-block-id next-block}
                                                                    :focus next-block
