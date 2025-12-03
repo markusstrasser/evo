@@ -38,13 +38,12 @@ test('example test', async ({ page }) => {
 
 ## Key Principles
 
-### 1. Use Intent Dispatch for Actions
+### 1. Use Intent Dispatch for Actions (Except Keyboard)
 
-Playwright's `page.keyboard.press()` doesn't reliably trigger event handlers on `contenteditable` elements in Replicant apps.
+For most actions, use intent helpers instead of DOM clicks:
 
 ```javascript
 // ❌ UNRELIABLE - may silently fail
-await page.keyboard.press('Enter');
 await page.click('[data-block-id="123"]');
 
 // ✅ RELIABLE - uses TEST_HELPERS API
@@ -52,6 +51,31 @@ await enterEditMode(page, blockId);
 await selectBlock(page, blockId);
 await exitEditMode(page);
 ```
+
+**Exception: Keyboard events on contenteditable WORK with proper helpers**
+
+Playwright's native keyboard API **DOES** work, but you must:
+1. Use the keyboard helpers from `test/e2e/helpers/keyboard.js`
+2. Use `'+'` notation for modifiers: `'Shift+ArrowDown'`, not `{ modifiers: ['Shift'] }`
+
+```javascript
+import { pressKeyOnContentEditable, pressKeyCombo } from './helpers/keyboard.js';
+
+// ✅ WORKS - Use keyboard helpers for contenteditable
+await pressKeyOnContentEditable(page, 'Enter');
+await pressKeyCombo(page, 'ArrowDown', ['Shift']);  // Shift+ArrowDown
+
+// ❌ WRONG - Don't use raw page.keyboard.press() with modifiers object
+await page.keyboard.press('ArrowDown', { modifiers: ['Shift'] });  // Modifiers ignored!
+
+// ✅ CORRECT - Playwright's '+' notation works
+await page.keyboard.press('Shift+ArrowDown');  // OK but prefer helper for contenteditable
+```
+
+**Why keyboard helpers?**
+- They verify contenteditable is focused before pressing keys
+- They use Playwright's `'+'` notation which actually works (not `modifiers` array)
+- Better error messages if element isn't focused
 
 ### 2. Wait for State, Not Time
 
