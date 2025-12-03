@@ -56,6 +56,31 @@ DB only contains persistent document graph.
    :session-updates {:ui {...}}})      ; Session changes
 ```
 
+### Query Functions Have Different Signatures
+
+❌ **Wrong (passing session when not expected):**
+```clojure
+;; In an intent handler with db and session params
+(let [next-block (q/next-block-dom-order db session block-id)]  ; WRONG!
+  ...)
+```
+
+✅ **Correct (check function signature first):**
+```clojure
+;; q/next-block-dom-order takes [db current-id] - NO session param!
+(let [next-block (q/next-block-dom-order db block-id)]
+  ...)
+```
+
+**Why:** Not all query functions take a session parameter. Some only need the db:
+- `q/next-block-dom-order [db current-id]` - no session
+- `q/prev-block-dom-order [db current-id]` - no session
+- `q/editing-block-id [session]` - session only, no db
+
+**Fix:** Always check the function signature in `src/kernel/query.cljc` before calling.
+If you pass the wrong number of arguments, ClojureScript will silently use the wrong value
+as a parameter, leading to `null` returns instead of errors.
+
 ---
 
 ## Naming & Shadowing
