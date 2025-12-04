@@ -2,7 +2,7 @@
 
 This document ties the canonical Logseq behavior spec (`docs/LOGSEQ_SPEC.md`) to Evo's implementation reality. Read the canonical spec first for user-facing truth, then use this overlay to understand how Evo mirrors those behaviors, what still gaps out, and which test layers guard each promise.
 
-_Last sync:_ 2025‑12‑04 (Right→first child navigation now working).
+_Last sync:_ 2025‑12‑04 (Navigation scope and Right→first child now working).
 
 ## 1. Reference Stack
 - **Ground truth:** `docs/LOGSEQ_SPEC.md`
@@ -26,7 +26,6 @@ _Last sync:_ 2025‑12‑04 (Right→first child navigation now working).
 | Gap | What Logseq Does | What Evo Does | Priority |
 |-----|------------------|---------------|----------|
 | **Shift+Click with folded blocks** | Only selects visible blocks, skips folded descendants | Selects folded descendants (uses `doc-range` without visibility check) | **MEDIUM** - Breaks selection boundary expectations |
-| **Navigation scope** | Arrow keys respect current page boundaries (can't navigate from Projects page into Tasks page) | Navigates across all pages (treats entire doc as scope) | **MEDIUM** - Breaks page isolation |
 
 ### 3.2 What Works (No Gap)
 
@@ -37,6 +36,7 @@ _Last sync:_ 2025‑12‑04 (Right→first child navigation now working).
 ✅ **Shift+Arrow in multi-line blocks** - Text selection line-by-line when NOT at boundary; block selection only at first/last row
 ✅ **Left at block start → parent** - Left arrow at start navigates to parent block at end position
 ✅ **Right at block end → first child** - Right arrow at end navigates to first child at start position (DOM order)
+✅ **Navigation scope (page boundaries)** - Arrow navigation respects current page, won't jump to adjacent pages
 
 ### 3.3 Implementation Focus Areas
 
@@ -45,11 +45,6 @@ _Last sync:_ 2025‑12‑04 (Right→first child navigation now working).
 1. **Visibility-aware selection** (`plugins.selection/calc-extend-props`)
    - Shift+Click should filter out folded blocks
    - Replace `doc-range` with visibility check
-
-2. **Page-scoped navigation** (`kernel.query/visible-blocks-in-dom-order`)
-   - Respect current page as implicit boundary
-   - Arrow navigation should stop at page edges
-   - **Note**: Initial attempt changed helper arity, broke 34 tests. Needs careful approach.
 
 ## 4. Triad & Testing Workflow
 
