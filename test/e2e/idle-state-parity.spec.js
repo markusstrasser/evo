@@ -26,7 +26,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
    * - Press Escape to exit any editing
    * - Click background to clear selection
    * - Verify no contenteditable is focused
-   * - Verify no selection state in DB
+   * - Verify no selection state in session
    */
   async function ensureIdleState(page) {
     // Press Escape first to exit any editing
@@ -37,24 +37,20 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     await page.mouse.click(10, 100);
     await page.waitForTimeout(50);
 
-    // Verify idle state via DB inspection
+    // Verify idle state via TEST_HELPERS.getSession() (returns plain JS)
     const state = await page.evaluate(() => {
-      const win = window;
-      // Access the DB atom from shell
-      const db = win['shadow$cljs_devtools$client$browser'] ?
-        eval('shell.blocks_ui.!db') : null;
+      const sess = window.TEST_HELPERS?.getSession?.();
+      if (!sess) return { idle: false };
 
-      if (!db || !db.deref) return { idle: false };
-
-      const dbVal = db.deref();
-      const editingId = dbVal.nodes?.['session/ui']?.props?.['editing-block-id'];
-      const selectionNodes = dbVal.nodes?.['session/selection']?.props?.nodes || new Set();
-      const focus = dbVal.nodes?.['session/selection']?.props?.focus;
+      const editingId = sess.ui?.['editing-block-id'];
+      // getSession() converts ClojureScript set to JS array
+      const selectionNodes = sess.selection?.nodes || [];
+      const focus = sess.selection?.focus;
 
       return {
         editing: !!editingId,
-        hasSelection: selectionNodes.size > 0 || !!focus,
-        idle: !editingId && selectionNodes.size === 0 && !focus
+        hasSelection: selectionNodes.length > 0 || !!focus,
+        idle: !editingId && selectionNodes.length === 0 && !focus
       };
     });
 
@@ -84,12 +80,8 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should still be in idle state
       const stillIdle = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return false;
-        const dbVal = db.deref();
-        const editingId = dbVal.nodes?.['session/ui']?.props?.['editing-block-id'];
-        return !editingId;
+        const sess = window.TEST_HELPERS?.getSession?.();
+        return sess && !sess.ui?.['editing-block-id'];
       });
       expect(stillIdle).toBe(true);
     });
@@ -123,20 +115,14 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Get DB snapshot before Tab
       const beforeDB = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return null;
-        return JSON.stringify(db.deref());
+        return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
       await page.keyboard.press('Tab');
       await page.waitForTimeout(100);
 
       const afterDB = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return null;
-        return JSON.stringify(db.deref());
+        return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
       // DB should be unchanged (no indenting happened)
@@ -147,20 +133,14 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeDB = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return null;
-        return JSON.stringify(db.deref());
+        return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
       await page.keyboard.press('Shift+Tab');
       await page.waitForTimeout(100);
 
       const afterDB = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return null;
-        return JSON.stringify(db.deref());
+        return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
       // DB should be unchanged
@@ -199,12 +179,10 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should NOT select any blocks
       const hasSelection = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return false;
-        const dbVal = db.deref();
-        const selectionNodes = dbVal.nodes?.['session/selection']?.props?.nodes || new Set();
-        return selectionNodes.size > 0;
+        const sess = window.TEST_HELPERS?.getSession?.();
+        if (!sess) return false;
+        const nodes = sess.selection?.nodes || [];
+        return nodes.length > 0;
       });
       expect(hasSelection).toBe(false);
     });
@@ -217,12 +195,10 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should NOT select any blocks
       const hasSelection = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return false;
-        const dbVal = db.deref();
-        const selectionNodes = dbVal.nodes?.['session/selection']?.props?.nodes || new Set();
-        return selectionNodes.size > 0;
+        const sess = window.TEST_HELPERS?.getSession?.();
+        if (!sess) return false;
+        const nodes = sess.selection?.nodes || [];
+        return nodes.length > 0;
       });
       expect(hasSelection).toBe(false);
     });
@@ -237,13 +213,13 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should select exactly one block (the first one)
       const state = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return { selectedCount: 0, isFirst: false };
+        const sess = window.TEST_HELPERS?.getSession?.();
+        const db = window.TEST_HELPERS?.getDb?.();
+        if (!sess || !db) return { selectedCount: 0, isFirst: false };
 
-        const dbVal = db.deref();
-        const focus = dbVal.nodes?.['session/selection']?.props?.focus;
-        const allBlocks = dbVal['children-by-parent']?.[dbVal.nodes?.['session/ui']?.props?.['current-page']] || [];
+        const focus = sess.selection?.focus;
+        const currentPage = sess.ui?.['current-page'];
+        const allBlocks = db['children-by-parent']?.[currentPage] || [];
 
         return {
           selectedCount: focus ? 1 : 0,
@@ -263,13 +239,13 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should select exactly one block (the last one)
       const state = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return { selectedCount: 0, isLast: false };
+        const sess = window.TEST_HELPERS?.getSession?.();
+        const db = window.TEST_HELPERS?.getDb?.();
+        if (!sess || !db) return { selectedCount: 0, isLast: false };
 
-        const dbVal = db.deref();
-        const focus = dbVal.nodes?.['session/selection']?.props?.focus;
-        const allBlocks = dbVal['children-by-parent']?.[dbVal.nodes?.['session/ui']?.props?.['current-page']] || [];
+        const focus = sess.selection?.focus;
+        const currentPage = sess.ui?.['current-page'];
+        const allBlocks = db['children-by-parent']?.[currentPage] || [];
 
         return {
           selectedCount: focus ? 1 : 0,
@@ -292,11 +268,8 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should NOT enter edit mode (nothing was focused)
       const isEditing = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return false;
-        const dbVal = db.deref();
-        return !!dbVal.nodes?.['session/ui']?.props?.['editing-block-id'];
+        const sess = window.TEST_HELPERS?.getSession?.();
+        return sess && !!sess.ui?.['editing-block-id'];
       });
 
       expect(isEditing).toBe(false);
@@ -310,13 +283,11 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Verify we're in view mode (focused but not editing)
       const beforeState = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return { editing: false, hasFocus: false };
-        const dbVal = db.deref();
+        const sess = window.TEST_HELPERS?.getSession?.();
+        if (!sess) return { editing: false, hasFocus: false };
         return {
-          editing: !!dbVal.nodes?.['session/ui']?.props?.['editing-block-id'],
-          hasFocus: !!dbVal.nodes?.['session/selection']?.props?.focus
+          editing: !!sess.ui?.['editing-block-id'],
+          hasFocus: !!sess.selection?.focus
         };
       });
 
@@ -329,12 +300,11 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
       // Should now be editing
       const afterState = await page.evaluate(() => {
-        const db = window['shadow$cljs_devtools$client$browser'] ?
-          eval('shell.blocks_ui.!db') : null;
-        if (!db || !db.deref) return { editing: false, text: '' };
-        const dbVal = db.deref();
-        const editingId = dbVal.nodes?.['session/ui']?.props?.['editing-block-id'];
-        const text = editingId ? (dbVal.nodes?.[editingId]?.props?.text || '') : '';
+        const sess = window.TEST_HELPERS?.getSession?.();
+        const db = window.TEST_HELPERS?.getDb?.();
+        if (!sess) return { editing: false, text: '' };
+        const editingId = sess.ui?.['editing-block-id'];
+        const text = editingId && db ? (db.nodes?.[editingId]?.props?.text || '') : '';
         return {
           editing: !!editingId,
           text

@@ -14,9 +14,11 @@ const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
 
 test.describe('Block Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for clean state
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
-    await page.waitForFunction(() => typeof window.DEBUG?.state === 'function');
   });
 
   test('arrow down preserves cursor column', async ({ page }) => {

@@ -18,11 +18,10 @@ import { selectPage, enterEditModeAndClick } from './helpers/edit-mode.js';
 test.describe('Text Selection Utilities', () => {
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for empty database with clean state
+    await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
-    await selectPage(page); // Close overlays
-
-    // Wait for app to initialize
+    // Don't call selectPage() - test mode auto-selects test-page
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

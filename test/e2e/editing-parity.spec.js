@@ -18,7 +18,10 @@ import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Shift+Arrow Block Selection', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for clean state
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
 
@@ -110,11 +113,18 @@ test.describe('Shift+Arrow Block Selection', () => {
     expect(hasTextSelection).toBe(true);
     expect(selectedText.length).toBeGreaterThan(0);
 
-    // Verify NO block-level selection occurred
-    const blockSelectionCount = await page.evaluate(() => {
-      return document.querySelectorAll('.block[style*="background"]').length;
+    // Verify NO block-level selection occurred (check session state, not CSS)
+    // Note: Editing block may have focus styling, so we check selection.nodes is empty
+    const selectionState = await page.evaluate(() => {
+      const session = window.TEST_HELPERS?.getSession?.();
+      return {
+        selectionNodes: session?.selection?.nodes || [],
+        selectionFocus: session?.selection?.focus
+      };
     });
-    expect(blockSelectionCount).toBe(0); // Should NOT have block selection
+    // Block selection should be empty (only text selection within the editing block)
+    expect(selectionState.selectionNodes.length).toBe(0);
+    expect(selectionState.selectionFocus).toBeFalsy();
   });
 
   test('Escape clears text selection', async ({ page }) => {
@@ -291,7 +301,10 @@ test.describe.skip('Kill Commands', () => {
 
 test.describe('Selection Operations', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for clean state
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
 
@@ -341,7 +354,10 @@ test.describe('Selection Operations', () => {
 
 test.describe('Undo/Redo', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for clean state
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
 
@@ -398,7 +414,10 @@ test.describe('Undo/Redo', () => {
 
 test.describe('Ctrl+P/N Navigation Aliases', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
+    // Use test mode for clean state
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
 
