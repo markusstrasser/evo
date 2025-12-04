@@ -67,7 +67,8 @@ export async function enterEditMode(page, blockId, cursorAt = 'end') {
   }, { id: blockId, cursor: cursorAt });
 
   // Wait for the contenteditable to appear (lifecycle hook handles focus)
-  await page.waitForSelector(`[data-block-id="${blockId}"][contenteditable="true"]`, { timeout: 5000 });
+  // Note: data-block-id is on parent div.block, not on the contenteditable span
+  await page.waitForSelector(`div.block[data-block-id="${blockId}"] [contenteditable="true"]`, { timeout: 5000 });
   await page.waitForTimeout(50);
 }
 

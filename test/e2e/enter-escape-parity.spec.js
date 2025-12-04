@@ -212,7 +212,7 @@ test.describe('Escape Key - Editing Behavior', () => {
     await enterEditMode(page, blockId);
 
     // Ensure contenteditable is focused
-    const editableInput = page.locator(`[data-block-id="${blockId}"][contenteditable="true"]`);
+    const editableInput = page.locator(`div.block[data-block-id="${blockId}"] [contenteditable="true"]`);
     await expect(editableInput).toBeFocused();
 
     // Set new text content
