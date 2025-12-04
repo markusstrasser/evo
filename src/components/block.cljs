@@ -73,16 +73,6 @@
   (when-let [range (text-sel/get-current-range)]
     (not (.-collapsed range))))
 
-(defn- ensure-block-selected!
-  "Ensure the given block is the active selection anchor/focus before extending.
-
-   When exiting edit mode via Shift+Arrow at a boundary, selection state is empty.
-   We seed it with the editing block so :selection :mode :extend-*
-   has the same anchor Logseq uses."
-  [session block-id on-intent]
-  (when-not (q/selected? session block-id)
-    (on-intent {:type :selection :mode :replace :ids block-id})))
-
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-arrow-up [e db block-id on-intent]
@@ -522,9 +512,6 @@
   [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent]
     :or {is-focused false is-selected false is-editing false is-folded false}}]
   (let [children (get-in db [:children-by-parent block-id] [])
-        selected? is-selected
-        focus? is-focused
-        editing? is-editing
         text (get-in db [:nodes block-id :props :text] "")
 
         container-props
@@ -534,10 +521,10 @@
                  :padding "4px 8px"
                  :cursor "text"
                  :background-color (cond
-                                     focus? "#b3d9ff"
-                                     selected? "#e6f2ff"
+                                     is-focused "#b3d9ff"
+                                     is-selected "#e6f2ff"
                                      :else "transparent")
-                 :border-left (if selected? "3px solid #0066cc" "3px solid #ccc")
+                 :border-left (if is-selected "3px solid #0066cc" "3px solid #ccc")
                  :margin-bottom "2px"}
          :on {:click (fn [e]
                        (.stopPropagation e)
@@ -580,7 +567,7 @@
         view-key (str block-id "-view")
 
         content
-        (if editing?
+        (if is-editing
           ;; === EDIT MODE: Uncontrolled ===
           [:span.content-edit
            {:contentEditable true
@@ -745,7 +732,7 @@
                                 (on-intent {:type :selection :mode :extend :ids block-id})))
 
                             ;; Second click on focused block = enter edit mode
-                            focus?
+                            is-focused
                             (on-intent {:type :enter-edit :block-id block-id})
 
                             ;; First click = select block
