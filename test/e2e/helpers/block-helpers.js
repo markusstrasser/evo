@@ -242,3 +242,25 @@ export async function updateBlockText(page, blockId, text) {
 export async function waitForBlocks(page, timeout = 5000) {
   await page.waitForSelector('[data-block-id]', { timeout });
 }
+
+/**
+ * Get all blocks on page with their text content.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<Array<{index: number, id: string, text: string, isFocused: boolean}>>}
+ */
+export async function getAllBlocks(page) {
+  return await page.evaluate(() => {
+    const blocks = document.querySelectorAll('[data-block-id]');
+    return Array.from(blocks).map((block, idx) => {
+      const editable = block.querySelector('[contenteditable="true"]') ||
+                       (block.getAttribute('contenteditable') === 'true' ? block : null);
+      return {
+        index: idx,
+        id: block.getAttribute('data-block-id'),
+        text: editable?.textContent || block.textContent?.replace(/^•\s*/, ''),
+        isFocused: editable === document.activeElement || block.contains(document.activeElement)
+      };
+    });
+  });
+}

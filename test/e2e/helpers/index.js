@@ -30,7 +30,8 @@ export {
   countBlocks,
   createBlock,
   updateBlockText,
-  waitForBlocks
+  waitForBlocks,
+  getAllBlocks
 } from './block-helpers.js';
 
 export { pressKeyOnContentEditable } from './keyboard.js';
