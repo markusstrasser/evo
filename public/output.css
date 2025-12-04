@@ -178,9 +178,6 @@
   .static {
     position: static;
   }
-  .isolate {
-    isolation: isolate;
-  }
   .container {
     width: 100%;
     @media (width >= 40rem) {
@@ -202,9 +199,6 @@
   .block {
     display: block;
   }
-  .contents {
-    display: contents;
-  }
   .flex {
     display: flex;
   }
@@ -225,9 +219,6 @@
   }
   .table {
     display: table;
-  }
-  .grow {
-    flex-grow: 1;
   }
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
