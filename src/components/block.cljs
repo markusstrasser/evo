@@ -155,8 +155,25 @@
   [e db block-id on-intent]
   (let [target (.-target e)
         selection (.getSelection js/window)
-        at-start? (and (= (.-anchorOffset selection) 0)
-                       (= (.-anchorNode selection) (.-firstChild target)))]
+        anchor-offset (.-anchorOffset selection)
+        anchor-node (.-anchorNode selection)
+        first-child (.-firstChild target)
+        ;; More robust at-start? check:
+        ;; We're at start if offset is 0 AND we're in the first text position
+        ;; This handles cases where anchorNode might not === firstChild
+        range-text (when (and anchor-node (zero? anchor-offset))
+                     (let [range (.createRange js/document)]
+                       (.setStart range target 0)
+                       (.setEnd range anchor-node anchor-offset)
+                       (.toString range)))
+        at-start? (and (zero? anchor-offset)
+                       (or
+                        ;; Case 1: anchorNode is the contenteditable itself (empty block)
+                        (= anchor-node target)
+                        ;; Case 2: anchorNode is the first child
+                        (= anchor-node first-child)
+                        ;; Case 3: Check by seeing if there's any text content before our position
+                        (and range-text (zero? (count range-text)))))]
     (cond
       ;; Has selection - collapse to start
       (has-text-selection?)
@@ -204,11 +221,9 @@
       :else nil)))
 
 (defn handle-enter [e db block-id on-intent]
-  (.log js/console "handle-enter called!" (clj->js {:block-id block-id}))
   (.preventDefault e)
   (let [selection (.getSelection js/window)
         cursor-pos (.-anchorOffset selection)]
-    (.log js/console "Dispatching smart-split" (clj->js {:cursor-pos cursor-pos}))
     ;; Emit Nexus action instead of intent
     (on-intent [[:editing/smart-split {:block-id block-id
                                        :cursor-pos cursor-pos}]])))
@@ -476,13 +491,18 @@
                        (if (.-shiftKey e)
                          ;; LOGSEQ PARITY (FR-Pointer-01): Shift+Click selects visible range
                          ;; Calculate range from anchor to clicked block (respects folding/zoom/page)
-                         (let [session @shell.session/!session
-                               anchor (get-in session [:selection :anchor])
-                               ;; If no anchor, use current block as both anchor and end
-                               range-ids (if anchor
-                                           (q/visible-range db session anchor block-id)
-                                           #{block-id})]
-                           (on-intent {:type :selection :mode :extend :ids range-ids}))
+                         (let [sess @session/!session
+                               anchor (get-in sess [:selection :anchor])]
+                           (if anchor
+                             ;; Has anchor: select range, with clicked block as focus
+                             (let [range-set (q/visible-range db sess anchor block-id)
+                                   ;; Convert set to vector with clicked block last (becomes new focus)
+                                   ;; Remove clicked block, convert rest to vec, then append clicked block
+                                   other-blocks (vec (disj range-set block-id))
+                                   range-vec (conj other-blocks block-id)]
+                               (on-intent {:type :selection :mode :extend :ids range-vec}))
+                             ;; No anchor: just select this block
+                             (on-intent {:type :selection :mode :extend :ids block-id})))
                          (on-intent {:type :selection :mode :replace :ids block-id})))}}
 
         ;; Fold indicator bullet
@@ -515,7 +535,6 @@
             :style {:outline "none"
                     :min-width "1px"
                     :display "inline-block"}
-            :data-block-id block-id
             :replicant/key edit-key
 
             ;; On mount: Set text once, focus, position cursor
@@ -528,6 +547,11 @@
                                  (= initial-cursor :end) (count text)
                                  (= initial-cursor :max) (count text)
                                  :else (count text))]
+
+                ;; Mark that on-mount has fired (on-render runs BEFORE on-mount in Replicant!)
+                ;; This tells on-render it can now handle cursor-position for subsequent renders
+                (set! (.-dataset node) (clj->js {:mounted "true"}))
+
                 ;; Set text content (browser owns this from now on)
                 (set! (.-textContent node) text)
 
@@ -547,7 +571,11 @@
                   (.setStart range text-node safe-pos)
                   (.setEnd range text-node safe-pos)
                   (.removeAllRanges sel)
-                  (.addRange sel range))))
+                  (.addRange sel range))
+
+                ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
+                (when initial-cursor
+                  (session/swap-session! assoc-in [:ui :cursor-position] nil))))
 
             ;; On render: Maintain focus AND apply pending cursor position
             ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
@@ -559,29 +587,41 @@
                 (.focus node))
 
               ;; Apply pending cursor position from session (set by undo/redo)
-              (when-let [pending-cursor (session/cursor-position)]
-                (let [text-content (.-textContent node)
-                      text-length (count text-content)
-                      cursor-pos (cond
-                                   (number? pending-cursor) (min pending-cursor text-length)
-                                   (= pending-cursor :start) 0
-                                   (= pending-cursor :end) text-length
-                                   (= pending-cursor :max) text-length
-                                   :else nil)]
-                  (when (and cursor-pos (.-firstChild node))
-                    (let [text-node (.-firstChild node)
-                          range (.createRange js/document)
-                          sel (.getSelection js/window)
-                          safe-pos (min cursor-pos text-length)]
-                      (.setStart range text-node safe-pos)
-                      (.setEnd range text-node safe-pos)
-                      (.removeAllRanges sel)
-                      (.addRange sel range)))
-                  ;; Clear the pending cursor position to prevent reapplication
-                  (session/swap-session! assoc-in [:ui :cursor-position] nil))))
+              ;; IMPORTANT: Only handle cursor-position if:
+              ;; 1. The element was already mounted (on-render fires BEFORE on-mount in Replicant!)
+              ;; 2. This block is the current editing block
+              ;; For NEW elements, on-mount handles cursor positioning.
+              (let [mounted? (.-mounted (.-dataset node))]
+                (when (and mounted? (= block-id (session/editing-block-id)))
+                  (when-let [pending-cursor (session/cursor-position)]
+                    (let [text-content (.-textContent node)
+                          text-length (count text-content)
+                          cursor-pos (cond
+                                       (number? pending-cursor) (min pending-cursor text-length)
+                                       (= pending-cursor :start) 0
+                                       (= pending-cursor :end) text-length
+                                       (= pending-cursor :max) text-length
+                                       :else nil)]
+                      (when (and cursor-pos (.-firstChild node))
+                        (let [text-node (.-firstChild node)
+                              range (.createRange js/document)
+                              sel (.getSelection js/window)
+                              safe-pos (min cursor-pos text-length)]
+                          (.setStart range text-node safe-pos)
+                          (.setEnd range text-node safe-pos)
+                          (.removeAllRanges sel)
+                          (.addRange sel range)))
+                      ;; Clear the pending cursor position to prevent reapplication
+                      (session/swap-session! assoc-in [:ui :cursor-position] nil))))))
 
-            ;; Input handler: Update session directly (Phase 3: no intent dispatch)
-            :on {:input (fn [e]
+            ;; Event handlers for edit mode
+            :on {:click (fn [e]
+                          ;; IMPORTANT: Stop propagation to prevent container's selection handler
+                          ;; When clicking inside contenteditable, we just want cursor positioning
+                          (.stopPropagation e))
+
+                 ;; Input handler: Update session directly (Phase 3: no intent dispatch)
+                 :input (fn [e]
                           (let [target (.-target e)
                                 new-text (.-textContent target)]
                             ;; Phase 3: Update session directly (instant, no dispatch overhead)
@@ -626,15 +666,33 @@
            {:style {:min-width "1px"
                     :display "inline-block"
                     :cursor "text"}
-            :data-block-id block-id
             :replicant/key view-key
             :replicant/on-render (fn [{:replicant/keys [node]}]
                                    (set! (.-textContent node) (or text "")))
             :on {:click (fn [e]
                           (.stopPropagation e)
-                          ;; First click = select, second click (when focused) = enter edit mode
-                          (if focus?
+                          (cond
+                            ;; Shift+Click = extend selection (range from anchor to this block)
+                            (.-shiftKey e)
+                            (let [sess @session/!session
+                                  anchor (get-in sess [:selection :anchor])]
+                              (if anchor
+                                ;; Has anchor: select range, with clicked block as focus
+                                (let [range-set (q/visible-range db sess anchor block-id)
+                                      ;; Convert set to vector with clicked block last (becomes new focus)
+                                      ;; Remove clicked block, convert rest to vec, then append clicked block
+                                      other-blocks (vec (disj range-set block-id))
+                                      range-vec (conj other-blocks block-id)]
+                                  (on-intent {:type :selection :mode :extend :ids range-vec}))
+                                ;; No anchor: just select this block
+                                (on-intent {:type :selection :mode :extend :ids block-id})))
+
+                            ;; Second click on focused block = enter edit mode
+                            focus?
                             (on-intent {:type :enter-edit :block-id block-id})
+
+                            ;; First click = select block
+                            :else
                             (on-intent {:type :selection :mode :replace :ids block-id})))}}])
 
         ;; Session state for children (computed once per render)
