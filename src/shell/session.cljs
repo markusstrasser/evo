@@ -43,7 +43,8 @@
                 :current-page nil
                 :editing-block-id nil
                 :cursor-position nil
-                :suppress-blur-exit false}
+                :suppress-blur-exit false
+                :doc-mode? false}  ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
     :sidebar   {:right []}}))
 
 ;; ── Public API ────────────────────────────────────────────────────────────────
@@ -79,7 +80,8 @@
                        :zoom-root nil
                        :current-page nil
                        :editing-block-id nil
-                       :cursor-position nil}
+                       :cursor-position nil
+                       :doc-mode? false}
            :sidebar   {:right []}}))
 
 ;; ── Query Helpers (Session equivalents of kernel.query) ──────────────────────
@@ -144,6 +146,13 @@
    re-renders and the contenteditable temporarily loses focus."
   []
   (get-in @!session [:ui :suppress-blur-exit]))
+
+(defn doc-mode?
+  "Check if doc-mode is active (Enter/Shift+Enter swapped).
+
+   LOGSEQ PARITY: In doc-mode, Enter inserts newline and Shift+Enter creates new block."
+  []
+  (get-in @!session [:ui :doc-mode?]))
 
 (defn suppress-blur-exit!
   "Set flag to prevent blur from exiting edit mode during structural ops.
