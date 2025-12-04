@@ -13,7 +13,7 @@
 
 import { test, expect } from '@playwright/test';
 import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
-import { getAllBlocks } from './helpers/blocks.js';
+import { getAllBlocks } from './helpers/index.js';
 import { enterEditModeAndClick } from './helpers/edit-mode.js';
 
 test.describe('Shift+Arrow Block Selection', () => {
