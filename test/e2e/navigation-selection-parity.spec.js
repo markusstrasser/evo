@@ -86,13 +86,14 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Verify we're on the Projects page
       const currentPage = await page.evaluate(() => {
-        if (!window.DEBUG || typeof window.DEBUG.state !== 'function') {
-          // Fallback: check DOM for active page indicator
-          const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
-          return activePageItem?.textContent?.trim();
+        // Use TEST_HELPERS if available
+        const session = window.TEST_HELPERS?.getSession?.();
+        if (session?.ui?.current_page) {
+          return session.ui.current_page;
         }
-        const db = window.DEBUG.state();
-        return db?.nodes?.['session/ui']?.props?.['current-page'];
+        // Fallback: check DOM for active page indicator
+        const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
+        return activePageItem?.textContent?.trim();
       });
 
       // Current page should be "projects" or "Projects"
@@ -121,8 +122,10 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Verify we didn't jump to Tasks page
       const currentPageAfter = await page.evaluate(() => {
-        if (window.DEBUG && typeof window.DEBUG.currentPage === 'function') {
-          return window.DEBUG.currentPage();
+        // Use TEST_HELPERS if available
+        const session = window.TEST_HELPERS?.getSession?.();
+        if (session?.ui?.current_page) {
+          return session.ui.current_page;
         }
         // Fallback: check DOM for active page indicator (strip emoji)
         const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');

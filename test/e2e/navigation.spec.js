@@ -190,8 +190,8 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     // Indent the child under parent by dispatching the intent directly
     // (avoids page.keyboard.press('Tab') which doesn't trigger handlers on contenteditable)
     await page.evaluate(() => {
-      if (window.DEBUG?.handleIntent) {
-        window.DEBUG.handleIntent({ type: 'indent-selected' });
+      if (window.TEST_HELPERS?.dispatchIntent) {
+        window.TEST_HELPERS.dispatchIntent({ type: 'indent-selected' });
       }
     });
 
