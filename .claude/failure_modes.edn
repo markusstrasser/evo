@@ -164,8 +164,8 @@
    :severity :high
    :symptoms
    ["Cursor resets while typing"
-   "Text updates but cursor at position 0"
-   "Re-renders destroy cursor position"]
+    "Text updates but cursor at position 0"
+    "Re-renders destroy cursor position"]
    :root-causes
    ["[:span.content-edit text] passes text as child"
     "Replicant re-renders on text change"
@@ -222,4 +222,140 @@
    :related [:duplicate-event-dispatch]
    :verified true
    :investigation-date "2025-11-27"
-   :example-workaround "test/e2e/critical-fixes.spec.js - uses dispatchIntent instead of keyboard"}}}
+   :example-workaround "test/e2e/critical-fixes.spec.js - uses dispatchIntent instead of keyboard"}
+
+  :replicant-lifecycle-inversion
+  {:name "Replicant on-render Fires BEFORE on-mount for New Elements"
+   :severity :critical
+   :symptoms
+   ["Cursor position wrong on newly created elements"
+    "on-render handler sees nil for state set in on-mount"
+    "Cursor-position cleared before being applied"
+    "New block appears with cursor at wrong position"]
+   :root-causes
+   ["Replicant lifecycle order: on-render → on-mount (counterintuitive)"
+    "on-render handles pending state, clears it"
+    "on-mount fires AFTER, never sees the pending state"
+    "Expected mount-first, got render-first"]
+   :detection
+   ["Add console.log to both hooks with timestamps"
+    "Check which fires first for NEW elements"
+    "on-render timestamp < on-mount timestamp = problem"]
+   :fixes
+   ["Track mount state via dataset.mounted flag"
+    "on-mount: set flag, handle cursor for NEW elements"
+    "on-render: only handle cursor if mounted flag exists"
+    "Separate concerns: mount = initial, render = subsequent"]
+   :tests
+   ["Navigate to new block, verify cursor at expected position"
+    "Enter key creates block, cursor at position 0"
+    "Right arrow to child, cursor at position 0"]
+   :prevention
+   "Always track mount state when on-render handles stateful operations"
+   :code-pattern
+   ";; on-mount: (set! (.-dataset node) (clj->js {:mounted \"true\"}))
+    ;; on-render: (when (.-mounted (.-dataset node)) ...)"
+   :related [:cursor-reset :stale-closure]
+   :verified true
+   :discovery-date "2025-12-04"
+   :example-fix "src/components/block.cljs - dataset.mounted tracking"}
+
+  :duplicate-data-attributes
+  {:name "Duplicate data-* Attributes Cause Playwright Strict Mode Failures"
+   :severity :high
+   :symptoms
+   ["strict mode violation: locator resolved to N elements"
+    "Test worked before, now finds 2+ elements"
+    "Parent and child both have same data-block-id"]
+   :root-causes
+   ["Same data-* attribute on parent container AND child element"
+    "Playwright strict mode requires unique locators"
+    "Attribute inheritance/duplication not detected by linter"]
+   :detection
+   ["Playwright error shows 'resolved to N elements'"
+    "Inspect DOM: parent and child both have attribute"
+    "grep codebase for same :data-* in nested elements"]
+   :fixes
+   ["Remove duplicate from child (parent is sufficient)"
+    "Use more specific locator: .parent > .child[attr]"
+    "Or use different attribute names for different purposes"]
+   :tests
+   ["Run Playwright in strict mode (default)"
+    "Verify each data-block-id appears exactly once in DOM"
+    "E2E test coverage catches this automatically"]
+   :prevention
+   "Lint rule: data-* attributes should not appear on both parent and direct child in same component"
+   :related []
+   :verified true
+   :discovery-date "2025-12-04"
+   :example-fix "src/components/block.cljs - removed data-block-id from content spans"}
+
+  :cljs-silent-arity-mismatch
+  {:name "ClojureScript Silent Arity Mismatch"
+   :severity :critical
+   :symptoms
+   ["Function returns nil unexpectedly"
+    "Arguments shifted - wrong values in wrong positions"
+    "Widespread test failures after changing function signature"
+    "No compile error, no runtime error, just wrong behavior"]
+   :root-causes
+   ["ClojureScript doesn't enforce arity at runtime"
+    "Extra args silently ignored"
+    "Missing args become undefined (nil in CLJS)"
+    "Changing helper signature breaks all callers silently"]
+   :detection
+   ["Add logging to function entry: (prn 'fn-name args)"
+    "Check if expected args are actually received"
+    "nil where you expected a value = likely arity issue"]
+   :fixes
+   ["Check all call sites when changing function signature"
+    "Use {:pre [(some? arg)]} assertions"
+    "Run full test suite after signature changes"
+    "Consider multi-arity fn instead of changing existing"]
+   :tests
+   ["Property test: function never receives nil for required args"
+    "Full test suite catches call site mismatches"
+    "Grep for function name, verify all calls match signature"]
+   :prevention
+   "Never change function arity without grep + update all callers"
+   :gotcha
+   "CLAUDE.md documents this: 'ClojureScript won't error on wrong arity - silently uses wrong values'"
+   :related []
+   :verified true
+   :discovery-date "2025-12-04"
+   :example-impact "Changed navigate-up helper arity → 34 test failures"}
+
+  :session-db-timing
+  {:name "Session Updates Must Precede DB Reset"
+   :severity :high
+   :symptoms
+   ["Cursor position nil in lifecycle hook"
+    "Session state missing during re-render"
+    "Operation works sometimes, fails other times (race)"]
+   :root-causes
+   ["DB reset triggers synchronous Replicant re-render"
+    "Lifecycle hooks (on-mount/on-render) read session state"
+    "If session updated AFTER db reset, hooks see old state"
+    "Replicant renders synchronously, no async buffer"]
+   :detection
+   ["Add logging: session state BEFORE vs AFTER db reset"
+    "Check if lifecycle hook sees expected session values"
+    "Hook sees nil for value you just set = timing issue"]
+   :fixes
+   ["Update session BEFORE db reset"
+    "Session-updates, THEN db changes"
+    "Never assume async gap between reset and render"]
+   :tests
+   ["Verify session value present in lifecycle hook"
+    "Log timing: session-update → db-reset → hook-fires"]
+   :prevention
+   "Document in CODING_GOTCHAS: session before db, always"
+   :code-pattern
+   ";; CORRECT order:
+    (when session-updates
+      (session/swap-session! merge session-updates))  ;; FIRST
+    (reset! !db db-after)  ;; SECOND - triggers render"
+   :related [:replicant-lifecycle-inversion]
+   :verified true
+   :discovery-date "2025-12-04"
+   :example-fix "src/shell/blocks_ui.cljs - session before db reset"}}}
