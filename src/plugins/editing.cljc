@@ -59,15 +59,21 @@
                                                       :next q/next-block-dom-order
                                                       :prev q/prev-block-dom-order)
                                              next-block (nav-fn db editing-block-id)
-                                             extended-selection (when next-block
+                                             ;; If next-block exists, select both current and next
+                                             ;; If no next-block (boundary), just select current
+                                             extended-selection (if next-block
                                                                   {:nodes #{editing-block-id next-block}
                                                                    :focus next-block
                                                                    :anchor editing-block-id
+                                                                   :direction direction}
+                                                                  ;; At boundary - select only current block
+                                                                  {:nodes #{editing-block-id}
+                                                                   :focus editing-block-id
+                                                                   :anchor editing-block-id
                                                                    :direction direction})]
-                                         (when extended-selection
-                                           {:session-updates
-                                            {:ui {:editing-block-id nil :cursor-position nil}
-                                             :selection extended-selection}}))))})
+                                         {:session-updates
+                                          {:ui {:editing-block-id nil :cursor-position nil}
+                                           :selection extended-selection}})))})
 
 (intent/register-intent! :enter-edit-selected
                          {:doc "Enter edit mode in selected block at end of text (Logseq parity).

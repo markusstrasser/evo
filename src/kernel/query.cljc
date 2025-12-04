@@ -280,22 +280,26 @@
    - session: Session state map (required for tests)"
   [db session]
   (let [root (active-outline-root session)
+        folded-blocks (folded-set session)
 
-        ;; Get visible children from :visible-order index (already filtered by folding/zoom)
-        visible-children (fn [parent-id]
-                           (get-in db [:derived :visible-order :by-parent parent-id] []))
+        ;; Get children from canonical children-by-parent
+        ;; (not visible-order, which doesn't have session access)
+        get-children (fn [parent-id]
+                       (get-in db [:children-by-parent parent-id] []))
 
-        ;; Pre-order traversal: parent, then children
+        ;; Pre-order traversal: parent, then children (if not folded)
         traverse (fn traverse [node-id]
                    (when node-id
-                     (let [children (visible-children node-id)]
+                     (let [children (if (contains? folded-blocks node-id)
+                                      [] ;; Folded - skip children
+                                      (get-children node-id))]
                        (cons node-id
                              (when (seq children)
                                (mapcat traverse children))))))]
 
     ;; Start from active outline root's children
     ;; (zoom root, current page, or doc root)
-    (vec (mapcat traverse (visible-children root)))))
+    (vec (mapcat traverse (get-children root)))))
 
 (defn next-block-dom-order
   "Get the next block in DOM/visual order (pre-order traversal).
