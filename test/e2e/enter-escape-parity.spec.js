@@ -20,8 +20,8 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { selectPage } from './helpers/edit-mode.js';
 import {
+  selectPage,
   selectBlock,
   clearSelection,
   enterEditMode,
@@ -35,7 +35,7 @@ import {
   getBlockIdAt,
   updateBlockText,
   waitForBlocks
-} from './helpers/block-helpers.js';
+} from './helpers/index.js';
 
 test.describe('Enter Key - Selected Block Behavior', () => {
   test.beforeEach(async ({ page }) => {
