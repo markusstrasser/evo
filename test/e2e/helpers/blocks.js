@@ -9,13 +9,17 @@ import { getCursorPosition } from './cursor.js';
  */
 export async function getAllBlocks(page) {
   return await page.evaluate(() => {
-    const blocks = document.querySelectorAll('[contenteditable="true"]');
-    return Array.from(blocks).map((block, idx) => ({
-      index: idx,
-      id: block.id || block.getAttribute('data-block-id'),
-      text: block.textContent,
-      isFocused: block === document.activeElement
-    }));
+    const blocks = document.querySelectorAll('[data-block-id]');
+    return Array.from(blocks).map((block, idx) => {
+      const editable = block.querySelector('[contenteditable="true"]') ||
+                       (block.getAttribute('contenteditable') === 'true' ? block : null);
+      return {
+        index: idx,
+        id: block.getAttribute('data-block-id'),
+        text: editable?.textContent || block.textContent?.replace(/^•\s*/, ''),
+        isFocused: editable === document.activeElement || block.contains(document.activeElement)
+      };
+    });
   });
 }
 

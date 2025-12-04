@@ -26,6 +26,8 @@ test.describe('Block Navigation', () => {
     await page.click('[contenteditable="true"]');
     await page.keyboard.type('Hello world this is a long line');
     await page.keyboard.press('Enter');
+    // Wait for second block to exist
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
     await page.keyboard.type('Short line');
 
     // Navigate up to first block
@@ -35,9 +37,17 @@ test.describe('Block Navigation', () => {
     const blocks = await getAllBlocks(page);
     await setCursorPosition(page, blocks[0].id, 10);
 
-    // Navigate down
+    // Navigate down and wait for focus to move
     await page.keyboard.press('ArrowDown');
-    await page.waitForTimeout(100);
+    await page.waitForFunction(
+      (fromId) => {
+        const el = document.activeElement;
+        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        return blockId && blockId !== fromId;
+      },
+      blocks[0].id,
+      { timeout: 5000 }
+    );
 
     const cursor = await getCursorPosition(page);
 
@@ -50,6 +60,8 @@ test.describe('Block Navigation', () => {
     await page.click('[contenteditable="true"]');
     await page.keyboard.type('Short');
     await page.keyboard.press('Enter');
+    // Wait for second block to exist
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
     await page.keyboard.type('Very long line with lots of text');
 
     // Set cursor at position 20 in second block
@@ -58,7 +70,6 @@ test.describe('Block Navigation', () => {
 
     // Navigate up (first block only has 5 chars)
     await page.keyboard.press('ArrowUp');
-    await page.waitForTimeout(100);
 
     const cursor = await getCursorPosition(page);
     // Should be at end of shorter block
@@ -81,21 +92,44 @@ test.describe('Block Navigation', () => {
     await page.click('[contenteditable="true"]');
     await page.keyboard.type('First');
     await page.keyboard.press('Enter');
+    // Wait for second block to exist
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
     await page.keyboard.type('Second');
 
     // Clear events
     await page.evaluate(() => { window.navigationEvents = []; });
 
-    // Navigate once
+    // Get initial block (we're in the second block after typing)
+    const initialBlocks = await getAllBlocks(page);
+    const initialFocused = initialBlocks.find(b => b.isFocused);
+
+    // Navigate up and wait for focus to move
     await page.keyboard.press('ArrowUp');
-    await page.waitForTimeout(100);
+    await page.waitForFunction(
+      (fromId) => {
+        const el = document.activeElement;
+        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        return blockId && blockId !== fromId;
+      },
+      initialFocused?.id,
+      { timeout: 5000 }
+    );
 
     // Check that only one block change occurred
     const blocksBefore = await getAllBlocks(page);
     const focusedBefore = blocksBefore.find(b => b.isFocused);
 
+    // Navigate down and wait for focus to move
     await page.keyboard.press('ArrowDown');
-    await page.waitForTimeout(100);
+    await page.waitForFunction(
+      (fromId) => {
+        const el = document.activeElement;
+        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        return blockId && blockId !== fromId;
+      },
+      focusedBefore?.id,
+      { timeout: 5000 }
+    );
 
     const blocksAfter = await getAllBlocks(page);
     const focusedAfter = blocksAfter.find(b => b.isFocused);
@@ -137,13 +171,21 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     // Create parent block
     const parentText = 'Parent nav target';
     await page.keyboard.type(parentText);
-    const parentId = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
+    const parentId = await page.evaluate(() =>
+      document.activeElement?.getAttribute('data-block-id') ||
+      document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
+    );
     await page.keyboard.press('Enter');
+    // Wait for second block to exist
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
 
     // Create child block
     const childText = 'Child boundary test';
     await page.keyboard.type(childText);
-    const childIdRaw = await page.evaluate(() => document.activeElement?.getAttribute('data-block-id'));
+    const childIdRaw = await page.evaluate(() =>
+      document.activeElement?.getAttribute('data-block-id') ||
+      document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
+    );
 
     // Indent the child under parent by dispatching the intent directly
     // (avoids page.keyboard.press('Tab') which doesn't trigger handlers on contenteditable)
@@ -152,21 +194,28 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
         window.DEBUG.handleIntent({ type: 'indent-selected' });
       }
     });
-    await page.waitForTimeout(300); // Wait for indent and re-render
 
     expect(parentId).toBeTruthy();
     expect(childIdRaw).toBeTruthy();
 
-    // Wait for re-render, child should still be in edit mode after indent
+    // Wait for re-render after indent - child should still be in edit mode
     await page.waitForSelector(`[data-block-id="${childIdRaw}"] [contenteditable="true"]`, { timeout: 5000 });
 
     // Set cursor at start
     await setCursorPosition(page, childIdRaw, 0);
-    await page.waitForTimeout(100);
 
     // ArrowLeft at boundary should navigate to parent
     await pressKeyOnContentEditable(page, 'ArrowLeft');
-    await page.waitForTimeout(200);
+    // Wait for focus to move to parent element
+    await page.waitForFunction(
+      (expectedId) => {
+        const el = document.activeElement;
+        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        return blockId === expectedId;
+      },
+      parentId,
+      { timeout: 5000 }
+    );
 
     const cursor = await getCursorPosition(page);
     expect(cursor.elementId).toBe(parentId);
