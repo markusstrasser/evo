@@ -115,12 +115,15 @@
   [db session id]
   (let [p (q/parent-of db id)
         gp (when p (q/parent-of db p))
-        roots (set (:roots db const/roots))]
+        roots (set (:roots db const/roots))
+        parent-is-page? (= :page (get-in db [:nodes p :type]))]
     ;; Can outdent if: has parent, has grandparent, parent is NOT a root,
+    ;; parent is NOT a page (blocks directly under pages can't outdent),
     ;; AND grandparent is within zoom scope
-    ;; Note: parent-is-root means block is already at top level (can't outdent further)
+    ;; Note: parent-is-root or parent-is-page means block is already at top level
     (if (and p gp
              (not (contains? roots p))
+             (not parent-is-page?)
              (within-zoom-scope? db session gp))
       ;; Logical outdenting: move to position RIGHT AFTER parent (as sibling of parent)
       ;; Right siblings stay under parent (not kidnapped)
