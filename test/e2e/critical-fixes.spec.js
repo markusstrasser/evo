@@ -255,13 +255,10 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', () => {
   test('cannot outdent at root level', async ({ page }) => {
     const firstBlockId = await getFirstBlockId(page);
 
-    // Set text
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'Top level');
-    }, { id: firstBlockId });
-
+    // Get tree structure - first block is at root level (depth 0)
     const before = await getTreeStructure(page);
-    const depthBefore = before.find(b => b.text === 'Top level').depth;
+    const firstBlockBefore = before.find(b => b.id === firstBlockId);
+    const depthBefore = firstBlockBefore?.depth ?? 0;
 
     // First select the block (outdent requires :editing or :selection state)
     await page.evaluate((id) => {
@@ -269,18 +266,21 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', () => {
     }, firstBlockId);
     await page.waitForTimeout(50);
 
-    // Dispatch outdent intent (should be no-op at root level)
-    await page.evaluate((id) => {
-      window.TEST_HELPERS?.dispatchIntent({ type: 'outdent', id: id });
-    }, firstBlockId);
+    // Dispatch outdent-selected intent (should be no-op at root level)
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.dispatchIntent({ type: 'outdent-selected' });
+    });
     await page.waitForTimeout(200);
 
     const after = await getTreeStructure(page);
-    const depthAfter = after.find(b => b.text === 'Top level').depth;
+    const firstBlockAfter = after.find(b => b.id === firstBlockId);
+    const depthAfter = firstBlockAfter?.depth ?? 0;
 
     // Depth should not have changed (can't outdent at root)
     expect(depthAfter).toBe(depthBefore);
-    await expect(page.locator('[contenteditable="true"]:has-text("Top level"), .content-view:has-text("Top level")')).toBeVisible();
+
+    // Block should still exist
+    await expect(page.locator(`[data-block-id="${firstBlockId}"]`)).toBeVisible();
   });
 
   test('outdenting with no right siblings works normally', async ({ page }) => {
