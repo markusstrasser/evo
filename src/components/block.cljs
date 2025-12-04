@@ -14,6 +14,31 @@
             [shell.session :as session]
             [clojure.string :as str]))
 
+;; ── Helpers ──────────────────────────────────────────────────────────────────
+
+(defn- extract-text-with-newlines
+  "Extract text from contenteditable, converting BR elements to \\n.
+
+   Unlike textContent (which ignores BRs), this preserves newlines from Shift+Enter.
+   Unlike element->text, this doesn't add a trailing newline."
+  [element]
+  (let [text (text-sel/element->text element)]
+    ;; element->text adds trailing \n as contenteditable quirk fix - remove it
+    (if (str/ends-with? text "\n")
+      (subs text 0 (dec (count text)))
+      text)))
+
+(defn- text->html
+  "Convert plain text to HTML-safe string with newlines as <br>.
+
+   Escapes HTML special characters to prevent XSS, then converts \\n to <br>."
+  [text]
+  (-> (or text "")
+      (str/replace #"&" "&amp;")
+      (str/replace #"<" "&lt;")
+      (str/replace #">" "&gt;")
+      (str/replace #"\n" "<br>")))
+
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
 (defn- detect-cursor-row-position
@@ -244,8 +269,9 @@
   (.preventDefault e)
   ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
   ;; Read from session buffer (more reliable than DOM textContent with Playwright)
+  ;; Fallback to DOM with extract-text-with-newlines to preserve BR as \n
   (let [buffer-text (get-in @session/!session [:buffer block-id])
-        dom-text (.-textContent (.-target e))
+        dom-text (extract-text-with-newlines (.-target e))
         final-text (or buffer-text dom-text)]
     (when final-text
       (on-intent {:type :update-content
@@ -391,8 +417,8 @@
             ;; Use execCommand for reliable newline insertion in contenteditable
             ;; This inserts a <br> and moves cursor appropriately
             (.execCommand js/document "insertLineBreak" false nil)
-            ;; Update session buffer to match DOM state
-            (let [new-text (.-textContent target)]
+            ;; Update session buffer to match DOM state (use extract to convert BR to \n)
+            (let [new-text (extract-text-with-newlines target)]
               (session/swap-session! assoc-in [:buffer block-id] new-text))))
 
         ;; Enter - behavior depends on doc-mode
@@ -401,7 +427,8 @@
         ;; Doc-mode: Enter inserts newline
         (do (.preventDefault e)
             (.execCommand js/document "insertLineBreak" false nil)
-            (let [new-text (.-textContent target)]
+            ;; Update session buffer to match DOM state (use extract to convert BR to \n)
+            (let [new-text (extract-text-with-newlines target)]
               (session/swap-session! assoc-in [:buffer block-id] new-text)))
         ;; Normal mode: Enter creates new block
         (handle-enter e db block-id on-intent))
@@ -579,9 +606,10 @@
                 (set! (.-dataset node) (clj->js {:mounted "true"}))
 
                 ;; Set text content (browser owns this from now on)
-                (set! (.-textContent node) text)
+                ;; Convert \n to <br> so newlines are visually rendered
+                (set! (.-innerHTML node) (text->html text))
 
-                ;; EDGE CASE FIX: Empty blocks have no text node after setting textContent=""
+                ;; EDGE CASE FIX: Empty blocks have no text node after setting innerHTML=""
                 ;; Create an empty text node so cursor positioning works
                 (when (zero? (.-length (.-childNodes node)))
                   (.appendChild node (.createTextNode js/document "")))
@@ -649,7 +677,8 @@
                  ;; Input handler: Update session directly (Phase 3: no intent dispatch)
                  :input (fn [e]
                           (let [target (.-target e)
-                                new-text (.-textContent target)]
+                                ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
+                                new-text (extract-text-with-newlines target)]
                             ;; Phase 3: Update session directly (instant, no dispatch overhead)
                             ;; NOTE: Use string block-id consistently (not keyword) to match DB convention
                             (session/swap-session! assoc-in [:buffer block-id] new-text)))
@@ -657,7 +686,8 @@
                  ;; Blur handler: Commit to canonical DB
                  :blur (fn [e]
                          (let [target (.-target e)
-                               final-text (.-textContent target)
+                               ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
+                               final-text (extract-text-with-newlines target)
                                suppress? (session/suppress-blur-exit?)
                                same-block? (= (session/editing-block-id) block-id)]
                            ;; Commit to canonical DB
@@ -694,7 +724,8 @@
                     :cursor "text"}
             :replicant/key view-key
             :replicant/on-render (fn [{:replicant/keys [node]}]
-                                   (set! (.-textContent node) (or text "")))
+                                   ;; Use innerHTML to render \n as <br> for visual line breaks
+                                   (set! (.-innerHTML node) (text->html text)))
             :on {:click (fn [e]
                           (.stopPropagation e)
                           (cond
