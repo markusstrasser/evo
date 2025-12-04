@@ -5,10 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
-import { getAllBlocks } from './helpers/index.js';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+import { getCursorPosition, setCursorPosition, getAllBlocks, enterEditModeAndClick, pressKeyOnContentEditable } from './helpers/index.js';
 
 const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
 

@@ -11,8 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+import { enterEditModeAndClick, pressKeyOnContentEditable } from './helpers/index.js';
 
 test.describe('Newline Persistence (Shift+Enter)', () => {
   test.beforeEach(async ({ page }) => {

@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
+import { pressKeyOnContentEditable } from './helpers/index.js';
 
 /**
  * Helper: Enter edit mode on a block by double-clicking and waiting for contenteditable

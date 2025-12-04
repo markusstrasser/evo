@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
+import { enterEditModeAndClick } from './helpers/index.js';
 
 test.describe('Accessibility Compliance', () => {
   test('page meets WCAG AA standards', async ({ page }) => {

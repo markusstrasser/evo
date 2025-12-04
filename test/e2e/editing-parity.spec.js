@@ -12,9 +12,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { getCursorPosition, setCursorPosition } from './helpers/cursor.js';
-import { getAllBlocks } from './helpers/index.js';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
+import { getCursorPosition, setCursorPosition, getAllBlocks, enterEditModeAndClick } from './helpers/index.js';
 
 test.describe('Shift+Arrow Block Selection', () => {
   test.beforeEach(async ({ page }) => {

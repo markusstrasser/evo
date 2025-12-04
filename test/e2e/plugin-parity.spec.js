@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
+import { enterEditModeAndClick } from './helpers/index.js';
 
 test.describe('Move Climb Semantics', () => {
   test.beforeEach(async ({ page }) => {

@@ -12,8 +12,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
-import { selectPage, enterEditModeAndClick } from './helpers/edit-mode.js';
+import { pressKeyOnContentEditable, selectPage, enterEditModeAndClick } from './helpers/index.js';
 
 test.describe('Text Selection Utilities', () => {
 
