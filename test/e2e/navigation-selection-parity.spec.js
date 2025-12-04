@@ -106,7 +106,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Try to navigate down past last block of current page
       await pressKeyOnContentEditable(page, 'ArrowDown');
-      await page.waitForTimeout(100);
+
+      // Wait for Replicant render cycle (should stay in edit mode)
+      await page.waitForTimeout(200);
 
       // Should stay on proj-3 (no-op at page boundary)
       // Should NOT jump to task-1 (first block of Tasks page)
@@ -170,13 +172,16 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       // Press Left - should jump to parent block at end
       await pressKeyOnContentEditable(page, 'ArrowLeft');
 
+      // Wait for re-render after navigation
+      await page.waitForTimeout(100);
+
       const result = await page.evaluate(() => {
         const el = document.querySelector('[contenteditable]');
         const sel = window.getSelection();
         return {
-          text: el.textContent,
-          cursorPos: sel.getRangeAt(0).startOffset,
-          textLength: el.textContent?.length || 0
+          text: el?.textContent,
+          cursorPos: sel?.rangeCount > 0 ? sel.getRangeAt(0).startOffset : null,
+          textLength: el?.textContent?.length || 0
         };
       });
 
@@ -235,6 +240,44 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       // Should be in next sibling "Using event sourcing architecture"
       expect(result.text).toContain('event sourcing');
     });
+
+    test('Right arrow at end of parent navigates to first child', async ({ page }) => {
+      // SPEC: Right at block end → first child at start (if children exist)
+      // Click once to select the block (focus), then click again to enter edit mode
+      const contentView = page.locator(`div.block[data-block-id="${navIds.first}"] > .content-view`);
+      await contentView.click(); // Select block
+      await contentView.click(); // Enter edit mode on focused block
+      await page.waitForSelector('[contenteditable="true"]');
+
+      // Verify we're editing the parent block (proj-1), not a child
+      const beforeBlockId = await page.evaluate(() => {
+        const el = document.querySelector('[contenteditable]');
+        return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      });
+      expect(beforeBlockId).toBe(navIds.first);
+
+      // Position cursor at end
+      await setCursorPosition(page, 'end');
+
+      // Press Right - should go to first child, not next sibling
+      await pressKeyOnContentEditable(page, 'ArrowRight');
+
+      // Wait for navigation to complete
+      await page.waitForTimeout(100);
+
+      const result = await page.evaluate(() => {
+        const el = document.querySelector('[contenteditable]');
+        const selection = window.getSelection();
+        return {
+          text: el?.textContent,
+          cursorPos: selection?.anchorOffset || 0
+        };
+      });
+
+      // Should be in first child "Building a Logseq-inspired outliner" at start
+      expect(result.text).toContain('Logseq-inspired');
+      expect(result.cursorPos).toBe(0); // At start of child
+    });
   });
 
   test.describe('§4.3: Shift+Click Range Selection (Visibility-Aware)', () => {
@@ -282,19 +325,23 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       await page.waitForTimeout(100);
 
       // Shift+Click from the folded parent to a later block
+      // NOTE: Must click on .content-view specifically (not div.block) because clicking
+      // on the bullet doesn't trigger Shift+Click selection - it only toggles fold
+      const siblingContent = page.locator(`div.block[data-block-id="${navIds.sibling}"] > span.content-view`);
       await page.keyboard.down('Shift');
-      await page.locator(`div.block[data-block-id="${navIds.sibling}"]`).click();
+      await siblingContent.click();
       await page.keyboard.up('Shift');
       await page.waitForTimeout(100);
 
       // Count selected blocks - should NOT include the hidden children
+      // NOTE: Selected blocks may have either selection color (230, 242, 255) or focus color (179, 217, 255)
       const selection = await page.evaluate((ids) => {
-        const selected = Array.from(
-          document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]')
+        const selectedOrFocused = Array.from(
+          document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"], [style*="background-color: rgb(179, 217, 255)"]')
         );
         return {
-          count: selected.length,
-          blockIds: selected.map(el => el.getAttribute('data-block-id')),
+          count: selectedOrFocused.length,
+          blockIds: selectedOrFocused.map(el => el.getAttribute('data-block-id')),
           childrenInDom: {
             first: !!document.querySelector(`[data-block-id="${ids.firstChild}"]`),
             second: !!document.querySelector(`[data-block-id="${ids.secondChild}"]`)
@@ -386,13 +433,55 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       // Shift+Down should seed with current block first
       await pressKeyCombo(page, 'ArrowDown', ['Shift']);
+      await page.waitForTimeout(100); // Wait for re-render
 
+      // NOTE: Selected blocks may have either selection color (230, 242, 255) or focus color (179, 217, 255)
       const afterSelection = await page.evaluate(() => {
-        return document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]').length;
+        return document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"], [style*="background-color: rgb(179, 217, 255)"]').length;
       });
 
       // Should now have selection (current + next)
       expect(afterSelection).toBeGreaterThanOrEqual(2);
+    });
+
+    test('Shift+Arrow in multi-line block extends text selection when NOT at row boundary', async ({ page }) => {
+      // SPEC: Shift+Arrow should only trigger block selection at first/last row
+      // In the middle of a multi-line block, it should extend text selection
+
+      // Create a multi-line block by typing long text that wraps
+      const block = await findBlockByText(page, 'Using event sourcing architecture');
+      await enterEditModeOn(page, block);
+
+      // Type additional text to make the block wrap to multiple lines
+      await setCursorPosition(page, 'end');
+      await page.keyboard.type(' with immutable data structures and pure functions for predictable state management');
+      await page.waitForTimeout(100);
+
+      // Position cursor at start (first row)
+      await setCursorPosition(page, 'start');
+      await page.waitForTimeout(50);
+
+      // Press Shift+Down to extend text selection within the block
+      await pressKeyCombo(page, 'ArrowDown', ['Shift']);
+      await page.waitForTimeout(100);
+
+      // Should have TEXT selection (browser native), NOT block selection
+      const state = await page.evaluate(() => {
+        const sel = window.getSelection();
+        const session = window.TEST_HELPERS?.getSession?.();
+        return {
+          hasTextSelection: sel && !sel.isCollapsed,
+          textSelectionLength: sel?.toString()?.length || 0,
+          blockSelectionCount: session?.selection?.nodes?.length || 0,
+          isEditing: !!document.querySelector('[contenteditable="true"]:focus')
+        };
+      });
+
+      // Should still be in edit mode with text selection, no block selection
+      expect(state.isEditing).toBe(true);
+      expect(state.hasTextSelection).toBe(true);
+      expect(state.textSelectionLength).toBeGreaterThan(0);
+      expect(state.blockSelectionCount).toBe(0);
     });
   });
 

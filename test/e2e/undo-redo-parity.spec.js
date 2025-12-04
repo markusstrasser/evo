@@ -24,9 +24,10 @@ import {
 test.describe('Undo/Redo Cursor Restoration (FR-Undo-01)', () => {
   test.beforeEach(async ({ page }) => {
     // Load with test mode to get empty database
+    // Test mode automatically sets up test-page with one empty block
+    // Don't call selectPage() as that would switch to non-existent 'Projects' page
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('networkidle');
-    await selectPage(page); // Close overlays
     await waitForBlocks(page);
   });
 

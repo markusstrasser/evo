@@ -53,22 +53,11 @@ export default defineConfig({
   },
 
   // Cross-browser testing
+  // Only Chromium enabled - Firefox/Webkit/Mobile Safari require browser installation
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] }
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] }
-    },
-    {
-      name: 'webkit',  // Safari engine
-      use: { ...devices['Desktop Safari'] }
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 13'] }
     }
   ],
 
