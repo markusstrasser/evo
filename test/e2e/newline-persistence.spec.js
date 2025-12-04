@@ -59,9 +59,8 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
 
     // Exit edit mode with Escape
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
 
-    // Verify we exited edit mode
+    // Playwright's expect() auto-waits for condition (no sleep needed)
     await expect(editor).not.toBeVisible();
 
     // Get the DB text content using TEST_HELPERS
@@ -86,9 +85,9 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     // Get block ID
     const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
 
-    // Exit edit mode
+    // Exit edit mode - wait for contenteditable to disappear
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
+    await expect(editor).not.toBeVisible();
 
     // Find the view mode content element (the span that renders the block content)
     const blockContainer = page.locator(`[data-block-id="${blockId}"]`);
@@ -129,9 +128,6 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
 
     // Exit edit mode
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
-
-    // Verify we exited
     await expect(editor).not.toBeVisible();
 
     // Re-enter edit mode: first select the block, then enter edit
@@ -172,7 +168,7 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
 
     // Exit edit mode
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
+    await expect(editor).not.toBeVisible();
 
     // Verify DB has all newlines using TEST_HELPERS
     const savedText = await page.evaluate((id) => {
