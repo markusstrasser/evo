@@ -11,7 +11,8 @@
             [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]
             [util.text-selection :as text-sel]
-            [shell.session :as session]))
+            [shell.session :as session]
+            [clojure.string :as str]))
 
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
@@ -222,11 +223,22 @@
 
 (defn handle-enter [e db block-id on-intent]
   (.preventDefault e)
-  (let [selection (.getSelection js/window)
-        cursor-pos (.-anchorOffset selection)]
-    ;; Emit Nexus action instead of intent
-    (on-intent [[:editing/smart-split {:block-id block-id
-                                       :cursor-pos cursor-pos}]])))
+  (let [target (.-target e)
+        text-content (.-textContent target)
+        selection (.getSelection js/window)
+        cursor-pos (.-anchorOffset selection)
+        ;; LOGSEQ PARITY: Empty block auto-outdent
+        ;; Conditions: empty content + no next sibling + not at top level
+        empty? (str/blank? text-content)
+        has-next? (some? (q/next-sibling db block-id))
+        parent (q/parent-of db block-id)
+        at-root? (= parent :doc)]
+    (if (and empty? (not has-next?) (not at-root?))
+      ;; Auto-outdent: move block to be sibling of parent
+      (on-intent {:type :outdent :id block-id})
+      ;; Normal: create new block via smart-split
+      (on-intent [[:editing/smart-split {:block-id block-id
+                                         :cursor-pos cursor-pos}]]))))
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
@@ -367,18 +379,32 @@
       (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
       (handle-arrow-right e db block-id on-intent)
 
-        ;; LOGSEQ PARITY: Shift+Enter inserts literal newline
+        ;; LOGSEQ PARITY: Enter/Shift+Enter behavior depends on doc-mode
+        ;; Normal mode: Enter = new block, Shift+Enter = newline
+        ;; Doc-mode: Enter = newline, Shift+Enter = new block
       (and (= key "Enter") shift? (not mod?) (not alt?))
-      (do (.preventDefault e)
-          (let [selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)]
-            (on-intent {:type :insert-newline
-                        :block-id block-id
-                        :cursor-pos cursor-pos})))
+      (if (session/doc-mode?)
+        ;; Doc-mode: Shift+Enter creates new block
+        (handle-enter e db block-id on-intent)
+        ;; Normal mode: Shift+Enter inserts literal newline (direct DOM manipulation)
+        (do (.preventDefault e)
+            ;; Use execCommand for reliable newline insertion in contenteditable
+            ;; This inserts a <br> and moves cursor appropriately
+            (.execCommand js/document "insertLineBreak" false nil)
+            ;; Update session buffer to match DOM state
+            (let [new-text (.-textContent target)]
+              (session/swap-session! assoc-in [:buffer block-id] new-text))))
 
-        ;; Enter - create new block
+        ;; Enter - behavior depends on doc-mode
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (handle-enter e db block-id on-intent)
+      (if (session/doc-mode?)
+        ;; Doc-mode: Enter inserts newline
+        (do (.preventDefault e)
+            (.execCommand js/document "insertLineBreak" false nil)
+            (let [new-text (.-textContent target)]
+              (session/swap-session! assoc-in [:buffer block-id] new-text)))
+        ;; Normal mode: Enter creates new block
+        (handle-enter e db block-id on-intent))
 
         ;; Escape - exit edit mode
       (= key "Escape")

@@ -76,6 +76,8 @@
             [{:key "z" :mod true} :undo]
             [{:key "z" :shift true :mod true} :redo]
             [{:key "y" :mod true} :redo]
+                 ;; Doc-mode toggle (Enter/Shift+Enter swap)
+            [{:key "d" :shift true :mod true} {:type :toggle-doc-mode}]
                  ;; Moving blocks
             [{:key "ArrowUp" :shift true :mod true} :move-selected-up]
             [{:key "ArrowDown" :shift true :mod true} :move-selected-down]

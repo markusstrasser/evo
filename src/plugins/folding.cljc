@@ -188,3 +188,13 @@
    :handler (fn [_db _session _intent]
               {:session-updates {:ui {:zoom-stack []
                                       :zoom-root nil}}})})
+
+;; ── Doc-mode Intent ──────────────────────────────────────────────────────────
+
+(intent/register-intent! :toggle-doc-mode
+  {:doc "Toggle doc-mode (swap Enter/Shift+Enter behavior).
+         In doc-mode: Enter inserts newline, Shift+Enter creates new block."
+   :spec [:map [:type [:= :toggle-doc-mode]]]
+   :handler (fn [_db session _intent]
+              (let [current-mode (get-in session [:ui :doc-mode?] false)]
+                {:session-updates {:ui {:doc-mode? (not current-mode)}}}))})
