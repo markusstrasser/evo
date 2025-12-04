@@ -21,7 +21,8 @@ export async function getCursorPosition(page) {
     return {
       offset: sel.focusOffset,
       text: elem.textContent,
-      elementId: elem.id || elem.getAttribute('data-block-id'),
+      elementId: elem.id || elem.getAttribute('data-block-id') ||
+                 elem.closest('[data-block-id]')?.getAttribute('data-block-id'),
       nodeType: sel.focusNode?.nodeType,
       isCollapsed: sel.isCollapsed
     };
@@ -109,7 +110,15 @@ export async function typeAndVerifyCursor(page, text) {
   for (const char of text) {
     const before = await getCursorPosition(page);
     await page.keyboard.type(char);
-    await page.waitForTimeout(50);  // Wait for state update
+    // Wait for cursor to advance (no fixed timeout needed)
+    await page.waitForFunction(
+      (expectedOffset) => {
+        const sel = window.getSelection();
+        return sel && sel.anchorOffset === expectedOffset;
+      },
+      before.offset + 1,
+      { timeout: 2000 }
+    );
     const after = await getCursorPosition(page);
 
     results.push({

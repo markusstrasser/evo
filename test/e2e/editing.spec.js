@@ -45,7 +45,7 @@ test.describe('Text Editing', () => {
     for (let i = 0; i < text.length; i++) {
       const before = await getCursorPosition(page);
       await page.keyboard.type(text[i]);
-      await page.waitForTimeout(50);
+      // Removed: waitForTimeout - Playwright auto-waits
       const after = await getCursorPosition(page);
 
       // Critical assertion: cursor should NEVER be at 0 after first character
@@ -76,7 +76,7 @@ test.describe('Text Editing', () => {
     // Type and verify cursor doesn't jump
     const initialOffset = cursor.offset;
     await page.keyboard.type('X');
-    await page.waitForTimeout(50);
+    // Removed: waitForTimeout - Playwright auto-waits
 
     const afterTyping = await getCursorPosition(page);
     expect(afterTyping.offset).toBe(initialOffset + 1);

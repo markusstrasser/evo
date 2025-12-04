@@ -28,10 +28,7 @@ export async function selectPage(page, pageName = 'Projects') {
     }
   }, pageId);
 
-  // Wait a moment for re-render
-  await page.waitForTimeout(300);
-
-  // Wait for blocks to appear (using data-block-id attribute)
+  // Wait for blocks to appear - Playwright auto-waits (no sleep needed)
   await page.waitForSelector('[data-block-id]', { timeout: 5000 });
 }
 
