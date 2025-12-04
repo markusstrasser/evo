@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { selectPage } from './helpers/edit-mode.js';
+import { selectPage } from './helpers/index.js';
 
 /**
  * Logseq Parity: Idle State Guard (FR-Idle-01..03)

@@ -6,8 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { getCursorPosition, typeAndVerifyCursor } from './helpers/cursor.js';
-import { enterEditModeAndClick } from './helpers/edit-mode.js';
+import { getCursorPosition, typeAndVerifyCursor, enterEditModeAndClick } from './helpers/index.js';
 
 test.describe('Text Editing', () => {
   test.beforeEach(async ({ page }) => {

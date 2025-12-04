@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable, pressKeyCombo } from './helpers/keyboard.js';
-import { setCursorPosition as setExactCursor } from './helpers/cursor.js';
+import { pressKeyOnContentEditable, pressKeyCombo, setCursorPosition as setExactCursor } from './helpers/index.js';
 
 let navIds;
 

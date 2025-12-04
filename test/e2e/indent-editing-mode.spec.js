@@ -1,7 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable } from './helpers/keyboard.js';
-import { waitForBlocks, getFirstBlockId, enterEditMode, getEditingBlockId } from './helpers/index.js';
+import { pressKeyOnContentEditable, waitForBlocks, getFirstBlockId, enterEditMode, getEditingBlockId } from './helpers/index.js';
 
 /**
  * Tests for Tab/Shift+Tab while in editing mode.
