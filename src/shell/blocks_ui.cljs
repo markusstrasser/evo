@@ -123,15 +123,17 @@
       (when (seq issues)
         (js/console.error "Intent validation failed:" (pr-str issues)))
 
-;; Apply DB changes
+      ;; CRITICAL: Apply session updates BEFORE DB changes!
+      ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
+      ;; Those hooks read session state (cursor-position), so session must be updated first.
+      (when session-updates
+        (session/swap-session! #(merge-with merge % session-updates)))
+
+      ;; Apply DB changes (triggers re-render)
       (reset! !db db-after)
 
       ;; DEBUG: Assert derived indexes are fresh after reset
       (assert-derived-fresh! db-after (str "after DIRECT dispatch: " intent-type))
-
-      ;; Apply session updates if any (Phase 6)
-      (when session-updates
-        (session/swap-session! #(merge-with merge % session-updates)))
 
       ;; Log dispatch for devtools
       (when should-log?

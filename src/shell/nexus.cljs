@@ -48,6 +48,14 @@
         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
+
+    ;; CRITICAL: Apply session updates BEFORE DB changes!
+    ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
+    ;; Those hooks read session state (cursor-position), so session must be updated first.
+    (when session-updates
+      (session/swap-session! #(merge-with merge % session-updates)))
+
+    ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
 
     ;; DEBUG: Assert derived indexes are fresh after reset
@@ -65,9 +73,6 @@
             (js/console.log "📊 Block parent:" child "→" parent
                             "| in children?:" (boolean in-children?))))))
 
-    ;; Apply session-updates returned from handler
-    (when session-updates
-      (session/swap-session! #(merge-with merge % session-updates)))
     ;; Log to devtools
     (when should-log?
       (dev/log-dispatch! intent-map db-before db-after))))
