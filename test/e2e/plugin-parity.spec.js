@@ -57,7 +57,7 @@ test.describe('Move Climb Semantics', () => {
 
     // Verify structure changed: Child A should now be sibling of Parent
     const dbState = await page.evaluate(() => {
-      return window.DEBUG?.state?.() || {};
+      return window.TEST_HELPERS?.getDb?.() || {};
     });
 
     // Get doc children - should now have Child A, Parent, and possibly others
@@ -135,7 +135,7 @@ test.describe('Move Climb Semantics', () => {
 
     // Verify structure changed: Child C should now be first child of Uncle
     const dbState = await page.evaluate(() => {
-      return window.DEBUG?.state?.() || {};
+      return window.TEST_HELPERS?.getDb?.() || {};
     });
 
     const blocks = Object.entries(dbState.nodes || {})
@@ -172,7 +172,7 @@ test.describe('Move Climb Semantics', () => {
 
     // Get initial state
     const initialState = await page.evaluate(() => {
-      return JSON.parse(JSON.stringify(window.DEBUG?.state?.() || {}));
+      return JSON.parse(JSON.stringify(window.TEST_HELPERS?.getDb?.() || {}));
     });
 
     // Try to move up (should be no-op since already at top)
@@ -183,7 +183,7 @@ test.describe('Move Climb Semantics', () => {
 
     // Get final state
     const finalState = await page.evaluate(() => {
-      return JSON.parse(JSON.stringify(window.DEBUG?.state?.() || {}));
+      return JSON.parse(JSON.stringify(window.TEST_HELPERS?.getDb?.() || {}));
     });
 
     // Structure should be unchanged
@@ -228,7 +228,7 @@ test.describe('Empty List Item Enter Behavior', () => {
 
     // Get initial structure
     const initialState = await page.evaluate(() => {
-      const db = window.DEBUG?.state?.() || {};
+      const db = window.TEST_HELPERS?.getDb?.() || {};
       const blocks = Object.entries(db.nodes || {})
         .filter(([_, node]) => node.type === ':block')
         .map(([id, node]) => ({
@@ -251,7 +251,7 @@ test.describe('Empty List Item Enter Behavior', () => {
 
     // Verify behavior: should unformat current block AND create peer after parent
     const finalState = await page.evaluate(() => {
-      const db = window.DEBUG?.state?.() || {};
+      const db = window.TEST_HELPERS?.getDb?.() || {};
       const blocks = Object.entries(db.nodes || {})
         .filter(([_, node]) => node.type === ':block')
         .map(([id, node]) => ({
