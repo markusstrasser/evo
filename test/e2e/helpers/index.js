@@ -13,7 +13,11 @@
 
 // ── Re-exports from existing helpers ─────────────────────────────────────────
 
-export { selectPage } from './edit-mode.js';
+export { selectPage, enterEditModeAndClick } from './edit-mode.js';
+
+export { getCursorPosition, setCursorPosition, typeAndVerifyCursor } from './cursor.js';
+
+export { pressKeyOnContentEditable, pressKeyCombo } from './keyboard.js';
 
 export {
   selectBlock,
@@ -33,8 +37,6 @@ export {
   waitForBlocks,
   getAllBlocks
 } from './block-helpers.js';
-
-export { pressKeyOnContentEditable } from './keyboard.js';
 
 // ── Session State Helpers ────────────────────────────────────────────────────
 
