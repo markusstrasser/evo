@@ -306,8 +306,24 @@
                                         nil))
 
                                     ;; Default: no enrichment needed
-                                    :else intent-with-id)]
+                                    :else intent-with-id)
+                  ;; Structural operations during editing require text commit first
+                  ;; (to prevent losing uncommitted DOM text changes)
+                  structural-intent? (contains? #{:indent-selected :outdent-selected
+                                                  :move-selected-up :move-selected-down}
+                                                (if (map? enriched-intent)
+                                                  (:type enriched-intent)
+                                                  enriched-intent))]
               (when enriched-intent ;; Only dispatch if enrichment succeeded
+                ;; Commit text before structural operations while editing
+                (when (and editing? structural-intent?)
+                  (let [buffer-text (session/buffer-text editing?)
+                        dom-text (when editable-el (.-textContent editable-el))
+                        final-text (or buffer-text dom-text)]
+                    (when final-text
+                      (handle-intent {:type :update-content
+                                      :block-id editing?
+                                      :text final-text}))))
                 (cond
                 ;; Map intent: use directly (with injected block-id if needed)
                   (map? enriched-intent)
