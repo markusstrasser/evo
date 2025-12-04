@@ -215,6 +215,22 @@
   [db id]
   (get-in db [:derived :parent-of id]))
 
+(defn page-of
+  "Find the page ancestor of a block (the page it belongs to).
+   Walks up the parent chain until finding a node with :type :page.
+   Returns nil if block is at doc root level (no page ancestor)."
+  [db block-id]
+  (loop [current block-id]
+    (let [parent (parent-of db current)]
+      (cond
+        ;; Reached root or no parent - no page ancestor
+        (or (nil? parent)
+            (keyword? parent)) nil
+        ;; Parent is a page - found it
+        (= :page (get-in db [:nodes parent :type])) parent
+        ;; Keep walking up
+        :else (recur parent)))))
+
 (defn prev-sibling
   "Get previous sibling ID of a node, or nil if first/none."
   [db id]

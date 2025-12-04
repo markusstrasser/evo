@@ -40,27 +40,43 @@
                                  :else (recur (get-in db [:derived :parent-of current]))))]
     (and in-zoom? no-folded-ancestors?)))
 
+(defn- same-page?
+  "Check if two blocks are on the same page.
+   Returns true if:
+   - No current-page is set (not in page-scoped mode)
+   - Both blocks have the same page ancestor
+   - Either block has no page ancestor (doc root level)"
+  [db session block-a block-b]
+  (let [current-page (q/current-page session)]
+    (or
+     ;; Not page-scoped mode - allow all navigation
+     (nil? current-page)
+     ;; Check if both blocks belong to the same page
+     (let [page-a (q/page-of db block-a)
+           page-b (q/page-of db block-b)]
+       (= page-a page-b)))))
+
 (defn- get-prev-visible-block
-  "Get the previous visible block in DOM order, skipping folded and out-of-zoom blocks.
+  "Get the previous visible block in DOM order, respecting page boundaries.
 
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   This matches Logseq's get-prev-block-non-collapsed behavior.
-
-   TODO Phase 4-5: Needs session parameter - using fallback to tree navigation for now."
-  [db block-id]
-  ;; Fallback to kernel.navigation which doesn't need visible-blocks-in-dom-order
-  (nav/prev-visible-block db block-id))
+   Also respects page scope - won't navigate out of current page."
+  [db session block-id]
+  (let [target (nav/prev-visible-block db block-id)]
+    ;; Only return target if it's on the same page (or no page scoping)
+    (when (and target (same-page? db session block-id target))
+      target)))
 
 (defn- get-next-visible-block
-  "Get the next visible block in DOM order, skipping folded and out-of-zoom blocks.
+  "Get the next visible block in DOM order, respecting page boundaries.
 
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   This matches Logseq's get-next-block-non-collapsed behavior.
-
-   TODO Phase 4-5: Needs session parameter - using fallback to tree navigation for now."
-  [db block-id]
-  ;; Fallback to kernel.navigation which doesn't need visible-blocks-in-dom-order
-  (nav/next-visible-block db block-id))
+   Also respects page scope - won't navigate out of current page."
+  [db session block-id]
+  (let [target (nav/next-visible-block db block-id)]
+    ;; Only return target if it's on the same page (or no page scoping)
+    (when (and target (same-page? db session block-id target))
+      target)))
 
 (defn- grapheme-count
   "Count graphemes (user-perceived characters) in a string.
@@ -201,14 +217,14 @@
                                  [:current-text :string]
                                  [:current-cursor-pos :int]]
                           :handler
-                          (fn [db _session {:keys [direction current-block-id current-text current-cursor-pos]}]
+                          (fn [db session {:keys [direction current-block-id current-text current-cursor-pos]}]
                             (let [;; Calculate and store cursor memory
                                   line-pos (get-line-pos current-text current-cursor-pos)
 
-                                  ;; Find target block (fold/zoom-aware)
+                                  ;; Find target block (fold/zoom/page-aware)
                                   target-id (case direction
-                                              :up (get-prev-visible-block db current-block-id)
-                                              :down (get-next-visible-block db current-block-id))]
+                                              :up (get-prev-visible-block db session current-block-id)
+                                              :down (get-next-visible-block db session current-block-id))]
 
                               ;; BOUNDARY HANDLING: If no target, return no-op that keeps cursor in place
                               ;; This prevents exceptions at document edges (Logseq behavior)
