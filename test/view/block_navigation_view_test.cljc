@@ -37,8 +37,11 @@
     (testing "Editing span is present for NAV-BOUNDARY-LEFT-01"
       (is (some? edit-el) "Missing .content-edit span prevents boundary navigation"))
 
-    (testing "Editing span keeps block-id wiring for Nexus dispatch"
-      (is (= "b" (vu/select-attribute hiccup :.content-edit :data-block-id))))
+    ;; Note: data-block-id is now only on parent div.block (not .content-edit)
+    ;; to avoid Playwright strict mode violations. Parent block-id is accessible
+    ;; via DOM traversal: element.closest('[data-block-id]')
+    (testing "Parent block has block-id wiring for Nexus dispatch"
+      (is (= "b" (vu/select-attribute hiccup :div.block :data-block-id))))
 
     (testing "Lifecycle hook present so cursor management can run"
       (is (true? (vu/lifecycle-hook? edit-el :replicant/on-render))

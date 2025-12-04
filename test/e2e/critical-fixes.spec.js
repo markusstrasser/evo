@@ -122,7 +122,7 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
     await page.evaluate(() => {
       window.TEST_HELPERS?.dispatchIntent({ type: 'enter-edit', 'block-id': 'block-b', 'cursor-at': 'start' });
     });
-    await page.waitForSelector('[data-block-id="block-b"][contenteditable="true"]');
+    await page.waitForSelector('div.block[data-block-id="block-b"] [contenteditable="true"]');
     await page.waitForTimeout(100);
 
     // Dispatch merge-with-prev intent directly
