@@ -75,8 +75,9 @@
           {:keys [db]} (api/dispatch db0 nil {:type :update-content :block-id "a" :text "Updated A"})
           ;; Structural change 2: update text of block "b"
           {:keys [db]} (api/dispatch db nil {:type :update-content :block-id "b" :text "Updated B"})
-          db-undone (H/undo db)
-          db-redone (H/redo db-undone)]
+          ;; Undo/redo now return {:db ... :session ...}
+          db-undone (:db (H/undo db))
+          db-redone (:db (H/redo db-undone))]
       (is (= "Updated A" (get-in db-undone [:nodes "a" :props :text]))
           "Undo should restore state before second update (first update still applied)")
       (is (= "B" (get-in db-undone [:nodes "b" :props :text]))
