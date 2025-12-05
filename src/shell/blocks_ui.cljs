@@ -103,6 +103,11 @@
           _ (when structural?
               ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
               (session/suppress-blur-exit!))
+          ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
+          ;; Intents like :context-aware-enter pass :cursor-pos, but session doesn't have it.
+          ;; Sync it to session so H/record captures it for undo restoration.
+          _ (when-let [cursor-pos (:cursor-pos intent-or-actions)]
+              (session/swap-session! assoc-in [:ui :cursor-position] cursor-pos))
           current-session (session/get-session)
           db-before @!db
           result (api/dispatch db-before current-session intent-or-actions)
@@ -204,20 +209,55 @@
            (not (.-altKey e)))
       nil ;; Let event bubble to Block component
 
+      ;; LOGSEQ_SPEC §7.2: Cmd+A cycle in editing mode
+      ;; First press → browser select-all (let event through)
+      ;; Second press (all text selected) → exit edit, select block
+      (and editing?
+           mod?
+           (= key "a")
+           (not shift?)
+           editable-el)
+      (try
+        (let [sel (.getSelection js/window)
+              text-length (count (.-textContent editable-el))
+              ;; Check if all text is already selected
+              all-selected? (and sel
+                                 (pos? (.-rangeCount sel))
+                                 (let [sel-text (str (.toString sel))]
+                                   (= (count sel-text) text-length)))]
+          (if all-selected?
+            ;; All text selected → exit edit and select block (step 2 of cycle)
+            (do (.preventDefault e)
+                (handle-intent {:type :select-all-cycle
+                                :from-editing? true
+                                :block-id editing?}))
+            ;; Not all selected → let browser handle select-all (step 1)
+            nil))
+        (catch js/Error _
+          ;; On error, let browser handle
+          nil))
+
       ;; Keymap-resolved intent
       intent-type
       (do (.preventDefault e)
           (cond
             ;; Undo/Redo - modify DB directly, not via operations
+            ;; Also restore session state (cursor, selection) for proper context
             (= intent-type :undo)
-            (when-let [new-db (H/undo @!db)]
-              (reset! !db new-db)
-              (assert-derived-fresh! new-db "after undo"))
+            (when-let [{:keys [db session]} (H/undo @!db (session/get-session))]
+              ;; Restore session BEFORE db to ensure cursor is set before re-render
+              (when session
+                (session/swap-session! #(merge-with merge % session)))
+              (reset! !db db)
+              (assert-derived-fresh! db "after undo"))
 
             (= intent-type :redo)
-            (when-let [new-db (H/redo @!db)]
-              (reset! !db new-db)
-              (assert-derived-fresh! new-db "after redo"))
+            (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
+              ;; Restore session BEFORE db to ensure cursor is set before re-render
+              (when session
+                (session/swap-session! #(merge-with merge % session)))
+              (reset! !db db)
+              (assert-derived-fresh! db "after redo"))
 
             ;; All other intents - go through normal intent dispatch
             :else
