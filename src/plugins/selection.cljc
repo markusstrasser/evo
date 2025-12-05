@@ -50,9 +50,11 @@
     {:nodes new-nodes :focus new-focus :anchor (:anchor current-state)}))
 
 (defn- calc-clear-props
-  "Pure: calculate props for clearing selection."
-  []
-  {:nodes #{} :focus nil :anchor nil})
+  "Pure: calculate props for clearing selection.
+   
+   Preserves focus so typing after Escape still works (Logseq parity)."
+  [current-state]
+  {:nodes #{} :focus (:focus current-state) :anchor nil})
 
 (defn- get-dom-nav-fn
   "Return the DOM order navigation function for the given direction.
@@ -276,7 +278,7 @@
                                                              (if selected?
                                                                (calc-deselect-props state id)
                                                                (calc-extend-props state id)))
-                                                   :clear (calc-clear-props)
+                                                   :clear (calc-clear-props state)
                                                    :next (calc-navigate-props db session state :next false)
                                                    :prev (calc-navigate-props db session state :prev false)
                                                    :extend-next (calc-navigate-props db session state :next true)
