@@ -45,7 +45,8 @@
          :editing-block-id nil
          :cursor-position nil
          :suppress-blur-exit false
-         :doc-mode? false} ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
+         :doc-mode? false ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
+         :drag nil} ; Drag state: {:dragging-ids #{} :drop-target {:id :zone}}
     :sidebar {:right []}}))
 
 ;; ── Buffer Atom (NO render watch) ─────────────────────────────────────────────
@@ -185,6 +186,46 @@
    LOGSEQ PARITY: In doc-mode, Enter inserts newline and Shift+Enter creates new block."
   []
   (get-in @!session [:ui :doc-mode?]))
+
+;; ── Drag State API ────────────────────────────────────────────────────────────
+
+(defn drag-start!
+  "Start dragging block(s). If block is in selection, drags all selected.
+
+   Drop zones (Logseq parity):
+   - :above   - top 16px of block → place as sibling above
+   - :nested  - right offset >50px → nest as child
+   - :below   - default → place as sibling below"
+  [block-ids]
+  (swap-session! assoc-in [:ui :drag] {:dragging-ids (set block-ids)
+                                       :drop-target nil}))
+
+(defn drag-end!
+  "Clear drag state."
+  []
+  (swap-session! assoc-in [:ui :drag] nil))
+
+(defn drag-over!
+  "Update drop target during drag.
+
+   zone is one of :above, :nested, :below"
+  [target-id zone]
+  (swap-session! assoc-in [:ui :drag :drop-target] {:id target-id :zone zone}))
+
+(defn dragging-ids
+  "Get set of block IDs being dragged."
+  []
+  (get-in @!session [:ui :drag :dragging-ids]))
+
+(defn drop-target
+  "Get current drop target {:id :zone}."
+  []
+  (get-in @!session [:ui :drag :drop-target]))
+
+(defn dragging?
+  "Check if any drag is in progress."
+  []
+  (some? (get-in @!session [:ui :drag])))
 
 (defn suppress-blur-exit!
   "Set flag to prevent blur from exiting edit mode during structural ops.

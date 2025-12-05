@@ -133,6 +133,98 @@
       ;; No anchor: just extend with this block
       (on-intent {:type :selection :mode :extend :ids block-id}))))
 
+;; ── Drag & Drop Helpers ────────────────────────────────────────────────────────
+
+(defn- compute-drop-zone
+  "Compute drop zone based on mouse position relative to block element.
+
+   Logseq parity:
+   - Top 16px → :above (sibling above)
+   - Right offset >50px from bullet → :nested (child)
+   - Default → :below (sibling below)"
+  [e block-element]
+  (let [rect (.getBoundingClientRect block-element)
+        mouse-y (.-clientY e)
+        mouse-x (.-clientX e)
+        relative-y (- mouse-y (.-top rect))
+        relative-x (- mouse-x (.-left rect))]
+    (cond
+      ;; Top 16px → place above
+      (< relative-y 16) :above
+      ;; Right offset >50px → nest inside
+      (> relative-x 50) :nested
+      ;; Default → place below
+      :else :below)))
+
+(defn- handle-drag-start
+  "Start dragging. If block is selected, drag all selected blocks."
+  [e block-id]
+  (let [selection (session/selection-nodes)
+        drag-ids (if (contains? selection block-id)
+                   selection
+                   #{block-id})]
+    ;; Set drag data (required for drag to work)
+    (.setData (.-dataTransfer e) "text/plain" (pr-str drag-ids))
+    (set! (.-effectAllowed (.-dataTransfer e)) "move")
+    ;; Update session
+    (session/drag-start! drag-ids)))
+
+(defn- handle-drag-over
+  "Update drop target based on mouse position."
+  [e block-id]
+  (.preventDefault e) ; Allow drop
+  (set! (.-dropEffect (.-dataTransfer e)) "move")
+  (let [target (.-currentTarget e)
+        zone (compute-drop-zone e target)
+        dragging (session/dragging-ids)]
+    ;; Don't allow dropping on self
+    (when-not (contains? dragging block-id)
+      (session/drag-over! block-id zone))))
+
+(defn- handle-drag-leave
+  "Clear drop target when leaving."
+  [_e]
+  ;; Only clear if we're actually leaving (not entering a child)
+  ;; The dragover on new target will set the new drop target
+  nil)
+
+(defn- handle-drop
+  "Execute move on drop."
+  [e db block-id on-intent]
+  (.preventDefault e)
+  (let [dragging (session/dragging-ids)
+        {:keys [zone]} (session/drop-target)]
+    (when (and (seq dragging)
+               (not (contains? dragging block-id)))
+      (let [parent-id (get-in db [:derived :parent-of block-id])
+            ;; Convert zone to move intent params
+            [target-parent anchor] (case zone
+                                     :above [parent-id {:before block-id}]
+                                     :below [parent-id {:after block-id}]
+                                     :nested [block-id :first])]
+        (on-intent {:type :move
+                    :selection (vec dragging)
+                    :parent target-parent
+                    :anchor anchor}))))
+  (session/drag-end!))
+
+(defn- handle-drag-end
+  "Clean up drag state."
+  [_e]
+  (session/drag-end!))
+
+(defn- drop-zone-style
+  "Visual feedback style for drop zones."
+  [block-id]
+  (let [{:keys [id zone]} (session/drop-target)]
+    (when (= id block-id)
+      (case zone
+        :above {:border-top "2px solid #0066cc"}
+        :below {:border-bottom "2px solid #0066cc"}
+        :nested {:background-color "#e6f0ff"
+                 :border-left "3px solid #0066cc"}
+        nil))))
+
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-arrow-up [e db block-id on-intent]
@@ -507,23 +599,36 @@
   (let [children (get-in db [:children-by-parent block-id] [])
         text (get-in db [:nodes block-id :props :text] "")
 
+;; Drag visual feedback
+        drop-style (drop-zone-style block-id)
+        is-dragging (contains? (session/dragging-ids) block-id)
+
         container-props
         {:replicant/key block-id
          :data-block-id block-id
-         :style {:margin-left (str (* depth 20) "px")
-                 :padding "4px 8px"
-                 :cursor "text"
-                 :background-color (cond
-                                     is-focused "#b3d9ff"
-                                     is-selected "#e6f2ff"
-                                     :else "transparent")
-                 :border-left (if is-selected "3px solid #0066cc" "3px solid #ccc")
-                 :margin-bottom "2px"}
+         :draggable true
+         :style (merge {:margin-left (str (* depth 20) "px")
+                        :padding "4px 8px"
+                        :cursor "text"
+                        :background-color (cond
+                                            is-dragging "#f0f0f0"
+                                            is-focused "#b3d9ff"
+                                            is-selected "#e6f2ff"
+                                            :else "transparent")
+                        :border-left (if is-selected "3px solid #0066cc" "3px solid #ccc")
+                        :margin-bottom "2px"
+                        :opacity (if is-dragging 0.5 1)}
+                       drop-style)
          :on {:click (fn [e]
                        (.stopPropagation e)
                        (if (.-shiftKey e)
                          (shift-click-select-range! db block-id on-intent)
-                         (on-intent {:type :selection :mode :replace :ids block-id})))}}
+                         (on-intent {:type :selection :mode :replace :ids block-id})))
+              :dragstart (fn [e] (handle-drag-start e block-id))
+              :dragend handle-drag-end
+              :dragover (fn [e] (handle-drag-over e block-id))
+              :dragleave handle-drag-leave
+              :drop (fn [e] (handle-drop e db block-id on-intent))}}
 
         ;; Fold indicator bullet
         has-children? (seq (q/children db block-id))

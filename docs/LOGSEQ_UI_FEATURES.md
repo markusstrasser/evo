@@ -260,19 +260,76 @@ Clipboard with `<whiteboard-tldr>` metadata extracts shapes instead of text.
 
 | Feature | Status | Priority |
 |---------|--------|----------|
+| **Core Editing** | | |
+| Drag & drop | ✅ Implemented | - |
+| Multi-block copy w/ hierarchy | ✅ Implemented | - |
+| Multi-block cut | ✅ Implemented | - |
+| Backspace merge-previous | Not implemented | High |
+| Block refs `((uuid))` rendering | Not implemented | High |
+| Block embeds `{{embed}}` | Not implemented | Medium |
+| Smart paste (URL detection) | Not implemented | Medium |
+| **Commands & Search** | | |
 | Slash commands | Not implemented | Could add |
 | Quick switcher | Not implemented | Could add |
 | Command palette | Not implemented | Low |
+| **Sidebar & Panels** | | |
 | Right sidebar | Basic structure | Could extend |
 | Shift+Enter → sidebar | Not implemented | Easy add |
+| **Pointer Gestures** | | |
 | Cmd+Click toggle | Not implemented | Easy add |
-| Advanced clipboard | Basic only | Low |
-| Drag & drop | Not implemented | Medium effort |
 | Move dialog | Not implemented | Medium effort |
+| **Data Model** | | |
 | Block properties | Not implemented | Future |
 | Templates | Not implemented | Future |
 | PDF integration | Not implemented | N/A |
 | Whiteboard | Not implemented | N/A |
+
+---
+
+## High Priority Gaps (Implementation Notes)
+
+### Backspace at Block Start → Merge with Previous
+
+When cursor is at position 0 and backspace is pressed:
+1. Get previous sibling block text
+2. Concatenate: `prev-text + current-text`
+3. Update previous block with merged text
+4. Move current block's children to previous block
+5. Delete current block
+6. Position cursor at join point (end of original prev-text)
+
+**Location**: Add to `plugins/smart_editing.cljc` as `:merge-with-previous`
+
+### Block References `((uuid))`
+
+Rendering block references inline:
+1. Parser already handles `((uuid))` syntax (check `parser/page_refs.cljc`)
+2. Need component similar to `PageRef` for block refs
+3. On render: lookup referenced block text, render inline
+4. On click: navigate to referenced block (or open in sidebar)
+
+**Location**: Add `components/block_ref.cljs`, update `block.cljs` render
+
+### Block Embeds `{{embed ((uuid))}}`
+
+Full block embed (not just reference):
+1. Parse `{{embed ((uuid))}}` syntax
+2. Render referenced block + children inline (read-only)
+3. Skip embeds during keyboard navigation
+4. Track embed depth to prevent infinite recursion
+
+**Location**: Parser extension + `components/block_embed.cljs`
+
+### Smart Paste Detection
+
+Enhance `:paste-text` to detect content types:
+1. URL patterns → wrap in appropriate macros
+   - YouTube/Vimeo → `{{video URL}}`
+   - Twitter → `{{twitter URL}}`
+2. Markdown structure → preserve formatting
+3. Code blocks → wrap in triple backticks
+
+**Location**: Extend `plugins/clipboard.cljc` paste handler
 
 ---
 
