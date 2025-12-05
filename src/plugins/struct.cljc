@@ -60,17 +60,26 @@
   "Compiles an indent intent into a :place operation that moves the node
    under its previous sibling.
 
+   LOGSEQ PARITY: If the target sibling is collapsed/folded, returns
+   {:unfold-target sib} so the handler can expand it, ensuring the user
+   sees where their block went.
+
    Signature: [db session id] - uniform with all op-fns for apply-to-active-targets."
-  [db _session id]
+  [db session id]
   (if-let [sib (q/prev-sibling db id)]
-    [{:op :place :id id :under sib :at :last}]
-    []))
+    (let [is-collapsed (q/folded? session sib)]
+      {:ops [{:op :place :id id :under sib :at :last}]
+       :unfold-target (when is-collapsed sib)})
+    {:ops []}))
 
 (defn- indent-multi-ops
   "Indent multiple selected blocks (Logseq parity).
 
    All selected blocks move under the previous sibling of the FIRST selected block,
    maintaining their relative order as siblings at the same level.
+
+   LOGSEQ PARITY: If the target sibling is collapsed/folded, returns
+   {:unfold-target new-parent} so the handler can expand it.
 
    Example:
      Before:              After:
@@ -79,13 +88,17 @@
        b ← selected           b (child of a)
        c ← selected           c (sibling of b, also child of a)
 
-   Returns empty ops if first selected block has no previous sibling."
-  [db targets]
-  (when (seq targets)
+   Returns {:ops [] :unfold-target nil} if first selected block has no previous sibling."
+  [db session targets]
+  (if (seq targets)
     (let [first-id (first targets)
           new-parent (q/prev-sibling db first-id)]
-      (when new-parent
-        (mapv (fn [id] {:op :place :id id :under new-parent :at :last}) targets)))))
+      (if new-parent
+        (let [is-collapsed (q/folded? session new-parent)]
+          {:ops (mapv (fn [id] {:op :place :id id :under new-parent :at :last}) targets)
+           :unfold-target (when is-collapsed new-parent)})
+        {:ops [] :unfold-target nil}))
+    {:ops [] :unfold-target nil}))
 
 (defn- outdent-multi-ops
   "Outdent multiple selected blocks (Logseq parity).
@@ -218,11 +231,17 @@
                                            :ui {:editing-block-id nil}})}))})
 
 (intent/register-intent! :indent
-                         {:doc "Indent node under previous sibling."
+                         {:doc "Indent node under previous sibling.
+
+                          LOGSEQ PARITY: If target sibling is collapsed, it's expanded."
                           :spec [:map [:type [:= :indent]] [:id :string]]
                           :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [id]}]
-                                     (indent-ops db session id))})
+                                     (let [{:keys [ops unfold-target]} (indent-ops db session id)
+                                           unfold-updates (when unfold-target
+                                                            {:ui {:folded (disj (q/folded-set session) unfold-target)}})]
+                                       {:ops (or ops [])
+                                        :session-updates unfold-updates}))})
 
 (intent/register-intent! :outdent
                          {:doc "Outdent node to be sibling of parent."
@@ -292,6 +311,30 @@
       (and parent
            (every? #(= parent (q/parent-of db %)) (rest ids))
            parent))))
+
+(defn- consecutive-siblings?
+  "Check if all ids are consecutive siblings (no gaps between them).
+
+   LOGSEQ PARITY: Logseq rejects indent/outdent on non-consecutive selections
+   to prevent unexpected structural changes.
+
+   Example:
+     [a b c] under parent [a b c d] → true (consecutive)
+     [a c] under parent [a b c d] → false (b missing)
+     [a b] under parent [a b c d] → true (consecutive)"
+  [db ids]
+  (when (and (seq ids) (same-parent? db ids))
+    (let [parent (q/parent-of db (first ids))
+          children (get-in db [:children-by-parent parent] [])
+          id-set (set ids)
+          ;; Find indices of selected IDs in children vector
+          indices (keep-indexed (fn [idx child]
+                                  (when (id-set child) idx))
+                                children)]
+      ;; Check if indices are consecutive (each is prev + 1)
+      (or (< (count indices) 2)
+          (every? (fn [[a b]] (= b (inc a)))
+                  (partition 2 1 (sort indices)))))))
 
 (defn- move-selected-up-ops
   "Move selected nodes up one sibling position.
@@ -447,44 +490,68 @@
 
                           For single block: moves under previous sibling.
                           For multi-select: ALL blocks move under first's prev-sibling,
-                          remaining siblings at the same level."
+                          remaining siblings at the same level.
+
+                          LOGSEQ PARITY:
+                          - Non-consecutive selections are rejected (no-op)
+                          - If target sibling is collapsed, it's expanded"
 
                           :fr/ids #{:fr.struct/indent-outdent}
 
                           :spec [:map [:type [:= :indent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           targets (active-targets db session)
-                                           ops (if (= 1 (count targets))
-                                                 ;; Single block: use simple indent
-                                                 (indent-ops db session (first targets))
-                                                 ;; Multi-select: group under first's prev-sibling
-                                                 (or (indent-multi-ops db targets) []))]
-                                       {:ops ops
-                                        :session-updates (when editing-id
-                                                           {:ui {:editing-block-id editing-id}})}))})
+                                           targets (active-targets db session)]
+                                       ;; LOGSEQ PARITY: Reject non-consecutive multi-selection
+                                       (if (and (> (count targets) 1)
+                                                (not (consecutive-siblings? db targets)))
+                                         ;; Non-consecutive: no-op
+                                         {:ops []
+                                          :session-updates (when editing-id
+                                                             {:ui {:editing-block-id editing-id}})}
+                                         ;; Valid selection: proceed with indent
+                                         (let [result (if (= 1 (count targets))
+                                                        (indent-ops db session (first targets))
+                                                        (indent-multi-ops db session targets))
+                                               {:keys [ops unfold-target]} result
+                                               ;; Build session updates
+                                               base-updates (when editing-id
+                                                              {:ui {:editing-block-id editing-id}})
+                                               ;; LOGSEQ PARITY: Expand collapsed target
+                                               unfold-updates (when unfold-target
+                                                                {:ui {:folded (disj (q/folded-set session) unfold-target)}})]
+                                           {:ops (or ops [])
+                                            :session-updates (merge base-updates unfold-updates)}))))})
 
 (intent/register-intent! :outdent-selected
                          {:doc "Outdent all selected/editing nodes (Logseq parity).
 
                           For single block: moves after parent (logical outdent).
                           For multi-select: ALL blocks move after parent in order,
-                          maintaining their relative positions."
+                          maintaining their relative positions.
+
+                          LOGSEQ PARITY: Non-consecutive selections are rejected (no-op)"
 
                           :fr/ids #{:fr.struct/indent-outdent}
 
                           :spec [:map [:type [:= :outdent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           targets (active-targets db session)
-                                           ops (if (= 1 (count targets))
-                                                 ;; Single block: use simple outdent
-                                                 (outdent-ops db session (first targets))
-                                                 ;; Multi-select: chain after parent, preserving order
-                                                 (or (outdent-multi-ops db session targets) []))]
-                                       {:ops ops
-                                        :session-updates (when editing-id
-                                                           {:ui {:editing-block-id editing-id}})}))})
+                                           targets (active-targets db session)]
+                                       ;; LOGSEQ PARITY: Reject non-consecutive multi-selection
+                                       (if (and (> (count targets) 1)
+                                                (not (consecutive-siblings? db targets)))
+                                         ;; Non-consecutive: no-op
+                                         {:ops []
+                                          :session-updates (when editing-id
+                                                             {:ui {:editing-block-id editing-id}})}
+                                         ;; Valid selection: proceed with outdent
+                                         (let [ops (if (= 1 (count targets))
+                                                     (outdent-ops db session (first targets))
+                                                     (or (outdent-multi-ops db session targets) []))]
+                                           {:ops ops
+                                            :session-updates (when editing-id
+                                                               {:ui {:editing-block-id editing-id}})}))))})
 
 (intent/register-intent! :move-selected-up
                          {:doc "Move selected nodes up one sibling position."
