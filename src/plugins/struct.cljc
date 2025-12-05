@@ -166,17 +166,13 @@
                                      (let [focus-id (q/focus db)
                                            parent (q/parent-of db focus-id)
                                            new-id (str "block-" (random-uuid))]
-                                       [;; INVARIANT: Clear selection before entering edit mode
-                                        {:op :update-node
-                                         :id const/session-selection-id
-                                         :props {:nodes #{} :focus nil :anchor nil}}
-                 ;; Create and place new block
-                                        {:op :create-node :id new-id :type :block :props {:text ""}}
-                                        {:op :place :id new-id :under parent :at {:after focus-id}}
-                 ;; Enter edit mode on new block
-                                        {:op :update-node
-                                         :id const/session-ui-id
-                                         :props {:editing-block-id new-id}}]))})
+                                       {:ops [;; Create and place new block
+                                              {:op :create-node :id new-id :type :block :props {:text ""}}
+                                              {:op :place :id new-id :under parent :at {:after focus-id}}]
+                                        ;; Session updates: clear selection, enter edit mode
+                                        :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
+                                                          :ui {:editing-block-id new-id
+                                                               :cursor-position 0}}}))})
 
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 

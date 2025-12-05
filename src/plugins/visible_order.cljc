@@ -163,41 +163,16 @@
 
   (require '[kernel.db :as db])
   (require '[kernel.api :as api])
-  (require '[plugins.visible-order :as vo])
 
   ;; Create a simple tree
   (def db0 (db/empty-db))
-  (def [db1 _] (api/transact db0
-                 [{:op :create-node :id "b1" :type :block :props {:text "Parent"}}
-                  {:op :place :id "b1" :under :doc :at :last}
-                  {:op :create-node :id "b2" :type :block :props {:text "Child"}}
-                  {:op :place :id "b2" :under "b1" :at :last}
-                  {:op :create-node :id "b3" :type :block :props {:text "Sibling"}}
-                  {:op :place :id "b3" :under :doc :at :last}]))
+  (def {:keys [db]} (api/dispatch db0 nil
+                      {:type :create-node :id "b1" :node-type :block :text "Parent" :under :doc}))
 
-  ;; Initially, all children are visible
-  (get-in db1 [:derived :visible-order :by-parent :doc])
-  ;; => ["b1" "b3"]
+  ;; Query visible order
+  (get-in db [:derived :visible-order :by-parent :doc])
+  ;; => ["b1"]
 
-  (get-in db1 [:derived :visible-order :by-parent "b1"])
-  ;; => ["b2"]
-
-  ;; Fold "b1" to hide its children
-  (def [db2 _] (api/transact db1
-                 [{:op :update-node
-                   :id const/session-ui-id
-                   :props {:folded #{"b1"}}}]))
-
-  (get-in db2 [:derived :visible-order :by-parent "b1"])
-  ;; => []  ; children hidden because b1 is folded
-
-  ;; Zoom into "b1"
-  (def [db3 _] (api/transact db2
-                 [{:op :update-node
-                   :id const/session-ui-id
-                   :props {:zoom-root "b1"}}]))
-
-  (get-in db3 [:derived :visible-order :by-parent :doc])
-  ;; => ["b1"]  ; only b1 and its descendants are visible when zoomed
-
+  ;; Note: Folding and zoom are now controlled via shell.session atom, not DB operations.
+  ;; Use (session/swap-session! assoc-in [:ui :folded] #{"b1"}) to fold blocks.
   )
