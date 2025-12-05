@@ -68,7 +68,7 @@ if [ -n "$E2E_FILES" ]; then
         echo "  • For navigation testing: Use pressKeyOnContentEditable() from test/e2e/helpers/keyboard.js"
         echo "  • For test setup: Dispatch intents directly via window.DEBUG.handleIntent()"
         echo ""
-        echo "See docs/PLAYWRIGHT_MCP_TESTING.md for details."
+        echo "See docs/TESTING.md for details."
         echo ""
         echo "To bypass this check: git commit --no-verify"
         echo ""

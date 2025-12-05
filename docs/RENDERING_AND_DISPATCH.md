@@ -190,7 +190,7 @@ Older versions of the block component destructured a `mounting?` flag that Repli
   ...)
 ```
 
-**Historical reference**: see `docs/TESTING_STACK.md` (Lifecycle Bug Appendix) for the postmortem.
+**Historical note**: The `mounting?` flag never existed in Replicant's API.
 
 ### Memory: Storing State Across Renders
 
@@ -538,16 +538,6 @@ test('cursor position after navigation', async ({ page }) => {
 - State updates
 - Business logic
 
-### 📖 Complete Testing Guide
-
-See **`docs/TESTING_STACK.md`** for:
-- Detailed testing patterns
-- View test utilities
-- Action extraction helpers
-- Integration test examples
-- Comparison with our current approach
-- Gap analysis and recommendations
-
 ### Current State
 
 **What we test well:**
@@ -559,8 +549,6 @@ See **`docs/TESTING_STACK.md`** for:
 - ❌ Component/view unit tests
 - ❌ Action extraction from hiccup
 - ❌ Fast integration tests (render → action → update)
-
-**Recommendation**: Add view testing utilities and tests for critical components (Block, Sidebar). See `docs/TESTING_STACK.md` for implementation guide.
 
 ---
 

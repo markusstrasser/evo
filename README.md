@@ -34,7 +34,7 @@ npm start              # ALWAYS use this (prevents stale output errors)
 
 **Important**: `npm run watch` is the day-to-day command (skip the expensive clean step when caches are healthy). Run `npm run clean && npm run watch` only when you suspect stale output.
 
-See [docs/START_HERE.md](docs/START_HERE.md) for the latest onboarding steps and troubleshooting tips.
+See [docs/DX_INDEX.md](docs/DX_INDEX.md) for full documentation.
 
 ## Project Structure
 
@@ -56,8 +56,7 @@ docs/               # Architecture notes, rendering/dispatch reference, testing 
 **For agents**: See [CLAUDE.md](CLAUDE.md) for full context and tooling
 
 **Key docs & data**:
-- `docs/START_HERE.md` - One-page onboarding runbook
-- `docs/DX_INDEX.md` - Living index of every deep-dive doc (specs, testing, tooling)
+- `docs/DX_INDEX.md` - Entry point for all documentation
 - `resources/plugins.edn` - Declarative plugin manifest (loaded via `shell.plugin-manifest`)
 - `resources/demo-pages.edn` - Seed operations for the Blocks UI demo
 - `CLAUDE.md` - Agent instructions and tooling index
