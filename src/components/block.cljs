@@ -94,14 +94,14 @@
       (.addRange sel range))))
 
 (defn- insert-linebreak!
-  "Insert a line break at cursor and sync to session buffer.
+  "Insert a line break at cursor and sync to buffer.
    
    Used by both doc-mode Enter and normal-mode Shift+Enter."
   [e target block-id]
   (.preventDefault e)
   (.execCommand js/document "insertLineBreak" false nil)
   (let [new-text (extract-text-with-newlines target)]
-    (session/swap-session! assoc-in [:buffer block-id] new-text)))
+    (session/buffer-set! block-id new-text)))
 
 (defn- collapse-selection-start!
   "Collapse text selection to start, preventing default event."
@@ -314,9 +314,9 @@
   (.preventDefault e)
   (.stopPropagation e) ; Prevent global keydown from also handling Escape
   ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
-  ;; Read from session buffer (more reliable than DOM textContent with Playwright)
+  ;; Read from buffer (more reliable than DOM textContent with Playwright)
   ;; Fallback to DOM with extract-text-with-newlines to preserve BR as \n
-  (let [buffer-text (get-in @session/!session [:buffer block-id])
+  (let [buffer-text (session/buffer-text block-id)
         dom-text (extract-text-with-newlines (.-target e))
         final-text (or buffer-text dom-text)]
     (when final-text
@@ -622,14 +622,13 @@
                           ;; When clicking inside contenteditable, we just want cursor positioning
                           (.stopPropagation e))
 
-                 ;; Input handler: Update session directly (Phase 3: no intent dispatch)
+;; Input handler: Update buffer directly (no render trigger)
                  :input (fn [e]
                           (let [target (.-target e)
                                 ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
                                 new-text (extract-text-with-newlines target)]
-                            ;; Phase 3: Update session directly (instant, no dispatch overhead)
-                            ;; NOTE: Use string block-id consistently (not keyword) to match DB convention
-                            (session/swap-session! assoc-in [:buffer block-id] new-text)))
+                            ;; Update buffer atom directly - does NOT trigger re-render
+                            (session/buffer-set! block-id new-text)))
 
                  ;; Blur handler: Commit to canonical DB
                  :blur (fn [e]
