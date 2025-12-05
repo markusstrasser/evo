@@ -36,7 +36,8 @@
 
      ;; Get allowed intents for current state
      (sm/allowed-intents session)
-     ;=> #{:selection :arrow-up :arrow-down ...}")
+     ;=> #{:selection :arrow-up :arrow-down ...}"
+  (:require [kernel.intent :as intent]))
 
 ;; ── State Definitions ────────────────────────────────────────────────────────
 
@@ -56,38 +57,59 @@
    ;; (Most intents shouldn't fire from idle - that's the Logseq contract)
 
    ;; ─── SELECTION STATE ONLY ───
-   :enter-edit              #{:selection}       ; Enter key on selection
-   :open-in-sidebar         #{:selection}       ; Shift+Enter on selection
+   :enter-edit #{:selection} ; Enter key on selection
+   :open-in-sidebar #{:selection} ; Shift+Enter on selection
 
    ;; ─── EDITING STATE ONLY ───
-   :navigate-with-cursor-memory #{:editing}     ; Arrow up/down while editing
-   :navigate-to-adjacent        #{:editing}     ; Arrow left/right at boundary
-   :context-aware-enter         #{:editing}     ; Enter while editing
-   :smart-split                 #{:editing}     ; Enter (alias)
-   :insert-newline              #{:editing}     ; Shift+Enter
-   :delete                      #{:editing}     ; Backspace/Delete
-   :merge-with-prev             #{:editing}     ; Backspace at start
-   :merge-with-next             #{:editing}     ; Delete at end
-   :update-content              #{:editing}     ; Typing
-   :paste-text                  #{:editing}     ; Paste
+   :navigate-with-cursor-memory #{:editing} ; Arrow up/down while editing
+   :navigate-to-adjacent #{:editing} ; Arrow left/right at boundary
+   :context-aware-enter #{:editing} ; Enter while editing
+   :smart-split #{:editing} ; Enter (alias)
+   :insert-newline #{:editing} ; Shift+Enter
+   :delete #{:editing} ; Backspace/Delete
+   :merge-with-prev #{:editing} ; Backspace at start
+   :merge-with-next #{:editing} ; Delete at end
+   :update-content #{:editing} ; Typing
+   :paste-text #{:editing} ; Paste
 
    ;; ─── EDITING OR SELECTION ───
-   :exit-edit               #{:editing :selection} ; Escape
-   :indent                  #{:editing :selection}
-   :outdent                 #{:editing :selection}
-   :move-selected-up        #{:editing :selection}
-   :move-selected-down      #{:editing :selection}
-   :toggle-subtree          #{:editing :selection}
-   :copy-blocks             #{:editing :selection}
-   :cut-blocks              #{:editing :selection}
+   :exit-edit #{:editing :selection} ; Escape
+   :indent #{:editing :selection}
+   :outdent #{:editing :selection}
+   :move-selected-up #{:editing :selection}
+   :move-selected-down #{:editing :selection}
+   :toggle-subtree #{:editing :selection}
+   :copy-blocks #{:editing :selection}
+   :cut-blocks #{:editing :selection}
 
    ;; ─── ANY STATE (nil = universal) ───
-   :selection               nil                 ; Can select from any state
-   :toggle-fold             nil                 ; Can fold from anywhere (bullet click)
-   :zoom-in                 nil
-   :zoom-out                nil
-   :undo                    nil
-   :redo                    nil})
+   :selection nil ; Can select from any state
+   :select-all-cycle nil ; Cmd+A cycle (any state)
+   :toggle-fold nil ; Can fold from anywhere (bullet click)
+   :zoom-in nil
+   :zoom-out nil
+   :undo nil
+   :redo nil})
+
+(defn get-intent-requirements
+  "Get state requirements for an intent type.
+
+   Lookup order (decentralized state requirements):
+   1. Check intent registry (:allowed-states from register-intent!)
+   2. Fall back to centralized intent-state-requirements map (for migration)
+
+   Returns:
+   - nil if intent allows any state (universal)
+   - Set of allowed state keywords (e.g., #{:editing :selection})"
+  [intent-type]
+  (let [registry-states (intent/intent-allowed-states intent-type)]
+    (case registry-states
+      ;; Intent not in registry at all - use centralized map
+      :not-registered (get intent-state-requirements intent-type)
+      ;; Intent registered but :allowed-states not specified - use centralized map
+      :not-specified (get intent-state-requirements intent-type)
+      ;; Intent has explicit :allowed-states (may be nil for universal or a set)
+      registry-states)))
 
 ;; ── State Transitions ───────────────────────────────────────────────────────
 
@@ -96,21 +118,21 @@
 
    Used to validate that state changes follow the Logseq contract."
   {:idle
-   {:selection        :selection    ; Click block
-    :enter-edit       :editing      ; Double-click or type-to-edit
-    :arrow-up         :selection    ; Select last visible block
-    :arrow-down       :selection}   ; Select first visible block
+   {:selection :selection ; Click block
+    :enter-edit :editing ; Double-click or type-to-edit
+    :arrow-up :selection ; Select last visible block
+    :arrow-down :selection} ; Select first visible block
 
    :selection
-   {:selection        :selection    ; Extend/change selection
-    :enter-edit       :editing      ; Enter on selected block
-    :exit-edit        :idle         ; Escape clears selection → idle
-    :background-click :idle}        ; Click on empty space
+   {:selection :selection ; Extend/change selection
+    :enter-edit :editing ; Enter on selected block
+    :exit-edit :idle ; Escape clears selection → idle
+    :background-click :idle} ; Click on empty space
 
    :editing
-   {:exit-edit        :selection    ; Escape → select the edited block
-    :selection        :selection    ; Shift+Arrow extends selection
-    :blur             :idle}})      ; Lose focus → idle
+   {:exit-edit :selection ; Escape → select the edited block
+    :selection :selection ; Shift+Arrow extends selection
+    :blur :idle}}) ; Lose focus → idle
 
 ;; ── State Query Functions ───────────────────────────────────────────────────
 
@@ -127,9 +149,9 @@
   (let [editing-id (get-in session [:ui :editing-block-id])
         selection-nodes (get-in session [:selection :nodes] #{})]
     (cond
-      (some? editing-id)       :editing
-      (seq selection-nodes)    :selection
-      :else                    :idle)))
+      (some? editing-id) :editing
+      (seq selection-nodes) :selection
+      :else :idle)))
 
 (defn in-editing-state?
   "Check if currently in editing state."
@@ -151,6 +173,10 @@
 (defn intent-allowed?
   "Check if an intent is allowed in the current state.
 
+   Lookup order (decentralized state requirements):
+   1. Check intent registry (:allowed-states from register-intent!)
+   2. Fall back to centralized intent-state-requirements map (for migration)
+
    Returns true if:
    - Intent has no state requirements (nil = any state)
    - Current state is in the intent's allowed states set
@@ -160,7 +186,7 @@
      ;=> true (if in :selection state)
      ;=> false (if in :idle or :editing state)"
   [session {:keys [type] :as _intent}]
-  (let [requirements (get intent-state-requirements type)
+  (let [requirements (get-intent-requirements type)
         state (current-state session)]
     (or (nil? requirements)
         (contains? requirements state))))
@@ -190,7 +216,7 @@
   [session intent]
   (when-not (intent-allowed? session intent)
     (let [intent-type (:type intent)
-          requirements (get intent-state-requirements intent-type)]
+          requirements (get-intent-requirements intent-type)]
       {:error :invalid-state-for-intent
        :intent-type intent-type
        :current-state (current-state session)
@@ -217,15 +243,15 @@
 
    LOGSEQ_SPEC.md §1.1: In idle state, Enter/Backspace/Tab/Shift+Enter/Shift+Arrow
    do nothing - Logseq never creates or deletes blocks from idle state."
-  #{:enter-edit          ; No block to edit
+  #{:enter-edit ; No block to edit
     :context-aware-enter ; No block to split
-    :delete              ; No block to delete
-    :indent              ; No block to indent
-    :outdent             ; No block to outdent
-    :merge-with-prev     ; No block to merge
+    :delete ; No block to delete
+    :indent ; No block to indent
+    :outdent ; No block to outdent
+    :merge-with-prev ; No block to merge
     :merge-with-next
     :insert-newline
-    :exit-edit})         ; Not editing
+    :exit-edit}) ; Not editing
 
 (defn idle-guard
   "Check if intent should be blocked due to idle state.
