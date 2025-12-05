@@ -18,10 +18,11 @@
           view (sut/Block props)]
       (is (vector? view) "Returns hiccup vector")
       ;; data-block-id is on parent div.block, not on .content-view
-      ;; (to avoid Playwright strict mode violations from duplicate attributes)
       (is (= "a" (vu/select-attribute view :div.block :data-block-id))
           "Correct block ID attribute on parent")
       (let [el (vu/find-element view :.content-view)]
         (is (some? el) "Found .content-view element")
-        (is (fn? (vu/select-attribute view :.content-view :replicant/on-render))
-            "Lifecycle hook present for text rendering")))))
+        ;; View mode now renders text as children (with page-ref support)
+        ;; instead of using innerHTML via on-render hook
+        (is (some #(= "Hello World" %) (rest el))
+            "Text content rendered as children")))))
