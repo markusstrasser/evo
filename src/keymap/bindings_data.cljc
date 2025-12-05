@@ -21,8 +21,8 @@
                  [{:key "Enter"} {:type :enter-edit-selected}]]
 
    :editing [;; === Core Editing ===
-                 ;; Escape → exit edit WITHOUT selecting block (Logseq parity)
-             [{:key "Escape"} {:type :exit-edit}]
+                 ;; Escape → exit edit AND select the block (Logseq parity)
+             [{:key "Escape"} {:type :exit-edit-and-select}]
 
                  ;; NOTE: Enter/Shift+Enter are NOT bound in keymap
                  ;; They MUST be handled by Block component which provides correct cursor position context
