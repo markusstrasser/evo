@@ -35,19 +35,21 @@
 ;;
 ;; NOTE: Buffer text is stored separately in !buffer (no render trigger)
 
-(defonce !session
-  (atom
-   {:cursor {:block-id nil :offset 0}
-    :selection {:nodes #{} :focus nil :anchor nil}
-    :ui {:folded #{}
-         :zoom-root nil
-         :current-page nil
-         :editing-block-id nil
-         :cursor-position nil
-         :suppress-blur-exit false
-         :doc-mode? false ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
-         :drag nil} ; Drag state: {:dragging-ids #{} :drop-target {:id :zone}}
-    :sidebar {:right []}}))
+(def default-session
+  "Canonical initial session shape. Used by defonce and reset-session!."
+  {:cursor {:block-id nil :offset 0}
+   :selection {:nodes #{} :focus nil :anchor nil}
+   :ui {:folded #{}
+        :zoom-root nil
+        :current-page nil
+        :editing-block-id nil
+        :cursor-position nil
+        :suppress-blur-exit false
+        :doc-mode? false
+        :drag nil}
+   :sidebar {:right []}})
+
+(defonce !session (atom default-session))
 
 ;; ── Buffer Atom (NO render watch) ─────────────────────────────────────────────
 ;; Separate atom for high-velocity keystroke storage.
@@ -85,16 +87,7 @@
    Also clears the buffer atom."
   []
   (reset! !buffer {})
-  (reset! !session
-          {:cursor {:block-id nil :offset 0}
-           :selection {:nodes #{} :focus nil :anchor nil}
-           :ui {:folded #{}
-                :zoom-root nil
-                :current-page nil
-                :editing-block-id nil
-                :cursor-position nil
-                :doc-mode? false}
-           :sidebar {:right []}}))
+  (reset! !session default-session))
 
 ;; ── Query Helpers (Session equivalents of kernel.query) ──────────────────────
 
