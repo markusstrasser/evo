@@ -77,40 +77,34 @@
                :task (shell "bb scripts/verify-docs.clj")}
 
    ;; Architecture analysis
-  arch-summary {:doc "Generate architecture overview"
+  arch:summary {:doc "Namespace-level architecture overview"
                 :task (shell "bb scripts/arch-summary.clj")}
 
-  arch-complexity {:doc "Per-function complexity analysis"
-                   :task (shell "bb scripts/function-complexity.clj")}
-
-  arch-abstractions {:doc "Extract protocols, multimethods, specs"
-                     :task (shell "bb scripts/abstractions.clj")}
-
-  arch-data-flow {:doc "Trace data flow patterns"
-                  :task (shell "bb scripts/data-flow.clj")}
-
-  arch-lens {:doc "Generate comprehensive architectural lens (all views combined)"
-             :task (shell "bb scripts/arch-lens.clj arch-lens-output.md")}
-
-   ;; Detailed architecture analysis (10-15k tokens)
-  arch-summary-detailed {:doc "Comprehensive architecture summary with namespace details"
+  arch:summary-detailed {:doc "Detailed architecture with function signatures"
                          :task (shell "bb scripts/arch-summary-detailed.clj")}
 
-  arch-complexity-detailed {:doc "Detailed per-function complexity with operation types"
-                            :task (shell "bb scripts/function-complexity-detailed.clj")}
+  arch:complexity {:doc "Complexity analysis (use -f for functions, -d for detailed)"
+                   :task (let [args (str/join " " *command-line-args*)]
+                           (shell (str "bb scripts/complexity.clj " args)))}
 
-  arch-call-graph {:doc "Call graph analysis with critical execution paths"
+  arch:abstractions {:doc "Extract protocols, multimethods, specs"
+                     :task (shell "bb scripts/abstractions.clj")}
+
+  arch:data-flow {:doc "Trace data flow patterns"
+                  :task (shell "bb scripts/data-flow.clj")}
+
+  arch:call-graph {:doc "Call graph analysis with critical paths"
                    :task (shell "bb scripts/call-graph-detailed.clj")}
 
-  arch-lens-detailed {:doc "Generate detailed architectural lens (10-15k tokens)"
-                      :task (do
-                              (println "Generating detailed architectural lens...")
-                              (shell "bb scripts/arch-summary-detailed.clj > /tmp/arch-detailed-1.md")
-                              (shell "bb scripts/function-complexity-detailed.clj > /tmp/arch-detailed-2.md")
-                              (shell "bb scripts/call-graph-detailed.clj > /tmp/arch-detailed-3.md")
-                              (shell "bb scripts/data-flow.clj > /tmp/arch-detailed-4.md")
-                              (shell "cat /tmp/arch-detailed-1.md /tmp/arch-detailed-2.md /tmp/arch-detailed-3.md /tmp/arch-detailed-4.md > arch-lens-detailed.md")
-                              (println "✅ Detailed lens saved to: arch-lens-detailed.md"))}
+  arch:lens {:doc "Generate combined architectural lens (all views)"
+             :task (do
+                     (println "Generating architectural lens...")
+                     (shell "bb scripts/arch-summary-detailed.clj > /tmp/arch-1.md")
+                     (shell "bb scripts/complexity.clj --functions --detailed > /tmp/arch-2.md")
+                     (shell "bb scripts/call-graph-detailed.clj > /tmp/arch-3.md")
+                     (shell "bb scripts/data-flow.clj > /tmp/arch-4.md")
+                     (shell "cat /tmp/arch-1.md /tmp/arch-2.md /tmp/arch-3.md /tmp/arch-4.md > arch-lens.md")
+                     (println "✅ Lens saved to: arch-lens.md"))}
 
    ;; E2E Testing with Playwright
   e2e {:doc "Run Playwright E2E tests"
@@ -189,7 +183,8 @@
                    :task (shell "bb scripts/lint-robustness.clj")}
 
    ;; Help
-  help {:doc "Show available tasks"
+  help {:override-builtin true
+        :doc "Show available tasks"
         :task (do
                 (println "Available Babashka tasks:\n")
                 (println "Quality Gates:")
@@ -210,21 +205,22 @@
                 (println "  bb e2e-report      - Open test report")
                 (println "  bb e2e-visual      - Visual regression (Percy)")
                 (println "  bb e2e-a11y        - Accessibility tests\n")
+                (println "Architecture Analysis:")
+                (println "  bb arch:summary           - Namespace overview")
+                (println "  bb arch:summary-detailed  - With function signatures")
+                (println "  bb arch:complexity        - Namespace complexity")
+                (println "  bb arch:complexity -f     - Function-level")
+                (println "  bb arch:complexity -f -d  - Detailed with operations")
+                (println "  bb arch:abstractions      - Protocols/multimethods")
+                (println "  bb arch:data-flow         - Data flow patterns")
+                (println "  bb arch:call-graph        - Call graph + hot paths")
+                (println "  bb arch:lens              - Combined lens → arch-lens.md\n")
                 (println "Cache & Index:")
-                (println "  bb clean           - Clear all caches + semantic index")
+                (println "  bb clean           - Clear all caches")
                 (println "  bb index           - Rebuild ck semantic index\n")
                 (println "Development:")
                 (println "  bb dev             - Start dev server + watch")
-                (println "  bb repl-health     - REPL diagnostics")
-                (println "  bb docs-overview   - Generate overview")
-                (println "  bb lint:scenarios  - Ensure specs ↔ tests stay linked\n")
+                (println "  bb repl-health     - REPL diagnostics\n")
                 (println "Setup:")
                 (println "  bb install-hooks   - Install git hooks\n")
-                (println "Agent & Tooling:")
-                (println "  bb context:file <path>      - Analyze file context")
-                (println "  bb scaffold:view-test <path> - Generate view test")
-                (println "  bb lint:robustness          - Check robustness patterns\n")
-                (println "Skills (call directly):")
-                (println "  .claude/skills/diagnostics/run.sh health")
-                (println "  .claude/skills/code-research/run.sh ...")
-                (println "  .claude/skills/session-memory/run.sh ..."))}}}
+                (println "Run 'bb tasks' for full list with descriptions."))}}}
