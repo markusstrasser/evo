@@ -317,6 +317,8 @@
               (when enriched-intent ;; Only dispatch if enrichment succeeded
                 ;; Commit text before structural operations while editing
                 (when (and editing? structural-intent?)
+                  ;; Suppress blur FIRST to prevent focus loss during re-renders
+                  (session/suppress-blur-exit!)
                   (let [buffer-text (session/buffer-text editing?)
                         dom-text (when editable-el (.-textContent editable-el))
                         final-text (or buffer-text dom-text)]
