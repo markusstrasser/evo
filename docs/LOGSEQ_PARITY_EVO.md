@@ -27,8 +27,8 @@ What's NOT yet implemented and implementation rules to follow.
 | Gap | Logseq | Evo | Priority |
 |-----|--------|-----|----------|
 | **Doc-mode** | Enter/Shift+Enter swap when enabled | ✅ Implemented | - |
-| **Empty block auto-outdent** | Enter on empty child at end of parent outdents | Stays in place | MEDIUM |
-| **Shift+Click visibility** | Only selects visible blocks | Includes folded | MEDIUM |
+| **Empty block auto-outdent** | Enter on empty child at end of parent outdents | ✅ Fixed | - |
+| **Shift+Click visibility** | Only selects visible blocks | ✅ Fixed (uses visible-range) | - |
 | **Indent expands collapsed** | Indent into collapsed sibling expands it | ✅ Fixed | - |
 | **Non-consecutive rejection** | Indent/outdent on non-adjacent selection rejected | ✅ Fixed | - |
 | **Empty list top-level fallback** | Enter on `- ` at top level adds newline | ✅ Fixed (normal split) | - |
@@ -49,14 +49,10 @@ What's NOT yet implemented and implementation rules to follow.
 
 ## Priority Order
 
-**Medium (core UX edge cases):**
-1. Empty block auto-outdent at end of parent
-2. Visibility-aware Shift+Click (skip folded)
-
 **Low (power features):**
-3. Block-ref/Page-ref navigation on Enter
-4. Slash commands
-5. Quick switcher
+1. Block-ref/Page-ref navigation on Enter
+2. Slash commands
+3. Quick switcher
 
 ---
 
