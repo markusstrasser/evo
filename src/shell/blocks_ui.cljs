@@ -315,17 +315,25 @@
                                                   (:type enriched-intent)
                                                   enriched-intent))]
               (when enriched-intent ;; Only dispatch if enrichment succeeded
-                ;; Commit text before structural operations while editing
+                ;; Commit text AND preserve cursor before structural operations while editing
                 (when (and editing? structural-intent?)
                   ;; Suppress blur FIRST to prevent focus loss during re-renders
                   (session/suppress-blur-exit!)
-                  (let [buffer-text (session/buffer-text editing?)
+                  ;; Capture cursor position BEFORE any changes (will be saved after text commit)
+                  (let [sel (.getSelection js/window)
+                        saved-cursor-pos (when (and sel editable-el) (.-anchorOffset sel))
+                        buffer-text (session/buffer-text editing?)
                         dom-text (when editable-el (.-textContent editable-el))
                         final-text (or buffer-text dom-text)]
+                    ;; Commit text first
                     (when final-text
                       (handle-intent {:type :update-content
                                       :block-id editing?
-                                      :text final-text}))))
+                                      :text final-text}))
+                    ;; Save cursor position AFTER text commit (on-render may have cleared it)
+                    ;; on-mount will read this and restore cursor position after block remounts
+                    (when saved-cursor-pos
+                      (session/swap-session! assoc-in [:ui :cursor-position] saved-cursor-pos))))
                 (cond
                 ;; Map intent: use directly (with injected block-id if needed)
                   (map? enriched-intent)
