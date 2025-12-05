@@ -180,6 +180,7 @@
 (intent/register-intent! :merge-with-next
                          {:doc "Merge block with next sibling, delete next block."
                           :spec [:map [:type [:= :merge-with-next]] [:block-id :string]]
+                          :allowed-states #{:editing}
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [next-id (get-in db [:derived :next-id-of block-id])
                                            curr-text (get-block-text db block-id)
@@ -254,6 +255,7 @@
                                  [:type [:= :smart-split]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
+                          :allowed-states #{:editing}
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos]}]
                             (let [text (get-block-text db block-id)
@@ -321,6 +323,7 @@
          - Plain text → Normal split"
 
                           :fr/ids #{:fr.edit/smart-split}
+                          :allowed-states #{:editing}
 
                           :spec [:map
                                  [:type [:= :context-aware-enter]]
