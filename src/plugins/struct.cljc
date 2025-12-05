@@ -191,10 +191,31 @@
 ;; ── Intent → Operations (ADR-016) ────────────────────────────────────────────
 
 (intent/register-intent! :delete
-                         {:doc "Delete node by moving to :trash."
+                         {:doc "Delete node by moving to :trash.
+
+         LOGSEQ PARITY: After deletion, enters edit mode on previous block
+         with cursor at end. Falls back to next block if no previous."
                           :spec [:map [:type [:= :delete]] [:id :string]]
-                          :handler (fn [db session {:keys [id]}]
-                                     (delete-ops db session id))})
+                          :handler (fn [db _session {:keys [id]}]
+                                     (let [;; Find focus target BEFORE deletion
+                                           prev-block (q/prev-block-dom-order db id)
+                                           next-block (when-not prev-block
+                                                        (q/next-block-dom-order db id))
+                                           new-focus (or prev-block next-block)
+                                           ;; Get text length for cursor positioning at end
+                                           prev-text-len (when prev-block
+                                                           (count (get-in db [:nodes prev-block :props :text] "")))]
+                                       {:ops (delete-ops db nil id)
+                                        :session-updates
+                                        (if new-focus
+                                          {:selection {:nodes #{new-focus}
+                                                       :focus new-focus
+                                                       :anchor new-focus}
+                                           :ui {:editing-block-id new-focus
+                                                :cursor-position (if prev-block prev-text-len 0)}}
+                                          ;; No blocks left - clear everything
+                                          {:selection {:nodes #{} :focus nil :anchor nil}
+                                           :ui {:editing-block-id nil}})}))})
 
 (intent/register-intent! :indent
                          {:doc "Indent node under previous sibling."
@@ -388,10 +409,38 @@
       :else [])))
 
 (intent/register-intent! :delete-selected
-                         {:doc "Delete all selected nodes (or editing block if no selection)."
+                         {:doc "Delete all selected nodes (or editing block if no selection).
+
+         LOGSEQ PARITY: After deletion, focus moves to:
+         1. Previous visible block (preferred)
+         2. Next visible block (if no previous)
+         3. Nothing (if page becomes empty)"
                           :spec [:map [:type [:= :delete-selected]]]
                           :handler (fn [db session _intent]
-                                     (apply-to-active-targets db session delete-ops))})
+                                     (let [targets (active-targets db session)
+                                           ;; Find focus target BEFORE deletion
+                                           ;; Sort targets to get first/last in doc order
+                                           first-target (first targets)
+                                           last-target (last targets)
+                                           ;; Prefer previous block, fall back to next
+                                           prev-block (when first-target
+                                                        (q/prev-block-dom-order db first-target))
+                                           next-block (when (and (not prev-block) last-target)
+                                                        (q/next-block-dom-order db last-target))
+                                           ;; But next-block might BE one of the targets, find one that isn't
+                                           target-set (set targets)
+                                           safe-next (when next-block
+                                                       (loop [candidate next-block]
+                                                         (cond
+                                                           (nil? candidate) nil
+                                                           (not (contains? target-set candidate)) candidate
+                                                           :else (recur (q/next-block-dom-order db candidate)))))
+                                           new-focus (or prev-block safe-next)]
+                                       {:ops (vec (mapcat #(delete-ops db session %) targets))
+                                        :session-updates {:selection {:nodes (if new-focus #{new-focus} #{})
+                                                                      :focus new-focus
+                                                                      :anchor new-focus}
+                                                          :ui {:editing-block-id nil}}}))})
 
 (intent/register-intent! :indent-selected
                          {:doc "Indent all selected/editing nodes (Logseq parity).
