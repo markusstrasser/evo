@@ -8,7 +8,6 @@
   (:require [clojure.string :as str]
             [replicant.dom :as d]
             [kernel.db :as DB]
-            [kernel.api :as api]
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
@@ -16,8 +15,8 @@
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
             [dataspex.core :as dataspex]
-            [dev.tooling :as dev]
             [shell.nexus :as nexus]
+            [shell.runtime :as runtime]
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
             [shell.session :as session]
@@ -66,27 +65,15 @@
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
-(defn- assert-derived-fresh!
-  "DEBUG: Assert that derived indexes are consistent after DB reset.
-   Throws if inconsistent to immediately catch the corruption source."
-  [db label]
-  (when ^boolean goog.DEBUG
-    (when-let [inconsistency (DB/check-parent-of-consistency db)]
-      (js/console.error "🚨🚨🚨 DERIVED INDEX CORRUPTION DETECTED 🚨🚨🚨"
-                        "\nLabel:" label
-                        "\nInconsistency:" (pr-str inconsistency)
-                        "\nDB hash:" (hash db)
-                        "\nchildren-by-parent keys:" (pr-str (keys (:children-by-parent db))))
-      ;; Log stack trace to find the caller
-      (js/console.trace "Stack trace for corruption detection"))))
+(def ^:private structural-intents
+  "Intent types that may cause DOM re-render and blur."
+  #{:indent-selected :outdent-selected :move-selected-up :move-selected-down :delete-selected})
 
 (defn handle-intent
   "Single intent dispatcher - handles both intent maps and Nexus action vectors.
 
    This is the ONLY place intents are dispatched.
-   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions.
-
-   Phase 6: Passes session to api/dispatch and applies session-updates."
+   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions."
   [intent-or-actions]
   (cond
     ;; Nexus action vector: dispatch through Nexus
@@ -95,46 +82,12 @@
 
     ;; Intent map: dispatch directly through kernel
     (map? intent-or-actions)
-    (let [intent-type (:type intent-or-actions)
-          ;; Structural operations that may cause DOM re-render and blur
-          structural? (contains? #{:indent-selected :outdent-selected
-                                   :move-selected-up :move-selected-down
-                                   :delete-selected} intent-type)
-          _ (when structural?
-              ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
-              (session/suppress-blur-exit!))
-          ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
-          ;; Intents like :context-aware-enter pass :cursor-pos, but session doesn't have it.
-          ;; Sync it to session so H/record captures it for undo restoration.
-          _ (when-let [cursor-pos (:cursor-pos intent-or-actions)]
-              (session/swap-session! assoc-in [:ui :cursor-position] cursor-pos))
-          current-session (session/get-session)
-          db-before @!db
-          result (api/dispatch db-before current-session intent-or-actions)
-          db-after (:db result)
-          issues (:issues result)
-          session-updates (:session-updates result)
-          should-log? (not (contains? #{:inspect-dataspex :clear-log} intent-type))]
-
-      ;; Report any validation issues
-      (when (seq issues)
-        (js/console.error "Intent validation failed:" (pr-str issues)))
-
-      ;; CRITICAL: Apply session updates BEFORE DB changes!
-      ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
-      ;; Those hooks read session state (cursor-position), so session must be updated first.
-      (when session-updates
-        (session/swap-session! #(merge-with merge % session-updates)))
-
-      ;; Apply DB changes (triggers re-render)
-      (reset! !db db-after)
-
-      ;; DEBUG: Assert derived indexes are fresh after reset
-      (assert-derived-fresh! db-after (str "after DIRECT dispatch: " intent-type))
-
-      ;; Log dispatch for devtools
-      (when should-log?
-        (dev/log-dispatch! intent-or-actions db-before db-after)))
+    (do
+      ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
+      (when (contains? structural-intents (:type intent-or-actions))
+        (session/suppress-blur-exit!))
+      ;; Use shared runtime for the actual dispatch
+      (runtime/apply-intent! !db intent-or-actions "DIRECT"))
 
     ;; Keyword: wrap in :type map
     :else
@@ -249,7 +202,7 @@
               (when session
                 (session/swap-session! #(merge-with merge % session)))
               (reset! !db db)
-              (assert-derived-fresh! db "after undo"))
+              (runtime/assert-derived-fresh! db "after undo"))
 
             (= intent-type :redo)
             (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
@@ -257,7 +210,7 @@
               (when session
                 (session/swap-session! #(merge-with merge % session)))
               (reset! !db db)
-              (assert-derived-fresh! db "after redo"))
+              (runtime/assert-derived-fresh! db "after redo"))
 
             ;; All other intents - go through normal intent dispatch
             :else
