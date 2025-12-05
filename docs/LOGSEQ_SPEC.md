@@ -297,8 +297,10 @@ Undo granularity: each editing intent must emit minimal structural ops (`:update
   - Right siblings remain under original parent (no "kidnapping").
   - Outdenting is prevented when parent is a root (`:doc`, `:journal`).
 - When the previous sibling has children, indenting makes the block the *last* child of that sibling (after all existing children).
+- **Collapsed expansion on indent:** When the target sibling (left sibling) is collapsed, Logseq automatically **expands** it so the user can see where their block went. Without this, indented blocks "disappear" into an invisible container. (Source: `deps/outliner/src/logseq/outliner/core.cljs` line 1106-1108)
 - Outdenting a block that has children keeps those children attached to the block; they do not remain under the old parent.
 - Indenting the first child (no previous sibling) and outdenting the root-most block are both hard no-ops.
+- **Non-consecutive selection rejection:** Logseq explicitly rejects indent/outdent on non-consecutive multi-block selections. When blocks are selected that are not adjacent siblings, the operation is silently ignored to prevent unexpected structural changes. (Source: `deps/outliner/src/logseq/outliner/core.cljs` line 1079-1081)
 - Multi-selection runs through `frontend.handler.block/get-top-level-blocks`, which replaces clones with their original blocks and filters out nested duplicates so the outliner never tries to move the same subtree twice.
 - After `indent-outdent-blocks!` finishes, Logseq re-queries the DOM (`js/setTimeout 100ms`) and calls `state/set-selection-blocks!` so the highlight follows the moved blocks. Evo must preserve the same rehydration or Shift+Arrow immediately breaks after an indent.
 
