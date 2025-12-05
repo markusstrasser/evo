@@ -7,7 +7,6 @@
    - Buffer: High-velocity keystroke storage (no history/indexing overhead)"
   (:require [replicant.dom :as d]
             [kernel.query :as q]
-            [kernel.constants :as const]
             [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]
             [util.text-selection :as text-sel]

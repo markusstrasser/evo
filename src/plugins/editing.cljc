@@ -5,7 +5,6 @@
    Content changes emit ops for full undo/redo support."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
-            [kernel.history :as H]
             [kernel.query :as q]
             [utils.text :as text]))
 

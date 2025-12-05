@@ -3,8 +3,7 @@
 
    Stores a rolling log of dispatches (intent, DB before/after, optional hotkey)
    so humans/agents can inspect ops without leaving the browser."
-  (:require [clojure.data :as data]
-            [clojure.pprint :as pprint]
+  (:require [clojure.pprint :as pprint]
             [clojure.string :as str]
             [shell.session :as session]))
 
