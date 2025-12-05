@@ -71,10 +71,13 @@
 (defn- is-selectable-block?
   "Check if a node is a selectable block (not a container like :doc or :page).
 
-   Non-container types (:block, :p, :heading, etc.) are selectable."
+   Non-container types (:block, :p, :heading, etc.) are selectable.
+   Keyword roots (:doc, :trash, etc.) are never selectable."
   [db node-id]
-  (let [node-type (get-in db [:nodes node-id :type])]
-    (not (contains? container-types node-type))))
+  (if (keyword? node-id)
+    false ;; Keyword roots are never selectable
+    (let [node-type (get-in db [:nodes node-id :type])]
+      (not (contains? container-types node-type)))))
 
 (defn- next-selectable-block
   "Get the next selectable block in DOM order, skipping containers.
@@ -299,3 +302,72 @@
                                        ;; Return session updates (selection state goes to session, not DB)
                                        (when props
                                          {:session-updates {:selection props}})))})
+
+(intent/register-intent! :select-all-cycle
+                         {:doc "Cmd+A cycle behavior (Logseq parity).
+
+   LOGSEQ_SPEC §7.2: Cmd+A cycles through selection levels:
+   1. First press (editing) → select all text (handled by browser, not this intent)
+   2. Second press (all text selected) → exit edit, select the block
+   3. Third press (block selected) → select parent
+   4. Fourth press (parent/multiple selected) → select all visible
+
+   This intent handles steps 2-4. Step 1 is handled in handle-global-keydown
+   by allowing the browser's default Cmd+A behavior.
+
+   The :from-editing? flag indicates we're transitioning from editing with
+   all text selected (step 2 → exit edit and select block)."
+                          :fr/ids #{:fr.selection/cmd-a-cycle}
+                          :spec [:map
+                                 [:type [:= :select-all-cycle]]
+                                 [:from-editing? {:optional true} :boolean]
+                                 [:block-id {:optional true} :string]]
+
+                          :handler (fn [db session {:keys [from-editing? block-id]}]
+                                     (let [state (q/selection-state session)
+                                           selection-nodes (:nodes state)
+                                           focus-id (:focus state)
+                                           root-id (or (q/zoom-root session)
+                                                       (q/current-page session)
+                                                       :doc)]
+
+                                       (cond
+                                         ;; Step 2: From editing with all text selected → select the block
+                                         from-editing?
+                                         (when block-id
+                                           {:session-updates
+                                            {:selection (calc-select-props block-id)
+                                             :ui {:editing-block-id nil}}})
+
+                                         ;; Step 3: Single block selected → try parent, else all-in-view
+                                         (= 1 (count selection-nodes))
+                                         (let [current-id (first selection-nodes)
+                                               parent-id (q/parent-of db current-id)]
+                                           (if (and parent-id
+                                                    (not (contains? #{:doc :page} parent-id))
+                                                    (is-selectable-block? db parent-id))
+                                             ;; Has selectable parent → select it
+                                             {:session-updates {:selection (calc-select-props parent-id)}}
+                                             ;; No parent or at root → select all visible
+                                             (let [all-blocks (->> (tree-seq
+                                                                    (fn [id] (seq (q/children db id)))
+                                                                    (fn [id] (q/children db id))
+                                                                    root-id)
+                                                                   (filter #(is-selectable-block? db %)))]
+                                               (when (seq all-blocks)
+                                                 {:session-updates {:selection (calc-select-props all-blocks)}}))))
+
+                                         ;; Step 4: Multiple blocks or parent selected → select all-in-view
+                                         (seq selection-nodes)
+                                         (let [all-blocks (->> (tree-seq
+                                                                (fn [id] (seq (q/children db id)))
+                                                                (fn [id] (q/children db id))
+                                                                root-id)
+                                                               (filter #(is-selectable-block? db %)))]
+                                           (when (seq all-blocks)
+                                             {:session-updates {:selection (calc-select-props all-blocks)}}))
+
+                                         ;; Nothing selected → select first block
+                                         :else
+                                         (when-let [first-block (get-first-last-visible-block db session :next)]
+                                           {:session-updates {:selection (calc-select-props first-block)}}))))})

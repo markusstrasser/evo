@@ -18,7 +18,9 @@
                  [{:key "Backspace"} :delete-selected]
                  [{:key "Delete"} :delete-selected]
                  ;; Enter on selected block → enter edit mode at END (Logseq parity)
-                 [{:key "Enter"} {:type :enter-edit-selected}]]
+                 [{:key "Enter"} {:type :enter-edit-selected}]
+                 ;; Cmd+A cycle (view mode) → select parent → all visible
+                 [{:key "a" :mod true} {:type :select-all-cycle}]]
 
    :editing [;; === Core Editing ===
                  ;; Escape → exit edit AND select the block (Logseq parity)
@@ -64,6 +66,11 @@
                  ;; NOTE: ArrowLeft/Right are also NOT bound here
                  ;; Browser handles cursor movement within the block (default contenteditable behavior)
                  ;; Navigation to adjacent blocks (at cursor edges) is handled at component level
+
+                 ;; === Cmd+A cycle (edit mode) ===
+                 ;; NOTE: Cmd+A in editing mode is handled specially in handle-global-keydown
+                 ;; First press → browser select-all (not prevented)
+                 ;; Second press (all selected) → dispatches :select-all-cycle with :from-editing? true
              ]
    :global [;; Selection operations (view mode)
             ;; NOTE: Shift+Arrow for edit mode handled by Block component (LOGSEQ_EDITING_SELECTION_PARITY.md §4.2)
@@ -71,7 +78,6 @@
             [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
             [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
             [{:key "a" :shift true :mod true} {:type :selection :mode :all-in-view}]
-            [{:key "a" :mod true} {:type :selection :mode :parent}]
                  ;; Undo/Redo
             [{:key "z" :mod true} :undo]
             [{:key "z" :shift true :mod true} :redo]
