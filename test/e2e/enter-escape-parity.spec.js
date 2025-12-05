@@ -10,8 +10,8 @@
  *
  * Escape while editing:
  * - Should exit edit mode
- * - Should NOT select the block
- * - Cursor should disappear
+ * - Should SELECT the block (blue background, view mode)
+ * - This allows immediate arrow key navigation
  *
  * Source verification:
  * - logseq/handler/editor.cljs:3426 (open-selected-block!)
@@ -177,7 +177,7 @@ test.describe('Escape Key - Editing Behavior', () => {
     await waitForBlocks(page);
   });
 
-  test('Escape while editing exits WITHOUT selecting block', async ({ page }) => {
+  test('Escape while editing exits AND selects block (Logseq parity)', async ({ page }) => {
     const blockId = await getFirstBlockId(page);
 
     // Enter edit mode via intent
@@ -196,13 +196,8 @@ test.describe('Escape Key - Editing Behavior', () => {
     // Verify: NOT in edit mode anymore
     expect(await isEditing(page)).toBe(false);
 
-    // Verify: Block is NOT selected
-    const selectedCount = await countSelectedBlocks(page);
-    expect(selectedCount).toBe(0);
-
-    // Verify: No focus anywhere
-    const focusedElement = await page.evaluate(() => document.activeElement?.tagName);
-    expect(focusedElement).toBe('BODY');
+    // Verify: Block IS selected (Logseq parity - Escape selects the block)
+    expect(await isBlockSelected(page, blockId)).toBe(true);
   });
 
   test('Escape saves the block content', async ({ page }) => {
@@ -305,7 +300,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await waitForBlocks(page);
   });
 
-  test('Natural navigation flow: Select -> Enter -> Edit -> Escape -> Not selected', async ({ page }) => {
+  test('Natural navigation flow: Select -> Enter -> Edit -> Escape -> Selected (Logseq parity)', async ({ page }) => {
     const blockId = await getFirstBlockId(page);
 
     // 1. Select block
@@ -324,18 +319,17 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(100);
 
-    // 5. Verify: NOT editing, NOT selected
+    // 5. Verify: NOT editing, but IS selected (Logseq parity)
     expect(await isEditing(page)).toBe(false);
-    expect(await countSelectedBlocks(page)).toBe(0);
+    expect(await isBlockSelected(page, blockId)).toBe(true);
 
-    // 6. Can still navigate with arrows
+    // 6. Can still navigate with arrows (moves to next block)
     await page.keyboard.press('ArrowDown');
     await page.waitForTimeout(100);
 
-    // After Escape with no selection, ArrowDown selects the first visible block
-    // (Implementation note: With no focus, navigation starts from first/last block)
-    const firstBlockId = await getFirstBlockId(page);
-    expect(await isBlockSelected(page, firstBlockId)).toBe(true);
+    // ArrowDown from selected block moves to next block
+    const secondBlockId = await getBlockIdAt(page, 1);
+    expect(await isBlockSelected(page, secondBlockId)).toBe(true);
   });
 
   test('Edit -> Escape -> Arrow keys navigate blocks (not cursor)', async ({ page }) => {
