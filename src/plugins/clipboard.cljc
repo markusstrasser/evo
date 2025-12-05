@@ -61,6 +61,11 @@
 
     :else nil))
 
+(defn- indent-string
+  "Generate indentation string of N tabs."
+  [n]
+  (str/join (repeat n "\t")))
+
 (defn- block-depth
   "Get depth of a block relative to a given root.
    Returns 0 for immediate children of root, 1 for grandchildren, etc."
@@ -75,14 +80,12 @@
         :else (recur parent-id (inc depth))))))
 
 (defn- collect-block-tree
-  "Collect a block and all its non-folded descendants in pre-order.
-   Returns vector of {:id :depth} maps."
+  "Collect a block and all its descendants in pre-order.
+   Returns lazy seq of {:id :depth} maps."
   [db block-id base-depth]
   (let [children (get-in db [:children-by-parent block-id] [])]
-    (into [{:id block-id :depth base-depth}]
-          (mapcat (fn [child-id]
-                    (collect-block-tree db child-id (inc base-depth)))
-                  children))))
+    (cons {:id block-id :depth base-depth}
+          (mapcat #(collect-block-tree db % (inc base-depth)) children))))
 
 (defn- find-common-parent
   "Find the common parent of a set of block IDs."
@@ -102,27 +105,19 @@
 
    Logseq parity: Multi-block copy preserves relative indentation."
   [db block-ids]
-  (let [;; Sort by document order using pre-order index
-        sorted-ids (sort-by #(get-in db [:derived :pre %] 0) block-ids)
-        ;; Find minimum depth to normalize indentation
-        id-set (set sorted-ids)
-        ;; Collect all blocks including descendants
-        all-blocks (mapcat (fn [id]
-                             ;; Only include descendants if parent is also selected
-                             (let [parent (get-in db [:derived :parent-of id])]
-                               (if (contains? id-set parent)
-                                 [] ; Skip - parent will include this
-                                 (collect-block-tree db id 0))))
-                           sorted-ids)
-        ;; Calculate relative depth (normalize to 0-based)
-        min-depth (apply min (map :depth all-blocks))
-        normalized (map #(update % :depth - min-depth) all-blocks)]
-    ;; Build text with indentation
-    (->> normalized
+  (let [id-set (set block-ids)
+        ;; Collect trees, skipping blocks whose parents are also selected
+        all-blocks (->> block-ids
+                        (sort-by #(get-in db [:derived :pre %] 0))
+                        (remove #(contains? id-set (get-in db [:derived :parent-of %])))
+                        (mapcat #(collect-block-tree db % 0))
+                        vec)
+        ;; Normalize depths to start at 0
+        min-depth (apply min (map :depth all-blocks))]
+    ;; Build indented text
+    (->> all-blocks
          (map (fn [{:keys [id depth]}]
-                (let [text (get-block-text db id)
-                      indent (apply str (repeat depth "\t"))]
-                  (str indent "- " text))))
+                (str (indent-string (- depth min-depth)) "- " (get-block-text db id))))
          (str/join "\n"))))
 
 ;; ── Intent Implementations ────────────────────────────────────────────────────
