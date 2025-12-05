@@ -61,6 +61,70 @@
 
     :else nil))
 
+(defn- block-depth
+  "Get depth of a block relative to a given root.
+   Returns 0 for immediate children of root, 1 for grandchildren, etc."
+  [db block-id root-id]
+  (loop [current-id block-id
+         depth 0]
+    (let [parent-id (get-in db [:derived :parent-of current-id])]
+      (cond
+        (= current-id root-id) depth
+        (nil? parent-id) depth
+        (= parent-id root-id) 0
+        :else (recur parent-id (inc depth))))))
+
+(defn- collect-block-tree
+  "Collect a block and all its non-folded descendants in pre-order.
+   Returns vector of {:id :depth} maps."
+  [db block-id base-depth]
+  (let [children (get-in db [:children-by-parent block-id] [])]
+    (into [{:id block-id :depth base-depth}]
+          (mapcat (fn [child-id]
+                    (collect-block-tree db child-id (inc base-depth)))
+                  children))))
+
+(defn- find-common-parent
+  "Find the common parent of a set of block IDs."
+  [db block-ids]
+  (when (seq block-ids)
+    (let [first-id (first block-ids)
+          first-parent (get-in db [:derived :parent-of first-id])]
+      ;; Check if all blocks have the same parent
+      (if (every? #(= first-parent (get-in db [:derived :parent-of %])) block-ids)
+        first-parent
+        ;; Fall back to doc root if different parents
+        :doc))))
+
+(defn- blocks-to-text-with-hierarchy
+  "Convert blocks to text preserving hierarchy.
+   Each level of indentation uses a tab character.
+
+   Logseq parity: Multi-block copy preserves relative indentation."
+  [db block-ids]
+  (let [;; Sort by document order using pre-order index
+        sorted-ids (sort-by #(get-in db [:derived :pre %] 0) block-ids)
+        ;; Find minimum depth to normalize indentation
+        id-set (set sorted-ids)
+        ;; Collect all blocks including descendants
+        all-blocks (mapcat (fn [id]
+                             ;; Only include descendants if parent is also selected
+                             (let [parent (get-in db [:derived :parent-of id])]
+                               (if (contains? id-set parent)
+                                 [] ; Skip - parent will include this
+                                 (collect-block-tree db id 0))))
+                           sorted-ids)
+        ;; Calculate relative depth (normalize to 0-based)
+        min-depth (apply min (map :depth all-blocks))
+        normalized (map #(update % :depth - min-depth) all-blocks)]
+    ;; Build text with indentation
+    (->> normalized
+         (map (fn [{:keys [id depth]}]
+                (let [text (get-block-text db id)
+                      indent (apply str (repeat depth "\t"))]
+                  (str indent "- " text))))
+         (str/join "\n"))))
+
 ;; ── Intent Implementations ────────────────────────────────────────────────────
 
 (intent/register-intent! :paste-text
@@ -112,47 +176,47 @@
 
                                       ;; Create ops for remaining paragraphs
                                       new-block-ids (repeatedly (count remaining-paras)
-                                                               #(str "block-" (random-uuid)))
+                                                                #(str "block-" (random-uuid)))
 
                                       ;; Build operations
                                       update-current-op {:op :update-node
-                                                        :id block-id
-                                                        :props {:text first-block-text}}
+                                                         :id block-id
+                                                         :props {:text first-block-text}}
 
                                       ;; Create new blocks with preserved markers
                                       create-ops (mapv (fn [para new-id]
-                                                        {:op :create-node
-                                                         :id new-id
-                                                         :type :block
-                                                         :props {:text (str/trim para)}})
-                                                      remaining-paras
-                                                      new-block-ids)
+                                                         {:op :create-node
+                                                          :id new-id
+                                                          :type :block
+                                                          :props {:text (str/trim para)}})
+                                                       remaining-paras
+                                                       new-block-ids)
 
                                       ;; Place new blocks after current block
                                       place-ops (mapv (fn [new-id prev-id]
-                                                       {:op :place
-                                                        :id new-id
-                                                        :under parent
-                                                        :at {:after prev-id}})
-                                                     new-block-ids
-                                                     (cons block-id (drop-last new-block-ids)))
+                                                        {:op :place
+                                                         :id new-id
+                                                         :under parent
+                                                         :at {:after prev-id}})
+                                                      new-block-ids
+                                                      (cons block-id (drop-last new-block-ids)))
 
                                       ;; Position cursor after paste
                                       ;; If there's text after cursor, keep editing current block
                                       ;; Otherwise, move to last created block
                                       final-block-id (if (empty? after)
-                                                      (last new-block-ids)
-                                                      block-id)
+                                                       (last new-block-ids)
+                                                       block-id)
                                       final-cursor-pos (if (empty? after)
-                                                        (count (str/trim (last remaining-paras)))
-                                                        (count first-block-text))]
+                                                         (count (str/trim (last remaining-paras)))
+                                                         (count first-block-text))]
 
                                   {:ops (vec (concat [update-current-op] create-ops place-ops))
                                    :session-updates {:ui {:editing-block-id final-block-id
                                                           :cursor-position final-cursor-pos}}}))))})
 
 (intent/register-intent! :copy-block
-                         {:doc "Copy block content to clipboard.
+                         {:doc "Copy single block content to clipboard.
 
          Returns nil (actual clipboard operation must be handled by UI layer
          using browser Clipboard API)."
@@ -163,10 +227,35 @@
                                      (let [text (get-block-text db block-id)]
                                        {:session-updates {:ui {:clipboard-text text}}}))})
 
-(intent/register-intent! :cut-block
-                         {:doc "Cut block (copy + delete).
+(intent/register-intent! :copy-selected
+                         {:doc "Copy selected blocks with hierarchy preservation.
 
-         Moves block to trash after copying to clipboard."
+         Logseq parity:
+         - Multi-block selection copies all selected blocks + descendants
+         - Preserves relative indentation using tabs
+         - Format: each block prefixed with '- ' (list format)
+
+         If no selection, copies current editing block.
+         UI layer handles navigator.clipboard.writeText()."
+
+                          :handler (fn [db session _intent]
+                                     (let [selection (get-in session [:selection :nodes])
+                                           editing-id (get-in session [:ui :editing-block-id])
+                                           block-ids (cond
+                                                       (seq selection) (vec selection)
+                                                       editing-id [editing-id]
+                                                       :else [])]
+                                       (if (seq block-ids)
+                                         (let [text (if (= 1 (count block-ids))
+                                                      ;; Single block: just the text (no formatting)
+                                                      (get-block-text db (first block-ids))
+                                                      ;; Multiple blocks: formatted with hierarchy
+                                                      (blocks-to-text-with-hierarchy db block-ids))]
+                                           {:session-updates {:ui {:clipboard-text text}}})
+                                         {:session-updates {}})))})
+
+(intent/register-intent! :cut-block
+                         {:doc "Cut single block (copy + delete)."
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)]
@@ -175,3 +264,40 @@
                                                :under const/root-trash
                                                :at :last}]
                                         :session-updates {:ui {:clipboard-text text}}}))})
+
+(intent/register-intent! :cut-selected
+                         {:doc "Cut selected blocks with hierarchy preservation.
+
+         Logseq parity:
+         - Copies selected blocks + descendants with hierarchy
+         - Moves all selected blocks to trash
+         - Clears selection after cut
+
+         If no selection, cuts current editing block."
+
+                          :handler (fn [db session _intent]
+                                     (let [selection (get-in session [:selection :nodes])
+                                           editing-id (get-in session [:ui :editing-block-id])
+                                           block-ids (cond
+                                                       (seq selection) (vec selection)
+                                                       editing-id [editing-id]
+                                                       :else [])]
+                                       (if (seq block-ids)
+                                         (let [;; Copy text with hierarchy
+                                               text (if (= 1 (count block-ids))
+                                                      (get-block-text db (first block-ids))
+                                                      (blocks-to-text-with-hierarchy db block-ids))
+                                               ;; Delete ops for all selected blocks
+                                               delete-ops (mapv (fn [id]
+                                                                  {:op :place
+                                                                   :id id
+                                                                   :under const/root-trash
+                                                                   :at :last})
+                                                                block-ids)]
+                                           {:ops delete-ops
+                                            :session-updates {:ui {:clipboard-text text
+                                                                   :editing-block-id nil}
+                                                              :selection {:nodes #{}
+                                                                          :focus nil
+                                                                          :anchor nil}}})
+                                         {:session-updates {}})))})
