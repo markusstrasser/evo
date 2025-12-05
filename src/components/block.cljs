@@ -437,7 +437,8 @@
         ;; Empty block - delete and navigate to prev
         (on-intent {:type :delete :id block-id})
         ;; At start with content - merge with previous
-        (on-intent {:type :merge-with-prev :block-id block-id})))))
+        ;; CRITICAL: Pass current text from DOM (buffer may not be synced to DB yet)
+        (on-intent {:type :merge-with-prev :block-id block-id :text text-content})))))
 
 (defn handle-delete
   "Handle Delete key - merge with next block if at end."
@@ -448,7 +449,8 @@
         is-at-end (= (.-anchorOffset selection) (count text-content))]
     (when is-at-end
       (.preventDefault e)
-      (on-intent {:type :merge-with-next :block-id block-id}))))
+      ;; CRITICAL: Pass current text from DOM (buffer may not be synced to DB yet)
+      (on-intent {:type :merge-with-next :block-id block-id :text text-content}))))
 
 (defn handle-keydown
   "Handle keyboard events while editing a block.
