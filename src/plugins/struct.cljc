@@ -631,7 +631,14 @@
 
 (intent/register-intent! :move
                          {:doc "Move selection to target parent at anchor position (handles both cross-parent and same-parent reordering)."
-                          :spec [:map [:type [:= :move]] [:selection [:vector :string]] [:parent :string] [:anchor [:or :keyword [:map [:after :string]]]]]
+                          :spec [:map
+                                 [:type [:= :move]]
+                                 [:selection [:vector :string]]
+                                 [:parent [:or :string :keyword]] ; keyword for :doc root
+                                 [:anchor [:or
+                                           :keyword ; :first, :last
+                                           [:map [:after :string]]
+                                           [:map [:before :string]]]]]
                           :handler (fn [db _session intent]
                                      (:ops (lower-move db intent)))})
 

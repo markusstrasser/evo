@@ -169,10 +169,21 @@
     ;; Update session
     (session/drag-start! drag-ids)))
 
+(defn- handle-drag-enter
+  "Allow drop by preventing default on dragenter."
+  [e block-id]
+  (.preventDefault e)
+  ;; Also update drop target on enter for immediate feedback
+  (let [target (.-currentTarget e)
+        zone (compute-drop-zone e target)
+        dragging (session/dragging-ids)]
+    (when-not (contains? dragging block-id)
+      (session/drag-over! block-id zone))))
+
 (defn- handle-drag-over
   "Update drop target based on mouse position."
   [e block-id]
-  (.preventDefault e) ; Allow drop
+  (.preventDefault e) ; Required for drop to work
   (set! (.-dropEffect (.-dataTransfer e)) "move")
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
@@ -192,21 +203,30 @@
   "Execute move on drop."
   [e db block-id on-intent]
   (.preventDefault e)
+  (.stopPropagation e)
+  ;; Capture state immediately before any async operations
   (let [dragging (session/dragging-ids)
-        {:keys [zone]} (session/drop-target)]
+        drop-target (session/drop-target)
+        zone (:zone drop-target)]
+    ;; Clear drag state first to prevent race conditions
+    (session/drag-end!)
+    ;; Execute move if valid
     (when (and (seq dragging)
-               (not (contains? dragging block-id)))
+               (not (contains? dragging block-id))
+               zone) ; Must have a valid zone
       (let [parent-id (get-in db [:derived :parent-of block-id])
             ;; Convert zone to move intent params
+            ;; Note: :above uses {:before} which is supported by kernel.position
             [target-parent anchor] (case zone
                                      :above [parent-id {:before block-id}]
                                      :below [parent-id {:after block-id}]
-                                     :nested [block-id :first])]
+                                     :nested [block-id :first]
+                                     ;; Default: place after (shouldn't happen)
+                                     [parent-id {:after block-id}])]
         (on-intent {:type :move
                     :selection (vec dragging)
                     :parent target-parent
-                    :anchor anchor}))))
-  (session/drag-end!))
+                    :anchor anchor})))))
 
 (defn- handle-drag-end
   "Clean up drag state."
@@ -227,87 +247,75 @@
 
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
-(defn handle-arrow-up [e db block-id on-intent]
+(defn- handle-vertical-arrow
+  "Parametric handler for ArrowUp/ArrowDown navigation.
+   
+   Args:
+   - direction: :up or :down
+   - e, db, block-id, on-intent: standard handler args"
+  [direction e db block-id on-intent]
   (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)]
+        cursor-pos (detect-cursor-row-position target)
+        [boundary-key collapse-fn intent-key cursor-row]
+        (if (= direction :up)
+          [:first-row? collapse-selection-start! :editing/navigate-up :first]
+          [:last-row? collapse-selection-end! :editing/navigate-down :last])]
     (cond
-      ;; Has text selection - collapse to start
+      ;; Has text selection - collapse appropriately
       (has-text-selection?)
-      (collapse-selection-start! e)
+      (collapse-fn e)
 
-      ;; At first row - navigate to previous block with cursor memory via Nexus
-      (:first-row? cursor-pos)
+      ;; At boundary row - navigate to adjacent block with cursor memory
+      (get cursor-pos boundary-key)
       (do (.preventDefault e)
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            ;; Emit Nexus action with required parameters
-            (on-intent [[:editing/navigate-up {:block-id block-id
-                                               :current-text text-content
-                                               :current-cursor-pos cursor-offset
-                                               :cursor-row :first}]])))
+            (on-intent [[intent-key {:block-id block-id
+                                     :current-text text-content
+                                     :current-cursor-pos cursor-offset
+                                     :cursor-row cursor-row}]])))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
+
+(defn handle-arrow-up [e db block-id on-intent]
+  (handle-vertical-arrow :up e db block-id on-intent))
 
 (defn handle-arrow-down [e db block-id on-intent]
+  (handle-vertical-arrow :down e db block-id on-intent))
+
+(defn- handle-shift-vertical-arrow
+  "Parametric handler for Shift+ArrowUp/Down: block selection at boundary.
+   
+   Logseq parity (LOGSEQ_SPEC.md §3):
+   - NOT at boundary row → Let browser handle (text selection)
+   - At boundary → Exit edit mode, seed selection, extend in direction"
+  [direction e _db _block-id on-intent]
   (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)]
-    (cond
-      ;; Has text selection - collapse to end
-      (has-text-selection?)
-      (collapse-selection-end! e)
-
-      ;; At last row - navigate to next block with cursor memory via Nexus
-      (:last-row? cursor-pos)
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-offset (.-anchorOffset selection)]
-            ;; Emit Nexus action with required parameters
-            (on-intent [[:editing/navigate-down {:block-id block-id
-                                                 :current-text text-content
-                                                 :current-cursor-pos cursor-offset
-                                                 :cursor-row :last}]])))
-
-      ;; Otherwise - let browser handle cursor movement
-      :else nil)))
+        cursor-pos (detect-cursor-row-position target)
+        [boundary-key collapse-method intent-direction]
+        (if (= direction :up)
+          [:first-row? "collapseToStart" :prev]
+          [:last-row? "collapseToEnd" :next])]
+    (when (get cursor-pos boundary-key)
+      (.preventDefault e)
+      ;; Collapse text selection before exiting
+      (when-let [sel (.getSelection js/window)]
+        (when (and sel (pos? (.-rangeCount sel)))
+          ((aget sel collapse-method))))
+      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend atomically
+      (on-intent {:type :exit-edit-and-extend :direction intent-direction}))))
 
 (defn handle-shift-arrow-up
-  "Handle Shift+Up: text selection within block OR block selection at boundary.
-
-   Logseq parity (LOGSEQ_SPEC.md §3):
-   - NOT at first row → Let browser handle (text selection)
-   - At first row → Exit edit mode, seed selection, extend upward"
+  "Handle Shift+Up: text selection within block OR block selection at boundary."
   [e db block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)]
-    (when (:first-row? cursor-pos)
-      (.preventDefault e)
-      ;; Collapse text selection before exiting
-      (when-let [sel (.getSelection js/window)]
-        (when (and sel (pos? (.-rangeCount sel)))
-          (.collapseToStart sel)))
-      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend upward atomically
-      (on-intent {:type :exit-edit-and-extend :direction :prev}))))
+  (handle-shift-vertical-arrow :up e db block-id on-intent))
 
 (defn handle-shift-arrow-down
-  "Handle Shift+Down: text selection within block OR block selection at boundary.
-
-   Logseq parity (LOGSEQ_SPEC.md §3):
-   - NOT at last row → Let browser handle (text selection)
-   - At last row → Exit edit mode, seed selection, extend downward"
+  "Handle Shift+Down: text selection within block OR block selection at boundary."
   [e db block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)]
-    (when (:last-row? cursor-pos)
-      (.preventDefault e)
-      ;; Collapse text selection before exiting
-      (when-let [sel (.getSelection js/window)]
-        (when (and sel (pos? (.-rangeCount sel)))
-          (.collapseToEnd sel)))
-      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend downward atomically
-      (on-intent {:type :exit-edit-and-extend :direction :next}))))
+  (handle-shift-vertical-arrow :down e db block-id on-intent))
 
 (defn handle-arrow-left
   "Handle left arrow key.
@@ -625,6 +633,7 @@
                          (shift-click-select-range! db block-id on-intent)
                          (on-intent {:type :selection :mode :replace :ids block-id})))
               :dragstart (fn [e] (handle-drag-start e block-id))
+              :dragenter (fn [e] (handle-drag-enter e block-id))
               :dragend handle-drag-end
               :dragover (fn [e] (handle-drag-over e block-id))
               :dragleave handle-drag-leave
