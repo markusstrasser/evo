@@ -177,29 +177,18 @@
 
    Returns: Cursor position (integer offset into target-text)"
   [target-text line-pos direction]
-  (let [;; CRITICAL: For :up, use LAST line; for :down, use FIRST line
-        ;; This matches Logseq's text-range-by-lst-fst-line behavior
+  (let [up? (= direction :up)
         lines (str/split-lines target-text)
-        target-line (if (= direction :up)
-                      (last lines) ; UP → LAST line
-                      (first lines)) ; DOWN → FIRST line
-        ;; If no lines, empty string
-        target-line (or target-line "")
-        ;; Calculate grapheme count of target line
+        ;; Select target line based on direction: up → last, down → first
+        target-line (str (if up? (last lines) (first lines)))
+        ;; Calculate clamped position in target line
         target-line-grapheme-count (grapheme-count target-line)
-        ;; Clamp line-pos to target line length (in graphemes)
         target-line-grapheme-pos (min line-pos target-line-grapheme-count)
-        ;; Convert grapheme offset to character offset in target line
-        target-line-char-pos (grapheme-offset-to-char-offset target-line target-line-grapheme-pos)
-        ;; Calculate absolute position in full text
-        pos (if (= direction :up)
-              ;; Going up to last line: sum of all previous lines + position in last line
-              (let [all-but-last (butlast lines)
-                    chars-before (reduce + 0 (map #(inc (count %)) all-but-last))]
-                (+ chars-before target-line-char-pos))
-              ;; Going down to first line: just the position in first line
-              target-line-char-pos)]
-    pos))
+        target-line-char-pos (grapheme-offset-to-char-offset target-line target-line-grapheme-pos)]
+    ;; Calculate absolute position: up → offset from previous lines, down → position in first line
+    (if up?
+      (transduce (map #(inc (count %))) + target-line-char-pos (butlast lines))
+      target-line-char-pos)))
 
 (intent/register-intent! :navigate-with-cursor-memory
                          {:doc "Navigate to adjacent block, preserving cursor column position.
