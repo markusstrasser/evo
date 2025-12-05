@@ -117,6 +117,22 @@
     (.preventDefault e)
     (.collapseToEnd sel)))
 
+(defn- shift-click-select-range!
+  "Handle Shift+Click to select visible range from anchor to clicked block.
+
+   LOGSEQ PARITY (FR-Pointer-01): Respects folding/zoom/page visibility."
+  [db block-id on-intent]
+  (let [sess @session/!session
+        anchor (get-in sess [:selection :anchor])]
+    (if anchor
+      ;; Has anchor: select range with clicked block as new focus
+      (let [range-set (q/visible-range db sess anchor block-id)
+            other-blocks (vec (disj range-set block-id))
+            range-vec (conj other-blocks block-id)]
+        (on-intent {:type :selection :mode :extend :ids range-vec}))
+      ;; No anchor: just extend with this block
+      (on-intent {:type :selection :mode :extend :ids block-id}))))
+
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-arrow-up [e db block-id on-intent]
@@ -443,57 +459,30 @@
 
 ;; ── Content Rendering with Page Refs ─────────────────────────────────────────
 
-(defn- parse-page-refs
-  "Parse text for page references [[page-name]].
-
-   Returns vector of segments with :type and type-specific data.
-   Types: :text, :page-ref"
+(defn- text-segment->hiccup
+  "Convert a text string to hiccup, replacing \\n with [:br]."
   [text]
-  (when text
-    (let [page-ref-matches (map (fn [[match page]]
-                                  {:type :page-ref
-                                   :match match
-                                   :page page
-                                   :start (.indexOf text match)})
-                                (page-refs/extract-refs text))
-          all-matches (->> page-ref-matches
-                           (filter #(>= (:start %) 0))
-                           (sort-by :start))]
+  (if (str/includes? text "\n")
+    (let [parts (str/split text #"\n" -1)] ; -1 keeps trailing empties
+      (interpose [:br] (map #(if (empty? %) "" %) parts)))
+    text))
 
-      ;; Build segments from matches
-      (loop [remaining text
-             matches-left all-matches
-             result []]
-        (if-let [match (first matches-left)]
-          (let [idx (.indexOf remaining (:match match))
-                before (subs remaining 0 idx)
-                after (subs remaining (+ idx (count (:match match))))]
-            (recur after
-                   (rest matches-left)
-                   (cond-> result
-                     (not (empty? before)) (conj {:type :text :value before})
-                     true (conj match))))
-          ;; No more matches - add remaining text if any
-          (cond-> result
-            (not (empty? remaining)) (conj {:type :text :value remaining})))))))
+(defn- render-text-with-page-refs
+  "Render text with [[page-refs]] as clickable PageRef components.
 
-(defn render-text-with-page-refs
-  "Parse text for page references and render with PageRef components.
-
-   Handles:
-   - Page refs: [[page-name]] - page links
-
-   Returns a seq of strings and components mixed together (NOT wrapped in a container).
-   The parent component is responsible for providing the container."
+   Uses canonical parser from parser.page-refs.
+   Handles newlines (converts to [:br]).
+   Returns hiccup children for a span container."
   [db text on-intent]
-  (let [segments (parse-page-refs text)]
-    (map (fn [segment]
-           (case (:type segment)
-             :text (:value segment)
-             :page-ref (page-ref/PageRef {:db db
-                                          :page-name (:page segment)
-                                          :on-intent on-intent})))
-         segments)))
+  (when text
+    (->> (page-refs/split-with-refs text)
+         (mapcat (fn [{:keys [type value page]}]
+                   (case type
+                     :text (let [result (text-segment->hiccup value)]
+                             (if (seq? result) result [result]))
+                     :page-ref [(page-ref/PageRef {:db db
+                                                   :page-name page
+                                                   :on-intent on-intent})]))))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
@@ -533,20 +522,7 @@
          :on {:click (fn [e]
                        (.stopPropagation e)
                        (if (.-shiftKey e)
-                         ;; LOGSEQ PARITY (FR-Pointer-01): Shift+Click selects visible range
-                         ;; Calculate range from anchor to clicked block (respects folding/zoom/page)
-                         (let [sess @session/!session
-                               anchor (get-in sess [:selection :anchor])]
-                           (if anchor
-                             ;; Has anchor: select range, with clicked block as focus
-                             (let [range-set (q/visible-range db sess anchor block-id)
-                                   ;; Convert set to vector with clicked block last (becomes new focus)
-                                   ;; Remove clicked block, convert rest to vec, then append clicked block
-                                   other-blocks (vec (disj range-set block-id))
-                                   range-vec (conj other-blocks block-id)]
-                               (on-intent {:type :selection :mode :extend :ids range-vec}))
-                             ;; No anchor: just select this block
-                             (on-intent {:type :selection :mode :extend :ids block-id})))
+                         (shift-click-select-range! db block-id on-intent)
                          (on-intent {:type :selection :mode :replace :ids block-id})))}}
 
         ;; Fold indicator bullet
@@ -689,40 +665,24 @@
                                         :cursor-pos cursor-pos
                                         :pasted-text pasted-text})))}}]
 
-          ;; === VIEW MODE: Controlled ===
-          [:span.content-view
-           {:style {:min-width "1px"
-                    :display "inline-block"
-                    :cursor "text"}
-            :replicant/key view-key
-            :replicant/on-render (fn [{:replicant/keys [node]}]
-                                   ;; Use innerHTML to render \n as <br> for visual line breaks
-                                   (set! (.-innerHTML node) (text->html text)))
-            :on {:click (fn [e]
-                          (.stopPropagation e)
-                          (cond
-                            ;; Shift+Click = extend selection (range from anchor to this block)
-                            (.-shiftKey e)
-                            (let [sess @session/!session
-                                  anchor (get-in sess [:selection :anchor])]
-                              (if anchor
-                                ;; Has anchor: select range, with clicked block as focus
-                                (let [range-set (q/visible-range db sess anchor block-id)
-                                      ;; Convert set to vector with clicked block last (becomes new focus)
-                                      ;; Remove clicked block, convert rest to vec, then append clicked block
-                                      other-blocks (vec (disj range-set block-id))
-                                      range-vec (conj other-blocks block-id)]
-                                  (on-intent {:type :selection :mode :extend :ids range-vec}))
-                                ;; No anchor: just select this block
-                                (on-intent {:type :selection :mode :extend :ids block-id})))
+          ;; === VIEW MODE: Controlled with page-ref rendering ===
+          (into [:span.content-view
+                 {:style {:min-width "1px"
+                          :display "inline-block"
+                          :cursor "text"}
+                  :replicant/key view-key
+                  :on {:click (fn [e]
+                                (.stopPropagation e)
+                                (cond
+                                  (.-shiftKey e)
+                                  (shift-click-select-range! db block-id on-intent)
 
-                            ;; Second click on focused block = enter edit mode
-                            is-focused
-                            (on-intent {:type :enter-edit :block-id block-id})
+                                  is-focused
+                                  (on-intent {:type :enter-edit :block-id block-id})
 
-                            ;; First click = select block
-                            :else
-                            (on-intent {:type :selection :mode :replace :ids block-id})))}}])
+                                  :else
+                                  (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+                (render-text-with-page-refs db text on-intent)))
 
         ;; Session state for children (computed once per render)
         editing-block-id (session/editing-block-id)
