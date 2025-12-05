@@ -5,6 +5,10 @@
    History is stored as `:history` namespace at DB root:
    {:history {:past [] :future [] :limit 50}}
 
+   Session state (cursor, selection) is stored alongside each DB snapshot
+   to enable proper cursor/selection restore on undo/redo.
+   Entry format: {:db db-snapshot :session session-snapshot}
+
    See ADR-015 for architectural rationale.")
 
 (defn get-history
@@ -52,48 +56,93 @@
    Clears redo stack (new action invalidates future).
    Trims past stack to stay within limit.
 
+   When session is provided, stores it alongside DB for cursor/selection restore.
+   Entry format: {:db db-snapshot :session session-snapshot}
+
    Returns DB with updated :history."
-  [DB]
-  (let [{:keys [past limit]} (get-history DB)
-        db-snapshot (strip-history DB)
-        new-past (conj (vec past) db-snapshot)
-        trimmed-past (trim-to-limit limit new-past)]
-    (assoc DB :history
-           {:past trimmed-past
-            :future []
-            :limit limit})))
+  ([DB] (record DB nil))
+  ([DB session]
+   (let [{:keys [past limit]} (get-history DB)
+         db-snapshot (strip-history DB)
+         ;; Store session subset relevant for undo (cursor position, selection)
+         ;; Don't store transient UI state like suppress-blur-exit
+         session-snapshot (when session
+                            {:selection (:selection session)
+                             :ui (select-keys (:ui session)
+                                              [:editing-block-id :cursor-position])})
+         entry {:db db-snapshot :session session-snapshot}
+         new-past (conj (vec past) entry)
+         trimmed-past (trim-to-limit limit new-past)]
+     (assoc DB :history
+            {:past trimmed-past
+             :future []
+             :limit limit}))))
 
 (defn undo
   "Restore previous DB state from history.
    Moves current state to future (for redo).
-   Returns updated DB, or nil if no history."
-  [DB]
-  (let [{:keys [past future limit]} (get-history DB)]
-    (when (seq past)
-      (let [current-snapshot (strip-history DB)
-            prev-snapshot (peek past)
-            new-past (pop past)
-            new-future (conj (vec future) current-snapshot)]
-        (-> prev-snapshot
-            (assoc :history {:past new-past
-                             :future new-future
-                             :limit limit}))))))
+
+   When session is provided, it's stored in future for redo.
+
+   Returns {:db restored-db :session restored-session} or nil if no history.
+   Session may be nil if not captured during record."
+  ([DB] (undo DB nil))
+  ([DB current-session]
+   (let [{:keys [past future limit]} (get-history DB)]
+     (when (seq past)
+       (let [current-db-snapshot (strip-history DB)
+             ;; Store current session for redo
+             current-session-snapshot (when current-session
+                                        {:selection (:selection current-session)
+                                         :ui (select-keys (:ui current-session)
+                                                          [:editing-block-id :cursor-position])})
+             current-entry {:db current-db-snapshot :session current-session-snapshot}
+             prev-entry (peek past)
+             ;; Handle both old format (just db) and new format ({:db :session})
+             prev-db (if (map? prev-entry)
+                       (or (:db prev-entry) prev-entry)
+                       prev-entry)
+             prev-session (when (map? prev-entry) (:session prev-entry))
+             new-past (pop past)
+             new-future (conj (vec future) current-entry)]
+         {:db (-> prev-db
+                  (assoc :history {:past new-past
+                                   :future new-future
+                                   :limit limit}))
+          :session prev-session})))))
 
 (defn redo
   "Restore next DB state from future.
    Moves current state to past (for undo).
-   Returns updated DB, or nil if no future."
-  [DB]
-  (let [{:keys [past future limit]} (get-history DB)]
-    (when (seq future)
-      (let [current-snapshot (strip-history DB)
-            next-snapshot (peek future)
-            new-future (pop future)
-            new-past (conj (vec past) current-snapshot)]
-        (-> next-snapshot
-            (assoc :history {:past new-past
-                             :future new-future
-                             :limit limit}))))))
+
+   When session is provided, it's stored in past for undo.
+
+   Returns {:db restored-db :session restored-session} or nil if no future.
+   Session may be nil if not captured during record."
+  ([DB] (redo DB nil))
+  ([DB current-session]
+   (let [{:keys [past future limit]} (get-history DB)]
+     (when (seq future)
+       (let [current-db-snapshot (strip-history DB)
+             ;; Store current session for undo
+             current-session-snapshot (when current-session
+                                        {:selection (:selection current-session)
+                                         :ui (select-keys (:ui current-session)
+                                                          [:editing-block-id :cursor-position])})
+             current-entry {:db current-db-snapshot :session current-session-snapshot}
+             next-entry (peek future)
+             ;; Handle both old format (just db) and new format ({:db :session})
+             next-db (if (map? next-entry)
+                       (or (:db next-entry) next-entry)
+                       next-entry)
+             next-session (when (map? next-entry) (:session next-entry))
+             new-future (pop future)
+             new-past (conj (vec past) current-entry)]
+         {:db (-> next-db
+                  (assoc :history {:past new-past
+                                   :future new-future
+                                   :limit limit}))
+          :session next-session})))))
 
 (defn set-limit
   "Set the maximum number of undo steps to keep.
