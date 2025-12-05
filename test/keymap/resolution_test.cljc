@@ -19,9 +19,11 @@
 
 (defn make-event
   "Create a key event map for testing."
-  [{:keys [key mod shift alt]
-    :or {mod false shift false alt false}}]
-  {:key key :mod mod :shift shift :alt alt})
+  [event-map]
+  {:key (:key event-map)
+   :mod (get event-map :mod false)
+   :shift (get event-map :shift false)
+   :alt (get event-map :alt false)})
 
 ;; ── Non-Editing Mode Tests ───────────────────────────────────────────────────
 

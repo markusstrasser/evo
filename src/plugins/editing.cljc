@@ -97,9 +97,10 @@
                                  [:type [:= :enter-edit-with-char]]
                                  [:block-id :string]
                                  [:char :string]]
-                          :handler (fn [db _session {:keys [block-id char]}]
-                                     (let [current-text (get-block-text db block-id)
-                                           new-text (str current-text char)
+                          :handler (fn [db _session {:keys [block-id] :as intent}]
+                                     (let [input-char (:char intent)
+                                           current-text (get-block-text db block-id)
+                                           new-text (str current-text input-char)
                                            new-cursor-pos (count new-text)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates
