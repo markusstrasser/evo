@@ -143,22 +143,34 @@
                                                                :cursor-position (inc cursor-pos)}}}))})
 
 (intent/register-intent! :merge-with-prev
-                         {:doc "Merge block with previous sibling, placing cursor at merge point.
+                         {:doc "Merge block with previous block in DOM order, placing cursor at merge point.
 
-                                CRITICAL: Re-parents children of deleted block to prev block (Logseq behavior)."
+         Works for both:
+         - Previous sibling (standard case)
+         - Parent block (when current is first child - Logseq parity)
+
+         CRITICAL: Re-parents children of deleted block to prev block.
+         
+         :text - Current text from DOM (required for unsaved buffer content)"
 
                           :fr/ids #{:fr.edit/backspace-merge}
 
-                          :spec [:map [:type [:= :merge-with-prev]] [:block-id :string]]
-                          :handler (fn [db _session {:keys [block-id]}]
-                                     (let [prev-id (get-in db [:derived :prev-id-of block-id])
+                          :spec [:map
+                                 [:type [:= :merge-with-prev]]
+                                 [:block-id :string]
+                                 [:text {:optional true} :string]]
+                          :handler (fn [db _session {:keys [block-id text]}]
+                                     ;; Use DOM order (not sibling order) so merge works when
+                                     ;; current block is a child of the previous block
+                                     (let [prev-id (q/prev-block-dom-order db block-id)
                                            prev-text (get-block-text db prev-id)
-                                           curr-text (get-block-text db block-id)
+                                           ;; Use passed text (from DOM) if available, fall back to DB
+                                           curr-text (or text (get-block-text db block-id))
                                            merged-text (str prev-text curr-text)
-                    ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
+                                           ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
                                            cursor-at #?(:cljs (.-length prev-text)
                                                         :clj (count prev-text))
-                    ;; CRITICAL FIX: Get children of block being deleted so they can be re-parented
+                                           ;; Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]
                                        (when prev-id
                                          {:ops (vec (concat
