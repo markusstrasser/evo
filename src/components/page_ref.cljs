@@ -37,9 +37,6 @@
     :data-page-name page-name
     :on {:click (fn [e]
                   (.preventDefault e)
-                  ;; Future: dispatch intent to navigate to page
-                  ;; For now, just log
-                  (js/console.log "Page ref clicked:" page-name)
                   (when on-intent
                     (on-intent {:type :navigate-to-page
                                 :page-name page-name})))

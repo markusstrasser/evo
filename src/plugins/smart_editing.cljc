@@ -331,21 +331,7 @@
                           (fn [db _session {:keys [block-id cursor-pos]}]
                             (let [text (get-block-text db block-id)
                                   context (ctx/context-at-cursor text cursor-pos)
-                                  parent (get-in db [:derived :parent-of block-id])
-                                  ;; DEBUG: Always log for UUID blocks (newly created)
-                                  _ #?(:cljs
-                                       (when (str/starts-with? (str block-id) "block-")
-                                         (let [children-of-parent (get-in db [:children-by-parent parent] [])
-                                               block-in-children? (some #{block-id} children-of-parent)]
-                                           (js/console.log "📍 context-aware-enter on UUID block:"
-                                                           "\n  block-id:" block-id
-                                                           "\n  parent (from derived):" parent
-                                                           "\n  children of parent:" (pr-str children-of-parent)
-                                                           "\n  block in children?:" (boolean block-in-children?)
-                                                           "\n  context:" (:type context))
-                                           (when (and parent (not block-in-children?))
-                                             (js/console.error "🚨 MISMATCH: block not in parent's children!"))))
-                                       :clj nil)]
+                                  parent (get-in db [:derived :parent-of block-id])]
 
                               (case (:type context)
 
@@ -448,15 +434,7 @@
                                 :none
                                 (let [before (subs text 0 cursor-pos)
                                       after (subs text cursor-pos)
-                                      new-id (str "block-" (random-uuid))
-                                      ;; DEBUG: Log the place op that will be generated
-                                      _ #?(:cljs
-                                           (js/console.log "📝 :none context - generating place op:"
-                                                           "\n  block-id:" block-id
-                                                           "\n  parent:" parent
-                                                           "\n  new-id:" new-id
-                                                           "\n  place under:" parent "at {:after" block-id "}")
-                                           :clj nil)]
+                                      new-id (str "block-" (random-uuid))]
                                   (when parent
                                     (if (zero? cursor-pos)
                ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE

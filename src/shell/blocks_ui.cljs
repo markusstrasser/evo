@@ -46,7 +46,6 @@
   []
   (let [search (.-search js/location)
         has-param (and search (>= (.indexOf search "test=true") 0))]
-    (js/console.log "TEST MODE CHECK - search:" search "has-param:" has-param)
     (boolean has-param)))
 
 (defn- devtools-enabled?
@@ -99,9 +98,6 @@
     ;; Intent map: dispatch directly through kernel
     (map? intent-or-actions)
     (let [intent-type (:type intent-or-actions)
-          ;; DEBUG: Log ALL direct intent dispatches
-          _ (js/console.log "🔶 DIRECT dispatch:" (pr-str intent-type)
-                            "- DB hash:" (hash @!db))
           ;; Structural operations that may cause DOM re-render and blur
           structural? (contains? #{:indent-selected :outdent-selected
                                    :move-selected-up :move-selected-down
@@ -502,19 +498,14 @@
   (session/swap-session! assoc-in [:ui :current-page] "test-page"))
 
 (defn main []
-  (js/console.log "Blocks UI starting with proper architecture...")
-  (js/console.log "Current URL:" (.-href js/location))
+  (when ^boolean goog.DEBUG
+    (js/console.log "Blocks UI starting..."))
 
   ;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
   (if (test-mode?)
-    (do
-      (js/console.log "Test mode detected - resetting to empty DB")
-      (reset-to-empty-db!)
-      (js/console.log "DB after reset - block count:" (count (get-in @!db [:nodes]))))
+    (reset-to-empty-db!)
     ;; Normal mode: auto-select first page (Projects) for demo data
-    (do
-      (js/console.log "Normal mode - auto-selecting Projects page")
-      (session/swap-session! assoc-in [:ui :current-page] "projects")))
+    (session/swap-session! assoc-in [:ui :current-page] "projects"))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
@@ -594,18 +585,10 @@
   ;; Initialize Nexus action pipeline
   (nexus/init!)
 
-  ;; Phases 4 & 5: Session is independent, no init from DB needed
-  (js/console.log "Session initialized (independent of DB)")
-
   ;; Set initial current page to first page (for navigation scope)
-  ;; Fixes G-Nav-Visibility: navigation must respect current page boundary
   (when-not (test-mode?)
-    (let [first-page (first (q/children @!db :doc))]
-      (when first-page
-        (session/swap-session! assoc-in [:ui :current-page] first-page)
-        (js/console.log "Initial page set to:" first-page))))
-
-  (js/console.log "Registered plugins:" (clj->js plugin-manifest/manifest))
+    (when-let [first-page (first (q/children @!db :doc))]
+      (session/swap-session! assoc-in [:ui :current-page] first-page)))
 
   ;; Enable lifecycle hooks + Nexus dispatch
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
