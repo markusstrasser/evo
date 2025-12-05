@@ -148,7 +148,8 @@
              ;; Only record history when there are actual structural ops
              ;; Ephemeral intents (session-updates only) don't trigger history
              record? (and (not (false? enabled?)) (seq ops))
-             db0 (if record? (H/record db) db)]
+             ;; Record both DB and session for proper undo/redo cursor restore
+             db0 (if record? (H/record db session) db)]
          #?(:clj (journal-tx! intent ops))
          ;; DB ops go through normal transaction pipeline
          ;; Session updates are returned for caller to apply
