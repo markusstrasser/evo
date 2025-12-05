@@ -199,12 +199,14 @@
 (intent/register-intent! :indent
                          {:doc "Indent node under previous sibling."
                           :spec [:map [:type [:= :indent]] [:id :string]]
+                          :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [id]}]
                                      (indent-ops db session id))})
 
 (intent/register-intent! :outdent
                          {:doc "Outdent node to be sibling of parent."
                           :spec [:map [:type [:= :outdent]] [:id :string]]
+                          :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [id]}]
                                      (outdent-ops db session id))})
 
