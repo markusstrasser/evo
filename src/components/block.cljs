@@ -244,11 +244,11 @@
         cursor-pos (.-anchorOffset selection)
         ;; LOGSEQ PARITY: Empty block auto-outdent
         ;; Conditions: empty content + no next sibling + not at top level
-        empty? (str/blank? text-content)
+        is-empty? (str/blank? text-content)
         has-next? (some? (q/next-sibling db block-id))
         parent (q/parent-of db block-id)
         at-root? (= parent :doc)]
-    (if (and empty? (not has-next?) (not at-root?))
+    (if (and is-empty? (not has-next?) (not at-root?))
       ;; Auto-outdent: move block to be sibling of parent
       (on-intent {:type :outdent :id block-id})
       ;; Normal: create new block via smart-split
