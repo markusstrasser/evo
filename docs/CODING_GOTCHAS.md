@@ -490,6 +490,7 @@ From `kernel/constants.cljc`:
 |----------|-------|-----|
 | `const/root-doc` | `:doc` | Document root |
 | `const/root-trash` | `:trash` | Trash root |
-| `const/session-ui-id` | `"session/ui"` | Session snapshot in history |
 
 **Always use keywords in ops:** `:doc`, `:trash` (not `:root-doc`)
+
+**Session state:** Lives in `shell.session` atom, not in DB. Query via `session/editing-block-id`, `session/selection-nodes`, etc.

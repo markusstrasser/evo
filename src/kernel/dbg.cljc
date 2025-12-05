@@ -89,38 +89,24 @@
    - Node count
    - Root structure
    - Derived index sizes
-   - Selection state
+
+   Note: Session state (selection, editing) is in shell.session atom, not in DB.
 
    Example:
      (println (dbg/pp-db-summary db))"
   [db]
-  (let [{:keys [nodes children-by-parent roots derived]} db
-        doc-nodes (filter (fn [[id _]] (= const/root-doc (get-in db [:derived :parent-of id])))
-                         nodes)
-        session-nodes (filter (fn [[id _]] (= const/root-session (get-in db [:derived :parent-of id])))
-                             nodes)]
+  (let [{:keys [nodes children-by-parent derived]} db]
     (str
      "──── DB SUMMARY ────\n"
      "Nodes: " (count nodes) " total\n"
      "  :doc children: " (count (get children-by-parent const/root-doc [])) "\n"
      "  :trash children: " (count (get children-by-parent const/root-trash [])) "\n"
-     "  :session children: " (count (get children-by-parent const/root-session [])) "\n"
      "\n"
      "Derived indexes:\n"
      "  parent-of: " (count (:parent-of derived)) " entries\n"
      "  index-of: " (count (:index-of derived)) " entries\n"
      "  prev-id-of: " (count (:prev-id-of derived)) " entries\n"
-     "  next-id-of: " (count (:next-id-of derived)) " entries\n"
-     "\n"
-     "Selection:\n"
-     "  nodes: " (get-in db [:nodes const/session-selection-id :props :nodes] #{}) "\n"
-     "  focus: " (get-in db [:nodes const/session-selection-id :props :focus]) "\n"
-     "\n"
-     "Edit (ephemeral):\n"
-     "  editing-block-id: " (get-in db [:nodes const/session-ui-id :props :editing-block-id]) "\n"
-     "\n"
-     "Cursor (ephemeral):\n"
-     "  " (pr-str (get-in db [:nodes const/session-ui-id :props :cursor])) "\n")))
+     "  next-id-of: " (count (:next-id-of derived)) " entries\n")))
 
 (defn inspect-node
   "Pretty-print a single node with all its properties and relationships.

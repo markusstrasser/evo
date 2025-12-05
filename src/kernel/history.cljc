@@ -1,12 +1,11 @@
 (ns kernel.history
   "Undo/redo infrastructure for event-sourced DB.
 
-   Operates on complete DB snapshots (including :nodes, :derived, :selection, :ui).
+   Operates on complete DB snapshots (including :nodes, :derived).
    History is stored as `:history` namespace at DB root:
    {:history {:past [] :future [] :limit 50}}
 
-   See ADR-015 for architectural rationale."
-  (:require [kernel.constants :as const]))
+   See ADR-015 for architectural rationale.")
 
 (defn get-history
   "Returns the history map from DB, or empty history if none exists."
@@ -44,21 +43,9 @@
       v)))
 
 (defn- strip-history
-  "Remove :history from DB before storing in history stack.
-
-   LOGSEQ PARITY (FR-Undo-01): Preserve editing-block-id and cursor-position
-   so undo/redo restores interaction state (editing block, caret position).
-
-   Only strip truly ephemeral state like cursor boundary flags."
+  "Remove :history from DB before storing in history stack."
   [DB]
-  (let [ui-id const/session-ui-id
-        ui-props (get-in DB [:nodes ui-id :props] {})
-        ;; Preserve editing state for undo/redo, strip transient cursor state
-        preserved-props (select-keys ui-props [:editing-block-id :cursor-position])]
-    (-> DB
-        (dissoc :history)
-        ;; Keep editing-block-id and cursor-position, clear cursor boundary flags
-        (assoc-in [:nodes ui-id :props] preserved-props))))
+  (dissoc DB :history))
 
 (defn record
   "Record current DB state to undo stack before making a change.
@@ -79,10 +66,7 @@
 (defn undo
   "Restore previous DB state from history.
    Moves current state to future (for redo).
-   Returns updated DB, or nil if no history.
-
-   LOGSEQ PARITY (FR-Undo-01): Restores editing-block-id and cursor-position
-   from the historical state, NOT the current state."
+   Returns updated DB, or nil if no history."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)]
     (when (seq past)
@@ -98,10 +82,7 @@
 (defn redo
   "Restore next DB state from future.
    Moves current state to past (for undo).
-   Returns updated DB, or nil if no future.
-
-   LOGSEQ PARITY (FR-Undo-01): Restores editing-block-id and cursor-position
-   from the future state, NOT the current state."
+   Returns updated DB, or nil if no future."
   [DB]
   (let [{:keys [past future limit]} (get-history DB)]
     (when (seq future)

@@ -1,8 +1,8 @@
 # Transclusion and Page References Implementation
 
-> **Architecture Note (2025-11)**: Session state (editing, cursor, folding, current-page) now lives
-> in a separate atom, not in DB nodes. Code examples showing `const/session-ui-id` in DB are
-> **outdated**. See `shell/session.cljs` for session shape.
+> **Architecture Note (2025-12)**: Session state (editing, cursor, folding, current-page) now lives
+> in `shell/session.cljs` atom, not in DB nodes. Query via `session/editing-block-id`,
+> `session/current-page`, etc.
 
 ## Overview
 
@@ -82,15 +82,16 @@ Three rendering components:
 
 ### State Management
 
-**Session State Extension** (`src/kernel/db.cljc`)
+**Session State** (`src/shell/session.cljs`)
 ```clojure
-const/session-ui-id {:type :ui
-                     :props {:editing-block-id nil
-                             :cursor {}
-                             :folded #{}
-                             :zoom-stack []
-                             :zoom-root nil
-                             :current-page nil}}  ; Added
+;; Session atom shape (not in DB)
+{:ui {:editing-block-id nil
+      :cursor-position nil
+      :folded #{}
+      :zoom-root nil
+      :current-page nil}
+ :selection {:nodes #{} :focus nil :anchor nil}
+ :buffer {"block-id" "typing text..."}}
 ```
 
 **Pages Plugin** (`src/plugins/pages.cljc`)

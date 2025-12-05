@@ -6,7 +6,7 @@
   (:require [clojure.data :as data]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
-            [kernel.constants :as const]))
+            [shell.session :as session]))
 
 (def ^:const max-entries 200)
 (defonce !log (atom []))
@@ -16,8 +16,9 @@
         pages (keep (fn [[id {:keys [type]}]]
                       (when (= type :page) id))
                     nodes)
-        selection (get-in db [:nodes const/session-selection-id :props :nodes] #{})
-        editing (get-in db [:nodes const/session-ui-id :props :editing-block-id])]
+        ;; Read from session atom (not from deprecated DB nodes)
+        selection (session/selection-nodes)
+        editing (session/editing-block-id)]
     {:node-count (count nodes)
      :page-count (count pages)
      :selection-count (count selection)
@@ -62,18 +63,19 @@
    :pages (- (:page-count after) (:page-count before))
    :selection (- (:selection-count after) (:selection-count before))})
 
-(defn format-entry-with-diff [{:keys [intent hotkey timestamp summary db-before db-after]} current-page-id]
-  (with-out-str
-    (pprint/pprint
-     {:intent intent
-      :hotkey hotkey
-      :timestamp timestamp
-      :page current-page-id
-      :delta (delta-summary summary)
-      :editing-before (get-in db-before [:nodes const/session-ui-id :props :editing-block-id])
-      :editing-after (get-in db-after [:nodes const/session-ui-id :props :editing-block-id])
-      :selection-before (get-in db-before [:nodes const/session-selection-id :props :nodes])
-      :selection-after (get-in db-after [:nodes const/session-selection-id :props :nodes])})))
+(defn format-entry-with-diff [{:keys [intent hotkey timestamp summary]} current-page-id]
+  (let [;; Read current session state (not historical - we no longer track session in DB history)
+        editing (session/editing-block-id)
+        selection (session/selection-nodes)]
+    (with-out-str
+      (pprint/pprint
+       {:intent intent
+        :hotkey hotkey
+        :timestamp timestamp
+        :page current-page-id
+        :delta (delta-summary summary)
+        :editing editing
+        :selection selection}))))
 
 (defn get-log []
   @!log)

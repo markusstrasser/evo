@@ -13,7 +13,6 @@
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
-            [kernel.constants :as const]
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
@@ -24,7 +23,6 @@
             [shell.e2e-scenarios]
             [shell.plugin-manifest-runtime :as plugin-manifest]
             [shell.session :as session]
-            ;; Phases 4 & 5: session-sync removed - session is source of truth
             ;; Load all plugins to register intents
             [plugins.selection]
             [plugins.editing]
@@ -216,43 +214,16 @@
       intent-type
       (do (.preventDefault e)
           (cond
-            ;; Undo/Redo - special handling (modify DB directly, not via operations)
-            ;; LOGSEQ PARITY (FR-Undo-01): Restore cursor/editing state to session
+            ;; Undo/Redo - modify DB directly, not via operations
             (= intent-type :undo)
-            (let [new-db (H/undo @!db)]
-              (when new-db
-                (reset! !db new-db)
-                ;; DEBUG: Assert derived indexes are fresh after undo
-                (assert-derived-fresh! new-db "after undo")
-                ;; Restore editing state from historical snapshot to session
-                (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
-                      cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
-                  (session/swap-session!
-                   (fn [s]
-                     (-> s
-                         (assoc-in [:ui :editing-block-id] editing-id)
-                         (assoc-in [:ui :cursor-position] cursor-pos)
-                         ;; Clear selection when restoring edit state
-                         (assoc-in [:selection :nodes] (if editing-id #{} (:nodes (:selection s))))
-                         (assoc-in [:selection :focus] (when-not editing-id (:focus (:selection s))))))))))
+            (when-let [new-db (H/undo @!db)]
+              (reset! !db new-db)
+              (assert-derived-fresh! new-db "after undo"))
 
             (= intent-type :redo)
-            (let [new-db (H/redo @!db)]
-              (when new-db
-                (reset! !db new-db)
-                ;; DEBUG: Assert derived indexes are fresh after redo
-                (assert-derived-fresh! new-db "after redo")
-                ;; Restore editing state from future snapshot to session
-                (let [editing-id (get-in new-db [:nodes const/session-ui-id :props :editing-block-id])
-                      cursor-pos (get-in new-db [:nodes const/session-ui-id :props :cursor-position])]
-                  (session/swap-session!
-                   (fn [s]
-                     (-> s
-                         (assoc-in [:ui :editing-block-id] editing-id)
-                         (assoc-in [:ui :cursor-position] cursor-pos)
-                         ;; Clear selection when restoring edit state
-                         (assoc-in [:selection :nodes] (if editing-id #{} (:nodes (:selection s))))
-                         (assoc-in [:selection :focus] (when-not editing-id (:focus (:selection s))))))))))
+            (when-let [new-db (H/redo @!db)]
+              (reset! !db new-db)
+              (assert-derived-fresh! new-db "after redo"))
 
             ;; All other intents - go through normal intent dispatch
             :else
