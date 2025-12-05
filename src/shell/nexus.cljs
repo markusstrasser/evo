@@ -38,6 +38,11 @@
 
    Gets current session, passes to api/dispatch, applies session-updates."
   [_ !db intent-map]
+  ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
+  ;; Intents like :context-aware-enter pass :cursor-pos, but session doesn't have it.
+  ;; Sync it to session so H/record captures it for undo restoration.
+  (when-let [cursor-pos (:cursor-pos intent-map)]
+    (session/swap-session! assoc-in [:ui :cursor-position] cursor-pos))
   (let [current-session (session/get-session)
         db-before @!db
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
