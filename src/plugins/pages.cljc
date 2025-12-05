@@ -8,7 +8,6 @@
   (:require [clojure.string :as str]
             [kernel.intent :as intent]
             [kernel.query :as q]
-            [kernel.constants :as const]
             [plugins.context :as ctx]))
 
 ;; ── Query Helpers ─────────────────────────────────────────────────────────────

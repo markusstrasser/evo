@@ -26,8 +26,7 @@
 
    Note: Unlike :children-by-parent (canonical ordering), :visible-order
    changes dynamically based on ephemeral session state (fold/zoom)."
-  (:require [kernel.constants :as const]
-            [plugins.registry :as registry]))
+  (:require [plugins.registry :as registry]))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 

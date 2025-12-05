@@ -5,7 +5,6 @@
    - Plugins provide getters and extend intent multimethods
    - Components use getters and dispatch intents
    - App just composes components and routes intents"
-  (:require-macros [shell.plugin-manifest :refer [require-specs]])
   (:require [clojure.string :as str]
             [replicant.dom :as d]
             [kernel.db :as DB]
@@ -21,7 +20,6 @@
             [shell.nexus :as nexus]
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
-            [shell.plugin-manifest-runtime :as plugin-manifest]
             [shell.session :as session]
             ;; Load all plugins to register intents
             [plugins.selection]

@@ -8,8 +8,7 @@
    - Selection: queries on session/selection node (undoable)
    - Edit/Cursor: queries on :ui map (ephemeral, not in history)
    - Tree: queries on :derived indexes and :children-by-parent"
-  (:require [kernel.constants :as const]
-            [kernel.navigation :as nav]))
+  (:require [kernel.navigation :as nav]))
 
 ;; ── Selection Queries (Session-based after Phases 4-5) ────────────────────────
 ;; These functions now query session state instead of DB.

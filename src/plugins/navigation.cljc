@@ -4,7 +4,6 @@
    Tracks horizontal cursor position (column) when navigating vertically
    between blocks, enabling Logseq's 'continuous document' feel."
   (:require [kernel.intent :as intent]
-            [kernel.constants :as const]
             [kernel.query :as q]
             [kernel.navigation :as nav]
             #?(:clj [clojure.string :as str]
