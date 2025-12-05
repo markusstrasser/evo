@@ -1,13 +1,16 @@
 (ns shell.session
   "Ephemeral UI session state - separate from persistent document DB.
 
-   Phase 2 of kernel-session split refactor.
-
    Architecture:
-   - Session holds ALL ephemeral UI state (cursor, selection, buffer, fold, zoom)
-   - Components READ from session (not DB)
-   - Components still WRITE to DB (for backward compatibility during migration)
-   - Phase 3+ will make writes session-only
+   - Session (!session) holds UI state that TRIGGERS re-renders:
+     selection, focus, folding, zoom, current-page, editing-block-id
+   - Buffer (!buffer) holds high-velocity text that does NOT trigger re-renders:
+     keystroke-by-keystroke text during editing
+
+   Why two atoms?
+   - Session changes trigger Replicant re-render (via watch in blocks_ui)
+   - Buffer changes happen on every keystroke - re-rendering would be slow
+   - Browser owns contenteditable DOM during editing; buffer is just a sync copy
 
    Session is intentionally NOT reactive (plain atom):
    - Replicant uses explicit render calls, not reactive subscriptions
@@ -15,37 +18,44 @@
    - This keeps the mental model simple and predictable")
 
 ;; ── Session State Atom ────────────────────────────────────────────────────────
-;; Single atom holding all ephemeral UI state.
+;; Holds UI state that TRIGGERS re-renders when changed.
 ;;
 ;; Structure:
 ;; {:cursor    {:block-id nil :offset 0}        ; Active caret position
 ;;  :selection {:nodes #{}                       ; Selected block IDs
 ;;              :focus nil                       ; Focus block ID
 ;;              :anchor nil}                     ; Anchor for range selection
-;;  :buffer    {:block-id nil                    ; Block being edited
-;;              :text ""                         ; Current buffer text
-;;              :dirty? false}                   ; Has uncommitted changes?
 ;;  :ui        {:folded #{}                      ; Folded block IDs
 ;;              :zoom-root nil                   ; Current zoom root
 ;;              :current-page nil                ; Active page
 ;;              :editing-block-id nil            ; Block in edit mode
 ;;              :cursor-position nil             ; Cursor position for enter-edit
-;;              :suppress-blur-exit false}       ; Prevent blur from exiting edit (during structural ops)
+;;              :suppress-blur-exit false}       ; Prevent blur from exiting edit
 ;;  :sidebar   {:right []}}                      ; Right sidebar items
+;;
+;; NOTE: Buffer text is stored separately in !buffer (no render trigger)
 
 (defonce !session
   (atom
-   {:cursor    {:block-id nil :offset 0}
+   {:cursor {:block-id nil :offset 0}
     :selection {:nodes #{} :focus nil :anchor nil}
-    :buffer    {:block-id nil :text "" :dirty? false}
-    :ui        {:folded #{}
-                :zoom-root nil
-                :current-page nil
-                :editing-block-id nil
-                :cursor-position nil
-                :suppress-blur-exit false
-                :doc-mode? false}  ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
-    :sidebar   {:right []}}))
+    :ui {:folded #{}
+         :zoom-root nil
+         :current-page nil
+         :editing-block-id nil
+         :cursor-position nil
+         :suppress-blur-exit false
+         :doc-mode? false} ; LOGSEQ PARITY: When true, Enter/Shift+Enter swap
+    :sidebar {:right []}}))
+
+;; ── Buffer Atom (NO render watch) ─────────────────────────────────────────────
+;; Separate atom for high-velocity keystroke storage.
+;; Changes to this atom do NOT trigger re-renders.
+;;
+;; Structure: {block-id text-string}
+;; Example: {"block-123" "Hello world"}
+
+(defonce !buffer (atom {}))
 
 ;; ── Public API ────────────────────────────────────────────────────────────────
 
@@ -70,19 +80,20 @@
 (defn reset-session!
   "Reset session to fresh state.
 
-   Used for testing and clearing all ephemeral state."
+   Used for testing and clearing all ephemeral state.
+   Also clears the buffer atom."
   []
+  (reset! !buffer {})
   (reset! !session
-          {:cursor    {:block-id nil :offset 0}
+          {:cursor {:block-id nil :offset 0}
            :selection {:nodes #{} :focus nil :anchor nil}
-           :buffer    {:block-id nil :text "" :dirty? false}
-           :ui        {:folded #{}
-                       :zoom-root nil
-                       :current-page nil
-                       :editing-block-id nil
-                       :cursor-position nil
-                       :doc-mode? false}
-           :sidebar   {:right []}}))
+           :ui {:folded #{}
+                :zoom-root nil
+                :current-page nil
+                :editing-block-id nil
+                :cursor-position nil
+                :doc-mode? false}
+           :sidebar {:right []}}))
 
 ;; ── Query Helpers (Session equivalents of kernel.query) ──────────────────────
 
@@ -123,20 +134,41 @@
   []
   (get-in @!session [:selection :focus]))
 
+;; ── Buffer API (high-velocity, no render trigger) ────────────────────────────
+
+(defn buffer-set!
+  "Store text in buffer for a block. Does NOT trigger re-render.
+
+   Use this for keystroke-by-keystroke updates during editing.
+
+   Example:
+     (buffer-set! \"block-123\" \"Hello world\")"
+  [block-id text]
+  (swap! !buffer assoc block-id text))
+
+(defn buffer-clear!
+  "Clear buffer for a block (or all blocks if no id given).
+
+   Call after committing text to DB.
+
+   Example:
+     (buffer-clear! \"block-123\")  ; clear one
+     (buffer-clear!)               ; clear all"
+  ([]
+   (reset! !buffer {}))
+  ([block-id]
+   (swap! !buffer dissoc block-id)))
+
 (defn buffer-text
   "Get buffer text for a specific block ID.
+
+   Reads from the high-velocity !buffer atom (not !session).
 
    Example:
      (buffer-text \"block-123\")
      ;=> \"current typing text...\""
   [block-id]
-  ;; Use string block-id consistently (not keyword) to match DB convention
-  (get-in @!session [:buffer block-id]))
-
-(defn buffer-dirty?
-  "Check if buffer has uncommitted changes."
-  []
-  (get-in @!session [:buffer :dirty?]))
+  (get @!buffer block-id))
 
 (defn suppress-blur-exit?
   "Check if blur should NOT exit edit mode.
