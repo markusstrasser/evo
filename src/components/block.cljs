@@ -72,6 +72,51 @@
   (when-let [range (text-sel/get-current-range)]
     (not (.-collapsed range))))
 
+(defn- set-cursor!
+  "Set cursor in a contenteditable node at position `pos`.
+   
+   Handles edge cases:
+   - Empty nodes (creates text node if needed)
+   - Out-of-bounds positions (clamps to valid range)"
+  [node pos]
+  (when node
+    ;; Ensure text node exists (empty blocks have no children after innerHTML=\"\")
+    (when (zero? (.-length (.-childNodes node)))
+      (.appendChild node (.createTextNode js/document "")))
+    (let [text-node (.-firstChild node)
+          text-length (count (.-textContent node))
+          safe-pos (-> pos (max 0) (min text-length))
+          range (.createRange js/document)
+          sel (.getSelection js/window)]
+      (.setStart range text-node safe-pos)
+      (.setEnd range text-node safe-pos)
+      (.removeAllRanges sel)
+      (.addRange sel range))))
+
+(defn- insert-linebreak!
+  "Insert a line break at cursor and sync to session buffer.
+   
+   Used by both doc-mode Enter and normal-mode Shift+Enter."
+  [e target block-id]
+  (.preventDefault e)
+  (.execCommand js/document "insertLineBreak" false nil)
+  (let [new-text (extract-text-with-newlines target)]
+    (session/swap-session! assoc-in [:buffer block-id] new-text)))
+
+(defn- collapse-selection-start!
+  "Collapse text selection to start, preventing default event."
+  [e]
+  (when-let [sel (.getSelection js/window)]
+    (.preventDefault e)
+    (.collapseToStart sel)))
+
+(defn- collapse-selection-end!
+  "Collapse text selection to end, preventing default event."
+  [e]
+  (when-let [sel (.getSelection js/window)]
+    (.preventDefault e)
+    (.collapseToEnd sel)))
+
 ;; ── Keyboard handlers ─────────────────────────────────────────────────────────
 
 (defn handle-arrow-up [e db block-id on-intent]
@@ -80,9 +125,7 @@
     (cond
       ;; Has text selection - collapse to start
       (has-text-selection?)
-      (let [selection (.getSelection js/window)]
-        (.preventDefault e)
-        (.collapseToStart selection))
+      (collapse-selection-start! e)
 
       ;; At first row - navigate to previous block with cursor memory via Nexus
       (:first-row? cursor-pos)
@@ -105,9 +148,7 @@
     (cond
       ;; Has text selection - collapse to end
       (has-text-selection?)
-      (let [selection (.getSelection js/window)]
-        (.preventDefault e)
-        (.collapseToEnd selection))
+      (collapse-selection-end! e)
 
       ;; At last row - navigate to next block with cursor memory via Nexus
       (:last-row? cursor-pos)
@@ -192,8 +233,7 @@
     (cond
       ;; Has selection - collapse to start
       (has-text-selection?)
-      (do (.preventDefault e)
-          (.collapseToStart selection))
+      (collapse-selection-start! e)
 
       ;; At start - navigate to previous block
       at-start?
@@ -221,8 +261,7 @@
     (cond
       ;; Has selection - collapse to end
       (has-text-selection?)
-      (do (.preventDefault e)
-          (.collapseToEnd selection))
+      (collapse-selection-end! e)
 
       ;; At end - navigate to next block
       at-end?
@@ -249,13 +288,15 @@
         at-root? (= parent :doc)]
     (if (and is-empty? (not has-next?) (not at-root?))
       ;; Auto-outdent: move block to be sibling of parent
-      (on-intent {:type :outdent :id block-id})
+      ;; Use :outdent-selected which preserves editing state
+      (on-intent {:type :outdent-selected})
       ;; Normal: create new block via smart-split
       (on-intent [[:editing/smart-split {:block-id block-id
                                          :cursor-pos cursor-pos}]]))))
 
 (defn handle-escape [e db block-id on-intent]
   (.preventDefault e)
+  (.stopPropagation e) ; Prevent global keydown from also handling Escape
   ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
   ;; Read from session buffer (more reliable than DOM textContent with Playwright)
   ;; Fallback to DOM with extract-text-with-newlines to preserve BR as \n
@@ -317,13 +358,7 @@
                                (< pos 0) 0
                                (= (nth text-content pos) \newline) (inc pos)
                                :else (recur (dec pos))))]
-            (when-let [text-node (.-firstChild target)]
-              (let [range (.createRange js/document)
-                    sel (.getSelection js/window)]
-                (.setStart range text-node line-start)
-                (.setEnd range text-node line-start)
-                (.removeAllRanges sel)
-                (.addRange sel range)))))
+            (set-cursor! target line-start)))
 
       (and (= key "e") ctrl? (not shift?) (not alt?))
       (do (.preventDefault e)
@@ -336,36 +371,16 @@
                              (>= pos text-length) text-length
                              (= (nth text-content pos) \newline) pos
                              :else (recur (inc pos))))]
-            (when-let [text-node (.-firstChild target)]
-              (let [range (.createRange js/document)
-                    sel (.getSelection js/window)]
-                (.setStart range text-node line-end)
-                (.setEnd range text-node line-end)
-                (.removeAllRanges sel)
-                (.addRange sel range)))))
+            (set-cursor! target line-end)))
 
         ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
       (and (= key "a") alt? (not shift?) (not ctrl?))
       (do (.preventDefault e)
-          (when-let [text-node (.-firstChild target)]
-            (let [range (.createRange js/document)
-                  sel (.getSelection js/window)]
-              (.setStart range text-node 0)
-              (.setEnd range text-node 0)
-              (.removeAllRanges sel)
-              (.addRange sel range))))
+          (set-cursor! target 0))
 
       (and (= key "e") alt? (not shift?) (not ctrl?))
       (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                text-length (count text-content)]
-            (when-let [text-node (.-firstChild target)]
-              (let [range (.createRange js/document)
-                    sel (.getSelection js/window)]
-                (.setStart range text-node text-length)
-                (.setEnd range text-node text-length)
-                (.removeAllRanges sel)
-                (.addRange sel range)))))
+          (set-cursor! target (count (.-textContent target))))
 
         ;; Shift+Arrow - text selection OR block selection at boundaries
       (and (= key "ArrowUp") shift? (not mod?) (not alt?))
@@ -401,24 +416,14 @@
       (if (session/doc-mode?)
         ;; Doc-mode: Shift+Enter creates new block
         (handle-enter e db block-id on-intent)
-        ;; Normal mode: Shift+Enter inserts literal newline (direct DOM manipulation)
-        (do (.preventDefault e)
-            ;; Use execCommand for reliable newline insertion in contenteditable
-            ;; This inserts a <br> and moves cursor appropriately
-            (.execCommand js/document "insertLineBreak" false nil)
-            ;; Update session buffer to match DOM state (use extract to convert BR to \n)
-            (let [new-text (extract-text-with-newlines target)]
-              (session/swap-session! assoc-in [:buffer block-id] new-text))))
+        ;; Normal mode: Shift+Enter inserts literal newline
+        (insert-linebreak! e target block-id))
 
         ;; Enter - behavior depends on doc-mode
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))
       (if (session/doc-mode?)
         ;; Doc-mode: Enter inserts newline
-        (do (.preventDefault e)
-            (.execCommand js/document "insertLineBreak" false nil)
-            ;; Update session buffer to match DOM state (use extract to convert BR to \n)
-            (let [new-text (extract-text-with-newlines target)]
-              (session/swap-session! assoc-in [:buffer block-id] new-text)))
+        (insert-linebreak! e target block-id)
         ;; Normal mode: Enter creates new block
         (handle-enter e db block-id on-intent))
 
@@ -595,23 +600,11 @@
                 ;; Convert \n to <br> so newlines are visually rendered
                 (set! (.-innerHTML node) (text->html text))
 
-                ;; EDGE CASE FIX: Empty blocks have no text node after setting innerHTML=""
-                ;; Create an empty text node so cursor positioning works
-                (when (zero? (.-length (.-childNodes node)))
-                  (.appendChild node (.createTextNode js/document "")))
-
-                ;; Focus UNCONDITIONALLY (required side effect, never conditional)
+;; Focus UNCONDITIONALLY (required side effect, never conditional)
                 (.focus node)
 
-                ;; Position cursor - now safe because text node always exists
-                (let [text-node (.-firstChild node)
-                      range (.createRange js/document)
-                      sel (.getSelection js/window)
-                      safe-pos (min cursor-pos (count text))]
-                  (.setStart range text-node safe-pos)
-                  (.setEnd range text-node safe-pos)
-                  (.removeAllRanges sel)
-                  (.addRange sel range))
+                ;; Position cursor (set-cursor! handles empty text node edge case)
+                (set-cursor! node cursor-pos)
 
                 ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
                 (when initial-cursor
@@ -642,15 +635,8 @@
                                        (= pending-cursor :end) text-length
                                        (= pending-cursor :max) text-length
                                        :else nil)]
-                      (when (and cursor-pos (.-firstChild node))
-                        (let [text-node (.-firstChild node)
-                              range (.createRange js/document)
-                              sel (.getSelection js/window)
-                              safe-pos (min cursor-pos text-length)]
-                          (.setStart range text-node safe-pos)
-                          (.setEnd range text-node safe-pos)
-                          (.removeAllRanges sel)
-                          (.addRange sel range)))
+                      (when cursor-pos
+                        (set-cursor! node cursor-pos))
                       ;; Clear the pending cursor position to prevent reapplication
                       (session/swap-session! assoc-in [:ui :cursor-position] nil))))))
 
