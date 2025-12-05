@@ -66,6 +66,64 @@
     [{:op :place :id id :under sib :at :last}]
     []))
 
+(defn- indent-multi-ops
+  "Indent multiple selected blocks (Logseq parity).
+
+   All selected blocks move under the previous sibling of the FIRST selected block,
+   maintaining their relative order as siblings at the same level.
+
+   Example:
+     Before:              After:
+     :doc                 :doc
+       a                    a
+       b ← selected           b (child of a)
+       c ← selected           c (sibling of b, also child of a)
+
+   Returns empty ops if first selected block has no previous sibling."
+  [db targets]
+  (when (seq targets)
+    (let [first-id (first targets)
+          new-parent (q/prev-sibling db first-id)]
+      (when new-parent
+        (mapv (fn [id] {:op :place :id id :under new-parent :at :last}) targets)))))
+
+(defn- outdent-multi-ops
+  "Outdent multiple selected blocks (Logseq parity).
+
+   All selected blocks move to position after their current parent,
+   maintaining their relative order.
+
+   Example:
+     Before:              After:
+     :doc                 :doc
+       parent               parent
+         a1 ← selected      a1 (sibling of parent, after it)
+         a2 ← selected      a2 (after a1)
+
+   Uses chained :at {:after prev-id} to maintain relative order."
+  [db session targets]
+  (when (seq targets)
+    (let [first-id (first targets)
+          p (q/parent-of db first-id)
+          gp (when p (q/parent-of db p))
+          roots (set (:roots db const/roots))
+          parent-is-page? (= :page (get-in db [:nodes p :type]))]
+      ;; Check if outdent is valid for the first block
+      (when (and p gp
+                 (not (contains? roots p))
+                 (not parent-is-page?)
+                 (within-zoom-scope? db session gp))
+        ;; First block goes after parent, rest chain after each other
+        (loop [remaining targets
+               prev-anchor p
+               ops []]
+          (if (empty? remaining)
+            ops
+            (let [id (first remaining)]
+              (recur (rest remaining)
+                     id
+                     (conj ops {:op :place :id id :under gp :at {:after prev-anchor}})))))))))
+
 (defn- collect-right-siblings
   "Collect all right siblings of a node (all siblings after it).
    Returns vector of sibling IDs in document order.
@@ -334,29 +392,45 @@
                                      (apply-to-active-targets db session delete-ops))})
 
 (intent/register-intent! :indent-selected
-                         {:doc "Indent all selected nodes (or editing block if no selection)."
+                         {:doc "Indent all selected/editing nodes (Logseq parity).
+
+                          For single block: moves under previous sibling.
+                          For multi-select: ALL blocks move under first's prev-sibling,
+                          remaining siblings at the same level."
 
                           :fr/ids #{:fr.struct/indent-outdent}
 
                           :spec [:map [:type [:= :indent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           ops (apply-to-active-targets db session indent-ops)]
-                                       ;; Preserve editing state if we're editing a block
+                                           targets (active-targets db session)
+                                           ops (if (= 1 (count targets))
+                                                 ;; Single block: use simple indent
+                                                 (indent-ops db session (first targets))
+                                                 ;; Multi-select: group under first's prev-sibling
+                                                 (or (indent-multi-ops db targets) []))]
                                        {:ops ops
                                         :session-updates (when editing-id
                                                            {:ui {:editing-block-id editing-id}})}))})
 
 (intent/register-intent! :outdent-selected
-                         {:doc "Outdent all selected nodes (or editing block if no selection)."
+                         {:doc "Outdent all selected/editing nodes (Logseq parity).
+
+                          For single block: moves after parent (logical outdent).
+                          For multi-select: ALL blocks move after parent in order,
+                          maintaining their relative positions."
 
                           :fr/ids #{:fr.struct/indent-outdent}
 
                           :spec [:map [:type [:= :outdent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           ops (apply-to-active-targets db session outdent-ops)]
-                                       ;; Preserve editing state if we're editing a block
+                                           targets (active-targets db session)
+                                           ops (if (= 1 (count targets))
+                                                 ;; Single block: use simple outdent
+                                                 (outdent-ops db session (first targets))
+                                                 ;; Multi-select: chain after parent, preserving order
+                                                 (or (outdent-multi-ops db session targets) []))]
                                        {:ops ops
                                         :session-updates (when editing-id
                                                            {:ui {:editing-block-id editing-id}})}))})
