@@ -42,7 +42,7 @@ Edge cases validated: empty/single/long text blocks, Unicode + RTL, caret positi
 
 ## Implementation Artifacts
 - **Key files**: `src/components/block.cljs`, `src/plugins/selection.cljc`, Playwright suites under `test/e2e/`.
-- **Testing**: 23 Playwright specs (`npm run e2e -- foundational-editing-parity`) + headless CLJC tests summarized in `docs/TESTING_STACK.md`.
+- **Testing**: 23 Playwright specs (`npm run e2e -- foundational-editing-parity`) + headless CLJC tests (see `docs/TESTING.md`).
 - **Manual checklist** (kept for quick smoke validation):
   - Type text, press Shift+Enter → newline inline, no new block.
   - Multi-line block: Ctrl+A/E stay within line, Alt+A/E jump to block boundaries.

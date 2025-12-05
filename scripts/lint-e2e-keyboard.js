@@ -113,7 +113,7 @@ function main() {
     process.exit(0);
   } else {
     console.log(`\n❌ Found ${totalIssues} potential issue(s)\n`);
-    console.log('ℹ️  See docs/PLAYWRIGHT_MCP_TESTING.md for details\n');
+    console.log('ℹ️  See docs/TESTING.md for details\n');
     console.log('   Playwright\'s page.keyboard.press() does NOT reliably trigger');
     console.log('   keyboard event handlers on contenteditable elements.');
     console.log('   Use pressKeyOnContentEditable() from test/e2e/helpers/keyboard.js instead.\n');
