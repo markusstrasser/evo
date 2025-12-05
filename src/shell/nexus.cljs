@@ -14,56 +14,15 @@
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [kernel.api :as api]
-            [kernel.db :as db]
-            [shell.session :as session]
-            [dev.tooling :as dev]
+            [shell.runtime :as runtime]
             [clojure.string :as str]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
 
-(defn- assert-derived-fresh!
-  "DEBUG: Assert that derived indexes are consistent after DB reset."
-  [db-val label]
-  (when ^boolean goog.DEBUG
-    (when-let [inconsistency (db/check-parent-of-consistency db-val)]
-      (js/console.error "🚨🚨🚨 DERIVED INDEX CORRUPTION DETECTED 🚨🚨🚨"
-                        "\nLabel:" label
-                        "\nInconsistency:" (pr-str inconsistency)
-                        "\nDB hash:" (hash db-val))
-      (js/console.trace "Stack trace for corruption detection"))))
-
 (defn dispatch-intent
-  "Effect that dispatches kernel intents.
-
-   Gets current session, passes to api/dispatch, applies session-updates."
+  "Effect that dispatches kernel intents via shared runtime."
   [_ !db intent-map]
-  ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
-  ;; Intents like :context-aware-enter pass :cursor-pos, but session doesn't have it.
-  ;; Sync it to session so H/record captures it for undo restoration.
-  (when-let [cursor-pos (:cursor-pos intent-map)]
-    (session/swap-session! assoc-in [:ui :cursor-position] cursor-pos))
-  (let [current-session (session/get-session)
-        db-before @!db
-        {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
-        db-after db
-        should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
-    (when (seq issues)
-      (js/console.error "Intent validation failed:" (pr-str issues)))
-
-    ;; Apply session updates BEFORE DB changes (for cursor positioning in on-mount)
-    (when session-updates
-      (session/swap-session! #(merge-with merge % session-updates)))
-
-    ;; Apply DB changes (triggers re-render)
-    (reset! !db db-after)
-
-    ;; Assert derived indexes are fresh
-    (assert-derived-fresh! db-after (str "after NEXUS dispatch: " (:type intent-map)))
-
-    ;; Log to devtools
-    (when should-log?
-      (dev/log-dispatch! intent-map db-before db-after))))
+  (runtime/apply-intent! !db intent-map "NEXUS"))
 
 (defn log-devtools
   "Effect that logs actions + intents to window.__nexusLog (dev only)."
