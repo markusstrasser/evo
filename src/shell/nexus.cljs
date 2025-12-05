@@ -175,9 +175,9 @@
                            :cursor-pos cursor-pos}]])
 
 (defn escape-edit
-  "Action: Exit edit mode (Escape key)."
+  "Action: Exit edit mode and select block (Escape key, Logseq parity)."
   [state {:keys [block-id]}]
-  [[:effects/dispatch-intent {:type :exit-edit
+  [[:effects/dispatch-intent {:type :exit-edit-and-select
                               :block-id block-id}]
    [:effects/log-devtools {:action :editing/escape
                            :block-id block-id}]])

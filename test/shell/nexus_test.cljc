@@ -151,12 +151,12 @@
       (is (= 5 (:cursor-pos intent)) "Should preserve cursor position"))))
 
 (deftest escape-edit-dispatches-correct-intent
-  (testing "escape-edit produces :exit-edit intent"
+  (testing "escape-edit produces :exit-edit-and-select intent (Logseq parity)"
     (let [state (sample-db)
           effects (nexus/escape-edit state {:block-id "b"})
           dispatch-effect (first (filter #(= :effects/dispatch-intent (first %)) effects))
           intent (second dispatch-effect)]
-      (is (= :exit-edit (:type intent))))))
+      (is (= :exit-edit-and-select (:type intent))))))
 
 ;; ── Effect Tests ──────────────────────────────────────────────────────────────
 ;; NOTE: dispatch-intent effect requires browser context (session atom).
