@@ -40,38 +40,21 @@
   [_ !db intent-map]
   (let [current-session (session/get-session)
         db-before @!db
-        ;; DEBUG: Log ALL intent dispatches through Nexus
-        _ (js/console.log "🔷 NEXUS dispatch:" (pr-str (:type intent-map))
-                          "- DB hash:" (hash db-before))
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
         db-after db
         should-log? (not (contains? #{:inspect-dataspex :clear-log} (:type intent-map)))]
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
 
-    ;; CRITICAL: Apply session updates BEFORE DB changes!
-    ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
-    ;; Those hooks read session state (cursor-position), so session must be updated first.
+    ;; Apply session updates BEFORE DB changes (for cursor positioning in on-mount)
     (when session-updates
       (session/swap-session! #(merge-with merge % session-updates)))
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
 
-    ;; DEBUG: Assert derived indexes are fresh after reset
+    ;; Assert derived indexes are fresh
     (assert-derived-fresh! db-after (str "after NEXUS dispatch: " (:type intent-map)))
-
-    ;; DEBUG: Log after reset for context-aware-enter
-    (when (= (:type intent-map) :context-aware-enter)
-      (js/console.log "🔍 AFTER context-aware-enter - DB hash:" (hash @!db)
-                      "\n  children-by-parent keys:" (pr-str (keys (:children-by-parent @!db))))
-      ;; Check for UUID blocks and their parents
-      (doseq [[child parent] (get-in @!db [:derived :parent-of])]
-        (when (str/starts-with? (str child) "block-")
-          (let [children-of-parent (get-in @!db [:children-by-parent parent] [])
-                in-children? (some #{child} children-of-parent)]
-            (js/console.log "📊 Block parent:" child "→" parent
-                            "| in children?:" (boolean in-children?))))))
 
     ;; Log to devtools
     (when should-log?
