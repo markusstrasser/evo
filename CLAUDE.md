@@ -14,7 +14,7 @@ Key characteristics:
 - AI-native design: LLMs generate operations, not DOM
 - Framework-agnostic core with thin UI adapters
 - Correctness over performance, simple over clever
-- Docs entrypoint: open `docs/DX_INDEX.md` → read `docs/LOGSEQ_SPEC.md` (ground truth) → skim `docs/LOGSEQ_PARITY_EVO.md` (Evo guardrails) → use triads in `docs/logseq_behaviors.md` when implementing.
+- Docs entrypoint: open `docs/DX_INDEX.md` → read `docs/STRUCTURAL_EDITING.md` (core editor spec) → skim `docs/LOGSEQ_UI_FEATURES.md` (Logseq-specific UI) → use triads in `docs/logseq_behaviors.md` when implementing.
 
 ## Essential Commands
 
@@ -474,11 +474,7 @@ await expect(page.locator('[contenteditable="true"]')).toBeFocused();
 const db = await page.evaluate(() => window.DEBUG.state());
 ```
 
-**See**: `docs/PLAYWRIGHT_MCP_TESTING.md` for complete E2E testing guide and keyboard helper API.
-
-### Full Testing Stack Reference
-
-For the complete philosophy (headless tiers, redundancy analysis, browser-only gaps) read `docs/TESTING_STACK.md`.
+**See**: `docs/TESTING.md` for E2E helpers and keyboard API.
 
 ### REPL-First Debugging
 
@@ -507,13 +503,13 @@ For the complete philosophy (headless tiers, redundancy analysis, browser-only g
 
 - `docs/DX_INDEX.md` - Canonical doc map for humans + agents
 - `VISION.md` - Project philosophy and architectural ideas
+- `docs/STRUCTURAL_EDITING.md` - Core editor spec: state machine, navigation, selection, editing, structure ops
+- `docs/LOGSEQ_UI_FEATURES.md` - Logseq-specific UI: slash commands, sidebar, clipboard variants
+- `docs/LOGSEQ_SPEC.md` - Full Logseq reference with source links (both docs above derived from this)
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant + Nexus reference (event handlers, lifecycle, dispatch data)
 - `docs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
-- `docs/TESTING_STACK.md` - Unified testing guide (view/integration tiers, redundancy analysis, UX gap appendix)
-- `docs/E2E_TESTING.md` - E2E testing patterns, helpers reference, troubleshooting
-- `docs/STATE_MACHINE.md` - UI state machine (idle/selection/editing), intent validation
+- `docs/TESTING.md` - Testing commands, E2E helpers, patterns
 - `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
-- `docs/PLAYWRIGHT_MCP_TESTING.md` - E2E testing with MCP
 - `dev/repl/init.cljc` - REPL utilities and initialization
 
 ## Design Constraints

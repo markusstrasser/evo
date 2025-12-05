@@ -6,6 +6,19 @@ _Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-
 
 ---
 
+## Related Documents
+
+This spec has been split into focused documents for easier reference:
+
+| Document | Scope |
+|----------|-------|
+| **[STRUCTURAL_EDITING.md](STRUCTURAL_EDITING.md)** | Core editor mechanics: state machine, navigation, cursor/selection, editing actions, tree operations, folding/zoom, undo/redo. These are fundamental to any outliner. |
+| **[LOGSEQ_UI_FEATURES.md](LOGSEQ_UI_FEATURES.md)** | Logseq-specific UI: slash commands, quick switcher, sidebar, advanced clipboard, drag & drop, move dialog, properties, templates. |
+
+**This file** remains the comprehensive reference with full Logseq source links and verification notes.
+
+---
+
 ## 1. Objective & Scope
 
 - Capture every observable desktop interaction (state machine, keyboard, pointer, clipboard, slash palette, quick switcher, undo/redo) exactly as Logseq ships.

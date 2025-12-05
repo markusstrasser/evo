@@ -1,41 +1,70 @@
 # Evo DX Index
 
-Single landing page for humans and AI agents. Follow the lifecycle order below; each section lists canonical docs plus a short machine-readable map.
+Single landing page for humans and AI agents. Start here.
+
+---
+
+## Quick Start
+
+```bash
+npm install
+npm start        # Clean + watch CLJS + watch CSS
+# visit http://localhost:8080/blocks.html once [CLJS] Build completed
+```
+
+---
 
 ## Orientation
-- `README.md` – project quick start + constraints.
-- `docs/START_HERE.md` – single-page onboarding runbook.
-- `VISION.md` – product north star and long-term bets.
-- `dev/overviews/` (auto-generated via `bb repomix`) – latest architecture snapshots when present.
 
-## Rendering & Dispatch Core
-- `docs/RENDERING_AND_DISPATCH.md` – merged Replicant + Nexus reference (hiccup diffing, lifecycle, dispatch data, effects).
+| Doc | Purpose |
+|-----|---------|
+| `README.md` | Project quick start + constraints |
+| `VISION.md` | Product north star |
+| `CLAUDE.md` | AI agent guidance |
 
-## Feature Specs (Triad system)
-- `docs/LOGSEQ_SPEC.md` – Canonical Logseq behavior spec (platform-agnostic).
-- `docs/LOGSEQ_PARITY_EVO.md` – Evo overlay (implementation guardrails, gap tracker, testing workflow).
-- `docs/logseq_behaviors.md` – Triad entries (keymap slices, intent contracts, scenario ledger rows). Scenario IDs reference tests.
+---
 
-## Testing Stack
-- `docs/TESTING_STACK.md` – testing philosophy, tier mapping, redundancy analysis.
-- `docs/E2E_TESTING.md` – **practical E2E guide** (helpers, patterns, troubleshooting).
+## Specs (What to Build)
 
-## Tooling & Debugging
-- `docs/CODING_GOTCHAS.md` – **Quick reference** (intent catalog, session shape, derived indexes, cookbook) + common pitfalls.
-- `docs/PLAYWRIGHT_MCP_TESTING.md` – how to run/extend browser automation.
-- `docs/TEXT_SELECTION.md` – contenteditable text selection utilities and cursor APIs.
-- `.architect/RECURRING_PROBLEM_ANALYSIS.md` – historical investigation of cursor/contenteditable issues.
+| Doc | Scope |
+|-----|-------|
+| **[STRUCTURAL_EDITING.md](STRUCTURAL_EDITING.md)** | Core editor: state machine, navigation, selection, editing, structure ops |
+| **[LOGSEQ_UI_FEATURES.md](LOGSEQ_UI_FEATURES.md)** | Logseq-specific: slash commands, sidebar, clipboard |
+| **[LOGSEQ_SPEC.md](LOGSEQ_SPEC.md)** | Full Logseq reference with source links |
 
-## Templates
-- `docs/templates/TRIAD.md` – required sections for triad specs (Keymap slice, Intent contract, Scenario ledger, optional user story table).
+---
+
+## Implementation
+
+| Doc | Scope |
+|-----|-------|
+| **[RENDERING_AND_DISPATCH.md](RENDERING_AND_DISPATCH.md)** | Replicant + Nexus |
+| **[LOGSEQ_PARITY_EVO.md](LOGSEQ_PARITY_EVO.md)** | Gaps + guardrails |
+| **[CODING_GOTCHAS.md](CODING_GOTCHAS.md)** | Common pitfalls |
+
+---
+
+## Testing
+
+| Doc | Scope |
+|-----|-------|
+| **[TESTING.md](TESTING.md)** | Commands, helpers, patterns |
+
+```bash
+bb test    # Unit tests
+bb e2e     # E2E tests
+bb check   # Quality gate
+```
+
+---
 
 ```edn
-{:orientation ["README.md" "docs/START_HERE.md" "VISION.md"]
- :core ["docs/RENDERING_AND_DISPATCH.md"]
- :specs ["docs/LOGSEQ_SPEC.md"
-         "docs/LOGSEQ_PARITY_EVO.md"
-         "docs/logseq_behaviors.md"]
- :testing ["docs/TESTING_STACK.md"]
- :tooling ["docs/PLAYWRIGHT_MCP_TESTING.md" "docs/TEXT_SELECTION.md" ".architect/RECURRING_PROBLEM_ANALYSIS.md"]
- :templates ["docs/templates/TRIAD.md"]}
+{:orientation ["README.md" "VISION.md" "CLAUDE.md"]
+ :specs ["docs/STRUCTURAL_EDITING.md"
+         "docs/LOGSEQ_UI_FEATURES.md"
+         "docs/LOGSEQ_SPEC.md"]
+ :implementation ["docs/RENDERING_AND_DISPATCH.md"
+                  "docs/LOGSEQ_PARITY_EVO.md"
+                  "docs/CODING_GOTCHAS.md"]
+ :testing ["docs/TESTING.md"]}
 ```
