@@ -53,57 +53,57 @@
   [_db _session {:keys [page-id]}]
   {:session-updates {:ui {:current-page page-id}}})
 
+(defn- navigate-or-create-page
+  "Navigate to page by name, creating it if it doesn't exist.
+   
+   Returns intent result with :ops (for new page) and :session-updates."
+  [db page-name]
+  (if-let [page-id (find-page-by-name db page-name)]
+    ;; Page exists - just navigate
+    {:session-updates {:ui {:current-page page-id}}}
+    ;; Page doesn't exist - create it and navigate
+    (let [new-page-id (str "page-" (random-uuid))
+          first-block-id (str "block-" (random-uuid))]
+      {:ops [{:op :create-node :id new-page-id :type :page :props {:title page-name}}
+             {:op :place :id new-page-id :under :doc :at :last}
+             {:op :create-node :id first-block-id :type :block :props {:text ""}}
+             {:op :place :id first-block-id :under new-page-id :at :last}]
+       :session-updates {:ui {:current-page new-page-id}
+                         :selection {:nodes #{} :focus first-block-id :anchor nil}}})))
+
 (defn- handle-navigate-to-page
   "Navigate to page by name (from page ref click).
-
-   Finds page with matching title (case-insensitive).
-   Logs warning if page not found."
+   Creates new page if it doesn't exist (Logseq parity)."
   [db _session {:keys [page-name]}]
-  (if-let [page-id (find-page-by-name db page-name)]
-    {:session-updates {:ui {:current-page page-id}}}
-    (do
-      #?(:cljs (js/console.warn (str "Page not found: " page-name))
-         :clj  (println (str "Page not found: " page-name)))
-      nil)))
+  (navigate-or-create-page db page-name))
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;; Auto-register intents on namespace load
 (intent/register-intent! :switch-page
-  {:doc "Switch to a specific page by ID"
-   :handler handle-switch-page})
+                         {:doc "Switch to a specific page by ID"
+                          :handler handle-switch-page})
 
 (intent/register-intent! :navigate-to-page
-  {:doc "Navigate to page by name (from page ref)"
-   :handler handle-navigate-to-page})
+                         {:doc "Navigate to page by name (from page ref)"
+                          :handler handle-navigate-to-page})
 
 (intent/register-intent! :follow-link-under-cursor
-  {:doc "Follow link/reference under cursor (Cmd+O in Logseq).
+                         {:doc "Follow link/reference under cursor (Cmd+O in Logseq).
 
          Detects context at cursor and navigates accordingly:
          - Page ref [[Page]] → switch to that page
          - No ref → no-op
 
          Mirrors Logseq's Cmd+O behavior."
-   :spec [:map
-          [:type [:= :follow-link-under-cursor]]
-          [:block-id :string]
-          [:cursor-pos :int]]
-   :handler
-   (fn [db _session {:keys [block-id cursor-pos]}]
-     (let [text (get-in db [:nodes block-id :props :text] "")
-           context (ctx/context-at-cursor text cursor-pos)]
-
-       (case (:type context)
-         ;; Page reference → navigate to page
-         :page-ref
-         (let [page-name (:page-name context)]
-           (if-let [page-id (find-page-by-name db page-name)]
-             {:session-updates {:ui {:current-page page-id}}}
-             (do
-               #?(:cljs (js/console.warn (str "Page not found: " page-name))
-                  :clj (println (str "Page not found: " page-name)))
-               nil)))
-
-         ;; No reference under cursor → no-op
-         nil)))})
+                          :spec [:map
+                                 [:type [:= :follow-link-under-cursor]]
+                                 [:block-id :string]
+                                 [:cursor-pos :int]]
+                          :handler
+                          (fn [db _session {:keys [block-id cursor-pos]}]
+                            (let [text (get-in db [:nodes block-id :props :text] "")
+                                  context (ctx/context-at-cursor text cursor-pos)]
+                              (case (:type context)
+                                :page-ref (navigate-or-create-page db (:page-name context))
+                                nil)))})
