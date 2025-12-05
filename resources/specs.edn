@@ -55,6 +55,15 @@
   :tags [:state-machine :editing :selection]
   :spec-ref "LOGSEQ_SPEC.md §1.1"}
 
+ :fr.selection/cmd-a-cycle
+ {:desc "Cmd+A cycles: select all text → select block → select parent → select all visible"
+  :priority :high
+  :type :intent-level
+  :status :active
+  :version 1
+  :tags [:selection :keyboard]
+  :spec-ref "LOGSEQ_SPEC.md §7.2"}
+
  ;; Editing
  :fr.edit/smart-split
  {:desc "Enter performs context-aware split; empty list items unformat + create peer in single step"
@@ -230,7 +239,7 @@
   :type :intent-level
   :status :active
   :version 1
- :tags [:ui :commands]
+  :tags [:ui :commands]
   :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-01"}
 
  :fr.ui/slash-filter
@@ -445,4 +454,16 @@
   :status :active
   :version 1
   :tags [:smart-editing :lists]
-  :spec-ref "LOGSEQ_SPEC.md §7.10"}}
+  :spec-ref "LOGSEQ_SPEC.md §7.10"}
+
+ ;; ── Future / Nice-to-Have ────────────────────────────────────────────────────
+
+ :fr.nav/grapheme-cursor-memory
+ {:desc "Cursor column memory uses grapheme clusters (not UTF-16 code units) for proper emoji/CJK handling"
+  :priority :low
+  :type :intent-level
+  :status :future
+  :version 1
+  :tags [:navigation :unicode :future]
+  :spec-ref "STRUCTURAL_EDITING.md §8"
+  :notes "Currently simplified implementation. Full support requires grapheme-splitter library."}}
