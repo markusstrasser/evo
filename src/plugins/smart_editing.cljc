@@ -405,12 +405,20 @@
                                                       "\nparent NOT in grandparent's children!"
                                                       "\nThis will cause :anchor-not-sibling validation error!")))))
                                              :clj nil)]
-                                    (when grandparent
+                                    (if grandparent
+                                      ;; Has grandparent: unformat + create peer after parent
                                       {:ops [{:op :update-node :id block-id :props {:text ""}}
                                              {:op :create-node :id new-id :type :block :props {:text ""}}
                                              {:op :place :id new-id :under grandparent :at {:after parent}}]
                                        :session-updates {:ui {:editing-block-id new-id
-                                                              :cursor-position 0}}}))
+                                                              :cursor-position 0}}}
+                                      ;; TOP-LEVEL FIX: No grandparent (parent is :doc), just unformat + create sibling
+                                      (when parent
+                                        {:ops [{:op :update-node :id block-id :props {:text ""}}
+                                               {:op :create-node :id new-id :type :block :props {:text ""}}
+                                               {:op :place :id new-id :under parent :at {:after block-id}}]
+                                         :session-updates {:ui {:editing-block-id new-id
+                                                                :cursor-position 0}}})))
            ;; List with content - continue pattern
                                   (let [before (subs text 0 cursor-pos)
                                         after (subs text cursor-pos)
