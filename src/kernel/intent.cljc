@@ -33,17 +33,30 @@
 ;; ── Registration API ──────────────────────────────────────────────────────────
 
 (defn register-intent!
-  "Register an intent handler with Malli spec validation and FR linkage.
+  "Register an intent handler with Malli spec validation, FR linkage, and state requirements.
 
    Args:
    - kw: Intent type keyword (e.g. :select, :indent)
-   - config: Map with :doc, :spec, :handler, :fr/ids keys
+   - config: Map with keys:
+     - :doc           - Documentation string
+     - :spec          - Malli spec for validation
+     - :handler       - Handler function (fn [db session intent] -> ops)
+     - :fr/ids        - (optional) Set of FR keywords this intent implements
+     - :allowed-states - (optional) Set of states where this intent is valid
+                        nil = allowed in any state (universal)
+                        #{:editing} = only in editing state
+                        #{:editing :selection} = in editing or selection
 
    Spec-as-Database Enforcement:
    - :fr/ids (optional): Set of FR keywords this intent implements
    - Validates FR IDs against resources/specs.edn registry
    - Soft warnings for uncited intents (breaking changes deferred)
    - Throws on unknown FR IDs (hard enforcement)
+
+   State Requirements:
+   - :allowed-states collocates state constraints with intent definition
+   - High cohesion: intent definition + constraints in one place
+   - Supports plugin development without touching kernel files
 
    Implementation Notes (GPT-5 Spec Link Pattern):
    - Caches compiled Malli validator for performance
@@ -53,44 +66,51 @@
    - Keep DB-dependent checks OUT of Malli spec (use separate validation)
 
    Example:
-     (register-intent! :select
-       {:doc \"Set selection\"
+     (register-intent! :smart-split
+       {:doc \"Context-aware block splitting\"
         :spec [:map {:closed true}
-               [:type [:= :select]]
-               [:ids [:vector :string]]]
-        :fr/ids #{:fr.selection/edit-view-exclusive}
-        :handler (fn [db session {:keys [ids]}]
-                   ;; Handler receives db, session, and destructured intent
-                   ;; Use kernel.query functions with session parameter
-                   [{:op :update-node :id \"session/selection\" :props {...}}])})"
-  [kw {:keys [doc spec handler fr/ids] :as config}]
-  ;; Soft warnings for uncited intents (Gemini's approach)
-  (when (empty? ids)
-    (println "⚠️ WARNING: Intent" kw "has no FR citations (:fr/ids)"))
+               [:type [:= :smart-split]]
+               [:block-id :string]
+               [:cursor-pos :int]]
+        :fr/ids #{:fr.edit/smart-split}
+        :allowed-states #{:editing}  ;; Only valid in editing state
+        :handler (fn [db session {:keys [block-id cursor-pos]}]
+                   [{:op :update-node ...}])})"
+  [kw {:keys [doc spec handler] :as config}]
+  (let [ids (get config :fr/ids)]
+    ;; Soft warnings for uncited intents (Gemini's approach)
+    (when (empty? ids)
+      (println "⚠️ WARNING: Intent" kw "has no FR citations (:fr/ids)"))
 
-  ;; Hard enforcement: validate FR IDs (GPT-5's approach)
-  (when (seq ids)
-    (try
-      (fr/validate-fr-ids! ids)
-      (catch #?(:clj Exception :cljs js/Error) e
-        (throw (ex-info "Intent registration failed: unknown FR ID(s)"
-                        {:intent kw
-                         :fr/ids ids
-                         :error (ex-message e)
-                         :cause e})))))
+    ;; Hard enforcement: validate FR IDs (GPT-5's approach)
+    (when (seq ids)
+      (try
+        (fr/validate-fr-ids! ids)
+        (catch #?(:clj Exception :cljs js/Error) e
+          (throw (ex-info "Intent registration failed: unknown FR ID(s)"
+                          {:intent kw
+                           :fr/ids ids
+                           :error (ex-message e)
+                           :cause e})))))
 
-  (let [;; Compile Malli validator (cached for performance)
-        validator (when spec (m/validator spec))
-        ;; Track spec version for hot reload detection
-        version (when spec (hash spec))]
-    (swap! !intents assoc kw
-           {:doc doc
-            :spec spec
-            :validator validator
-            :handler handler
-            :fr/ids (or ids #{})
-            :version version})
-    kw))
+    (let [;; Compile Malli validator (cached for performance)
+          validator (when spec (m/validator spec))
+          ;; Track spec version for hot reload detection
+          version (when spec (hash spec))
+          ;; Base config - always present
+          base-config {:doc doc
+                       :spec spec
+                       :validator validator
+                       :handler handler
+                       :fr/ids (or ids #{})
+                       :version version}
+          ;; Only include :allowed-states if explicitly provided in config
+          ;; (distinguishes "not specified" from "explicitly nil = any state")
+          final-config (if (contains? config :allowed-states)
+                         (assoc base-config :allowed-states (:allowed-states config))
+                         base-config)]
+      (swap! !intents assoc kw final-config)
+      kw)))
 
 ;; ── Validation ─────────────────────────────────────────────────────────────────
 
@@ -252,6 +272,35 @@
      ;=> 123456789"
   [intent-type]
   (get-in @!intents [intent-type :version]))
+
+(defn intent-allowed-states
+  "Get the allowed states for a specific intent type.
+
+   Returns:
+   - :not-registered if intent type is not registered
+   - :not-specified if intent is registered but :allowed-states not set
+   - nil if intent explicitly allows any state (universal)
+   - Set of allowed state keywords (e.g., #{:editing :selection})
+
+   Example:
+     (intent-allowed-states :smart-split)
+     ;=> #{:editing}
+
+     (intent-allowed-states :undo)
+     ;=> nil  ;; explicitly allows any state
+
+     (intent-allowed-states :some-old-intent)
+     ;=> :not-specified  ;; registered but no :allowed-states key
+
+     (intent-allowed-states :unknown-intent)
+     ;=> :not-registered"
+  [intent-type]
+  (if-let [config (get @!intents intent-type)]
+    ;; Intent is registered - check if :allowed-states key exists
+    (if (contains? config :allowed-states)
+      (:allowed-states config) ;; May be nil (any state) or a set
+      :not-specified) ;; Key not present, fall back to centralized map
+    :not-registered))
 
 (defn validate-intent-repl
   "Validate an intent and return humanized errors (REPL helper, doesn't throw).
