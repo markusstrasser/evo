@@ -9,11 +9,11 @@
 
 ;; ── Fixture: Ensure bindings are loaded ──────────────────────────────────────
 
-(defn with-bindings [f]
+(defn ensure-bindings-loaded [f]
   (bindings/reload!)
   (f))
 
-(use-fixtures :once with-bindings)
+(use-fixtures :once ensure-bindings-loaded)
 
 ;; ── Helper to simulate key events ────────────────────────────────────────────
 

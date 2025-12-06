@@ -9,8 +9,8 @@
            (vu/parse-tag :div))))
 
   (testing "Parse tag with class"
-    (is (= {:tag "span" :classes ["content-view"] :id nil}
-           (vu/parse-tag :span.content-view))))
+    (is (= {:tag "span" :classes ["block-content"] :id nil}
+           (vu/parse-tag :span.block-content))))
 
   (testing "Parse tag with multiple classes"
     (is (= {:tag "div" :classes ["foo" "bar"] :id nil}
@@ -30,15 +30,15 @@
     (is (not (vu/tag-matches? [:span] :div))))
 
   (testing "Match tag with class in tag"
-    (is (vu/tag-matches? [:span.content-view {}] :span.content-view))
-    (is (vu/tag-matches? [:span.content-view {}] :.content-view)
-        ":.content-view (class-only) should match :span.content-view")
-    (is (vu/tag-matches? [:span.content-view {}] "content-view")))
+    (is (vu/tag-matches? [:span.block-content {}] :span.block-content))
+    (is (vu/tag-matches? [:span.block-content {}] :.block-content)
+        ":.block-content (class-only) should match :span.block-content")
+    (is (vu/tag-matches? [:span.block-content {}] "block-content")))
 
   (testing "Match tag with class in attrs"
-    (is (vu/tag-matches? [:span {:class ["content-view"]}] :span.content-view))
-    (is (vu/tag-matches? [:span {:class ["content-view"]}] :.content-view))
-    (is (vu/tag-matches? [:span {:class ["content-view"]}] "content-view"))))
+    (is (vu/tag-matches? [:span {:class ["block-content"]}] :span.block-content))
+    (is (vu/tag-matches? [:span {:class ["block-content"]}] :.block-content))
+    (is (vu/tag-matches? [:span {:class ["block-content"]}] "block-content"))))
 
 (deftest find-element-test
   (testing "Find simple element"
@@ -47,11 +47,11 @@
              (vu/find-element hiccup :span)))))
 
   (testing "Find element with class in tag"
-    (let [hiccup [:div [:span.content-view {} "Hello"]]]
-      (is (= [:span.content-view {} "Hello"]
-             (vu/find-element hiccup :span.content-view)))
-      (is (= [:span.content-view {} "Hello"]
-             (vu/find-element hiccup :.content-view)))))
+    (let [hiccup [:div [:span.block-content {} "Hello"]]]
+      (is (= [:span.block-content {} "Hello"]
+             (vu/find-element hiccup :span.block-content)))
+      (is (= [:span.block-content {} "Hello"]
+             (vu/find-element hiccup :.block-content)))))
 
   (testing "Find nested element"
     (let [hiccup [:div [:p [:span.foo {} "Nested"]]]]
