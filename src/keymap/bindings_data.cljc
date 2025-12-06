@@ -17,8 +17,11 @@
                  ;; Delete selected blocks
                  [{:key "Backspace"} :delete-selected]
                  [{:key "Delete"} :delete-selected]
-                 ;; Enter on selected block → enter edit mode at END (Logseq parity)
+                 ;; Enter/Right on selected block → enter edit mode at END (Logseq parity)
                  [{:key "Enter"} {:type :enter-edit-selected}]
+                 [{:key "ArrowRight"} {:type :enter-edit-selected :cursor-at :end}]
+                 ;; Left on selected block → enter edit mode at START (Logseq parity)
+                 [{:key "ArrowLeft"} {:type :enter-edit-selected :cursor-at :start}]
                  ;; Cmd+A cycle (view mode) → select parent → all visible
                  [{:key "a" :mod true} {:type :select-all-cycle}]]
 
