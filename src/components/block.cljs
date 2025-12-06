@@ -586,6 +586,152 @@
                                                    :page-name page
                                                    :on-intent on-intent})]))))))
 
+;; ── Content Mode Helpers ──────────────────────────────────────────────────────
+
+(defn- edit-content
+  "Edit mode content: uncontrolled contenteditable.
+   
+   Browser owns text state. Syncs to buffer on input, commits on blur.
+   Lifecycle hooks handle focus and cursor positioning."
+  [{:keys [block-id text on-intent db]}]
+  (let [edit-key (str block-id "-edit")]
+    [:span.content-edit
+     {:contentEditable true
+      :suppressContentEditableWarning true
+      :style {:outline "none"
+              :min-width "1px"
+              :display "inline-block"}
+      :replicant/key edit-key
+
+      ;; On mount: Set text once, focus, position cursor
+      :replicant/on-mount
+      (fn [{:replicant/keys [node]}]
+        (let [initial-cursor (session/cursor-position)
+              cursor-pos (cond
+                           (number? initial-cursor) initial-cursor
+                           (= initial-cursor :start) 0
+                           (= initial-cursor :end) (count text)
+                           (= initial-cursor :max) (count text)
+                           :else (count text))]
+
+          ;; Mark that on-mount has fired (on-render runs BEFORE on-mount in Replicant!)
+          ;; This tells on-render it can now handle cursor-position for subsequent renders
+          (set! (.-dataset node) (clj->js {:mounted "true"}))
+
+          ;; Set text content (browser owns this from now on)
+          ;; Convert \n to <br> so newlines are visually rendered
+          (set! (.-innerHTML node) (text->html text))
+
+          ;; Focus UNCONDITIONALLY (required side effect, never conditional)
+          (.focus node)
+
+          ;; Position cursor (set-cursor! handles empty text node edge case)
+          (set-cursor! node cursor-pos)
+
+          ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
+          (when initial-cursor
+            (session/clear-cursor-position!))))
+
+      ;; On render: Maintain focus AND apply pending cursor position
+      ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
+      ;; We need to apply it to the DOM here since on-mount only fires on first render
+      :replicant/on-render
+      (fn [{:replicant/keys [node]}]
+        ;; Focus if needed
+        (when (not= (.-activeElement js/document) node)
+          (.focus node))
+
+        ;; Apply pending cursor position from session (set by undo/redo)
+        ;; IMPORTANT: Only handle cursor-position if:
+        ;; 1. The element was already mounted (on-render fires BEFORE on-mount in Replicant!)
+        ;; 2. This block is the current editing block
+        ;; For NEW elements, on-mount handles cursor positioning.
+        (let [mounted? (.-mounted (.-dataset node))]
+          (when (and mounted? (= block-id (session/editing-block-id)))
+            (when-let [pending-cursor (session/cursor-position)]
+              (let [text-content (.-textContent node)
+                    text-length (count text-content)
+                    cursor-pos (cond
+                                 (number? pending-cursor) (min pending-cursor text-length)
+                                 (= pending-cursor :start) 0
+                                 (= pending-cursor :end) text-length
+                                 (= pending-cursor :max) text-length
+                                 :else nil)]
+                (when cursor-pos
+                  (set-cursor! node cursor-pos))
+                ;; Clear the pending cursor position to prevent reapplication
+                (session/clear-cursor-position!))))))
+
+      ;; Event handlers for edit mode
+      :on {:click (fn [e]
+                    ;; IMPORTANT: Stop propagation to prevent container's selection handler
+                    ;; When clicking inside contenteditable, we just want cursor positioning
+                    (.stopPropagation e))
+
+           ;; Input handler: Update buffer directly (no render trigger)
+           :input (fn [e]
+                    (let [target (.-target e)
+                          ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
+                          new-text (extract-text-with-newlines target)]
+                      ;; Update buffer atom directly - does NOT trigger re-render
+                      (session/buffer-set! block-id new-text)))
+
+           ;; Blur handler: Commit to canonical DB
+           :blur (fn [e]
+                   (let [target (.-target e)
+                         ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
+                         final-text (extract-text-with-newlines target)
+                         suppress? (session/suppress-blur-exit?)
+                         same-block? (= (session/editing-block-id) block-id)]
+                     ;; Commit to canonical DB
+                     (on-intent {:type :update-content
+                                 :block-id block-id
+                                 :text final-text})
+                     ;; Only exit edit mode if:
+                     ;; 1. We're still editing THIS block
+                     ;; 2. Not in a structural operation (indent/outdent/move)
+                     ;; The suppress flag prevents blur from exiting during re-render
+                     (when (and same-block? (not suppress?))
+                       (on-intent {:type :exit-edit}))))
+
+           ;; Keydown: Keyboard shortcuts
+           :keydown (fn [e]
+                      (handle-keydown e db block-id on-intent))
+
+           ;; Paste: Multi-paragraph splitting (Logseq parity)
+           :paste (fn [e]
+                    (.preventDefault e)
+                    (let [clipboard-data (.-clipboardData e)
+                          pasted-text (.getData clipboard-data "text/plain")
+                          selection (.getSelection js/window)
+                          cursor-pos (.-anchorOffset selection)]
+                      (on-intent {:type :paste-text
+                                  :block-id block-id
+                                  :cursor-pos cursor-pos
+                                  :pasted-text pasted-text})))}}]))
+
+(defn- view-content
+  "View mode content: controlled rendering from DB with page-ref support."
+  [{:keys [block-id text is-focused on-intent db]}]
+  (let [view-key (str block-id "-view")]
+    (into [:span.content-view
+           {:style {:min-width "1px"
+                    :display "inline-block"
+                    :cursor "text"}
+            :replicant/key view-key
+            :on {:click (fn [e]
+                          (.stopPropagation e)
+                          (cond
+                            (.-shiftKey e)
+                            (shift-click-select-range! db block-id on-intent)
+
+                            is-focused
+                            (on-intent {:type :enter-edit :block-id block-id})
+
+                            :else
+                            (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+          (render-text-with-page-refs db text on-intent))))
+
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
 (defn Block
@@ -609,7 +755,7 @@
   (let [children (get-in db [:children-by-parent block-id] [])
         text (get-in db [:nodes block-id :props :text] "")
 
-;; Drag visual feedback
+        ;; Drag visual feedback
         drop-style (drop-zone-style block-id)
         is-dragging (contains? (session/dragging-ids) block-id)
 
@@ -643,7 +789,6 @@
 
         ;; Fold indicator bullet
         has-children? (seq (q/children db block-id))
-        folded? is-folded
         bullet [:span {:style {:margin-right "8px"
                                :cursor (if has-children? "pointer" "default")
                                :user-select "none"}
@@ -656,148 +801,13 @@
                                          (on-intent {:type :toggle-fold :block-id block-id}))))}}
                 (cond
                   (not has-children?) "•"
-                  folded? "▸"
+                  is-folded "▸"
                   :else "▾")]
 
-        edit-key (str block-id "-edit")
-        view-key (str block-id "-view")
-
-        content
-        (if is-editing
-          ;; === EDIT MODE: Uncontrolled ===
-          [:span.content-edit
-           {:contentEditable true
-            :suppressContentEditableWarning true
-            :style {:outline "none"
-                    :min-width "1px"
-                    :display "inline-block"}
-            :replicant/key edit-key
-
-            ;; On mount: Set text once, focus, position cursor
-            :replicant/on-mount
-            (fn [{:replicant/keys [node]}]
-              (let [initial-cursor (session/cursor-position)
-                    cursor-pos (cond
-                                 (number? initial-cursor) initial-cursor
-                                 (= initial-cursor :start) 0
-                                 (= initial-cursor :end) (count text)
-                                 (= initial-cursor :max) (count text)
-                                 :else (count text))]
-
-                ;; Mark that on-mount has fired (on-render runs BEFORE on-mount in Replicant!)
-                ;; This tells on-render it can now handle cursor-position for subsequent renders
-                (set! (.-dataset node) (clj->js {:mounted "true"}))
-
-                ;; Set text content (browser owns this from now on)
-                ;; Convert \n to <br> so newlines are visually rendered
-                (set! (.-innerHTML node) (text->html text))
-
-;; Focus UNCONDITIONALLY (required side effect, never conditional)
-                (.focus node)
-
-                ;; Position cursor (set-cursor! handles empty text node edge case)
-                (set-cursor! node cursor-pos)
-
-                ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
-                (when initial-cursor
-                  (session/swap-session! assoc-in [:ui :cursor-position] nil))))
-
-            ;; On render: Maintain focus AND apply pending cursor position
-            ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
-            ;; We need to apply it to the DOM here since on-mount only fires on first render
-            :replicant/on-render
-            (fn [{:replicant/keys [node]}]
-              ;; Focus if needed
-              (when (not= (.-activeElement js/document) node)
-                (.focus node))
-
-              ;; Apply pending cursor position from session (set by undo/redo)
-              ;; IMPORTANT: Only handle cursor-position if:
-              ;; 1. The element was already mounted (on-render fires BEFORE on-mount in Replicant!)
-              ;; 2. This block is the current editing block
-              ;; For NEW elements, on-mount handles cursor positioning.
-              (let [mounted? (.-mounted (.-dataset node))]
-                (when (and mounted? (= block-id (session/editing-block-id)))
-                  (when-let [pending-cursor (session/cursor-position)]
-                    (let [text-content (.-textContent node)
-                          text-length (count text-content)
-                          cursor-pos (cond
-                                       (number? pending-cursor) (min pending-cursor text-length)
-                                       (= pending-cursor :start) 0
-                                       (= pending-cursor :end) text-length
-                                       (= pending-cursor :max) text-length
-                                       :else nil)]
-                      (when cursor-pos
-                        (set-cursor! node cursor-pos))
-                      ;; Clear the pending cursor position to prevent reapplication
-                      (session/swap-session! assoc-in [:ui :cursor-position] nil))))))
-
-            ;; Event handlers for edit mode
-            :on {:click (fn [e]
-                          ;; IMPORTANT: Stop propagation to prevent container's selection handler
-                          ;; When clicking inside contenteditable, we just want cursor positioning
-                          (.stopPropagation e))
-
-;; Input handler: Update buffer directly (no render trigger)
-                 :input (fn [e]
-                          (let [target (.-target e)
-                                ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
-                                new-text (extract-text-with-newlines target)]
-                            ;; Update buffer atom directly - does NOT trigger re-render
-                            (session/buffer-set! block-id new-text)))
-
-                 ;; Blur handler: Commit to canonical DB
-                 :blur (fn [e]
-                         (let [target (.-target e)
-                               ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
-                               final-text (extract-text-with-newlines target)
-                               suppress? (session/suppress-blur-exit?)
-                               same-block? (= (session/editing-block-id) block-id)]
-                           ;; Commit to canonical DB
-                           (on-intent {:type :update-content
-                                       :block-id block-id
-                                       :text final-text})
-                           ;; Only exit edit mode if:
-                           ;; 1. We're still editing THIS block
-                           ;; 2. Not in a structural operation (indent/outdent/move)
-                           ;; The suppress flag prevents blur from exiting during re-render
-                           (when (and same-block? (not suppress?))
-                             (on-intent {:type :exit-edit}))))
-
-                 ;; Keydown: Keyboard shortcuts
-                 :keydown (fn [e]
-                            (handle-keydown e db block-id on-intent))
-
-                 ;; Paste: Multi-paragraph splitting (Logseq parity)
-                 :paste (fn [e]
-                          (.preventDefault e)
-                          (let [clipboard-data (.-clipboardData e)
-                                pasted-text (.getData clipboard-data "text/plain")
-                                selection (.getSelection js/window)
-                                cursor-pos (.-anchorOffset selection)]
-                            (on-intent {:type :paste-text
-                                        :block-id block-id
-                                        :cursor-pos cursor-pos
-                                        :pasted-text pasted-text})))}}]
-
-          ;; === VIEW MODE: Controlled with page-ref rendering ===
-          (into [:span.content-view
-                 {:style {:min-width "1px"
-                          :display "inline-block"
-                          :cursor "text"}
-                  :replicant/key view-key
-                  :on {:click (fn [e]
-                                (.stopPropagation e)
-                                (cond
-                                  (.-shiftKey e)
-                                  (shift-click-select-range! db block-id on-intent)
-
-                                  is-focused
-                                  (on-intent {:type :enter-edit :block-id block-id})
-
-                                  :else
-                                  (on-intent {:type :selection :mode :replace :ids block-id})))}}]
-                (render-text-with-page-refs db text on-intent)))
+        ;; Content: delegate to mode-specific helpers
+        content (if is-editing
+                  (edit-content {:block-id block-id :text text :on-intent on-intent :db db})
+                  (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db}))
 
         ;; Session state for children (computed once per render)
         editing-block-id (session/editing-block-id)
@@ -823,4 +833,4 @@
              bullet
              content]
       ;; Only show children if not folded
-      (and children-el (not folded?)) (conj children-el))))
+      (and children-el (not is-folded)) (conj children-el))))
