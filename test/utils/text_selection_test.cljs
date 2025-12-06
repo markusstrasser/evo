@@ -1,4 +1,4 @@
-(ns util.text-selection-test
+(ns utils.text-selection-test
   "Tests for text selection utilities.
 
    NOTE: Most tests for this namespace require a browser DOM environment.
@@ -6,7 +6,7 @@
 
    These unit tests only cover non-DOM utility functions."
   (:require [clojure.test :refer [deftest testing is]]
-            [util.text-selection :as text-sel]))
+            [utils.text-selection :as text-sel]))
 
 ;; ── Utility Function Tests (No DOM Required) ────────────────────────────────
 
