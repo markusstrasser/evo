@@ -26,23 +26,27 @@ Not: Theorize → Propose → Analyze → Repeat
 
 ```bash
 npm install
-npm start              # ALWAYS use this (prevents stale output errors)
+npm start              # Clean + watch (use for fresh start)
 
 # Wait for: [CLJS] Build completed
 # Then open: http://localhost:8080/blocks.html
 ```
 
-**Important**: `npm run watch` is the day-to-day command (skip the expensive clean step when caches are healthy). Run `npm run clean && npm run watch` only when you suspect stale output.
+**Day-to-day**: Use `npm run dev:fast` to skip the clean step when caches are healthy. Use `npm start` when you suspect stale output or after pulling changes.
 
 See [docs/DX_INDEX.md](docs/DX_INDEX.md) for full documentation.
 
 ## Project Structure
 
 ```
-src/kernel/         # Pure kernel (db, ops, interpret, schema, errors)
-src/plugins/        # Intent handlers and derived indexes
-src/components/     # Replicant components (Block, PageRef, etc.)
-src/shell/          # UI adapters / composition glue
+src/kernel/         # Pure kernel (db, ops, transaction, schema, errors)
+src/plugins/        # Intent handlers (navigation, editing, selection, etc.)
+src/shell/          # UI adapters, session state, Nexus dispatcher
+src/components/     # Replicant components (Block, PageRef, Sidebar)
+src/keymap/         # Keybinding definitions and dispatch
+src/macros/         # Multi-step operation scripts
+src/parser/         # Page refs and text parsing
+src/util/           # Shared utilities
 test/               # Unit/property + view/integration tests (CLJS + Playwright)
 dev/                # REPL helpers, specs, diagnostics, fixtures
 resources/          # FR registry, plugin manifest, demo data, tooling assets

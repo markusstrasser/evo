@@ -12,16 +12,17 @@ Build → Learn → Extract → Generalize
   fly generatively
 * The indirection was done so that every step is data driven and can be tested
   and inspected separately... maybe it's not needed for this?
-* There should be plugins later on ... it's an editor but also later a chatbot
-  and genui thing where the LLM REPL-s in commands and forms
+* Plugins exist (src/plugins/, resources/plugins.edn) - intent handlers for
+  navigation, editing, selection, structure ops, etc. Next: chatbot/genui
+  where the LLM REPL-s in commands and forms
 
 > You’re not building a UI framework; you’re carving a UI IR + interpreter
 > that’s LLM-native and human (cognitive complexity) friendly.
 
 Give the LLM "the absolute right tools" by freezing a tiny set of primitives and
 nothing else:
-• Model: persistent document (tree+refs), session (selection/undo/ephemeral
-overlays).
+• Model: persistent document (tree+refs) in DB, session state (selection/folding/
+editing) in separate atom. Undo via event log replay.
 • Intents (IR): total, idempotent EDN ops, stable IDs, deterministic ordering.
 • Reactivity: signal, derived, effect—no other FRP. Effects are
 capability-scoped and named (debuggable).
