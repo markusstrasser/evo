@@ -1,52 +1,35 @@
 ;; shadow-cljs configuration
- {:source-paths
-  ["src" "test" "dev" "resources"]
+;; Dependencies and paths are sourced from deps.edn (single source of truth)
+{:deps true
 
-  :resource-paths
-  ["resources"]
+ :dev-http {8080 ["public" "dev"]}
 
-  :dependencies
-  [[no.cjohansen/replicant "2025.06.21"]
-   [no.cjohansen/nexus "2025.10.2"]
-   [metosin/malli "0.20.0"]
-   [medley "1.4.0"]
-   [datascript "1.7.8"]
-   [binaryage/devtools "1.0.7"]
-   [no.cjohansen/dataspex "2025.10.2"]
-   [com.rpl/specter "1.1.6"]
-   [org.clojure/core.match "1.1.0"]
-   [hiccup/hiccup "2.0.0"]
-   [markdown-to-hiccup/markdown-to-hiccup "0.6.2"]
-   [org.clojure/test.check "1.1.1"]
-   [funcool/promesa "11.0.678"]
-   [nubank/matcher-combinators "3.9.2"]
-   [juji/editscript "0.6.6"]]
+ :nrepl {:port 55449}
+ :compiler-options {:externs ["datascript/externs.js"]}
+ :builds
+ {:frontend
+  {:target :browser
+   :modules {:main {:init-fn shell.main/main}}}
 
-  :dev-http {8080 ["public" "dev"]}
+  :blocks-ui
+  {:target :browser
+   :output-dir "public/js/blocks-ui"
+   :asset-path "/js/blocks-ui"
+   :modules {:main {:init-fn shell.blocks-ui/main}}
+   :preloads [debug]}
 
-  :nrepl {:port 55449}
-  :compiler-options {:externs ["datascript/externs.js"]}
-  :builds
-  {:frontend
-   {:target :browser
-    :modules {:main {:init-fn shell.main/main}}}
-                     ;; :preloads [evolver.dev-preload] ; ARCHIVED: see .archived/dev_preload.cljs}
-   :blocks-ui
-   {:target :browser
-    :output-dir "public/js/blocks-ui"
-    :asset-path "/js/blocks-ui"
-    :modules {:main {:init-fn shell.blocks-ui/main}}
-    :preloads [debug]}
-   :test
-   {:target :node-test
-    :output-to "out/tests.js"
-    :ns-regexp "-test$"
-    :ns-exclude-regexp "browser-ui"}
-   :test-view
-   {:target :node-test
-    :output-to "out/tests-view.js"
-    :ns-regexp "^view\\..*-test$"}
-   :test-integration
-   {:target :node-test
-    :output-to "out/tests-integration.js"
-    :ns-regexp "^integration\\.navigation.*-test$"}}}
+  :test
+  {:target :node-test
+   :output-to "out/tests.js"
+   :ns-regexp "-test$"
+   :ns-exclude-regexp "browser-ui"}
+
+  :test-view
+  {:target :node-test
+   :output-to "out/tests-view.js"
+   :ns-regexp "^view\\..*-test$"}
+
+  :test-integration
+  {:target :node-test
+   :output-to "out/tests-integration.js"
+   :ns-regexp "^integration\\.navigation.*-test$"}}}
