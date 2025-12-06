@@ -193,9 +193,7 @@ code {
   border-left: 2px solid transparent;
 }
 
-.block:hover {
-  background: var(--color-surface);
-}
+/* Keyboard-first: no hover styling on blocks - focus/selection indicates state */
 
 /* Selected but not focused - lighter */
 .block.selected {
@@ -262,8 +260,9 @@ code {
   user-select: none;
 }
 
+/* Bullet clickable affordance - keep subtle hover for fold toggle discoverability */
 .block-bullet:hover {
-  color: var(--color-accent);
+  color: var(--color-text-muted);
 }
 
 .block-bullet.bullet-dot::before {
@@ -274,8 +273,7 @@ code {
   background: var(--color-border-strong);
 }
 
-/* Bullet highlight on hover/focus/selected - but NOT editing */
-.block:hover:not(.editing) .block-bullet.bullet-dot::before,
+/* Bullet highlight on focus/selected only (keyboard-first, no hover) */
 .block.focused:not(.editing) .block-bullet.bullet-dot::before,
 .block.selected:not(.editing) .block-bullet.bullet-dot::before {
   background: var(--color-accent);
