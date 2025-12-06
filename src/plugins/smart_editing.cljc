@@ -7,10 +7,11 @@
    - List formatting (auto-increment, empty list unformat)
    - Checkbox toggling
    - Paired character handling
-   - Empty block auto-outdent at end of parent (Logseq parity)"
+
+   NOTE: Empty block auto-outdent (Logseq parity) is handled in
+   components/block.cljs handle-enter BEFORE dispatching intents."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
-            [kernel.query :as q]
             [plugins.context :as ctx]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
@@ -322,7 +323,11 @@
          - Empty list item → Unformat (remove marker)
          - List item with content → Continue list pattern
          - Checkbox → Continue checkbox pattern
-         - Plain text → Normal split"
+         - Plain text → Normal split
+
+         NOTE: Empty block auto-outdent is handled in components/block.cljs handle-enter
+         BEFORE this intent fires. That handler reads live DOM text (not stale DB text)
+         to correctly detect empty blocks during active editing."
 
                           :fr/ids #{:fr.edit/smart-split}
                           :allowed-states #{:editing}
@@ -443,27 +448,14 @@
                                            :session-updates {:ui {:editing-block-id new-id
                                                                   :cursor-position (count (:marker context))}}})))))
 
-         ;; Plain text - check special cases (Logseq parity)
+         ;; Plain text - normal split behavior
+         ;; NOTE: Empty block auto-outdent is handled in handle-enter before this intent fires
                                 :none
                                 (let [before (subs text 0 cursor-pos)
                                       after (subs text cursor-pos)
-                                      new-id (str "block-" (random-uuid))
-                                      grandparent (when parent (get-in db [:derived :parent-of parent]))
-                                      next-sibling (q/next-sibling db block-id)
-                                      ;; LOGSEQ PARITY: Auto-outdent empty block at end of parent
-                                      ;; Condition: empty text + last child + not at top level
-                                      should-auto-outdent? (and (str/blank? text)
-                                                                (nil? next-sibling)
-                                                                grandparent
-                                                                (not (contains? (set (:roots db)) parent)))]
+                                      new-id (str "block-" (random-uuid))]
                                   (when parent
                                     (cond
-                                      ;; LOGSEQ PARITY: Empty block at end of nested parent → auto-outdent
-                                      should-auto-outdent?
-                                      {:ops [{:op :place :id block-id :under grandparent :at {:after parent}}]
-                                       :session-updates {:ui {:editing-block-id block-id
-                                                              :cursor-position 0}}}
-
                                       ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
                                       (zero? cursor-pos)
                                       {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
