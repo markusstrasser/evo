@@ -47,10 +47,19 @@
   (when-let [cursor-pos (:cursor-pos intent-map)]
     (session/set-cursor-position! cursor-pos))
 
-  (let [intent-type (:type intent-map)
+  ;; BUFFER INJECTION: Attach pending buffer text to intent for single-transaction commit
+  ;; Handlers can check :pending-buffer and emit :update-content ops if needed
+  (let [editing-block-id (session/editing-block-id)
+        buffer-text (when editing-block-id (session/buffer-text editing-block-id))
+        intent-with-buffer (if buffer-text
+                             (assoc intent-map
+                                    :pending-buffer {:block-id editing-block-id
+                                                     :text buffer-text})
+                             intent-map)
+        intent-type (:type intent-map)
         current-session (session/get-session)
         db-before @!db
-        {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-map)
+        {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
 
@@ -66,6 +75,10 @@
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
+
+    ;; Clear buffer after successful dispatch (if buffer was injected and used)
+    (when buffer-text
+      (session/buffer-clear! editing-block-id))
 
     ;; Assert derived indexes are fresh
     (assert-derived-fresh! db-after (str "after " label " dispatch: " intent-type))

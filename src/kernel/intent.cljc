@@ -170,9 +170,15 @@
 
    Dispatch Pipeline (Interceptor Pattern):
    1. Validate intent (if *validate-intents* enabled)
-   2. Lookup handler
-   3. Execute handler → result
-   4. Return {:db db :ops ops :session-updates {...}}
+   2. Auto-commit pending buffer (if :pending-buffer present)
+   3. Lookup handler
+   4. Execute handler → result
+   5. Return {:db db :ops ops :session-updates {...}}
+
+   Buffer Auto-Commit:
+   If intent contains :pending-buffer {:block-id ... :text ...}, an :update-node
+   op is prepended to commit the buffer content. This ensures typed content isn't
+   lost when intents exit edit mode or modify the editing block.
 
    Returns: {:db unchanged-db :ops [operations] :session-updates {...}}
 
@@ -199,7 +205,7 @@
      (apply-intent db session {:type :selection :mode :extend-next})
      ;=> {:db db :ops [] :session-updates {:selection {:nodes #{...} :focus \"a\"}}}"
   [db session intent]
-;; DEBUG: Check for stale derived indexes before processing intent
+  ;; DEBUG: Check for stale derived indexes before processing intent
   ;; This helps detect the root cause of :anchor-not-sibling validation errors
   #?(:cljs
      (when ^boolean goog.DEBUG
@@ -215,19 +221,28 @@
   (when *validate-intents*
     (validate-intent! intent))
 
-  ;; Lookup and execute handler
-  (if-let [handler (get-in @!intents [(:type intent) :handler])]
-    (let [result (handler db session intent)]
-      (if (map? result)
-        ;; Handler returned map with :ops and/or :session-updates
-        {:db db
-         :ops (vec (or (:ops result) []))
-         :session-updates (:session-updates result)}
-        ;; Handler returned vector of ops (backward compatible)
-        {:db db
-         :ops (vec (or result []))
-         :session-updates nil}))
-    {:db db :ops [] :session-updates nil}))
+  ;; Build buffer-commit op if pending-buffer present
+  ;; This auto-commits typed content before any intent that might lose it
+  (let [buffer-op (when-let [{:keys [block-id text]} (:pending-buffer intent)]
+                    {:op :update-node :id block-id :props {:text text}})]
+
+    ;; Lookup and execute handler
+    (if-let [handler (get-in @!intents [(:type intent) :handler])]
+      (let [result (handler db session intent)]
+        (if (map? result)
+          ;; Handler returned map with :ops and/or :session-updates
+          {:db db
+           :ops (vec (concat (when buffer-op [buffer-op])
+                             (or (:ops result) [])))
+           :session-updates (:session-updates result)}
+          ;; Handler returned vector of ops (backward compatible)
+          {:db db
+           :ops (vec (concat (when buffer-op [buffer-op])
+                             (or result [])))
+           :session-updates nil}))
+      {:db db
+       :ops (vec (when buffer-op [buffer-op]))
+       :session-updates nil})))
 
 ;; ── REPL Introspection Helpers ───────────────────────────────────────────────
 
