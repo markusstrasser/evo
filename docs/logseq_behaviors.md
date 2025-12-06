@@ -6,37 +6,37 @@ Ground truth lives in `docs/LOGSEQ_SPEC.md`; use `docs/LOGSEQ_PARITY_EVO.md` for
 ## Parity Snapshot (2025-11-14)
 
 ### Editing Behaviors
-| Feature | Logseq | Evo | Status |
-|---------|--------|-----|--------|
-| **Enter** (plain) | Create block below, cursor at start | ✅ Same | ✅ |
-| **Shift+Enter** | Insert `\n` in current block | ✅ Same | ✅ |
-| **Enter at position 0** | Create block ABOVE | ✅ Same | ✅ |
-| **Enter in list** | Continue list pattern | ✅ Same | ✅ |
-| **Enter in empty list** | Unformat + create peer | ✅ Same | ✅ |
-| **Backspace at start** | Merge with previous | ✅ Same | ✅ |
-| **Backspace in empty** | Delete block | ✅ Same | ✅ |
-| **Delete at end** | Merge with next (child-first) | ✅ Same | ✅ |
+| Feature | Logseq | Evo | Status | Scenario ID |
+|---------|--------|-----|--------|-------------|
+| **Enter** (plain) | Create block below, cursor at start | ✅ Same | ✅ | EDIT-ENTER-SPLIT-01 |
+| **Shift+Enter** | Insert `\n` in current block | ✅ Same | ✅ | EDIT-NEWLINE-01 |
+| **Enter at position 0** | Create block ABOVE | ✅ Same | ✅ | EDIT-ENTER-ABOVE-01 |
+| **Enter in list** | Continue list pattern | ✅ Same | ✅ | EDIT-ENTER-LIST-01 |
+| **Enter in empty list** | Unformat + create peer | ✅ Same | ✅ | EDIT-ENTER-EMPTY-LIST-01 |
+| **Backspace at start** | Merge with previous | ✅ Same | ✅ | EDIT-BACKSPACE-MERGE-01 |
+| **Backspace in empty** | Delete block | ✅ Same | ✅ | EDIT-BACKSPACE-DELETE-01 |
+| **Delete at end** | Merge with next (child-first) | ✅ Same | ✅ | EDIT-DELETE-MERGE-01 |
 
 ### Navigation Behaviors
-| Feature | Logseq | Evo | Status |
-|---------|--------|-----|--------|
-| **Arrow Up/Down** | Cursor memory across blocks | ✅ Same | ✅ |
-| **Arrow Left/Right** | Navigate to adjacent at boundary | ✅ Same | ✅ |
-| **Arrows with selection** | Collapse selection first | ✅ Same | ✅ |
-| **Ctrl+P/N** | Emacs up/down | ✅ Same | ✅ |
-| **Ctrl+A** | Beginning of line | ✅ Same | ✅ **NEW** |
-| **Ctrl+E** | End of line | ✅ Same | ✅ **NEW** |
-| **Alt+A** | Beginning of block | ✅ Same | ✅ **NEW** |
-| **Alt+E** | End of block | ✅ Same | ✅ **NEW** |
+| Feature | Logseq | Evo | Status | Scenario ID |
+|---------|--------|-----|--------|-------------|
+| **Arrow Up/Down** | Cursor memory across blocks | ✅ Same | ✅ | NAV-CURSOR-MEMORY-01 |
+| **Arrow Left/Right** | Navigate to adjacent at boundary | ✅ Same | ✅ | NAV-BOUNDARY-LEFT-01 |
+| **Arrows with selection** | Collapse selection first | ✅ Same | ✅ | NAV-COLLAPSE-SEL-01 |
+| **Ctrl+P/N** | Emacs up/down | ✅ Same | ✅ | NAV-EMACS-PN-01 |
+| **Ctrl+A** | Beginning of line | ✅ Same | ✅ | NAV-EMACS-BOL-01 |
+| **Ctrl+E** | End of line | ✅ Same | ✅ | NAV-EMACS-EOL-01 |
+| **Alt+A** | Beginning of block | ✅ Same | ✅ | NAV-EMACS-BOB-01 |
+| **Alt+E** | End of block | ✅ Same | ✅ | NAV-EMACS-EOB-01 |
 
 ### Selection Behaviors
-| Feature | Logseq | Evo | Status |
-|---------|--------|-----|--------|
-| **Shift+Arrow (editing)** | Text OR block at boundary | ✅ Same | ✅ |
-| **Shift+Arrow (view)** | Incremental extend/contract | ✅ Same | ✅ **NEW** |
-| **Plain arrow (view)** | Replace with adjacent | ✅ Same | ✅ |
-| **Direction tracking** | Preserves expand/contract mode | ✅ Same | ✅ **NEW** |
-| **Contraction** | Removes trailing block | ✅ Same | ✅ **NEW** |
+| Feature | Logseq | Evo | Status | Scenario ID |
+|---------|--------|-----|--------|-------------|
+| **Shift+Arrow (editing)** | Text OR block at boundary | ✅ Same | ✅ | SEL-SHIFT-BOUNDARY-01 |
+| **Shift+Arrow (view)** | Incremental extend/contract | ✅ Same | ✅ | SEL-EXTEND-CONTRACT-01 |
+| **Plain arrow (view)** | Replace with adjacent | ✅ Same | ✅ | SEL-ARROW-REPLACE-01 |
+| **Direction tracking** | Preserves expand/contract mode | ✅ Same | ✅ | SEL-DIRECTION-TRACK-01 |
+| **Contraction** | Removes trailing block | ✅ Same | ✅ | SEL-CONTRACT-TRAILING-01 |
 
 Edge cases validated: empty/single/long text blocks, Unicode + RTL, caret position 0/end, folded parents, zoomed outlines, and selection direction flips.
 
