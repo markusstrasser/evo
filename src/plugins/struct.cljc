@@ -809,6 +809,7 @@
                                            :keyword ; :first, :last
                                            [:map [:after :string]]
                                            [:map [:before :string]]]]]
+                          :fr/ids #{:fr.struct/climb-descend}
                           :handler (fn [db _session intent]
                                      (:ops (lower-move db intent)))})
 
@@ -817,6 +818,7 @@
 (intent/register-intent! :move-block-up-while-editing
                          {:doc "Move current editing block up, preserving edit mode."
                           :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
+                          :fr/ids #{:fr.struct/climb-descend}
                           :handler (fn [db session {:keys [block-id]}]
               ;; Use existing move-selected-up logic but don't exit edit mode
               ;; Just return the structural move ops
@@ -825,6 +827,7 @@
 (intent/register-intent! :move-block-down-while-editing
                          {:doc "Move current editing block down, preserving edit mode."
                           :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
+                          :fr/ids #{:fr.struct/climb-descend}
                           :handler (fn [db session {:keys [block-id]}]
               ;; Use existing move-selected-down logic
                                      (move-selected-down-ops db session))})

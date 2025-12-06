@@ -86,6 +86,7 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]
                                  [:input-char :string]]
+                          :fr/ids #{:fr.edit/paired-char-insertion}
 
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos input-char] :as _intent}]
@@ -136,6 +137,7 @@
                                  [:type [:= :delete-with-pair-check]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
+                          :fr/ids #{:fr.edit/paired-char-insertion}
 
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos]}]
@@ -183,6 +185,7 @@
 (intent/register-intent! :merge-with-next
                          {:doc "Merge block with next sibling, delete next block."
                           :spec [:map [:type [:= :merge-with-next]] [:block-id :string]]
+                          :fr/ids #{:fr.edit/delete-forward}
                           :allowed-states #{:editing}
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [next-id (get-in db [:derived :next-id-of block-id])
@@ -206,6 +209,7 @@
 (intent/register-intent! :unformat-empty-list
                          {:doc "Remove list marker from empty list item (becomes plain block)."
                           :spec [:map [:type [:= :unformat-empty-list]] [:block-id :string]]
+                          :fr/ids #{:fr.smart/list-unformat}
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)]
                                        (when (list-marker? text)
@@ -216,6 +220,7 @@
                           :spec [:map [:type [:= :split-with-list-increment]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
+                          :fr/ids #{:fr.smart/auto-increment}
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            before (subs text 0 cursor-pos)
@@ -236,6 +241,7 @@
 (intent/register-intent! :toggle-checkbox
                          {:doc "Toggle checkbox state in block text ([ ] <-> [x])."
                           :spec [:map [:type [:= :toggle-checkbox]] [:block-id :string]]
+                          :fr/ids #{:fr.smart/checkbox-toggle}
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)
                                            new-text (toggle-checkbox-text text)]
@@ -258,6 +264,7 @@
                                  [:type [:= :smart-split]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
+                          :fr/ids #{:fr.edit/smart-split}
                           :allowed-states #{:editing}
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos]}]
