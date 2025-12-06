@@ -104,210 +104,219 @@
    NOTE: Arrow key navigation at block boundaries is handled by the Block component
    (see components/block.cljs handle-arrow-up/down) using cursor row detection,
    NOT here. The block component dispatches :navigate-with-cursor-memory intents."
-  (let [event (keymap/parse-dom-event e)
-        db @!db
-        current-session (session/get-session)
-        key (.-key e)
-        mod? (or (.-metaKey e) (.-ctrlKey e))
-        shift? (.-shiftKey e)
-        focus-id (session/focus-id)
-        editing? (session/editing-block-id)
-        idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
-        intent-type (keymap/resolve-intent-type event current-session)
+  ;; Skip if another handler already handled this event (e.g., Block component)
+  (when-not (.-defaultPrevented e)
+    (let [event (keymap/parse-dom-event e)
+          db @!db
+          current-session (session/get-session)
+          key (.-key e)
+          mod? (or (.-metaKey e) (.-ctrlKey e))
+          shift? (.-shiftKey e)
+          focus-id (session/focus-id)
+          editing? (session/editing-block-id)
+          idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
+          intent-type (keymap/resolve-intent-type event current-session)
 
         ;; Editable element for text formatting
-        editable-el (when editing? (.-activeElement js/document))
+          editable-el (when editing? (.-activeElement js/document))
 
         ;; Printable character check for "start typing to edit" behavior
-        printable? (and (= 1 (.-length key))
-                        (not (:mod event))
-                        (not (:alt event))
-                        (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
+          printable? (and (= 1 (.-length key))
+                          (not (:mod event))
+                          (not (:alt event))
+                          (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
 
-    (cond
+      (cond
       ;; FR-Idle-01: Idle guard - no accidental edits
       ;; In true idle state (no block selected, no block editing), Enter/Backspace/Tab/etc are no-ops
-      (and idle?
-           intent-type
-           (contains? #{"Enter" "Backspace" "Delete" "Tab"} key))
-      nil ;; No-op in idle state
+        (and idle?
+             intent-type
+             (contains? #{"Enter" "Backspace" "Delete" "Tab"} key))
+        nil ;; No-op in idle state
 
       ;; FR-Idle-01: Guard Cmd+Enter in idle state
-      (and idle?
-           mod?
-           (= key "Enter"))
-      nil ;; No-op in idle state
+        (and idle?
+             mod?
+             (= key "Enter"))
+        nil ;; No-op in idle state
 
       ;; FR-Idle-01: Guard Shift+Enter in idle state
-      (and idle?
-           shift?
-           (= key "Enter"))
-      nil ;; No-op in idle state
+        (and idle?
+             shift?
+             (= key "Enter"))
+        nil ;; No-op in idle state
 
-      ;; FR-Idle-01: Guard Shift+Arrow in idle state
-      (and idle?
-           shift?
-           (contains? #{"ArrowUp" "ArrowDown"} key))
-      nil ;; No-op in idle state
+      ;; FR-Idle-02: Shift+Arrow in idle state selects first/last block (Logseq parity)
+      ;; Same behavior as plain Arrow - starts block selection
+        (and idle?
+             shift?
+             (contains? #{"ArrowUp" "ArrowDown"} key))
+        (let [visible-blocks (q/visible-blocks-in-dom-order db current-session)
+              target-id (if (= key "ArrowUp")
+                          (last visible-blocks)
+                          (first visible-blocks))]
+          (when target-id
+            (.preventDefault e)
+            (handle-intent {:type :selection :mode :replace :ids target-id})))
 
       ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
 
       ;; Skip Shift+Arrow when editing - let Block component handle text selection
       ;; (LOGSEQ_SPEC §3 Rule 3: Shift+Arrow extends text selection within block)
-      (and intent-type
-           editing?
-           shift?
-           (contains? #{"ArrowUp" "ArrowDown"} key)
-           (not mod?) ;; Only plain Shift+Arrow, not Cmd+Shift+Arrow (move blocks)
-           (not (.-altKey e)))
-      nil ;; Let event bubble to Block component
+        (and intent-type
+             editing?
+             shift?
+             (contains? #{"ArrowUp" "ArrowDown"} key)
+             (not mod?) ;; Only plain Shift+Arrow, not Cmd+Shift+Arrow (move blocks)
+             (not (.-altKey e)))
+        nil ;; Let event bubble to Block component
 
       ;; LOGSEQ_SPEC §7.2: Cmd+A cycle in editing mode
       ;; First press → browser select-all (let event through)
       ;; Second press (all text selected) → exit edit, select block
-      (and editing?
-           mod?
-           (= key "a")
-           (not shift?)
-           editable-el)
-      (try
-        (let [sel (.getSelection js/window)
-              text-length (count (.-textContent editable-el))
+        (and editing?
+             mod?
+             (= key "a")
+             (not shift?)
+             editable-el)
+        (try
+          (let [sel (.getSelection js/window)
+                text-length (count (.-textContent editable-el))
               ;; Check if all text is already selected
-              all-selected? (and sel
-                                 (pos? (.-rangeCount sel))
-                                 (let [sel-text (str (.toString sel))]
-                                   (= (count sel-text) text-length)))]
-          (if all-selected?
+                all-selected? (and sel
+                                   (pos? (.-rangeCount sel))
+                                   (let [sel-text (str (.toString sel))]
+                                     (= (count sel-text) text-length)))]
+            (if all-selected?
             ;; All text selected → exit edit and select block (step 2 of cycle)
-            (do (.preventDefault e)
-                (handle-intent {:type :select-all-cycle
-                                :from-editing? true
-                                :block-id editing?}))
+              (do (.preventDefault e)
+                  (handle-intent {:type :select-all-cycle
+                                  :from-editing? true
+                                  :block-id editing?}))
             ;; Not all selected → let browser handle select-all (step 1)
-            nil))
-        (catch js/Error _
+              nil))
+          (catch js/Error _
           ;; On error, let browser handle
-          nil))
+            nil))
 
       ;; Keymap-resolved intent
-      intent-type
-      (do (.preventDefault e)
-          (cond
+        intent-type
+        (do (.preventDefault e)
+            (cond
             ;; Undo/Redo - modify DB directly, not via operations
             ;; Also restore session state (cursor, selection) for proper context
-            (= intent-type :undo)
-            (when-let [{:keys [db session]} (H/undo @!db (session/get-session))]
+              (= intent-type :undo)
+              (when-let [{:keys [db session]} (H/undo @!db (session/get-session))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
-              (when session
-                (session/merge-session-updates! session))
-              (reset! !db db)
-              (runtime/assert-derived-fresh! db "after undo"))
+                (when session
+                  (session/merge-session-updates! session))
+                (reset! !db db)
+                (runtime/assert-derived-fresh! db "after undo"))
 
-            (= intent-type :redo)
-            (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
+              (= intent-type :redo)
+              (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
-              (when session
-                (session/merge-session-updates! session))
-              (reset! !db db)
-              (runtime/assert-derived-fresh! db "after redo"))
+                (when session
+                  (session/merge-session-updates! session))
+                (reset! !db db)
+                (runtime/assert-derived-fresh! db "after redo"))
 
             ;; All other intents - go through normal intent dispatch
-            :else
-            (let [;; Inject focused block-id for fold/zoom intents
-                  intent-with-focus (if (and (map? intent-type)
-                                             (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                             focus-id)
-                                      (assoc intent-type :block-id focus-id)
-                                      intent-type)
+              :else
+              (let [;; Inject focused block-id for fold/zoom intents
+                    intent-with-focus (if (and (map? intent-type)
+                                               (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
+                                               focus-id)
+                                        (assoc intent-type :block-id focus-id)
+                                        intent-type)
                   ;; Replace :editing-block-id placeholder with actual editing block ID
-                  intent-with-id (if (and (map? intent-with-focus)
-                                          (= (:block-id intent-with-focus) :editing-block-id)
-                                          editing?)
-                                   (assoc intent-with-focus :block-id editing?)
-                                   intent-with-focus)
+                    intent-with-id (if (and (map? intent-with-focus)
+                                            (= (:block-id intent-with-focus) :editing-block-id)
+                                            editing?)
+                                     (assoc intent-with-focus :block-id editing?)
+                                     intent-with-focus)
                   ;; Enrich format-selection intent with DOM selection data
-                  enriched-intent (cond
+                    enriched-intent (cond
                                     ;; Format-selection: get DOM selection range
-                                    (and (map? intent-with-id)
-                                         (= (:type intent-with-id) :format-selection)
-                                         editing?
-                                         editable-el)
-                                    (try
-                                      (let [sel (.getSelection js/window)]
-                                        (when (and sel (pos? (.-rangeCount sel)))
-                                          (let [range (.getRangeAt sel 0)
-                                                start (.-startOffset range)
-                                                end (.-endOffset range)]
-                                            (when (not= start end) ;; Only if there's actual selection
-                                              (merge intent-with-id
-                                                     {:block-id editing?
-                                                      :start start
-                                                      :end end})))))
-                                      (catch js/Error e
-                                        (js/console.error "Selection read failed:" e)
-                                        nil)) ;; Return nil if enrichment fails
+                                      (and (map? intent-with-id)
+                                           (= (:type intent-with-id) :format-selection)
+                                           editing?
+                                           editable-el)
+                                      (try
+                                        (let [sel (.getSelection js/window)]
+                                          (when (and sel (pos? (.-rangeCount sel)))
+                                            (let [range (.getRangeAt sel 0)
+                                                  start (.-startOffset range)
+                                                  end (.-endOffset range)]
+                                              (when (not= start end) ;; Only if there's actual selection
+                                                (merge intent-with-id
+                                                       {:block-id editing?
+                                                        :start start
+                                                        :end end})))))
+                                        (catch js/Error e
+                                          (js/console.error "Selection read failed:" e)
+                                          nil)) ;; Return nil if enrichment fails
 
                                     ;; Follow-link-under-cursor: inject cursor position
-                                    (and (map? intent-with-id)
-                                         (= (:type intent-with-id) :follow-link-under-cursor)
-                                         (= (:cursor-pos intent-with-id) :cursor-pos)
-                                         editing?
-                                         editable-el)
-                                    (try
-                                      (let [sel (.getSelection js/window)]
-                                        (when sel
-                                          (let [cursor-pos (.-anchorOffset sel)]
-                                            (assoc intent-with-id :cursor-pos cursor-pos))))
-                                      (catch js/Error e
-                                        (js/console.error "Cursor position read failed:" e)
-                                        nil))
+                                      (and (map? intent-with-id)
+                                           (= (:type intent-with-id) :follow-link-under-cursor)
+                                           (= (:cursor-pos intent-with-id) :cursor-pos)
+                                           editing?
+                                           editable-el)
+                                      (try
+                                        (let [sel (.getSelection js/window)]
+                                          (when sel
+                                            (let [cursor-pos (.-anchorOffset sel)]
+                                              (assoc intent-with-id :cursor-pos cursor-pos))))
+                                        (catch js/Error e
+                                          (js/console.error "Cursor position read failed:" e)
+                                          nil))
 
                                     ;; Default: no enrichment needed
-                                    :else intent-with-id)
+                                      :else intent-with-id)
                   ;; Structural operations during editing require text commit first
                   ;; (to prevent losing uncommitted DOM text changes)
-                  structural-intent? (contains? #{:indent-selected :outdent-selected
-                                                  :move-selected-up :move-selected-down}
-                                                (if (map? enriched-intent)
-                                                  (:type enriched-intent)
-                                                  enriched-intent))]
-              (when enriched-intent ;; Only dispatch if enrichment succeeded
+                    structural-intent? (contains? #{:indent-selected :outdent-selected
+                                                    :move-selected-up :move-selected-down}
+                                                  (if (map? enriched-intent)
+                                                    (:type enriched-intent)
+                                                    enriched-intent))]
+                (when enriched-intent ;; Only dispatch if enrichment succeeded
                 ;; Commit text AND preserve cursor before structural operations while editing
-                (when (and editing? structural-intent?)
+                  (when (and editing? structural-intent?)
                   ;; Suppress blur FIRST to prevent focus loss during re-renders
-                  (session/suppress-blur-exit!)
+                    (session/suppress-blur-exit!)
                   ;; Capture cursor position BEFORE any changes (will be saved after text commit)
-                  (let [sel (.getSelection js/window)
-                        saved-cursor-pos (when (and sel editable-el) (.-anchorOffset sel))
-                        buffer-text (session/buffer-text editing?)
-                        dom-text (when editable-el (.-textContent editable-el))
-                        final-text (or buffer-text dom-text)]
+                    (let [sel (.getSelection js/window)
+                          saved-cursor-pos (when (and sel editable-el) (.-anchorOffset sel))
+                          buffer-text (session/buffer-text editing?)
+                          dom-text (when editable-el (.-textContent editable-el))
+                          final-text (or buffer-text dom-text)]
                     ;; Commit text first
-                    (when final-text
-                      (handle-intent {:type :update-content
-                                      :block-id editing?
-                                      :text final-text}))
+                      (when final-text
+                        (handle-intent {:type :update-content
+                                        :block-id editing?
+                                        :text final-text}))
                     ;; Save cursor position AFTER text commit (on-render may have cleared it)
                     ;; on-mount will read this and restore cursor position after block remounts
-                    (when saved-cursor-pos
-                      (session/set-cursor-position! saved-cursor-pos))))
-                (cond
+                      (when saved-cursor-pos
+                        (session/set-cursor-position! saved-cursor-pos))))
+                  (cond
                 ;; Map intent: use directly (with injected block-id if needed)
-                  (map? enriched-intent)
-                  (handle-intent enriched-intent)
+                    (map? enriched-intent)
+                    (handle-intent enriched-intent)
 
                 ;; Keyword intent: wrap in :type
-                  :else
-                  (handle-intent {:type enriched-intent}))))))
+                    :else
+                    (handle-intent {:type enriched-intent}))))))
 
       ;; Printable character - Enter edit mode AND append character (Logseq-style "start typing")
       ;; LOGSEQ PARITY §7.1: pressing any printable key instantly enters edit mode,
       ;; appends that character, and positions the caret after it
-      (and printable? focus-id (not editing?))
-      (do
-        (.preventDefault e)
-        (handle-intent {:type :enter-edit-with-char :block-id focus-id :char key})))))
+        (and printable? focus-id (not editing?))
+        (do
+          (.preventDefault e)
+          (handle-intent {:type :enter-edit-with-char :block-id focus-id :char key}))))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -331,13 +340,22 @@
             :overflow-wrap "break-word"}}]) ;; Match contenteditable
 
 (defn Outline
-  "Render outline tree by composing Block components."
+  "Render outline tree by composing Block components.
+   
+   Also handles drag & drop at the container level for drops to first position."
   [{:keys [db root-id on-intent]}]
   (let [children (get-in db [:children-by-parent root-id] [])
         editing-block-id (session/editing-block-id)
         focus-block-id (session/focus-id)
         selection-set (session/selection-nodes)
-        folded-set (session/folded)]
+        folded-set (session/folded)
+        first-child-id (first children)
+        ;; Check if dropping at top of outline
+        drop-target (session/drop-target)
+        dropping-at-top? (and (= (:id drop-target) ::outline-top)
+                              (= (:zone drop-target) :first))
+        ;; Check if actively dragging
+        dragging? (seq (session/dragging-ids))]
     (if (empty? children)
       ;; Empty state: clickable placeholder to create first block
       [:div.outline.outline--empty
@@ -353,58 +371,128 @@
                       (let [new-id (str "block-" (random-uuid))]
                         (on-intent {:type :create-block-in-page
                                     :page-id root-id
-                                    :block-id new-id})))}}
+                                    :block-id new-id})))
+             ;; Allow drops on empty outline
+             :dragover (fn [e]
+                         (.preventDefault e)
+                         (set! (.-dropEffect (.-dataTransfer e)) "move")
+                         (session/drag-over! ::outline-top :first))
+             :drop (fn [e]
+                     (.preventDefault e)
+                     (let [dragging (session/dragging-ids)]
+                       (session/drag-end!)
+                       (when (seq dragging)
+                         (on-intent {:type :move
+                                     :selection (vec dragging)
+                                     :parent root-id
+                                     :anchor :first}))))}}
        [:p {:style {:margin 0}} "Click to start writing..."]]
-      ;; Normal state: render block tree
-      (into [:div.outline]
-            (map (fn [child-id]
-                   (block/Block {:db db
-                                 :block-id child-id
-                                 :depth 0
-                                 :is-focused (= focus-block-id child-id)
-                                 :is-selected (contains? selection-set child-id)
-                                 :is-editing (= editing-block-id child-id)
-                                 :is-folded (contains? folded-set child-id)
-                                 :on-intent on-intent}))
-                 children)))))
+      ;; Normal state: render block tree with dedicated top drop zone
+      [:div.outline
+       ;; Top drop zone - only shown during drag, intercepts drops above first block
+       (when dragging?
+         [:div.top-drop-zone
+          {:style {:height (if dropping-at-top? "20px" "12px")
+                   :margin-bottom "4px"
+                   :border-radius "4px"
+                   :transition "all 0.15s ease"
+                   :background (if dropping-at-top?
+                                 "rgba(59, 130, 246, 0.15)"
+                                 "transparent")}
+           :on {:dragover (fn [e]
+                            (.preventDefault e)
+                            (.stopPropagation e)
+                            (set! (.-dropEffect (.-dataTransfer e)) "move")
+                            (let [dragging (session/dragging-ids)]
+                              (when-not (contains? dragging first-child-id)
+                                (session/drag-over! ::outline-top :first))))
+                :dragleave (fn [_e]
+                             (when (= (:id (session/drop-target)) ::outline-top)
+                               (session/drag-over! nil nil)))
+                :drop (fn [e]
+                        (.preventDefault e)
+                        (.stopPropagation e)
+                        (let [dragging (session/dragging-ids)]
+                          (session/drag-end!)
+                          (when (seq dragging)
+                            (on-intent {:type :move
+                                        :selection (vec dragging)
+                                        :parent root-id
+                                        :anchor :first}))))}}
+          ;; Visual indicator line
+          (when dropping-at-top?
+            [:div {:style {:height "2px"
+                           :background "#3b82f6"
+                           :border-radius "1px"}}])])
+       ;; Render blocks
+       (map (fn [child-id]
+              (block/Block {:db db
+                            :block-id child-id
+                            :depth 0
+                            :is-focused (= focus-block-id child-id)
+                            :is-selected (contains? selection-set child-id)
+                            :is-editing (= editing-block-id child-id)
+                            :is-folded (contains? folded-set child-id)
+                            :on-intent on-intent}))
+            children)])))
 
 (defn HotkeysReference []
-  [:div.hotkeys-footer
-   {:style {:margin-top "30px"
-            :padding "20px"
-            :background-color "#f0f0f0"
-            :border-radius "4px"}}
-   [:h4 "Keyboard Shortcuts (Logseq Style)"]
-   [:div {:style {:display "grid"
-                  :grid-template-columns "repeat(3, 1fr)"
-                  :gap "10px"}}
-    [:div
-     [:h5 "Navigation"]
-     [:div.hotkey-item "↑/↓ - Move cursor (or navigate blocks at boundary)"]
-     [:div.hotkey-item "Shift+↑/↓ - Extend selection"]
-     [:div.hotkey-item "Esc - Exit edit mode"]
-     [:div.hotkey-item "Click - Select block"]
-     [:div.hotkey-item "Shift+Click - Extend selection"]]
-    [:div
-     [:h5 "Editing"]
-     [:div.hotkey-item "Enter - New block"]
-     [:div.hotkey-item "Shift+Enter - Newline in block"]
-     [:div.hotkey-item "Backspace - Delete/merge"]
-     [:div.hotkey-item "Tab - Indent"]
-     [:div.hotkey-item "Shift+Tab - Outdent"]
-     [:div.hotkey-item "⌘+Enter - Toggle checkbox"]]
-    [:div
-     [:h5 "Folding & Zoom"]
-     [:div.hotkey-item "Click bullet - Toggle fold"]
-     [:div.hotkey-item "⌘+; - Toggle fold"]
-     [:div.hotkey-item "⌘+↑ - Collapse"]
-     [:div.hotkey-item "⌘+↓ - Expand all"]
-     [:div.hotkey-item "⌘+. - Zoom in"]
-     [:div.hotkey-item "⌘+, - Zoom out"]]
-    [:div
-     [:h5 "Undo/Redo"]
-     [:div.hotkey-item "⌘/Ctrl+Z - Undo"]
-     [:div.hotkey-item "⌘/Ctrl+Shift+Z - Redo"]]]])
+  (let [kbd (fn [& key-names]
+              (into [:span.kbd-group {:style {:display "inline-flex" :gap "2px" :align-items "center"}}]
+                    (interpose [:span {:style {:color "#9ca3af" :font-size "10px"}} "+"]
+                               (map (fn [k] [:kbd k]) key-names))))
+        hotkey (fn [key-combo desc]
+                 [:div.hotkey-item {:style {:display "flex" :align-items "center" :gap "8px" :margin "4px 0"}}
+                  [:span {:style {:min-width "90px"}} key-combo]
+                  [:span {:style {:color "#6b7280"}} desc]])]
+    [:div.hotkeys-footer
+     {:style {:margin-top "30px"
+              :padding "24px"
+              :background "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)"
+              :border-radius "8px"
+              :border "1px solid #e2e8f0"}}
+     [:h4 {:style {:margin "0 0 16px 0" :font-size "14px" :font-weight "600" :color "#374151"}}
+      "⌨️ Keyboard Shortcuts"]
+     [:div {:style {:display "grid"
+                    :grid-template-columns "repeat(auto-fit, minmax(220px, 1fr))"
+                    :gap "20px"}}
+      ;; Navigation
+      [:div
+       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
+                     :letter-spacing "0.05em" :color "#9ca3af"}} "Navigation"]
+       (hotkey (kbd "↑") "Previous block")
+       (hotkey (kbd "↓") "Next block")
+       (hotkey (kbd "Shift" "↑") "Extend selection up")
+       (hotkey (kbd "Shift" "↓") "Extend selection down")
+       (hotkey (kbd "Esc") "Exit edit mode")
+       (hotkey (kbd "Enter") "Edit selected block")]
+      ;; Editing
+      [:div
+       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
+                     :letter-spacing "0.05em" :color "#9ca3af"}} "Editing"]
+       (hotkey (kbd "Enter") "Split / new block")
+       (hotkey (kbd "Shift" "Enter") "New line in block")
+       (hotkey (kbd "⌫") "Delete / merge")
+       (hotkey (kbd "Tab") "Indent")
+       (hotkey (kbd "Shift" "Tab") "Outdent")
+       (hotkey (kbd "⌘" "Enter") "Toggle checkbox")]
+      ;; Structure
+      [:div
+       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
+                     :letter-spacing "0.05em" :color "#9ca3af"}} "Structure"]
+       (hotkey (kbd "⌘" "Shift" "↑") "Move block up")
+       (hotkey (kbd "⌘" "Shift" "↓") "Move block down")
+       (hotkey (kbd "⌘" ";") "Toggle fold")
+       (hotkey (kbd "⌘" "↑") "Collapse")
+       (hotkey (kbd "⌘" "↓") "Expand all")]
+      ;; Zoom & Undo
+      [:div
+       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
+                     :letter-spacing "0.05em" :color "#9ca3af"}} "Zoom & Undo"]
+       (hotkey (kbd "⌘" ".") "Zoom in")
+       (hotkey (kbd "⌘" ",") "Zoom out")
+       (hotkey (kbd "⌘" "Z") "Undo")
+       (hotkey (kbd "⌘" "Shift" "Z") "Redo")]]]))
 
 (defn App []
   "Main app - pure composition, no business logic."
