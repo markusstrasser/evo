@@ -64,9 +64,45 @@
             at)))))
 
 (defn- remove-noop-places
-  "Filter out no-op :place operations."
+  "Filter out no-op :place operations, processing sequentially.
+   
+   CRITICAL: Ops must be checked against INTERMEDIATE state, not just the original db.
+   When moving multiple blocks, op N may only appear as a noop against the original state
+   but is NOT a noop after ops 1..N-1 have been applied.
+   
+   Example: Moving [A, B] after C with ops:
+     Op1: place A after C
+     Op2: place B after A
+   
+   In original state [A, B, C], Op2 looks like a noop (B is already after A).
+   But after Op1, state is [B, C, A], so Op2 actually moves B from index 0 to after A.
+   
+   Solution: Simulate applying each non-noop op to a scratch DB before checking the next.
+   
+   NOTE: If ops/place throws (invalid anchor), we keep the op and let validation handle it."
   [db ops]
-  (remove #(is-noop-place? db %) ops))
+  (loop [remaining ops
+         result []
+         scratch-db db]
+    (if (empty? remaining)
+      result
+      (let [op (first remaining)
+            noop? (is-noop-place? scratch-db op)]
+        (if noop?
+          ;; Skip this op, scratch-db unchanged
+          (recur (rest remaining) result scratch-db)
+          ;; Keep this op and try to update scratch-db for next iteration
+          (let [next-db (if (= (:op op) :place)
+                          ;; Apply place to scratch for next noop check
+                          ;; Wrap in try-catch: invalid ops should pass through to validation
+                          (try
+                            (ops/place scratch-db (:id op) (:under op) (:at op))
+                            (catch #?(:clj Exception :cljs :default) _
+                              ;; Invalid op - keep scratch-db unchanged, let validation catch it
+                              scratch-db))
+                          ;; Non-place ops don't affect place noop detection
+                          scratch-db)]
+            (recur (rest remaining) (conj result op) next-db)))))))
 
 (defn- merge-adjacent-updates
   "Merge adjacent :update-node operations on the same id.
@@ -161,7 +197,7 @@
   (let [siblings (get-in db [:children-by-parent under] [])]
     (try
       (pos/resolve-insert-index siblings at {:drop-id node-id})
-      []  ;; Valid anchor, no issues
+      [] ;; Valid anchor, no issues
       (catch #?(:clj Exception :cljs :default) e
         (let [reason (ex-data e)]
           [(make-issue op op-index
