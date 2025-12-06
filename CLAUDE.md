@@ -46,17 +46,9 @@ bb test:int                # Render→action integration tests
 bb test-watch              # Watch entire suite
 bb test-watch:view         # Watch view tier only
 bb test-watch:int          # Watch integration tier only
-bb test:e2e NAV-...        # Filter Playwright specs by scenario ID
-
-# E2E tests (Playwright)
-bb e2e                     # Run all E2E tests
-bb e2e-watch               # Watch mode with UI
-bb e2e-debug               # Run with Playwright debugger
-bb e2e-headed              # Run with visible browser
-bb e2e-report              # Open last test report
-bb e2e-a11y                # Accessibility tests only
-bb e2e-visual              # Visual regression tests (Percy)
 ```
+
+See `docs/TESTING.md` for testing philosophy and the buffer vs DB gap.
 
 ### Quality Gates
 
@@ -64,7 +56,6 @@ bb e2e-visual              # Visual regression tests (Percy)
 bb lint                    # Run clj-kondo linter
 bb check                   # Lint + compile check (full quality gate)
 bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
-bb lint:e2e-keyboard       # Check E2E tests for problematic keyboard usage
 bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fail on gaps)
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
