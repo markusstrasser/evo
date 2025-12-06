@@ -1,4 +1,4 @@
-(ns util.text-selection
+(ns utils.text-selection
   "Text selection utilities for contenteditable elements.
 
    Ported from use-editable (https://github.com/kitten/use-editable)
