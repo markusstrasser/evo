@@ -292,13 +292,27 @@
 (defn handle-arrow-down [e db block-id on-intent]
   (handle-vertical-arrow :down e db block-id on-intent))
 
+(defn- commit-buffer!
+  "Commit buffer content to DB before exiting edit mode.
+   
+   CRITICAL: Must be called before any action that exits edit mode,
+   otherwise keystrokes in the buffer are lost. The buffer stores
+   high-velocity input that hasn't been persisted to DB yet."
+  [block-id on-intent]
+  (when-let [buffer-text (session/buffer-text block-id)]
+    (on-intent {:type :update-content
+                :block-id block-id
+                :text buffer-text})))
+
 (defn- handle-shift-vertical-arrow
   "Parametric handler for Shift+ArrowUp/Down while editing: exit edit and extend selection.
    
    Logseq parity: Shift+Arrow ALWAYS exits edit mode and starts block selection.
    (No text selection within blocks - that's what mouse drag is for)"
-  [direction e _db _block-id on-intent]
+  [direction e _db block-id on-intent]
   (.preventDefault e)
+  ;; CRITICAL: Commit buffer before exiting edit mode (prevents losing typed content)
+  (commit-buffer! block-id on-intent)
   ;; Collapse any text selection before exiting
   (when-let [sel (.getSelection js/window)]
     (when (and sel (pos? (.-rangeCount sel)))
