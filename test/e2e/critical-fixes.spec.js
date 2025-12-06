@@ -24,12 +24,18 @@ async function getTreeStructure(page) {
     const blockElements = document.querySelectorAll('.block[data-block-id]');
 
     blockElements.forEach((el) => {
-      const contentEl = el.querySelector('[contenteditable="true"]') ||
-                        el.querySelector('.content-view');
+      const contentEl = el.querySelector(':scope > [contenteditable="true"]') ||
+                        el.querySelector(':scope > .block-content');
       if (contentEl) {
-        // Calculate depth from margin-left style (depth * 20px)
-        const marginLeft = el.style.marginLeft || '0px';
-        const depth = parseInt(marginLeft) / 20;
+        // Calculate depth by counting ancestor .block-children elements
+        let depth = 0;
+        let parent = el.parentElement;
+        while (parent) {
+          if (parent.classList.contains('block-children')) {
+            depth++;
+          }
+          parent = parent.parentElement;
+        }
 
         // Check if this block has children (look for nested .block elements)
         const hasChildren = el.querySelector('.block[data-block-id]') !== null;
@@ -111,8 +117,8 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
     const totalBefore = beforeMerge.length;
 
     // Verify children exist before merge
-    await expect(page.locator('[contenteditable="true"]:has-text("Child B1"), .content-view:has-text("Child B1")')).toBeVisible();
-    await expect(page.locator('[contenteditable="true"]:has-text("Child B2"), .content-view:has-text("Child B2")')).toBeVisible();
+    await expect(page.locator('[contenteditable="true"]:has-text("Child B1"), .block-content:has-text("Child B1")')).toBeVisible();
+    await expect(page.locator('[contenteditable="true"]:has-text("Child B2"), .block-content:has-text("Child B2")')).toBeVisible();
 
     // Enter edit mode in Block B at START (position 0)
     await page.evaluate(() => {
@@ -133,11 +139,11 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
     await page.waitForTimeout(300);
 
     // CRITICAL VERIFICATION: Children should still be visible (not deleted)
-    await expect(page.locator('.content-view:has-text("Child B1"), [contenteditable="true"]:has-text("Child B1")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child B1"), [contenteditable="true"]:has-text("Child B1")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
 
     // Verify merged block exists
-    await expect(page.locator('[contenteditable="true"]:has-text("Block ABlock B"), .content-view:has-text("Block ABlock B")')).toBeVisible();
+    await expect(page.locator('[contenteditable="true"]:has-text("Block ABlock B"), .block-content:has-text("Block ABlock B")')).toBeVisible();
 
     // Verify total blocks decreased by 1 (only Block B was removed, children preserved)
     const afterMerge = await getTreeStructure(page);
@@ -163,7 +169,7 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
     await page.waitForTimeout(100);
 
     // Block should still exist with content intact
-    await expect(page.locator('[contenteditable="true"]:has-text("First block"), .content-view:has-text("First block")')).toBeVisible();
+    await expect(page.locator('[contenteditable="true"]:has-text("First block"), .block-content:has-text("First block")')).toBeVisible();
   });
 });
 
@@ -231,11 +237,11 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', () => {
     await page.waitForTimeout(300);
 
     // Verify all blocks still visible
-    await expect(page.locator('.content-view:has-text("Parent"), [contenteditable="true"]:has-text("Parent")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child A"), [contenteditable="true"]:has-text("Child A")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child B"), [contenteditable="true"]:has-text("Child B")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child C"), [contenteditable="true"]:has-text("Child C")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child D"), [contenteditable="true"]:has-text("Child D")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Parent"), [contenteditable="true"]:has-text("Parent")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child A"), [contenteditable="true"]:has-text("Child A")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child B"), [contenteditable="true"]:has-text("Child B")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child C"), [contenteditable="true"]:has-text("Child C")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child D"), [contenteditable="true"]:has-text("Child D")')).toBeVisible();
 
     // Get structure after outdenting
     const after = await getTreeStructure(page);
@@ -316,9 +322,9 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', () => {
     await page.waitForTimeout(300);
 
     // Verify all blocks visible
-    await expect(page.locator('.content-view:has-text("Parent2"), [contenteditable="true"]:has-text("Parent2")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child A2"), [contenteditable="true"]:has-text("Child A2")')).toBeVisible();
-    await expect(page.locator('.content-view:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Parent2"), [contenteditable="true"]:has-text("Parent2")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child A2"), [contenteditable="true"]:has-text("Child A2")')).toBeVisible();
+    await expect(page.locator('.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
 
     // Child B should be outdented
     const after = await getTreeStructure(page);

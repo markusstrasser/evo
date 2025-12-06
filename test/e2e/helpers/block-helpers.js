@@ -9,7 +9,7 @@
  * 1. Use dispatchIntent for state changes (reliable, deterministic)
  * 2. Use page.keyboard only for typing text (not navigation/actions)
  * 3. Check selection via inline styles (app uses background-color, not .selected)
- * 4. Target specific elements (div.block, .content-view) to avoid ambiguity
+ * 4. Target specific elements (div.block, .block-content) to avoid ambiguity
  */
 
 /**
@@ -99,9 +99,14 @@ export async function exitEditMode(page) {
  * @returns {Promise<boolean>}
  */
 export async function isBlockSelected(page, blockId) {
-  const bgColor = await page.locator(`div.block[data-block-id="${blockId}"]`)
-    .evaluate(el => getComputedStyle(el).backgroundColor);
-  return bgColor === 'rgb(230, 242, 255)' || bgColor === 'rgb(179, 217, 255)';
+  // Use session state instead of CSS colors for reliability
+  return await page.evaluate((id) => {
+    const sess = window.TEST_HELPERS?.getSession?.();
+    const nodes = sess?.selection?.nodes || [];
+    const focusId = sess?.selection?.focus;
+    // Block is "selected" if it's in selection set OR is the focused block
+    return nodes.includes(id) || focusId === id;
+  }, blockId);
 }
 
 /**
@@ -111,21 +116,17 @@ export async function isBlockSelected(page, blockId) {
  * @returns {Promise<number>}
  */
 export async function countSelectedBlocks(page) {
-  const blocks = await page.locator('div.block[data-block-id]').all();
-  let count = 0;
-  for (const block of blocks) {
-    const bgColor = await block.evaluate(el => getComputedStyle(el).backgroundColor);
-    if (bgColor === 'rgb(230, 242, 255)' || bgColor === 'rgb(179, 217, 255)') {
-      count++;
-    }
-  }
-  return count;
+  // Use session state instead of CSS colors for reliability
+  return await page.evaluate(() => {
+    const sess = window.TEST_HELPERS?.getSession?.();
+    return sess?.selection?.nodes?.length || 0;
+  });
 }
 
 /**
  * Get the text content of a specific block (not including children).
  *
- * Uses .content-view span which contains only the block's own text.
+ * Uses .block-content span which contains only the block's own text.
  *
  * @param {import('@playwright/test').Page} page
  * @param {string} blockId
@@ -133,7 +134,7 @@ export async function countSelectedBlocks(page) {
  */
 export async function getBlockText(page, blockId) {
   return await page.evaluate((id) => {
-    const viewSpan = document.querySelector(`[data-block-id="${id}"] .content-view`);
+    const viewSpan = document.querySelector(`[data-block-id="${id}"] .block-content`);
     return viewSpan?.textContent || '';
   }, blockId);
 }

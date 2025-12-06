@@ -17,9 +17,9 @@ import { pressKeyOnContentEditable } from './helpers/index.js';
  * Helper: Enter edit mode on a block by double-clicking and waiting for contenteditable
  */
 async function enterEditMode(page, blockLocator) {
-  // Strategy: Click the .content-view span directly (not the container)
+  // Strategy: Click the .block-content span directly (not the container)
   // This ensures we're hitting the actual view element that has the click handler
-  const viewSpan = blockLocator.locator('.content-view').first();
+  const viewSpan = blockLocator.locator('.block-content').first();
 
   // First click to select
   await viewSpan.click();
@@ -113,10 +113,10 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await page.keyboard.press('Escape');
 
     // Wait for view mode
-    await page.waitForSelector('.content-view', { timeout: 2000 });
+    await page.waitForSelector('.block-content', { timeout: 2000 });
 
     // Verify the text persisted in view mode
-    const viewText = await page.locator('.content-view').first().textContent();
+    const viewText = await page.locator('.block-content').first().textContent();
     expect(viewText).toBe('Committed Text');
   });
 
@@ -200,17 +200,17 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await page.keyboard.press('Meta+A'); // Clear existing
     await page.keyboard.type('First');
     await page.keyboard.press('Escape');
-    await page.waitForSelector('.content-view');
+    await page.waitForSelector('.block-content');
 
     // Cycle 2: Edit again and modify
     await enterEditMode(page, firstBlock);
     await page.keyboard.press('End');
     await page.keyboard.type(' Second');
     await page.keyboard.press('Escape');
-    await page.waitForSelector('.content-view');
+    await page.waitForSelector('.block-content');
 
     // Verify cumulative text
-    const viewText = await page.locator('.content-view').first().textContent();
+    const viewText = await page.locator('.block-content').first().textContent();
     expect(viewText).toBe('First Second');
   });
 });
