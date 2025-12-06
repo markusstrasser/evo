@@ -9,8 +9,8 @@ import { selectPage } from './helpers/index.js';
  * Gap: LOGSEQ_PARITY.md G-Idle-01
  *
  * In fully idle state (no block selected, no block editing):
- * - FR-Idle-01: Enter/Backspace/Tab/Shift+Enter/Shift+Arrow/Cmd+Enter are no-ops
- * - FR-Idle-02: ArrowDown selects first visible block; ArrowUp selects last
+ * - FR-Idle-01: Enter/Backspace/Tab/Shift+Enter/Cmd+Enter are no-ops
+ * - FR-Idle-02: ArrowDown/Shift+ArrowDown selects first visible block; ArrowUp/Shift+ArrowUp selects last (Logseq parity)
  * - FR-Idle-03: Typing printable character enters edit mode and appends character
  */
 
@@ -171,40 +171,41 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       expect(afterCount).toBe(beforeCount);
     });
 
-    test('Shift+ArrowUp in idle state is a no-op', async ({ page }) => {
+  });
+
+  test.describe('FR-Idle-02: ArrowDown/Up select first/last', () => {
+    // Logseq parity: Shift+Arrow in idle also starts selection (same as plain Arrow)
+    test('Shift+ArrowUp in idle state selects last visible block (Logseq parity)', async ({ page }) => {
       await ensureIdleState(page);
 
       await page.keyboard.press('Shift+ArrowUp');
       await page.waitForTimeout(100);
 
-      // Should NOT select any blocks
+      // Should select a block (starts selection mode)
       const hasSelection = await page.evaluate(() => {
         const sess = window.TEST_HELPERS?.getSession?.();
         if (!sess) return false;
         const nodes = sess.selection?.nodes || [];
         return nodes.length > 0;
       });
-      expect(hasSelection).toBe(false);
+      expect(hasSelection).toBe(true);
     });
 
-    test('Shift+ArrowDown in idle state is a no-op', async ({ page }) => {
+    test('Shift+ArrowDown in idle state selects first visible block (Logseq parity)', async ({ page }) => {
       await ensureIdleState(page);
 
       await page.keyboard.press('Shift+ArrowDown');
       await page.waitForTimeout(100);
 
-      // Should NOT select any blocks
+      // Should select a block (starts selection mode)
       const hasSelection = await page.evaluate(() => {
         const sess = window.TEST_HELPERS?.getSession?.();
         if (!sess) return false;
         const nodes = sess.selection?.nodes || [];
         return nodes.length > 0;
       });
-      expect(hasSelection).toBe(false);
+      expect(hasSelection).toBe(true);
     });
-  });
-
-  test.describe('FR-Idle-02: ArrowDown/Up select first/last', () => {
     test('ArrowDown in idle state selects first visible block', async ({ page }) => {
       await ensureIdleState(page);
 

@@ -2,7 +2,7 @@
  * Text Selection E2E Tests
  *
  * Tests robust text selection handling in contenteditable elements,
- * verifying the util.text-selection namespace integration.
+ * verifying the utils.text-selection namespace integration.
  *
  * Covers:
  * - Cursor positioning with complex DOM structures

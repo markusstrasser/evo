@@ -56,7 +56,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 
     // Get the text length (block's own text, not children)
     const textLength = await page.evaluate((id) => {
-      const viewSpan = document.querySelector(`[data-block-id="${id}"] .content-view`);
+      const viewSpan = document.querySelector(`[data-block-id="${id}"] .block-content`);
       return viewSpan?.textContent?.length || 0;
     }, blockId);
 
