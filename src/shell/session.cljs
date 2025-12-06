@@ -128,6 +128,38 @@
   []
   (get-in @!session [:selection :focus]))
 
+;; ── Session Mutation API ─────────────────────────────────────────────────────
+
+(defn set-cursor-position!
+  "Set cursor position for enter-edit (number, :start, :end, :max).
+   
+   Used when entering edit mode or after undo/redo to restore cursor."
+  [pos]
+  (swap-session! assoc-in [:ui :cursor-position] pos))
+
+(defn clear-cursor-position!
+  "Clear pending cursor position after it's been applied to DOM."
+  []
+  (swap-session! assoc-in [:ui :cursor-position] nil))
+
+(defn set-current-page!
+  "Set the current active page."
+  [page-id]
+  (swap-session! assoc-in [:ui :current-page] page-id))
+
+(defn clear-pending-selection!
+  "Clear pending selection state."
+  []
+  (swap-session! assoc-in [:ui :pending-selection] nil))
+
+(defn merge-session-updates!
+  "Merge session updates map into current session.
+   
+   Used by kernel.api and shell runtime for bulk session state updates.
+   Uses merge-with merge for nested maps."
+  [updates]
+  (swap-session! #(merge-with merge % updates)))
+
 ;; ── Buffer API (high-velocity, no render trigger) ────────────────────────────
 
 (defn buffer-set!
