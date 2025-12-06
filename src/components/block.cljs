@@ -9,7 +9,7 @@
             [kernel.query :as q]
             [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]
-            [util.text-selection :as text-sel]
+            [utils.text-selection :as text-sel]
             [shell.session :as session]
             [clojure.string :as str]))
 
@@ -595,12 +595,9 @@
    Lifecycle hooks handle focus and cursor positioning."
   [{:keys [block-id text on-intent db]}]
   (let [edit-key (str block-id "-edit")]
-    [:span.content-edit
+    [:span.block-content
      {:contentEditable true
       :suppressContentEditableWarning true
-      :style {:outline "none"
-              :min-width "1px"
-              :display "inline-block"}
       :replicant/key edit-key
 
       ;; On mount: Set text once, focus, position cursor
@@ -714,11 +711,8 @@
   "View mode content: controlled rendering from DB with page-ref support."
   [{:keys [block-id text is-focused on-intent db]}]
   (let [view-key (str block-id "-view")]
-    (into [:span.content-view
-           {:style {:min-width "1px"
-                    :display "inline-block"
-                    :cursor "text"}
-            :replicant/key view-key
+    (into [:span.block-content
+           {:replicant/key view-key
             :on {:click (fn [e]
                           (.stopPropagation e)
                           (cond
@@ -759,20 +753,20 @@
         drop-style (drop-zone-style block-id)
         is-dragging (contains? (session/dragging-ids) block-id)
 
+        ;; Build CSS class string
+        block-classes (str "block"
+                           (when is-focused " focused")
+                           (when is-selected " selected")
+                           (when is-editing " editing")
+                           (when is-dragging " dragging"))
+
         container-props
         {:replicant/key block-id
+         :class block-classes
          :data-block-id block-id
          :draggable true
-         :style (merge {:margin-left (str (* depth 20) "px")
-                        :padding "4px 8px"
-                        :cursor "text"
-                        :background-color (cond
-                                            is-dragging "#f0f0f0"
-                                            is-focused "#b3d9ff"
-                                            is-selected "#e6f2ff"
-                                            :else "transparent")
-                        :border-left (if is-selected "3px solid #0066cc" "3px solid #ccc")
-                        :margin-bottom "2px"
+         ;; Tight indentation: 4px per depth level
+         :style (merge {:margin-left (str (* depth 4) "px")
                         :opacity (if is-dragging 0.5 1)}
                        drop-style)
          :on {:click (fn [e]
@@ -787,20 +781,21 @@
               :dragleave handle-drag-leave
               :drop (fn [e] (handle-drop e db block-id on-intent))}}
 
-        ;; Fold indicator bullet
+        ;; Fold indicator - integrated into block::before via CSS, but toggle still needed
         has-children? (seq (q/children db block-id))
-        bullet [:span {:style {:margin-right "8px"
-                               :cursor (if has-children? "pointer" "default")
-                               :user-select "none"}
-                       :on {:click (fn [e]
-                                     (.stopPropagation e)
-                                     (when has-children?
-                                       ;; LOGSEQ PARITY (FR-Pointer-01): Alt+Click toggles entire subtree
-                                       (if (.-altKey e)
-                                         (on-intent {:type :toggle-subtree :block-id block-id})
-                                         (on-intent {:type :toggle-fold :block-id block-id}))))}}
+        bullet [:span.block-bullet
+                {:class (cond
+                          (not has-children?) "bullet-dot"
+                          is-folded "bullet-collapsed"
+                          :else "bullet-expanded")
+                 :on {:click (fn [e]
+                               (.stopPropagation e)
+                               (when has-children?
+                                 (if (.-altKey e)
+                                   (on-intent {:type :toggle-subtree :block-id block-id})
+                                   (on-intent {:type :toggle-fold :block-id block-id}))))}}
                 (cond
-                  (not has-children?) "•"
+                  (not has-children?) ""
                   is-folded "▸"
                   :else "▾")]
 
@@ -817,7 +812,7 @@
 
         children-el
         (when (seq children)
-          (into [:div {:style {:margin-top "2px"}}]
+          (into [:div.block-children]
                 (map (fn [child-id]
                        (Block {:db db
                                :block-id child-id
@@ -829,7 +824,7 @@
                                :on-intent on-intent}))
                      children)))]
 
-    (cond-> [:div.block container-props
+    (cond-> [:div container-props
              bullet
              content]
       ;; Only show children if not folded
