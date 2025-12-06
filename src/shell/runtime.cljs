@@ -45,7 +45,7 @@
   [!db intent-map label]
   ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
-    (session/swap-session! assoc-in [:ui :cursor-position] cursor-pos))
+    (session/set-cursor-position! cursor-pos))
 
   (let [intent-type (:type intent-map)
         current-session (session/get-session)
@@ -62,7 +62,7 @@
     ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
     ;; Those hooks read session state (cursor-position), so session must be updated first.
     (when session-updates
-      (session/swap-session! #(merge-with merge % session-updates)))
+      (session/merge-session-updates! session-updates))
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)

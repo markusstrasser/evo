@@ -200,7 +200,7 @@
             (when-let [{:keys [db session]} (H/undo @!db (session/get-session))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
               (when session
-                (session/swap-session! #(merge-with merge % session)))
+                (session/merge-session-updates! session))
               (reset! !db db)
               (runtime/assert-derived-fresh! db "after undo"))
 
@@ -208,7 +208,7 @@
             (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
               (when session
-                (session/swap-session! #(merge-with merge % session)))
+                (session/merge-session-updates! session))
               (reset! !db db)
               (runtime/assert-derived-fresh! db "after redo"))
 
@@ -291,7 +291,7 @@
                     ;; Save cursor position AFTER text commit (on-render may have cleared it)
                     ;; on-mount will read this and restore cursor position after block remounts
                     (when saved-cursor-pos
-                      (session/swap-session! assoc-in [:ui :cursor-position] saved-cursor-pos))))
+                      (session/set-cursor-position! saved-cursor-pos))))
                 (cond
                 ;; Map intent: use directly (with injected block-id if needed)
                   (map? enriched-intent)
@@ -504,7 +504,7 @@
                   (H/record)))
   ;; Reset session and set current page
   (session/reset-session!)
-  (session/swap-session! assoc-in [:ui :current-page] "test-page"))
+  (session/set-current-page! "test-page"))
 
 (defn main []
   (when ^boolean goog.DEBUG
@@ -514,7 +514,7 @@
   (if (test-mode?)
     (reset-to-empty-db!)
     ;; Normal mode: auto-select first page (Projects) for demo data
-    (session/swap-session! assoc-in [:ui :current-page] "projects"))
+    (session/set-current-page! "projects"))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
@@ -597,7 +597,7 @@
   ;; Set initial current page to first page (for navigation scope)
   (when-not (test-mode?)
     (when-let [first-page (first (q/children @!db :doc))]
-      (session/swap-session! assoc-in [:ui :current-page] first-page)))
+      (session/set-current-page! first-page)))
 
   ;; Enable lifecycle hooks + Nexus dispatch
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
@@ -653,6 +653,6 @@
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
                     ;; Clear pending selection after applying
-                    (session/swap-session! assoc-in [:ui :pending-selection] nil))))))
+                    (session/clear-pending-selection!))))))
 
   (render!))

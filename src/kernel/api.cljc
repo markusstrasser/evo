@@ -181,7 +181,7 @@
      (let [{:keys [db session-updates]} (api/dispatch @!db (session/get-session) intent)]
        (reset! !db db)
        (when session-updates
-         (session/swap-session! merge session-updates)))
+         (session/merge-session-updates! session-updates)))
 
    Use in tests/REPL:
      (let [{:keys [db issues]} (api/dispatch db test-session intent)]
