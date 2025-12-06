@@ -1,7 +1,7 @@
 (ns hooks.ui-patterns
   "Lint rules for contenteditable and Replicant anti-patterns.
    
-   Catches failure modes documented in .claude/failure_modes.edn:
+   Catches failure modes documented in resources/failure_modes.edn:
    - :replicant-lifecycle-inversion (on-render before on-mount)
    - :duplicate-data-attributes (Playwright strict mode)
    - :declarative-anti-pattern (cursor reset)
