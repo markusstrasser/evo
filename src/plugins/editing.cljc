@@ -75,16 +75,20 @@
                                            :selection extended-selection}})))})
 
 (intent/register-intent! :enter-edit-selected
-                         {:doc "Enter edit mode in selected block at end of text (Logseq parity).
-                                Does NOT create a new block."
-                          :spec [:map [:type [:= :enter-edit-selected]]]
-                          :handler (fn [db session _intent]
+                         {:doc "Enter edit mode in selected block (Logseq parity).
+                                cursor-at: :start or :end (default :end for Enter/Right, :start for Left)"
+                          :spec [:map
+                                 [:type [:= :enter-edit-selected]]
+                                 [:cursor-at {:optional true} [:enum :start :end]]]
+                          :handler (fn [db session intent]
                                      (when-let [focused-block (get-in session [:selection :focus])]
-                                       (let [text-length (count (get-in db [:nodes focused-block :props :text] ""))]
+                                       (let [cursor-at (get intent :cursor-at :end)
+                                             text-length (count (get-in db [:nodes focused-block :props :text] ""))
+                                             cursor-pos (if (= cursor-at :start) 0 text-length)]
                                          {:session-updates
                                           {:selection {:nodes #{} :focus nil :anchor nil}
                                            :ui {:editing-block-id focused-block
-                                                :cursor-position text-length}}})))})
+                                                :cursor-position cursor-pos}}})))})
 
 (intent/register-intent! :enter-edit-with-char
                          {:doc "Enter edit mode and append a character (type-to-edit).
