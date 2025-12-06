@@ -274,6 +274,21 @@
                                                           :ui {:editing-block-id new-id
                                                                :cursor-position 0}}}))})
 
+(intent/register-intent! :create-block-in-page
+                         {:doc "Create new block directly under a page (for empty pages).
+   Used when a page has no blocks and user clicks to add one.
+   Enters edit mode on the new block."
+                          :spec [:map
+                                 [:type [:= :create-block-in-page]]
+                                 [:page-id [:or :string :keyword]]
+                                 [:block-id :string]]
+                          :handler (fn [_db _session {:keys [page-id block-id]}]
+                                     {:ops [{:op :create-node :id block-id :type :block :props {:text ""}}
+                                            {:op :place :id block-id :under page-id :at :first}]
+                                      :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
+                                                        :ui {:editing-block-id block-id
+                                                             :cursor-position 0}}})})
+
 ;; ── Multi-select intents ──────────────────────────────────────────────────────
 
 (defn- sort-by-doc-order

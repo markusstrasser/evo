@@ -338,17 +338,35 @@
         focus-block-id (session/focus-id)
         selection-set (session/selection-nodes)
         folded-set (session/folded)]
-    (into [:div.outline]
-          (map (fn [child-id]
-                 (block/Block {:db db
-                               :block-id child-id
-                               :depth 0
-                               :is-focused (= focus-block-id child-id)
-                               :is-selected (contains? selection-set child-id)
-                               :is-editing (= editing-block-id child-id)
-                               :is-folded (contains? folded-set child-id)
-                               :on-intent on-intent}))
-               children))))
+    (if (empty? children)
+      ;; Empty state: clickable placeholder to create first block
+      [:div.outline.outline--empty
+       {:style {:padding "40px 20px"
+                :text-align "center"
+                :color "#9ca3af"
+                :cursor "text"
+                :border "2px dashed #e5e7eb"
+                :border-radius "8px"
+                :margin "10px 0"}
+        :on {:click (fn [_e]
+                      ;; Create new block and enter edit mode
+                      (let [new-id (str "block-" (random-uuid))]
+                        (on-intent {:type :create-block-in-page
+                                    :page-id root-id
+                                    :block-id new-id})))}}
+       [:p {:style {:margin 0}} "Click to start writing..."]]
+      ;; Normal state: render block tree
+      (into [:div.outline]
+            (map (fn [child-id]
+                   (block/Block {:db db
+                                 :block-id child-id
+                                 :depth 0
+                                 :is-focused (= focus-block-id child-id)
+                                 :is-selected (contains? selection-set child-id)
+                                 :is-editing (= editing-block-id child-id)
+                                 :is-folded (contains? folded-set child-id)
+                                 :on-intent on-intent}))
+                 children)))))
 
 (defn HotkeysReference []
   [:div.hotkeys-footer
