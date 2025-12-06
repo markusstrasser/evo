@@ -76,7 +76,7 @@
                (= (:tag tag-parsed) (:tag sel-parsed)))
            ;; Must have matching class
            (or
-            ;; Class in tag itself (e.g., :span.content-view)
+            ;; Class in tag itself (e.g., :span.block-content)
             (some (set (:classes tag-parsed)) (:classes sel-parsed))
             ;; Class in :class attribute
             (when-let [attr-classes (:class attrs)]

@@ -33,11 +33,12 @@
   ;; Scenario ID matches docs/specs/logseq_behaviors.md
   (let [db (nav-boundary-db)
         hiccup (render-block db "b" true) ; is-editing = true
-        edit-el (vu/find-element hiccup :.content-edit)]
+        ;; Component uses .block-content for both edit and view modes
+        edit-el (vu/find-element hiccup :.block-content)]
     (testing "Editing span is present for NAV-BOUNDARY-LEFT-01"
-      (is (some? edit-el) "Missing .content-edit span prevents boundary navigation"))
+      (is (some? edit-el) "Missing .block-content span prevents boundary navigation"))
 
-    ;; Note: data-block-id is now only on parent div.block (not .content-edit)
+    ;; Note: data-block-id is now only on parent div.block (not .block-content)
     ;; to avoid Playwright strict mode violations. Parent block-id is accessible
     ;; via DOM traversal: element.closest('[data-block-id]')
     (testing "Parent block has block-id wiring for Nexus dispatch"
@@ -49,4 +50,4 @@
 
     (testing "Keydown handler exists to trigger :navigate-to-adjacent"
       (is (true? (vu/has-event-handler? edit-el :keydown))
-          "Arrow-left boundary handler missing from .content-edit span"))))
+          "Arrow-left boundary handler missing from .block-content span"))))
