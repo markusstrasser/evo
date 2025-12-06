@@ -308,6 +308,25 @@
                   :else [])]
     (vec (sort-by-doc-order db targets))))
 
+(defn- filter-top-level-targets
+  "Filter targets to only include 'top-level' blocks in the selection tree.
+
+   LOGSEQ PARITY: When a parent and its children are both selected, only the parent
+   should be moved (since moving the parent also moves its children).
+
+   Algorithm: Remove any block whose parent is also in the selection.
+
+   Example:
+     Selection: [A, B (child of A), C]
+     Result: [A, C] (B is filtered out because its parent A is in selection)"
+  [db targets]
+  (let [target-set (set targets)
+        ;; Find parents that are also in the selection
+        parent-ids-in-selection (set (filter target-set
+                                             (map #(q/parent-of db %) targets)))]
+    ;; Keep only blocks whose parent is NOT in the selection
+    (vec (remove #(contains? parent-ids-in-selection (q/parent-of db %)) targets))))
+
 (defn- apply-to-active-targets
   "Apply op-fn to each active target node, returning combined ops vector.
 
@@ -351,6 +370,30 @@
           (every? (fn [[a b]] (= b (inc a)))
                   (partition 2 1 (sort indices)))))))
 
+(defn- consolidate-to-consecutive
+  "Fill gaps in non-consecutive selection to make it consecutive.
+
+   LOGSEQ PARITY: When selection has gaps, consolidate to the full range
+   from first to last selected sibling.
+
+   Example:
+     Parent's children: [a b c d e]
+     Selection: [a c e] (non-consecutive)
+     Result: [a b c d e] (filled gaps)
+
+   Returns nil if blocks don't share same parent."
+  [db ids]
+  (when-let [parent (same-parent? db ids)]
+    (let [children (get-in db [:children-by-parent parent] [])
+          id-set (set ids)
+          indices (keep-indexed (fn [idx child]
+                                  (when (id-set child) idx))
+                                children)
+          min-idx (apply min indices)
+          max-idx (apply max indices)]
+      ;; Return all siblings from min to max index (inclusive)
+      (vec (subvec children min-idx (inc max-idx))))))
+
 (defn- move-selected-up-ops
   "Move selected nodes up one sibling position.
 
@@ -371,15 +414,32 @@
            - B
 
    Multi-select: All selected nodes climb together, preserving their relative order.
+   - Filters to top-level blocks only (if parent and child both selected, only parent moves)
+   - Selection must be consecutive siblings (no gaps) - non-consecutive selections are no-op
 
-   Boundary: Cannot climb if parent is a direct child of a root (already at top level)."
+   Boundary: Cannot climb if:
+   - Parent is a root
+   - Parent is a page (blocks stay within their page)
+   - Grandparent is outside zoom scope"
   [db session]
-  (let [targets (active-targets db session)
+  (let [raw-targets (active-targets db session)
+        ;; LOGSEQ PARITY: Filter to top-level blocks (remove children of selected parents)
+        targets (filter-top-level-targets db raw-targets)
         first-id (first targets)
         parent (same-parent? db targets)
+        ;; LOGSEQ PARITY: Reject non-consecutive selections to prevent split moves
+        consecutive? (consecutive-siblings? db targets)
         prev (when first-id (q/prev-sibling db first-id))
         before-prev (when prev (q/prev-sibling db prev))]
     (cond
+      ;; No targets after filtering
+      (empty? targets)
+      []
+
+      ;; Reject non-consecutive selection
+      (and parent (not consecutive?))
+      []
+
       ;; Normal case: has previous sibling, move before it
       (and parent prev)
       (intent/intent->ops db {:type :move
@@ -392,12 +452,16 @@
       ;; FR-Scope-02: Prevent climb if grandparent is outside zoom scope
       (and parent (not prev) first-id)
       (let [grandparent (q/parent-of db parent)
-            roots (set (:roots db const/roots))]
-        ;; Can climb if grandparent exists, parent is NOT a root,
-        ;; AND grandparent is within zoom scope
-        ;; (This allows climbing TO doc level, but not FROM doc level)
+            roots (set (:roots db const/roots))
+            parent-type (get-in db [:nodes parent :type])]
+        ;; Can climb if:
+        ;; - grandparent exists
+        ;; - parent is NOT a root
+        ;; - parent is NOT a page (blocks stay within their page - Logseq parity)
+        ;; - grandparent is within zoom scope
         (if (and grandparent
                  (not (contains? roots parent))
+                 (not= parent-type :page)
                  (within-zoom-scope? db session grandparent))
           ;; Can climb: move to grandparent level, positioned before parent
           (let [parent-prev (q/prev-sibling db parent)]
@@ -405,7 +469,7 @@
                                     :selection targets
                                     :parent grandparent
                                     :anchor (if parent-prev {:after parent-prev} :first)}))
-          ;; Can't climb: parent is a root-level node OR grandparent outside zoom
+          ;; Can't climb: at page boundary OR grandparent outside zoom
           []))
 
       ;; No valid move
@@ -414,7 +478,7 @@
 (defn- move-selected-down-ops
   "Move selected nodes down one sibling position.
 
-   Logseq climb semantics: When selection is at last-child position (no next sibling),
+   Logseq descend semantics: When selection is at last-child position (no next sibling),
    'descend' by re-parenting under the next sibling of parent, positioned as first child.
 
    Example:
@@ -434,33 +498,57 @@
            - B    ← descended into Uncle, now first child
            - C
 
-   Multi-select: All selected nodes descend together, preserving their relative order."
+   Multi-select: All selected nodes descend together, preserving their relative order.
+   - Filters to top-level blocks only (if parent and child both selected, only parent moves)
+   - Selection must be consecutive siblings (no gaps) - non-consecutive selections are no-op
+
+   Boundary: Cannot descend if:
+   - Parent is a page (would cross to different page)
+   - Target is outside zoom scope"
   [db session]
-  (let [targets (active-targets db session)
+  (let [raw-targets (active-targets db session)
+        ;; LOGSEQ PARITY: Filter to top-level blocks (remove children of selected parents)
+        targets (filter-top-level-targets db raw-targets)
         last-id (last targets)
         parent (same-parent? db targets)
-        next (when last-id (get-in db [:derived :next-id-of last-id]))]
+        ;; LOGSEQ PARITY: Reject non-consecutive selections to prevent split moves
+        consecutive? (consecutive-siblings? db targets)
+        next-sib (when last-id (get-in db [:derived :next-id-of last-id]))]
     (cond
+      ;; No targets after filtering
+      (empty? targets)
+      []
+
+      ;; Reject non-consecutive selection
+      (and parent (not consecutive?))
+      []
+
       ;; Normal case: has next sibling, move after it
-      (and parent next)
+      (and parent next-sib)
       (intent/intent->ops db {:type :move
                               :selection targets
                               :parent parent
-                              :anchor {:after next}})
+                              :anchor {:after next-sib}})
 
       ;; Descend case: last child with no next sibling
       ;; Re-parent under parent's next sibling (if it exists), placed as first child
-      ;; FR-Scope-02: Prevent descend if target (parent's next sibling) is outside zoom scope
-      (and parent (not next) last-id)
-      (let [parent-next (q/next-sibling db parent)]
+      ;; FR-Scope-02: Prevent descend if target is outside zoom scope
+      (and parent (not next-sib) last-id)
+      (let [parent-next (q/next-sibling db parent)
+            parent-type (get-in db [:nodes parent :type])]
+        ;; Can descend if:
+        ;; - parent's next sibling exists
+        ;; - parent is NOT a page (prevents cross-page movement - Logseq parity)
+        ;; - target is within zoom scope
         (if (and parent-next
+                 (not= parent-type :page)
                  (within-zoom-scope? db session parent-next))
           ;; Can descend: move into parent's next sibling as first child
           (intent/intent->ops db {:type :move
                                   :selection targets
                                   :parent parent-next
                                   :anchor :first})
-          ;; Can't descend: no next sibling of parent OR target outside zoom
+          ;; Can't descend: at page boundary OR target outside zoom
           []))
 
       ;; No valid move

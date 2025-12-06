@@ -310,6 +310,68 @@
       (is (= db (:db result))
           "DB should remain unchanged"))))
 
+(deftest move-up-parent-child-selection-filters-child
+  (testing "When parent and child both selected, only parent moves (Logseq parity)"
+    (let [db (build-nested-doc)
+          ;; Select both parent and child-a
+          session (session-with-selection ["parent" "child-a"])
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})]
+      ;; Should be no-op because after filtering, only "parent" remains
+      ;; and "parent" is already first child of :doc
+      (is (= [] ops)
+          "Should be no-op: parent is already at top level, child filtered out"))))
+
+(deftest move-up-non-consecutive-selection-noop
+  (testing "Non-consecutive selection is rejected (Logseq parity)"
+    (let [db (build-nested-doc)
+          ;; Select child-a and child-c but NOT child-b (non-consecutive)
+          session (session-with-selection ["child-a" "child-c"])
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})]
+      (is (= [] ops)
+          "Non-consecutive selections should be rejected"))))
+
+(deftest move-down-non-consecutive-selection-noop
+  (testing "Non-consecutive selection is rejected for move-down (Logseq parity)"
+    (let [db (build-nested-doc)
+          ;; Select child-a and child-c but NOT child-b (non-consecutive)
+          session (session-with-selection ["child-a" "child-c"])
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-down})]
+      (is (= [] ops)
+          "Non-consecutive selections should be rejected"))))
+
+(defn build-page-doc
+  "Creates a test DB with page structure (matches real app):
+   doc
+     └─ page (type: :page)
+          ├─ block-a
+          ├─ block-b
+          └─ block-c"
+  []
+  (let [DB0 (D/empty-db)
+        {:keys [db issues]} (tx/interpret DB0
+                                          [{:op :create-node :id "page" :type :page :props {:title "Test Page"}}
+                                           {:op :place :id "page" :under :doc :at :last}
+                                           {:op :create-node :id "block-a" :type :block :props {:text "Block A"}}
+                                           {:op :place :id "block-a" :under "page" :at :last}
+                                           {:op :create-node :id "block-b" :type :block :props {:text "Block B"}}
+                                           {:op :place :id "block-b" :under "page" :at :last}
+                                           {:op :create-node :id "block-c" :type :block :props {:text "Block C"}}
+                                           {:op :place :id "block-c" :under "page" :at :last}])]
+    (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
+    db))
+
+(deftest move-up-page-boundary-noop
+  (testing "Blocks cannot climb out of their page (Logseq parity)"
+    (let [db (build-page-doc)
+          ;; block-a is first child of page, should NOT climb to :doc level
+          session (session-with-editing "block-a")
+          {:keys [ops]} (intent/apply-intent db session {:type :move-selected-up})]
+      (is (= [] ops)
+          "Should be no-op: cannot escape page boundary")
+      ;; Verify block-a is still under page
+      (is (= "page" (get-in db [:derived :parent-of "block-a"]))
+          "block-a should still be under page"))))
+
 ;; ── Zoom Boundary Tests (FR-Scope-02) ────────────────────────────────────────
 
 (defn build-zoomed-doc
@@ -410,3 +472,65 @@
           "Should enter edit mode on new block")
       (is (= 0 (get-in session-updates [:ui :cursor-position]))
           "Cursor should be at position 0"))))
+
+(deftest multi-select-repeated-moves-stay-consecutive
+  (testing "Blocks stay consecutive after repeated move operations"
+    (let [db (build-nested-doc)
+          ;; Select child-a and child-b (consecutive)
+          initial-selection ["child-a" "child-b"]
+          session1 (session-with-selection initial-selection)
+
+          ;; Move down once
+          {:keys [ops]} (intent/apply-intent db session1 {:type :move-selected-down})
+          result1 (tx/interpret db ops)
+          db1 (:db result1)]
+
+      (is (empty? (:issues result1))
+          "First move should not generate issues")
+      (is (= ["child-c" "child-a" "child-b"] (get-in db1 [:children-by-parent "parent"]))
+          "After first move down, order should be [child-c, child-a, child-b]")
+
+      ;; Move down again with same selection (now in new positions)
+      (let [session2 (session-with-selection initial-selection)
+            {:keys [ops]} (intent/apply-intent db1 session2 {:type :move-selected-down})
+            result2 (tx/interpret db1 ops)
+            db2 (:db result2)]
+
+        (is (empty? (:issues result2))
+            "Second move should not generate issues")
+        ;; child-a and child-b should descend together into uncle
+        (is (= ["child-c"] (get-in db2 [:children-by-parent "parent"]))
+            "Only child-c should remain under parent after descend")
+        (is (= ["child-a" "child-b"] (get-in db2 [:children-by-parent "uncle"]))
+            "child-a and child-b should descend together into uncle, staying consecutive")))))
+
+(deftest multi-select-repeated-moves-up-stay-consecutive
+  (testing "Blocks stay consecutive after repeated move-up operations"
+    (let [db (build-nested-doc)
+          ;; Select child-b and child-c (consecutive)
+          initial-selection ["child-b" "child-c"]
+          session1 (session-with-selection initial-selection)
+
+          ;; Move up once
+          {:keys [ops]} (intent/apply-intent db session1 {:type :move-selected-up})
+          result1 (tx/interpret db ops)
+          db1 (:db result1)]
+
+      (is (empty? (:issues result1))
+          "First move should not generate issues")
+      (is (= ["child-b" "child-c" "child-a"] (get-in db1 [:children-by-parent "parent"]))
+          "After first move up, order should be [child-b, child-c, child-a]")
+
+      ;; Move up again with same selection (now in new positions)
+      (let [session2 (session-with-selection initial-selection)
+            {:keys [ops]} (intent/apply-intent db1 session2 {:type :move-selected-up})
+            result2 (tx/interpret db1 ops)
+            db2 (:db result2)]
+
+        (is (empty? (:issues result2))
+            "Second move should not generate issues")
+        ;; child-b and child-c should climb together to doc level
+        (is (= ["child-b" "child-c" "parent" "uncle"] (get-in db2 [:children-by-parent :doc]))
+            "child-b and child-c should climb together to doc level, staying consecutive")
+        (is (= ["child-a"] (get-in db2 [:children-by-parent "parent"]))
+            "Only child-a should remain under parent")))))
