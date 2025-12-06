@@ -137,8 +137,8 @@
 
     (testing "split numbered list increments number"
       (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                   :block-id "a"
-                                                   :cursor-pos 9}) ;; After "1. First "
+                                                       :block-id "a"
+                                                       :cursor-pos 9}) ;; After "1. First "
             db' (:db (tx/interpret db ops))
             children (q/children db' :doc)
             new-block-id (second children)]
@@ -147,8 +147,8 @@
 
     (testing "split plain list item doesn't add number"
       (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                   :block-id "b"
-                                                   :cursor-pos 8}) ;; After "- Plain "
+                                                       :block-id "b"
+                                                       :cursor-pos 8}) ;; After "- Plain "
             db' (:db (tx/interpret db ops))
             children (q/children db' :doc)
             new-block-id (first (remove #{"a" "b" "c"} children))]
@@ -157,8 +157,8 @@
 
     (testing "split multi-digit numbered list"
       (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                   :block-id "c"
-                                                   :cursor-pos 10}) ;; After "10. Tenth "
+                                                       :block-id "c"
+                                                       :cursor-pos 10}) ;; After "10. Tenth "
             db' (:db (tx/interpret db ops))
             children (q/children db' :doc)
             new-block-id (first (remove #{"a" "b" "c"} children))]
@@ -167,8 +167,8 @@
 
     (testing "split at beginning of numbered list"
       (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                   :block-id "a"
-                                                   :cursor-pos 0})
+                                                       :block-id "a"
+                                                       :cursor-pos 0})
             db' (:db (tx/interpret db ops))
             children (q/children db' :doc)
             new-block-id (second children)]
@@ -466,7 +466,47 @@
         ;; LOGSEQ PARITY: Second block text is left-trimmed
         (is (= "world" (get-in db [:nodes new-block-id :props :text]))
             "Second block should have leading whitespace trimmed (Logseq parity)")
-        (is (= 0 (get-in session [:ui :cursor-position])))))))
+        (is (= 0 (get-in session [:ui :cursor-position]))))))
+
+  ;; ARCHITECTURAL TEST: context-aware-enter should NEVER auto-outdent
+  ;; Auto-outdent logic lives in components/block.cljs handle-enter which
+  ;; reads live DOM text. This handler only sees DB text (potentially stale).
+  ;; If this test fails, it means auto-outdent was incorrectly added here.
+  (testing "ARCHITECTURE: handler does NOT auto-outdent empty block at end of parent"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "parent" :type :block :props {:text "Parent"}}
+                                 {:op :create-node :id "child" :type :block :props {:text ""}} ; Empty!
+                                 {:op :place :id "parent" :under :doc :at :last}
+                                 {:op :place :id "child" :under "parent" :at :last}])) ; Last child
+          session (empty-session)
+          ;; Simulate: Enter on empty block that is last child of parent
+          ;; The COMPONENT should handle auto-outdent, not this handler
+          {:keys [db session]} (run-intent db session {:type :context-aware-enter
+                                                       :block-id "child"
+                                                       :cursor-pos 0})]
+      ;; Should split (create new block), NOT outdent
+      ;; The child should remain under parent, with a new sibling created before it
+      (is (= "parent" (q/parent-of db "child"))
+          "Empty block should NOT be auto-outdented by this handler - that's component's job")
+      (is (= 2 (count (q/children db "parent")))
+          "Should have created a new sibling block, not outdented")))
+
+  (testing "Enter at position 0 creates block ABOVE (Logseq parity)"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "existing"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          {:keys [db session]} (run-intent db session {:type :context-aware-enter
+                                                       :block-id "a"
+                                                       :cursor-pos 0})]
+      (let [children (q/children db :doc)]
+        (is (= 2 (count children)))
+        ;; New empty block should be BEFORE original
+        (is (= "a" (second children)) "Original block should be second")
+        (is (= "" (get-in db [:nodes (first children) :props :text]))
+            "New block should be empty")
+        ;; Cursor stays in original block
+        (is (= "a" (get-in session [:ui :editing-block-id])))))))
 
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 
@@ -482,8 +522,8 @@
           db' (:db (tx/interpret db ops))
           ;; Split back
           {:keys [ops]} (intent/apply-intent db' nil {:type :split-with-list-increment
-                                                  :block-id "a"
-                                                  :cursor-pos 5})
+                                                      :block-id "a"
+                                                      :cursor-pos 5})
           db'' (:db (tx/interpret db' ops))
           children (q/children db'' :doc)
           new-id (second children)]
@@ -500,8 +540,8 @@
           ;; Add new content and split
           db'' (:db (tx/interpret db' [{:op :update-node :id "a" :props {:text "New content"}}]))
           {:keys [ops]} (intent/apply-intent db'' nil {:type :split-with-list-increment
-                                                   :block-id "a"
-                                                   :cursor-pos 3})
+                                                       :block-id "a"
+                                                       :cursor-pos 3})
           db''' (:db (tx/interpret db'' ops))
           children (q/children db''' :doc)
           new-id (second children)]
