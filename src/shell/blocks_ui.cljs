@@ -34,7 +34,8 @@
             [plugins.pages :as pages]
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]
-            [kernel.state-machine :as sm]))
+            [kernel.state-machine :as sm]
+            [kernel.intent :as intent]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -596,7 +597,9 @@
 
 (defn main []
   (when ^boolean goog.DEBUG
-    (js/console.log "Blocks UI starting..."))
+    (js/console.log "Blocks UI starting...")
+    ;; Log uncited intents once (grouped) instead of on each registration
+    (intent/log-uncited-intents!))
 
   ;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
   (if (test-mode?)
@@ -671,7 +674,34 @@
                                 :selectedIds (clj->js (vec (get-in current-session [:selection :nodes] #{})))
                                 :focusId (get-in current-session [:selection :focus])
                                 :bufferBlockId (get-in current-session [:buffer :block-id])
-                                :bufferDirty (get-in current-session [:buffer :dirty?])}))})
+                                :bufferDirty (get-in current-session [:buffer :dirty?])}))
+
+             ;; Copy full debug state to clipboard for bug reports
+             :copyDebugState (fn []
+                               (let [current-session (session/get-session)
+                                     db-snapshot @!db
+                                     debug-data {:timestamp (.toISOString (js/Date.))
+                                                 :state (sm/current-state current-session)
+                                                 :session current-session
+                                                 :db {:nodes (get db-snapshot :nodes)
+                                                      :children-by-parent (get db-snapshot :children-by-parent)
+                                                      :roots (get db-snapshot :roots)}
+                                                 :dom {:activeElement (when-let [el (.-activeElement js/document)]
+                                                                        {:tagName (.-tagName el)
+                                                                         :id (.-id el)
+                                                                         :className (.-className el)
+                                                                         :contentEditable (.-contentEditable el)})
+                                                       :selection (when-let [sel (.getSelection js/window)]
+                                                                    {:type (.-type sel)
+                                                                     :anchorOffset (.-anchorOffset sel)
+                                                                     :focusOffset (.-focusOffset sel)
+                                                                     :isCollapsed (.-isCollapsed sel)})}}
+                                     json-str (js/JSON.stringify (clj->js debug-data) nil 2)]
+                                 (-> (js/navigator.clipboard.writeText json-str)
+                                     (.then #(js/console.log "✅ Debug state copied to clipboard"))
+                                     (.catch #(js/console.error "❌ Failed to copy:" %)))
+                                 (js/console.log "Debug state:" debug-data)
+                                 json-str))})
 
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) session/!session)
