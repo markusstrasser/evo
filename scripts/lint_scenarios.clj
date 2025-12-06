@@ -2,8 +2,13 @@
 (require '[clojure.string :as str]
          '[clojure.java.io :as io])
 
-(def spec-file "docs/specs/logseq_behaviors.md")
-(def scenario-pattern #"Scenario ID[^\n]*?([A-Z0-9\-]+)")
+(def spec-file "docs/logseq_behaviors.md")
+
+;; Match scenario IDs in multiple formats:
+;; 1. "Scenario ID**: NAV-BOUNDARY-LEFT-01" (explicit annotation)
+;; 2. "| EDIT-ENTER-SPLIT-01 |" (table column)
+;; Pattern: CATEGORY-FEATURE-NUMBER format (e.g., EDIT-ENTER-SPLIT-01, NAV-CURSOR-MEMORY-01)
+(def scenario-pattern #"\b((?:EDIT|NAV|SEL|STRUCT|CLIP|FOLD|ZOOM)-[A-Z0-9\-]+-\d+)\b")
 
 (defn ensure-file [path]
   (let [f (io/file path)]
@@ -26,7 +31,7 @@
 (def test-files (->> (file-seq (ensure-file "test"))
                      (filter #(.isFile ^java.io.File %))
                      (map #(.getPath ^java.io.File %))
-                     (filter #(re-find #"\.(clj|cljc|cljs)$" %))))
+                     (filter #(re-find #"\.(clj|cljc|cljs|js|ts)$" %))))
 
 (def file->content (vec (map (fn [path] [path (slurp path)]) test-files)))
 
