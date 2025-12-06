@@ -55,7 +55,6 @@ See `docs/TESTING.md` for testing philosophy and the buffer vs DB gap.
 ```bash
 bb lint                    # Run clj-kondo linter
 bb check                   # Lint + compile check (full quality gate)
-bb check-deps-sync         # Verify deps.edn and shadow-cljs.edn match
 bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fail on gaps)
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard

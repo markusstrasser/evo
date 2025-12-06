@@ -46,7 +46,7 @@ src/components/     # Replicant components (Block, PageRef, Sidebar)
 src/keymap/         # Keybinding definitions and dispatch
 src/macros/         # Multi-step operation scripts
 src/parser/         # Page refs and text parsing
-src/util/           # Shared utilities
+src/utils/          # Shared utilities
 test/               # Unit/property + view/integration tests (CLJS + Playwright)
 dev/                # REPL helpers, specs, diagnostics, fixtures
 resources/          # FR registry, plugin manifest, demo data, tooling assets
