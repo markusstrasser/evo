@@ -157,8 +157,12 @@
       :else :below)))
 
 (defn- handle-drag-start
-  "Start dragging. If block is selected, drag all selected blocks."
+  "Start dragging. If block is selected, drag all selected blocks.
+   
+   CRITICAL: Must stopPropagation to prevent parent blocks from
+   overwriting the drag state when dragging child blocks."
   [e block-id]
+  (.stopPropagation e) ; Prevent bubbling to parent blocks!
   (let [selection (session/selection-nodes)
         drag-ids (if (contains? selection block-id)
                    selection
@@ -173,6 +177,7 @@
   "Allow drop by preventing default on dragenter."
   [e block-id]
   (.preventDefault e)
+  (.stopPropagation e) ; Prevent bubbling to parent blocks
   ;; Also update drop target on enter for immediate feedback
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
@@ -184,6 +189,7 @@
   "Update drop target based on mouse position."
   [e block-id]
   (.preventDefault e) ; Required for drop to work
+  (.stopPropagation e) ; Prevent bubbling to parent blocks
   (set! (.-dropEffect (.-dataTransfer e)) "move")
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
@@ -230,7 +236,8 @@
 
 (defn- handle-drag-end
   "Clean up drag state."
-  [_e]
+  [e]
+  (.stopPropagation e) ; Prevent bubbling to parent blocks
   (session/drag-end!))
 
 (defn- drop-zone-style
@@ -286,26 +293,21 @@
   (handle-vertical-arrow :down e db block-id on-intent))
 
 (defn- handle-shift-vertical-arrow
-  "Parametric handler for Shift+ArrowUp/Down: block selection at boundary.
+  "Parametric handler for Shift+ArrowUp/Down while editing: exit edit and extend selection.
    
-   Logseq parity (LOGSEQ_SPEC.md §3):
-   - NOT at boundary row → Let browser handle (text selection)
-   - At boundary → Exit edit mode, seed selection, extend in direction"
+   Logseq parity: Shift+Arrow ALWAYS exits edit mode and starts block selection.
+   (No text selection within blocks - that's what mouse drag is for)"
   [direction e _db _block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)
-        [boundary-key collapse-method intent-direction]
-        (if (= direction :up)
-          [:first-row? "collapseToStart" :prev]
-          [:last-row? "collapseToEnd" :next])]
-    (when (get cursor-pos boundary-key)
-      (.preventDefault e)
-      ;; Collapse text selection before exiting
-      (when-let [sel (.getSelection js/window)]
-        (when (and sel (pos? (.-rangeCount sel)))
-          ((aget sel collapse-method))))
-      ;; LOGSEQ PARITY (§3): Exit edit, select block, and extend atomically
-      (on-intent {:type :exit-edit-and-extend :direction intent-direction}))))
+  (.preventDefault e)
+  ;; Collapse any text selection before exiting
+  (when-let [sel (.getSelection js/window)]
+    (when (and sel (pos? (.-rangeCount sel)))
+      (if (= direction :up)
+        (.collapseToStart sel)
+        (.collapseToEnd sel))))
+  ;; Exit edit, select block, and extend in direction
+  (on-intent {:type :exit-edit-and-extend
+              :direction (if (= direction :up) :prev :next)}))
 
 (defn handle-shift-arrow-up
   "Handle Shift+Up: text selection within block OR block selection at boundary."
@@ -500,7 +502,7 @@
       (do (.preventDefault e)
           (set-cursor! target (count (.-textContent target))))
 
-        ;; Shift+Arrow - text selection OR block selection at boundaries
+        ;; Shift+Arrow - exit edit and extend block selection (Logseq parity)
       (and (= key "ArrowUp") shift? (not mod?) (not alt?))
       (handle-shift-arrow-up e db block-id on-intent)
 
@@ -753,21 +755,20 @@
         drop-style (drop-zone-style block-id)
         is-dragging (contains? (session/dragging-ids) block-id)
 
-        ;; Build CSS class string
-        block-classes (str "block"
-                           (when is-focused " focused")
-                           (when is-selected " selected")
-                           (when is-editing " editing")
-                           (when is-dragging " dragging"))
+        ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
+        block-classes (cond-> ["block"]
+                        is-focused (conj "focused")
+                        is-selected (conj "selected")
+                        is-editing (conj "editing")
+                        is-dragging (conj "dragging"))
 
         container-props
         {:replicant/key block-id
          :class block-classes
          :data-block-id block-id
          :draggable true
-         ;; Tight indentation: 4px per depth level
-         :style (merge {:margin-left (str (* depth 4) "px")
-                        :opacity (if is-dragging 0.5 1)}
+         ;; No extra margin - hierarchy shown via border line only
+         :style (merge {:opacity (if is-dragging 0.5 1)}
                        drop-style)
          :on {:click (fn [e]
                        (.stopPropagation e)
@@ -776,7 +777,7 @@
                          (on-intent {:type :selection :mode :replace :ids block-id})))
               :dragstart (fn [e] (handle-drag-start e block-id))
               :dragenter (fn [e] (handle-drag-enter e block-id))
-              :dragend handle-drag-end
+              :dragend (fn [e] (handle-drag-end e))
               :dragover (fn [e] (handle-drag-over e block-id))
               :dragleave handle-drag-leave
               :drop (fn [e] (handle-drop e db block-id on-intent))}}
@@ -793,11 +794,7 @@
                                (when has-children?
                                  (if (.-altKey e)
                                    (on-intent {:type :toggle-subtree :block-id block-id})
-                                   (on-intent {:type :toggle-fold :block-id block-id}))))}}
-                (cond
-                  (not has-children?) ""
-                  is-folded "▸"
-                  :else "▾")]
+                                   (on-intent {:type :toggle-fold :block-id block-id}))))}}] ; CSS handles bullet visualization via ::before
 
         ;; Content: delegate to mode-specific helpers
         content (if is-editing
