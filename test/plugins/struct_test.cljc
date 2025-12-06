@@ -390,3 +390,23 @@
           "Outdent should work when staying within zoom scope")
       (is (= ["child-a" "child-c" "child-b"] (get-in result [:db :children-by-parent "parent"]))
           "child-c should outdent to become sibling of child-a"))))
+
+(deftest create-block-in-page-for-empty-pages
+  (testing "create-block-in-page creates block and enters edit mode"
+    (let [;; Start with empty page
+          db (-> (D/empty-db)
+                 (tx/interpret [{:op :create-node :id "page1" :type :page :props {:title "Empty Page"}}])
+                 :db)
+          session (empty-session)
+          {:keys [ops session-updates]} (intent/apply-intent db session
+                                                             {:type :create-block-in-page
+                                                              :page-id "page1"
+                                                              :block-id "new-block"})
+          result (tx/interpret db ops)]
+      (is (= 2 (count ops)) "Should emit create-node and place ops")
+      (is (= ["new-block"] (get-in result [:db :children-by-parent "page1"]))
+          "New block should be placed under page")
+      (is (= "new-block" (get-in session-updates [:ui :editing-block-id]))
+          "Should enter edit mode on new block")
+      (is (= 0 (get-in session-updates [:ui :cursor-position]))
+          "Cursor should be at position 0"))))
