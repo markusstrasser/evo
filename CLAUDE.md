@@ -114,7 +114,8 @@ src/shell/           # UI adapters: Replicant components
 src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Page refs
 src/components/      # Replicant UI components
-resources/specs.edn  # FR registry (44 functional requirements)
+resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
+resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
 resources/plugins.edn   # Declarative plugin manifest consumed by shell.plugin-manifest
 resources/demo-pages.edn# Blocks UI seed data (load via shell.demo-data)
 dev/spec_registry.cljc  # FR loader + validation
