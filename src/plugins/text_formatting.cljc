@@ -13,8 +13,8 @@
         suffix (subs text end)
         marker-len (count marker)
         already-wrapped? (and (>= (count selected) (* 2 marker-len))
-                             (= marker (subs selected 0 marker-len))
-                             (= marker (subs selected (- (count selected) marker-len))))]
+                              (= marker (subs selected 0 marker-len))
+                              (= marker (subs selected (- (count selected) marker-len))))]
     (if already-wrapped?
       ;; UNWRAP
       (let [unwrapped-text (subs selected marker-len (- (count selected) marker-len))]
@@ -27,28 +27,29 @@
        :selection-end (+ end marker-len)})))
 
 (intent/register-intent! :format-selection
-  {:doc "Format selected text with markdown markers (bold, italic).
+                         {:doc "Format selected text with markdown markers (bold, italic).
          Toggles formatting: wraps if not formatted, unwraps if already formatted."
-   :spec [:map
-          [:type [:= :format-selection]]
-          [:block-id :string]
-          [:start :int]
-          [:end :int]
-          [:marker :string]]
-   :handler (fn [db _session {:keys [block-id start end marker]}]
-              (let [current-text (get-in db [:nodes block-id :props :text] "")
-                    {:keys [text selection-start selection-end]}
-                    (toggle-text-range {:text current-text
-                                       :start start
-                                       :end end
-                                       :marker marker})]
+                          :fr/ids #{:fr.format/bold-italic}
+                          :spec [:map
+                                 [:type [:= :format-selection]]
+                                 [:block-id :string]
+                                 [:start :int]
+                                 [:end :int]
+                                 [:marker :string]]
+                          :handler (fn [db _session {:keys [block-id start end marker]}]
+                                     (let [current-text (get-in db [:nodes block-id :props :text] "")
+                                           {:keys [text selection-start selection-end]}
+                                           (toggle-text-range {:text current-text
+                                                               :start start
+                                                               :end end
+                                                               :marker marker})]
                 ;; Return transaction list
-                [{:op :update-node
-                  :id block-id
-                  :props {:text text}}
+                                       [{:op :update-node
+                                         :id block-id
+                                         :props {:text text}}
                  ;; Store new selection position for shell to apply
-                 {:op :update-node
-                  :id "session/ui"
-                  :props {:pending-selection {:block-id block-id
-                                             :start selection-start
-                                             :end selection-end}}}]))})
+                                        {:op :update-node
+                                         :id "session/ui"
+                                         :props {:pending-selection {:block-id block-id
+                                                                     :start selection-start
+                                                                     :end selection-end}}}]))})
