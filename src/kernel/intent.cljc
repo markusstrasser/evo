@@ -21,6 +21,7 @@
      ;; Session intent (compiles to ops on session nodes)
      (apply-intent db {:type :select :ids [\"a\" \"b\"]})"
   (:require [clojure.set :as set]
+            [clojure.string :as str]
             [malli.core :as m]
             [malli.error :as me]
             [spec-registry :as fr]
@@ -29,6 +30,9 @@
 ;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────
 
 (defonce !intents (atom {}))
+
+;; Track intents without FR citations for grouped warning at startup
+(defonce !uncited-intents (atom #{}))
 
 ;; ── Registration API ──────────────────────────────────────────────────────────
 
@@ -78,11 +82,11 @@
                    [{:op :update-node ...}])})"
   [kw {:keys [doc spec handler] :as config}]
   (let [ids (get config :fr/ids)]
-    ;; Soft warnings for uncited intents (Gemini's approach)
+    ;; Track uncited intents for grouped warning (instead of spamming console)
     (when (empty? ids)
-      (println "⚠️ WARNING: Intent" kw "has no FR citations (:fr/ids)"))
+      (swap! !uncited-intents conj kw))
 
-    ;; Hard enforcement: validate FR IDs (GPT-5's approach)
+    ;; Hard enforcement: validate FR IDs
     (when (seq ids)
       (try
         (fr/validate-fr-ids! ids)
@@ -507,3 +511,23 @@
      :complete-pct (if (zero? total) 100 (int (* 100 (/ complete-count total))))
      :implementation-pct (if (zero? total) 100 (int (* 100 (/ impl-count total))))
      :verification-pct (if (zero? total) 100 (int (* 100 (/ verif-count total))))}))
+
+(defn log-uncited-intents!
+  "Log a grouped warning for all intents without FR citations.
+   Call once after all plugins are loaded (not on each registration).
+   
+   Returns the set of uncited intent keywords for programmatic use."
+  []
+  (let [uncited @!uncited-intents]
+    (when (seq uncited)
+      #?(:cljs
+         (js/console.warn
+          (str "📋 " (count uncited) " intents without FR citations:\n   "
+               (str/join "\n   " (sort (map name uncited)))
+               "\n\n   Add :fr/ids to link intents to specs.edn requirements."))
+         :clj
+         (println
+          (str "📋 " (count uncited) " intents without FR citations:\n   "
+               (str/join "\n   " (sort (map name uncited)))
+               "\n\n   Add :fr/ids to link intents to specs.edn requirements."))))
+    uncited))
