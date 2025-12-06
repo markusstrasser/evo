@@ -596,7 +596,8 @@
                           remaining siblings at the same level.
 
                           LOGSEQ PARITY:
-                          - Non-consecutive selections are rejected (no-op)
+                          - Parent+child selections filter to top-level only (child comes along)
+                          - Non-consecutive sibling selections are rejected (no-op)
                           - If target sibling is collapsed, it's expanded"
 
                           :fr/ids #{:fr.struct/indent-outdent}
@@ -604,7 +605,9 @@
                           :spec [:map [:type [:= :indent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           targets (active-targets db session)]
+                                           raw-targets (active-targets db session)
+                                           ;; Filter to top-level: if parent+child selected, only parent moves
+                                           targets (filter-top-level-targets db raw-targets)]
                                        ;; LOGSEQ PARITY: Reject non-consecutive multi-selection
                                        (if (and (> (count targets) 1)
                                                 (not (consecutive-siblings? db targets)))
@@ -633,14 +636,18 @@
                           For multi-select: ALL blocks move after parent in order,
                           maintaining their relative positions.
 
-                          LOGSEQ PARITY: Non-consecutive selections are rejected (no-op)"
+                          LOGSEQ PARITY:
+                          - Parent+child selections filter to top-level only (child comes along)
+                          - Non-consecutive sibling selections are rejected (no-op)"
 
                           :fr/ids #{:fr.struct/indent-outdent}
 
                           :spec [:map [:type [:= :outdent-selected]]]
                           :handler (fn [db session _intent]
                                      (let [editing-id (q/editing-block-id session)
-                                           targets (active-targets db session)]
+                                           raw-targets (active-targets db session)
+                                           ;; Filter to top-level: if parent+child selected, only parent moves
+                                           targets (filter-top-level-targets db raw-targets)]
                                        ;; LOGSEQ PARITY: Reject non-consecutive multi-selection
                                        (if (and (> (count targets) 1)
                                                 (not (consecutive-siblings? db targets)))
