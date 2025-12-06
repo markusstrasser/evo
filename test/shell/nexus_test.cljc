@@ -5,7 +5,25 @@
    - Actions are pure: same input → same output
    - Actions return valid effect lists
    - Effects correctly dispatch intents to kernel
-   - Single dispatch per event (no double-dispatch bugs)"
+   - Single dispatch per event (no double-dispatch bugs)
+   
+   TEST VALUE GUIDE:
+   ─────────────────
+   HIGH VALUE (keep and maintain):
+   - *-dispatches-correct-intent  → Verifies actions produce right intents
+   - dispatch-intent-applies-*    → Tests effect→DB path
+   - actions-dispatch-exactly-one → Catches double-dispatch bugs
+   
+   LOWER VALUE (could be consolidated):
+   - *-is-pure tests → Essentially test that Clojure functions work
+     (f(x) == f(x) is a given for pure functions)
+   - actions-return-exactly-two-effects → Fragile structural test
+   
+   The purity tests aren't harmful, but don't catch real bugs.
+   A single property test could replace all 6:
+   (defspec all-actions-are-pure 100
+     (prop/for-all [action actions, payload gen-payload]
+       (= (action state payload) (action state payload))))"
   (:require [clojure.test :refer [deftest testing is]]
             [shell.nexus :as nexus]
             [kernel.db :as DB]
