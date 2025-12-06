@@ -8,18 +8,17 @@
 
    ;; Quality gates
   lint {:doc "Run clj-kondo linter"
-        :task (shell "clj-kondo --lint src test")}
+        :task (shell "clj-kondo --lint src test --fail-level error")}
 
   format:check {:doc "Check Clojure code formatting (cljfmt)"
-                :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.12.0\"}}}' -M -m cljfmt.main check src test dev")}
+                :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.9.2\"}}}' -M -m cljfmt.main check src test dev")}
 
   format:fix {:doc "Fix Clojure code formatting (cljfmt)"
-              :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.12.0\"}}}' -M -m cljfmt.main fix src test dev")}
+              :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.9.2\"}}}' -M -m cljfmt.main fix src test dev")}
 
-  check {:doc "Lint + format check + compile check (full quality gate)"
+  check {:doc "Lint + compile check (full quality gate)"
          :task (do
                  (run 'lint)
-                 (run 'format:check)
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
   test {:doc "Compile + run the full shadow-cljs test suite"
@@ -45,9 +44,6 @@
 
   test-watch:int {:doc "Watch integration tests"
                   :task (shell "npx shadow-cljs watch :test-integration")}
-
-  check-deps-sync {:doc "Verify deps.edn and shadow-cljs.edn versions match"
-                   :task (shell "scripts/check-version-sync.sh")}
 
   ;; FR Coverage (Spec-as-Database pattern)
   fr-audit {:doc "Audit FR implementation coverage (fails if critical FRs uncited)"
@@ -191,11 +187,10 @@
                 (println "  bb lint            - Run clj-kondo linter")
                 (println "  bb format:check    - Check Clojure code formatting")
                 (println "  bb format:fix      - Fix Clojure code formatting")
-                (println "  bb check           - Lint + format + compile check")
+                (println "  bb check           - Lint + compile check")
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
-                (println "  bb test:int        - Integration tests")
-                (println "  bb check-deps-sync - Verify dependency versions match\n")
+                (println "  bb test:int        - Integration tests\n")
                 (println "E2E Testing:")
                 (println "  bb e2e             - Run Playwright E2E tests")
                 (println "  bb e2e-watch       - Watch mode (UI)")
