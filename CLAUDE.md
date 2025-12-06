@@ -160,7 +160,7 @@ All state changes flow through a strict pipeline:
 **Critical**:
 - Derived indexes are recomputed automatically. Never mutate them directly.
 - Session state queries use `kernel.query` functions with session parameter: `(q/selection session)` not `(q/selection db)`
-- Buffer updates go directly to session via `session/swap-session!` (no intent)
+- Session mutations use `shell.session` API functions (e.g., `set-cursor-position!`, `set-current-page!`, `buffer-set!`) - avoid raw `swap-session!` outside session.cljs
 
 ### Intent → Operations Pattern
 
