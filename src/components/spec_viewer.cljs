@@ -20,6 +20,7 @@
          :selected-scenario nil
          :filter {:priority nil :type nil :tag nil}
          :show-all? false ; false = only show FRs with executable scenarios
+         :show-dsl? false ; false = outline view, true = raw DSL syntax
          :expanded #{}}))
 
 (defonce render-scheduled? (atom false))
@@ -278,56 +279,117 @@
          ^{:key i}
          (render-block-cell block-info depth))])))
 
+(defn- render-dsl-tree
+  "Render tree DSL with syntax highlighting (raw Clojure notation)."
+  [tree depth]
+  (when (and (vector? tree) (seq tree))
+    (let [[tag & rest] tree
+          text (first (filter string? rest))
+          attrs (first (filter map? rest))
+          children (filter vector? rest)
+          indent (apply str (repeat (* depth 2) " "))
+          kw-color "#c678dd"
+          str-color "#98c379"
+          attr-color "#e5c07b"
+          bracket-color "#6b7280"]
+      [:div {:style {:white-space "pre" :line-height "1.5"}}
+       [:span {:style {:color "#4b5563"}} indent]
+       [:span {:style {:color bracket-color}} "["]
+       [:span {:style {:color kw-color}} (str ":" (name tag))]
+       (when text
+         [:span {:style {:color str-color}} (str " \"" text "\"")])
+       (when (seq attrs)
+         [:span {:style {:color attr-color}} (str " " (pr-str attrs))])
+       (when (empty? children)
+         [:span {:style {:color bracket-color}} "]"])
+       (for [[i child] (map-indexed vector children)]
+         ^{:key i} (render-dsl-tree child (inc depth)))
+       (when (seq children)
+         [:div {:style {:white-space "pre"}}
+          [:span {:style {:color "#4b5563"}} indent]
+          [:span {:style {:color bracket-color}} "]"]])])))
+
+(defn- DslView
+  "Raw DSL syntax view with syntax highlighting."
+  [{:keys [tree]}]
+  (when tree
+    [:div {:style {:font-family "'IBM Plex Mono', monospace"
+                   :font-size "12px"
+                   :background "#1a1a1f"
+                   :padding "12px"
+                   :border-radius "4px"}}
+     (render-dsl-tree tree 0)]))
+
+(defn- DslDiffView
+  "Side-by-side DSL syntax comparison."
+  [{:keys [before after]}]
+  [:div {:style {:display "grid"
+                 :grid-template-columns "1fr auto 1fr"
+                 :gap "12px"
+                 :align-items "start"}}
+   [:div
+    [:div {:style {:color "#71717a" :font-size "10px" :text-transform "uppercase"
+                   :letter-spacing "0.5px" :margin-bottom "8px"}}
+     "Before"]
+    (DslView {:tree before})]
+   [:div {:style {:color "#4b5563" :font-size "16px" :padding-top "24px"}} "→"]
+   [:div
+    [:div {:style {:color "#22c55e" :font-size "10px" :text-transform "uppercase"
+                   :letter-spacing "0.5px" :margin-bottom "8px"}}
+     "After"]
+    (DslView {:tree after})]])
+
 (defn DiffView
   "Row-aligned before/after comparison - minimizes eye movement.
    Columns shrink to fit content, keeping before/after close together."
   [{:keys [before after]}]
-  (let [before-blocks (when before
+  (let [show-dsl? (:show-dsl? @!ui-state)
+        before-blocks (when before
                         (let [[_root & entries] before]
                           (vec (mapcat #(flatten-blocks (extract-block-info %) 0) entries))))
         after-blocks (when after
                        (let [[_root & entries] after]
                          (vec (mapcat #(flatten-blocks (extract-block-info %) 0) entries))))
         max-rows (max (count before-blocks) (count after-blocks))]
-    [:div {:style {:font-family "'IBM Plex Mono', monospace"
-                   :font-size "13px"
-                   :display "inline-block"}}
-     [:style "@keyframes blink { 50% { opacity: 0; } }"]
-     ;; Use table for auto-sizing columns
-     [:table {:style {:border-collapse "collapse"}}
-      [:thead
-       [:tr
-        [:th {:style {:color "#71717a" :font-size "11px" :text-transform "uppercase"
-                      :letter-spacing "0.5px" :padding "0 12px 8px 0"
-                      :font-weight "500" :text-align "left"}}
-         "Before"]
-        [:th {:style {:color "#4b5563" :padding "0 16px 8px" :font-weight "normal"}}
-         "→"]
-        [:th {:style {:color "#22c55e" :font-size "11px" :text-transform "uppercase"
-                      :letter-spacing "0.5px" :padding "0 0 8px 0"
-                      :font-weight "500" :text-align "left"}}
-         "After"]]]
-      [:tbody
-       (for [i (range max-rows)]
-         (let [[before-depth before-block] (get before-blocks i)
-               [after-depth after-block] (get after-blocks i)]
-           ^{:key i}
-           [:tr {:style {:border-top "1px solid #1f1f23"}}
-            ;; Before cell
-            [:td {:style {:padding "0" :vertical-align "middle"}}
-             (when before-block
-               (render-block-cell before-block before-depth))]
-            ;; Arrow column
-            [:td {:style {:padding "0 12px"
-                          :color "#4b5563"
-                          :font-size "14px"
-                          :vertical-align "middle"
-                          :text-align "center"}}
-             (when (or before-block after-block) "→")]
-            ;; After cell
-            [:td {:style {:padding "0" :vertical-align "middle"}}
-             (when after-block
-               (render-block-cell after-block after-depth))]]))]]]))
+    (if show-dsl?
+      ;; DSL syntax view
+      (DslDiffView {:before before :after after})
+      ;; Outline view (default)
+      [:div {:style {:font-family "'IBM Plex Mono', monospace"
+                     :font-size "13px"
+                     :display "inline-block"}}
+       [:style "@keyframes blink { 50% { opacity: 0; } }"]
+       [:table {:style {:border-collapse "collapse"}}
+        [:thead
+         [:tr
+          [:th {:style {:color "#71717a" :font-size "11px" :text-transform "uppercase"
+                        :letter-spacing "0.5px" :padding "0 12px 8px 0"
+                        :font-weight "500" :text-align "left"}}
+           "Before"]
+          [:th {:style {:color "#4b5563" :padding "0 16px 8px" :font-weight "normal"}}
+           "→"]
+          [:th {:style {:color "#22c55e" :font-size "11px" :text-transform "uppercase"
+                        :letter-spacing "0.5px" :padding "0 0 8px 0"
+                        :font-weight "500" :text-align "left"}}
+           "After"]]]
+        [:tbody
+         (for [i (range max-rows)]
+           (let [[before-depth before-block] (get before-blocks i)
+                 [after-depth after-block] (get after-blocks i)]
+             ^{:key i}
+             [:tr {:style {:border-top "1px solid #1f1f23"}}
+              [:td {:style {:padding "0" :vertical-align "middle"}}
+               (when before-block
+                 (render-block-cell before-block before-depth))]
+              [:td {:style {:padding "0 12px"
+                            :color "#4b5563"
+                            :font-size "14px"
+                            :vertical-align "middle"
+                            :text-align "center"}}
+               (when (or before-block after-block) "→")]
+              [:td {:style {:padding "0" :vertical-align "middle"}}
+               (when after-block
+                 (render-block-cell after-block after-depth))]]))]]])))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Scenario Card
@@ -392,9 +454,9 @@
   [{:keys [fr-id]}]
   (when-let [fr (fr/get-fr fr-id)]
     (let [all-scenarios (:scenarios fr)
-          ;; Only show executable scenarios (with setup/action/expect)
           scenarios (into {} (filter (fn [[_ s]] (fr/executable-scenario? s)) all-scenarios))
-          scenario-count (count scenarios)]
+          scenario-count (count scenarios)
+          show-dsl? (:show-dsl? @!ui-state)]
       [:div
        ;; Header
        [:div {:style {:margin-bottom "28px"}}
@@ -407,7 +469,7 @@
         [:p {:style {:color "#a1a1aa" :margin "0" :line-height "1.5"}}
          (:desc fr)]
 
-        ;; Metadata
+        ;; Metadata row
         [:div {:style {:margin-top "14px" :display "flex" :gap "12px" :flex-wrap "wrap" :align-items "center"}}
          [:span {:style (merge (:priority-badge styles)
                                (case (:priority fr)
@@ -421,32 +483,19 @@
           (str "Type: " (name (:type fr)))]
          [:span {:style {:font-size "12px" :color "#71717a"}}
           (str "Spec: " (:spec-ref fr))]
-         ;; Coverage indicator
          (when (pos? scenario-count)
-           [:span {:style {:display "flex"
-                           :align-items "center"
-                           :gap "4px"
-                           :font-size "12px"
-                           :color "#22c55e"}}
-            "●"
-            (str scenario-count " scenario" (when (> scenario-count 1) "s"))])]]
+           [:span {:style {:display "flex" :align-items "center" :gap "4px"
+                           :font-size "12px" :color "#22c55e"}}
+            "●" (str scenario-count " scenario" (when (> scenario-count 1) "s"))])]]
 
        ;; Behaviors table
        (when-let [behaviors (:behaviors fr)]
          [:div {:style {:margin-bottom "28px"}}
-          [:h3 {:style {:font-size "13px"
-                        :font-weight "600"
-                        :color "#a1a1aa"
-                        :margin-bottom "12px"
-                        :text-transform "uppercase"
-                        :letter-spacing "0.5px"}}
+          [:h3 {:style {:font-size "13px" :font-weight "600" :color "#a1a1aa"
+                        :margin-bottom "12px" :text-transform "uppercase" :letter-spacing "0.5px"}}
            "Behaviors"]
-          [:table {:style {:width "100%"
-                           :border-collapse "collapse"
-                           :font-size "13px"
-                           :background "#18181b"
-                           :border-radius "6px"
-                           :overflow "hidden"}}
+          [:table {:style {:width "100%" :border-collapse "collapse" :font-size "13px"
+                           :background "#18181b" :border-radius "6px" :overflow "hidden"}}
            [:thead
             [:tr {:style {:background "#1f1f23"}}
              [:th {:style {:text-align "left" :padding "10px 14px" :color "#71717a" :font-weight "500" :border-bottom "1px solid #27272a"}} "Context"]
@@ -460,24 +509,31 @@
                [:td {:style {:padding "10px 14px" :border-bottom "1px solid #27272a" :color "#d4d4d8"}} (:behavior beh)]
                [:td {:style {:padding "10px 14px" :border-bottom "1px solid #27272a"}}
                 (when-let [s (:scenario beh)]
-                  [:code {:style {:background "#27272a"
-                                  :color "#a1a1aa"
-                                  :padding "3px 8px"
-                                  :border-radius "3px"
-                                  :font-family "'IBM Plex Mono', monospace"
-                                  :font-size "11px"}}
+                  [:code {:style {:background "#27272a" :color "#a1a1aa" :padding "3px 8px"
+                                  :border-radius "3px" :font-family "'IBM Plex Mono', monospace" :font-size "11px"}}
                    (name s)])]])]]])
 
-       ;; Scenarios (only executable ones)
+       ;; Scenarios section with view toggle
        (when (seq scenarios)
          [:div
-          [:h3 {:style {:font-size "13px"
-                        :font-weight "600"
-                        :color "#a1a1aa"
-                        :margin-bottom "16px"
-                        :text-transform "uppercase"
-                        :letter-spacing "0.5px"}}
-           (str "Scenarios (" scenario-count ")")]
+          [:div {:style {:display "flex" :justify-content "space-between" :align-items "center" :margin-bottom "16px"}}
+           [:h3 {:style {:font-size "13px" :font-weight "600" :color "#a1a1aa" :margin "0"
+                         :text-transform "uppercase" :letter-spacing "0.5px"}}
+            (str "Scenarios (" scenario-count ")")]
+           ;; View toggle: Outline / DSL
+           [:div {:style {:display "flex" :gap "4px" :background "#27272a" :padding "3px" :border-radius "4px"}}
+            [:button {:style {:background (if-not show-dsl? "#3f3f46" "transparent")
+                              :border "none" :color (if-not show-dsl? "#fafafa" "#71717a")
+                              :padding "4px 10px" :border-radius "3px" :cursor "pointer"
+                              :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
+                      :on {:click (fn [_] (swap! !ui-state assoc :show-dsl? false))}}
+             "Outline"]
+            [:button {:style {:background (if show-dsl? "#3f3f46" "transparent")
+                              :border "none" :color (if show-dsl? "#fafafa" "#71717a")
+                              :padding "4px 10px" :border-radius "3px" :cursor "pointer"
+                              :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
+                      :on {:click (fn [_] (swap! !ui-state assoc :show-dsl? true))}}
+             "DSL"]]]
 
           ;; Scenario cards
           (for [[scenario-id scenario] scenarios]
