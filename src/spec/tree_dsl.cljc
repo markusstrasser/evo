@@ -38,9 +38,9 @@
    
    Returns: {:id :text :attrs :children}"
   [entry]
-  (let [[id-raw & rest] entry
+  (let [[id-raw & remaining] entry
         id (if (keyword? id-raw) (name id-raw) (str id-raw))
-        [text-or-attrs & more] rest
+        [text-or-attrs & more] remaining
 
         ;; Determine if second element is text or attrs
         [text attrs children]

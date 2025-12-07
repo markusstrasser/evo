@@ -15,7 +15,8 @@
    Session is intentionally NOT reactive (plain atom):
    - Replicant uses explicit render calls, not reactive subscriptions
    - UI updates are triggered by explicit (d/render!) calls
-   - This keeps the mental model simple and predictable")
+   - This keeps the mental model simple and predictable"
+  (:require [clojure.set :as set]))
 
 ;; ── Session State Atom ────────────────────────────────────────────────────────
 ;; Holds UI state that TRIGGERS re-renders when changed.
@@ -167,7 +168,7 @@
 
     ;; Both sets: union
     (and (set? base) (set? updates))
-    (clojure.set/union base updates)
+    (set/union base updates)
 
     ;; Otherwise: new value wins (including nil to clear)
     :else updates))

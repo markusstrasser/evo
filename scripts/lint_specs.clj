@@ -13,9 +13,30 @@
    This is a fast lint pass that catches:
    - Missing required FR fields
    - Invalid priority/type/status enums
-   - Malformed scenario structures"
+   - Malformed scenario structures
+   - Scenario actions using unregistered intent types"
   (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]
+            [babashka.fs :as fs]))
+
+;; ── Registered Intent Discovery ───────────────────────────────────────────────
+
+(defn extract-registered-intents
+  "Scan src/plugins/*.cljc and src/kernel/*.cljc for (intent/register-intent! :keyword ...)
+   Returns a set of registered intent keywords."
+  []
+  (let [plugin-files (fs/glob "src/plugins" "*.cljc")
+        kernel-files (fs/glob "src/kernel" "*.cljc")
+        all-files (concat plugin-files kernel-files)
+        pattern #"\(intent/register-intent!\s+:([a-z][a-z0-9-]*)"
+        extract-from-file (fn [f]
+                            (let [content (slurp (str f))
+                                  matches (re-seq pattern content)]
+                              (map (fn [[_ kw]] (keyword kw)) matches)))]
+    (->> all-files
+         (mapcat extract-from-file)
+         set)))
 
 ;; Inline Malli for Babashka (subset needed for validation)
 ;; Full Malli isn't available in bb, so we do structural checks
@@ -48,15 +69,31 @@
     (when (seq errors)
       {:fr-id fr-id :errors errors})))
 
+(defn validate-action-intent
+  "Validate that an action's :type is a registered intent.
+   Returns error string or nil if valid."
+  [action registered-intents]
+  (when (map? action)
+    (let [intent-type (:type action)]
+      (when (and (keyword? intent-type)
+                 (not (contains? registered-intents intent-type)))
+        (str "Unknown intent type :" (name intent-type)
+             " - not found in registered intents")))))
+
 (defn validate-scenario
   "Validate an executable scenario. Returns nil if valid, error map if invalid."
-  [fr-id scenario-id scenario]
+  [fr-id scenario-id scenario registered-intents]
   (when (and (map? scenario)
              (or (contains? scenario :setup)
                  (contains? scenario :action)
                  (contains? scenario :expect)))
     ;; This looks like an executable scenario, validate it
-    (let [errors (cond-> []
+    (let [action (:action scenario)
+          ;; Handle both single action and action sequences
+          actions (if (vector? action) action [action])
+          intent-errors (keep #(validate-action-intent % registered-intents) actions)
+
+          errors (cond-> []
                    (not (string? (:name scenario)))
                    (conj "Missing :name (must be string)")
 
@@ -76,24 +113,29 @@
                    (conj "Missing :action :type (must be keyword)")
 
                    (not (map? (:expect scenario)))
-                   (conj "Missing :expect (must be map)"))]
+                   (conj "Missing :expect (must be map)")
+
+                   ;; Add intent validation errors
+                   (seq intent-errors)
+                   (into intent-errors))]
       (when (seq errors)
         {:fr-id fr-id :scenario-id scenario-id :errors errors}))))
 
 (defn validate-registry
   "Validate entire registry. Returns {:valid? bool :errors [...]}"
-  [registry]
+  [registry registered-intents]
   (let [fr-errors (keep (fn [[fr-id fr]] (validate-fr fr-id fr)) registry)
         scenario-errors (for [[fr-id fr] registry
                               :when (map? (:scenarios fr))
                               [scenario-id scenario] (:scenarios fr)
-                              :let [err (validate-scenario fr-id scenario-id scenario)]
+                              :let [err (validate-scenario fr-id scenario-id scenario registered-intents)]
                               :when err]
                           err)
         all-errors (concat fr-errors scenario-errors)]
     {:valid? (empty? all-errors)
      :fr-errors (vec fr-errors)
      :scenario-errors (vec scenario-errors)
+     :registered-intents-count (count registered-intents)
      :total-frs (count registry)
      :total-scenarios (reduce + (for [[_ fr] registry
                                       :when (map? (:scenarios fr))]
@@ -110,13 +152,15 @@
         (System/exit 1))
 
       (try
-        (let [registry (edn/read-string (slurp specs-file))
-              {:keys [valid? fr-errors scenario-errors total-frs total-scenarios]}
-              (validate-registry registry)]
+        (let [registered-intents (extract-registered-intents)
+              registry (edn/read-string (slurp specs-file))
+              {:keys [valid? fr-errors scenario-errors total-frs total-scenarios registered-intents-count]}
+              (validate-registry registry registered-intents)]
 
           (println "📊 Registry Stats:")
           (println "   Total FRs:" total-frs)
           (println "   Total Scenarios:" total-scenarios)
+          (println "   Registered Intents:" registered-intents-count)
           (println)
 
           (if valid?
