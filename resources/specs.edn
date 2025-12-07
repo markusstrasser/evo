@@ -7,7 +7,70 @@
   :version 1
   :tags [:navigation :editing :cursor]
   :spec-ref "LOGSEQ_SPEC.md §2.1"
-  :scenarios [:NAV-CURSOR-MEMORY-01 :NAV-EMACS-PN-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "ArrowDown in edit mode"
+    :behavior "Move to next block, restore saved column or clamp to line length"
+    :scenario :NAV-DOWN-MEMORY}
+   {:context "ArrowUp in edit mode"
+    :behavior "Move to previous block, restore saved column or clamp to line length"
+    :scenario :NAV-UP-MEMORY}
+   {:context "Column exceeds target line length"
+    :behavior "Clamp to end of line, but remember original column"
+    :scenario :NAV-CLAMP-COLUMN}]
+
+  :scenarios
+  {:NAV-DOWN-MEMORY
+   {:name "ArrowDown moves to next block, clamping to line end"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "Hello World" {:cursor 6}]
+                   [:b "Short"]]}
+    :action {:type :navigate-with-cursor-memory
+             :direction :down
+             :current-block-id "a"
+             :current-text "Hello World"
+             :current-cursor-pos 6}
+    ;; Cursor 6 > length of "Short" (5), so kernel returns :end
+    :expect {:tree [:doc
+                    [:a "Hello World"]
+                    [:b "Short" {:cursor :end}]]}}
+
+   :NAV-UP-MEMORY
+   {:name "ArrowUp preserves cursor column"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "First line"]
+                   [:b "Second line" {:cursor 7}]]}
+    :action {:type :navigate-with-cursor-memory
+             :direction :up
+             :current-block-id "b"
+             :current-text "Second line"
+             :current-cursor-pos 7}
+    :expect {:tree [:doc
+                    [:a "First line" {:cursor 7}]
+                    [:b "Second line"]]}}
+
+   :NAV-CLAMP-COLUMN
+   {:name "Column clamped to :end when target shorter"
+    :tags #{:edge-case}
+    :setup {:tree [:doc
+                   [:a "Very long line here" {:cursor 15}]
+                   [:b "Short"]]}
+    :action {:type :navigate-with-cursor-memory
+             :direction :down
+             :current-block-id "a"
+             :current-text "Very long line here"
+             :current-cursor-pos 15}
+    ;; Cursor 15 > length of "Short" (5), so kernel returns :end
+    :expect {:tree [:doc
+                    [:a "Very long line here"]
+                    [:b "Short" {:cursor :end}]]}}
+
+   ;; Legacy scenario IDs
+   :NAV-CURSOR-MEMORY-01 {:name "Legacy: cursor memory" :tags #{:legacy}}
+   :NAV-EMACS-PN-01 {:name "Legacy: Ctrl+P/N navigation" :tags #{:legacy}}}}
 
  :fr.nav/horizontal-boundary
  {:desc "ArrowLeft at column 0 / ArrowRight at end jumps to adjacent block"
@@ -16,8 +79,7 @@
   :status :active
   :version 1
   :tags [:navigation :editing]
-  :spec-ref "LOGSEQ_SPEC.md §2.3"
-  :scenarios [:NAV-BOUNDARY-LEFT-01]}
+  :spec-ref "LOGSEQ_SPEC.md §2.3"}
 
  ;; Navigation: View mode
  :fr.nav/view-arrows
@@ -28,7 +90,45 @@
   :version 1
   :tags [:navigation :selection]
   :spec-ref "LOGSEQ_SPEC.md §2.2"
-  :scenarios [:SEL-ARROW-REPLACE-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Block selected, ArrowDown pressed"
+    :behavior "Move selection to next visible sibling"
+    :scenario :NAV-DOWN}
+   {:context "Block selected, ArrowUp pressed"
+    :behavior "Move selection to previous visible sibling"
+    :scenario :NAV-UP}
+   {:context "Folded block in path"
+    :behavior "Skip folded blocks and their children"
+    :scenario :SKIP-FOLDED}]
+
+  :scenarios
+  {:NAV-DOWN
+   {:name "ArrowDown moves selection to next block"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "First" {:selected? true :focus? true}]
+                   [:b "Second"]
+                   [:c "Third"]]}
+    :action {:type :selection :mode :next}
+    :expect {:tree [:doc
+                    [:a "First"]
+                    [:b "Second" {:selected? true :focus? true}]
+                    [:c "Third"]]}}
+
+   :NAV-UP
+   {:name "ArrowUp moves selection to previous block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "First"]
+                   [:b "Second" {:selected? true :focus? true}]
+                   [:c "Third"]]}
+    :action {:type :selection :mode :prev}
+    :expect {:tree [:doc
+                    [:a "First" {:selected? true :focus? true}]
+                    [:b "Second"]
+                    [:c "Third"]]}}}}
 
  :fr.nav/idle-first-last
  {:desc "ArrowDown/Up from idle state selects first/last visible block"
@@ -37,7 +137,39 @@
   :status :active
   :version 1
   :tags [:navigation :idle]
-  :spec-ref "LOGSEQ_SPEC.md §2.2"}
+  :spec-ref "LOGSEQ_SPEC.md §2.2"
+  :level :intent
+
+  :behaviors
+  [{:context "Idle state (no selection, no editing), ArrowDown pressed"
+    :behavior "Select first visible block"
+    :scenario :IDLE-DOWN-FIRST}
+   {:context "Idle state (no selection, no editing), ArrowUp pressed"
+    :behavior "Select last visible block"
+    :scenario :IDLE-UP-LAST}]
+
+  :scenarios
+  {:IDLE-DOWN-FIRST
+   {:name "ArrowDown from idle selects first block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "First"] [:b "Second"] [:c "Third"]]
+            :session {:selection {:nodes #{}}}}
+    :action {:type :selection :mode :next}
+    :expect {:tree [:doc
+                    [:a "First" {:selected? true :focus? true}]
+                    [:b "Second"]
+                    [:c "Third"]]}}
+
+   :IDLE-UP-LAST
+   {:name "ArrowUp from idle selects last block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "First"] [:b "Second"] [:c "Third"]]
+            :session {:selection {:nodes #{}}}}
+    :action {:type :selection :mode :prev}
+    :expect {:tree [:doc
+                    [:a "First"]
+                    [:b "Second"]
+                    [:c "Third" {:selected? true :focus? true}]]}}}}
 
  ;; Selection
  :fr.selection/extend-boundary
@@ -48,7 +180,45 @@
   :version 1
   :tags [:selection :keyboard]
   :spec-ref "LOGSEQ_SPEC.md §3"
-  :scenarios [:SEL-SHIFT-BOUNDARY-01 :SEL-EXTEND-CONTRACT-01 :SEL-DIRECTION-TRACK-01 :SEL-CONTRACT-TRAILING-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Single block selected, Shift+Down"
+    :behavior "Extend selection to include next sibling"
+    :scenario :EXTEND-DOWN}
+   {:context "Multiple blocks selected, Shift+Up shrinks from focus direction"
+    :behavior "Contract selection from focus end"
+    :scenario :CONTRACT-SELECTION}
+   {:context "At boundary (first/last block)"
+    :behavior "No-op when no more blocks in direction"
+    :scenario :EXTEND-BOUNDARY-NOOP}]
+
+  :scenarios
+  {:EXTEND-DOWN
+   {:name "Shift+Down extends selection to next block"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "First" {:selected? true :focus? true}]
+                   [:b "Second"]
+                   [:c "Third"]]}
+    :action {:type :selection :mode :extend-next}
+    :expect {:tree [:doc
+                    [:a "First" {:selected? true}]
+                    [:b "Second" {:selected? true :focus? true}]
+                    [:c "Third"]]}}
+
+   :EXTEND-UP
+   {:name "Shift+Up extends selection to previous block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "First"]
+                   [:b "Second" {:selected? true :focus? true}]
+                   [:c "Third"]]}
+    :action {:type :selection :mode :extend-prev}
+    :expect {:tree [:doc
+                    [:a "First" {:selected? true :focus? true}]
+                    [:b "Second" {:selected? true}]
+                    [:c "Third"]]}}}}
 
  :fr.selection/edit-view-exclusive
  {:desc "Edit mode and selection state never coexist; transitions clear opposite state"
@@ -58,7 +228,43 @@
   :version 1
   :tags [:state-machine :editing :selection]
   :spec-ref "LOGSEQ_SPEC.md §1.1"
-  :scenarios [:NAV-COLLAPSE-SEL-01]}
+  :level :kernel
+
+  :behaviors
+  [{:context "Entering edit mode while blocks selected"
+    :behavior "Clear selection before editing"
+    :scenario :EDIT-CLEARS-SELECTION}
+   {:context "Selecting block while in edit mode"
+    :behavior "Exit edit mode before selecting"
+    :scenario :SELECT-EXITS-EDIT}]
+
+  :invariants
+  {:pre [:editing-xor-selection]
+   :post [:editing-xor-selection]}
+
+  :scenarios
+  {:EDIT-CLEARS-SELECTION
+   {:name "Entering edit mode clears selection"
+    :tags #{:invariant :critical}
+    :setup {:tree [:doc
+                   [:a "First" {:selected? true :focus? true}]
+                   [:b "Second"]]}
+    :action {:type :enter-edit :block-id "b" :cursor-at :end}
+    :expect {:tree [:doc
+                    [:a "First"]
+                    [:b "Second" {:cursor :_}]]
+             :session {:selection {:nodes #{}}}}}
+
+   :SELECT-EXITS-EDIT
+   {:name "Selecting block exits edit mode"
+    :tags #{:invariant :critical}
+    :setup {:tree [:doc
+                   [:a "First" {:cursor 0}]
+                   [:b "Second"]]}
+    :action {:type :selection :mode :replace :ids ["b"]}
+    :expect {:tree [:doc
+                    [:a "First"]
+                    [:b "Second" {:selected? true :focus? true}]]}}}}
 
  :fr.selection/cmd-a-cycle
  {:desc "Cmd+A cycles: select all text → select block → select parent → select all visible"
@@ -67,7 +273,51 @@
   :status :active
   :version 1
   :tags [:selection :keyboard]
-  :spec-ref "LOGSEQ_SPEC.md §7.2"}
+  :spec-ref "LOGSEQ_SPEC.md §7.2"
+  :level :intent
+
+  :behaviors
+  [{:context "Editing with all text selected"
+    :behavior "Exit edit mode, select the block"
+    :scenario :CYCLE-TO-BLOCK}
+   {:context "Single block selected"
+    :behavior "Select parent (if exists), else select all visible"
+    :scenario :CYCLE-TO-PARENT}
+   {:context "Parent or multiple blocks selected"
+    :behavior "Select all visible blocks"
+    :scenario :CYCLE-TO-ALL}]
+
+  :scenarios
+  {:CYCLE-TO-BLOCK
+   {:name "Cmd+A from editing selects the block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello" {:cursor 0}] [:b "World"]]}
+    :action {:type :select-all-cycle :from-editing? true :block-id "a"}
+    :expect {:tree [:doc
+                    [:a "Hello" {:selected? true :focus? true}]
+                    [:b "World"]]}}
+
+   :CYCLE-TO-PARENT
+   {:name "Cmd+A on single block selects parent"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child" {:selected? true :focus? true}]]]}
+    :action {:type :select-all-cycle}
+    :expect {:tree [:doc
+                    [:a "Parent" {:selected? true :focus? true}
+                     [:b "Child"]]]}}
+
+   :CYCLE-TO-ALL
+   {:name "Cmd+A on parent selects all visible"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "First" {:selected? true :focus? true}]
+                   [:b "Second"]]}
+    :action {:type :select-all-cycle}
+    :expect {:tree [:doc
+                    [:a "First" {:selected? true}]
+                    [:b "Second" {:selected? true :focus? true}]]}}}}
 
  ;; Editing
  :fr.edit/smart-split
@@ -78,7 +328,43 @@
   :version 1
   :tags [:editing :smart-editing]
   :spec-ref "LOGSEQ_SPEC.md §4"
-  :scenarios [:EDIT-ENTER-SPLIT-01 :EDIT-ENTER-ABOVE-01 :EDIT-ENTER-LIST-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Cursor in middle of text"
+    :behavior "Split block at cursor: text before stays, text after goes to new sibling"
+    :scenario :SPLIT-MIDDLE}
+   {:context "Cursor at position 0"
+    :behavior "Create empty block ABOVE current block"
+    :scenario :SPLIT-AT-START}
+   {:context "Empty list marker (e.g. '- ')"
+    :behavior "Unformat list + create peer block after parent"
+    :scenario :EMPTY-LIST-UNFORMAT}]
+
+  :scenarios
+  {:SPLIT-MIDDLE
+   {:name "Split block at cursor position"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "Hello World" {:cursor 5}]]}
+    :action {:type :context-aware-enter
+             :block-id "a"
+             :cursor-pos 5}
+    :expect {:tree [:doc
+                    [:a "Hello"]
+                    [:new "World"]]}}
+
+   :SPLIT-AT-START
+   {:name "Enter at position 0 creates block above"
+    :tags #{:edge-case}
+    :setup {:tree [:doc
+                   [:a "Content" {:cursor 0}]]}
+    :action {:type :context-aware-enter
+             :block-id "a"
+             :cursor-pos 0}
+    :expect {:tree [:doc
+                    [:new ""]
+                    [:a "Content"]]}}}}
 
  :fr.edit/backspace-merge
  {:desc "Backspace at start merges into previous sibling, re-parents children, preserves caret"
@@ -88,7 +374,47 @@
   :version 1
   :tags [:editing :merge]
   :spec-ref "LOGSEQ_SPEC.md §4"
-  :scenarios [:EDIT-BACKSPACE-MERGE-01 :EDIT-BACKSPACE-DELETE-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Cursor = 0, has previous sibling"
+    :behavior "Merge into previous block, re-parent children"
+    :scenario :MERGE-SIBLING}
+   {:context "Cursor = 0, first child (no prev sibling)"
+    :behavior "Merge into parent block"
+    :scenario :MERGE-PARENT}
+   {:context "Empty block"
+    :behavior "Delete block, focus previous"
+    :scenario :DELETE-EMPTY}]
+
+  :scenarios
+  {:MERGE-SIBLING
+   {:name "Merge with previous sibling"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "Hello"]
+                   [:b "World" {:cursor 0}]]}
+    :action {:type :merge-with-prev :block-id "b"}
+    :expect {:tree [:doc
+                    [:a "HelloWorld" {:cursor 5}]]}}
+
+   :MERGE-WITH-CHILDREN
+   {:name "Merge re-parents children to target"
+    :tags #{:edge-case}
+    :setup {:tree [:doc
+                   [:a "First"]
+                   [:b "Second" {:cursor 0}
+                    [:c "Child"]]]}
+    :action {:type :merge-with-prev :block-id "b"}
+    :expect {:tree [:doc
+                    [:a "FirstSecond" {:cursor 5}
+                     [:c "Child"]]]}}
+
+   ;; Legacy scenario IDs for backward compat
+   :EDIT-BACKSPACE-MERGE-01 {:name "Legacy: basic merge" :tags #{:legacy}
+                             :setup {:tree [:doc [:a "A"] [:b "B" {:cursor 0}]]}
+                             :action {:type :merge-with-prev :block-id "b"}
+                             :expect {:tree [:doc [:a "AB" {:cursor 1}]]}}}}
 
  ;; Structural
  :fr.struct/indent-outdent
@@ -98,7 +424,91 @@
   :status :active
   :version 1
   :tags [:structural :tree]
-  :spec-ref "LOGSEQ_SPEC.md §5.1"}
+  :spec-ref "LOGSEQ_SPEC.md §5.1"
+  :level :intent
+
+  :behaviors
+  [{:context "Has previous sibling"
+    :behavior "Tab makes block last child of previous sibling"
+    :scenario :INDENT-BASIC}
+   {:context "First child (no prev sibling)"
+    :behavior "Tab is no-op"
+    :scenario :INDENT-NOOP}
+   {:context "Has parent (not at doc level)"
+    :behavior "Shift+Tab makes block sibling of parent, after parent"
+    :scenario :OUTDENT-BASIC}
+   {:context "At doc level"
+    :behavior "Shift+Tab is no-op"
+    :scenario :OUTDENT-NOOP}]
+
+  :scenarios
+  {:INDENT-BASIC
+   {:name "Indent makes block child of previous sibling"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "First"]
+                   [:b "Second" {:selected? true}]]}
+    :action {:type :indent-selected}
+    :expect {:tree [:doc
+                    [:a "First"
+                     [:b "Second" {:selected? true}]]]}}
+
+   :INDENT-WITH-CHILDREN
+   {:name "Indent preserves block's children"
+    :tags #{:edge-case}
+    :setup {:tree [:doc
+                   [:a "Parent"]
+                   [:b "Has Kids" {:selected? true}
+                    [:c "Child"]]]}
+    :action {:type :indent-selected}
+    :expect {:tree [:doc
+                    [:a "Parent"
+                     [:b "Has Kids" {:selected? true}
+                      [:c "Child"]]]]}}
+
+   :INDENT-NOOP
+   {:name "Indent no-op when first child"
+    :tags #{:boundary}
+    :setup {:tree [:doc
+                   [:a "Only block" {:selected? true}]]}
+    :action {:type :indent-selected}
+    :expect {:tree [:doc
+                    [:a "Only block" {:selected? true}]]
+             :ops {:count 0}}}
+
+   :OUTDENT-BASIC
+   {:name "Outdent moves block to parent's level"
+    :tags #{:happy-path :critical}
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child" {:selected? true}]]]}
+    :action {:type :outdent-selected}
+    :expect {:tree [:doc
+                    [:a "Parent"]
+                    [:b "Child" {:selected? true}]]}}
+
+   :OUTDENT-WITH-CHILDREN
+   {:name "Outdent preserves block's children"
+    :tags #{:edge-case}
+    :setup {:tree [:doc
+                   [:a "Grandparent"
+                    [:b "Parent" {:selected? true}
+                     [:c "Child"]]]]}
+    :action {:type :outdent-selected}
+    :expect {:tree [:doc
+                    [:a "Grandparent"]
+                    [:b "Parent" {:selected? true}
+                     [:c "Child"]]]}}
+
+   :OUTDENT-NOOP
+   {:name "Outdent no-op at doc level"
+    :tags #{:boundary}
+    :setup {:tree [:doc
+                   [:a "Top level" {:selected? true}]]}
+    :action {:type :outdent-selected}
+    :expect {:tree [:doc
+                    [:a "Top level" {:selected? true}]]
+             :ops {:count 0}}}}}
 
  :fr.struct/climb-descend
  {:desc "Cmd+Shift+Up/Down at boundaries climbs out to parent level / descends into next sibling"
@@ -107,7 +517,54 @@
   :status :active
   :version 1
   :tags [:structural :move]
-  :spec-ref "LOGSEQ_SPEC.md §5.2"}
+  :spec-ref "LOGSEQ_SPEC.md §5.2"
+  :level :intent
+
+  :behaviors
+  [{:context "First child, Cmd+Shift+Up"
+    :behavior "Climb out: move before parent (become sibling of parent)"
+    :scenario :CLIMB-OUT}
+   {:context "Last child, Cmd+Shift+Down"
+    :behavior "Descend: move into parent's next sibling as first child"
+    :scenario :DESCEND-INTO}
+   {:context "At doc level (top-level block)"
+    :behavior "No-op (can't climb further)"
+    :scenario :CLIMB-BOUNDARY}]
+
+  :scenarios
+  {:CLIMB-OUT
+   {:name "Cmd+Shift+Up on first child climbs out to parent level"
+    :tags #{:critical :happy-path}
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "First child" {:selected? true}]
+                    [:c "Second child"]]]}
+    :action {:type :move-selected-up}
+    :expect {:tree [:doc
+                    [:b "First child" {:selected? true}]
+                    [:a "Parent"
+                     [:c "Second child"]]]}}
+
+   :DESCEND-INTO
+   {:name "Cmd+Shift+Down on last child descends into uncle"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Last child" {:selected? true}]]
+                   [:c "Uncle"]]}
+    :action {:type :move-selected-down}
+    :expect {:tree [:doc
+                    [:a "Parent"]
+                    [:c "Uncle"
+                     [:b "Last child" {:selected? true}]]]}}
+
+   :CLIMB-BOUNDARY
+   {:name "No-op when already at doc level"
+    :tags #{:boundary}
+    :setup {:tree [:doc [:a "Top level" {:selected? true}]]}
+    :action {:type :move-selected-up}
+    :expect {:tree [:doc [:a "Top level" {:selected? true}]]
+             :ops {:count 0}}}}}
 
  ;; Invariants
  :fr.kernel/undo-restores-all
@@ -155,7 +612,30 @@
   :version 1
   :tags [:editing]
   :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-03"
-  :scenarios [:EDIT-DELETE-MERGE-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Cursor in middle of text"
+    :behavior "Delete character after cursor"
+    :scenario :DELETE-CHAR}
+   {:context "Cursor at end of block with next sibling"
+    :behavior "Merge next block's text into current block"
+    :scenario :MERGE-NEXT}]
+
+  :scenarios
+  {:DELETE-CHAR
+   {:name "Delete removes character after cursor"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello" {:cursor 2}]]}
+    :action {:type :delete-forward :block-id "a" :cursor-pos 2}
+    :expect {:tree [:doc [:a "Helo" {:cursor 2}]]}}
+
+   :MERGE-NEXT
+   {:name "Delete at end merges with next block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello" {:cursor 5}] [:b "World"]]}
+    :action {:type :merge-with-next :block-id "a"}
+    :expect {:tree [:doc [:a "HelloWorld" {:cursor 5}]]}}}}
 
  :fr.edit/word-navigation
  {:desc "Option+Arrow moves cursor by word boundaries"
@@ -164,8 +644,7 @@
   :status :active
   :version 1
   :tags [:editing :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-04"
-  :scenarios [:NAV-EMACS-BOB-01 :NAV-EMACS-EOB-01]}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-04"}
 
  :fr.edit/kill-operations
  {:desc "Ctrl+K/U kill to end/beginning of line"
@@ -174,8 +653,7 @@
   :status :active
   :version 1
   :tags [:editing :emacs]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-05"
-  :scenarios [:NAV-EMACS-BOL-01 :NAV-EMACS-EOL-01]}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-05"}
 
  :fr.edit/newline-no-split
  {:desc "Shift+Enter inserts newline without splitting block"
@@ -184,8 +662,7 @@
   :status :active
   :version 1
   :tags [:editing]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-06"
-  :scenarios [:EDIT-NEWLINE-01]}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-06"}
 
  :fr.edit/paired-char-insertion
  {:desc "Auto-insert closing bracket/quote and place cursor inside"
@@ -194,7 +671,41 @@
   :status :active
   :version 1
   :tags [:editing :smart-editing]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-07"}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-07"
+  :level :intent
+
+  :behaviors
+  [{:context "Type opening bracket/quote"
+    :behavior "Insert both opening and closing, cursor between"
+    :scenario :INSERT-PAIR}
+   {:context "Type closing bracket when next char matches"
+    :behavior "Skip over existing closing char"
+    :scenario :SKIP-CLOSING}
+   {:context "Backspace between empty pair"
+    :behavior "Delete both opening and closing"
+    :scenario :DELETE-PAIR}]
+
+  :scenarios
+  {:INSERT-PAIR
+   {:name "Typing ( inserts () with cursor between"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello" {:cursor 5}]]}
+    :action {:type :insert-paired-char :block-id "a" :cursor-pos 5 :input-char "("}
+    :expect {:tree [:doc [:a "Hello()" {:cursor 6}]]}}
+
+   :SKIP-CLOSING
+   {:name "Typing ) when next char is ) skips over it"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello()" {:cursor 6}]]}
+    :action {:type :insert-paired-char :block-id "a" :cursor-pos 6 :input-char ")"}
+    :expect {:tree [:doc [:a "Hello()" {:cursor 7}]]}}
+
+   :DELETE-PAIR
+   {:name "Backspace between () deletes both"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello()" {:cursor 6}]]}
+    :action {:type :delete-with-pair-check :block-id "a" :cursor-pos 6}
+    :expect {:tree [:doc [:a "Hello" {:cursor 5}]]}}}}
 
  ;; Clipboard
  :fr.clipboard/copy-block
@@ -447,7 +958,31 @@
   :status :active
   :version 1
   :tags [:smart-editing]
-  :spec-ref "LOGSEQ_SPEC.md §7.10"}
+  :spec-ref "LOGSEQ_SPEC.md §7.10"
+  :level :intent
+
+  :behaviors
+  [{:context "Block with [ ] checkbox"
+    :behavior "Toggle to [x]"
+    :scenario :CHECK}
+   {:context "Block with [x] checkbox"
+    :behavior "Toggle back to [ ]"
+    :scenario :UNCHECK}]
+
+  :scenarios
+  {:CHECK
+   {:name "Toggle unchecked checkbox to checked"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "- [ ] Todo item" {:cursor 0}]]}
+    :action {:type :toggle-checkbox :block-id "a"}
+    :expect {:tree [:doc [:a "- [x] Todo item"]]}}
+
+   :UNCHECK
+   {:name "Toggle checked checkbox to unchecked"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "- [x] Done item" {:cursor 0}]]}
+    :action {:type :toggle-checkbox :block-id "a"}
+    :expect {:tree [:doc [:a "- [ ] Done item"]]}}}}
 
  :fr.smart/list-unformat
  {:desc "Enter on empty list item removes marker and creates peer at parent level"
@@ -457,7 +992,25 @@
   :version 1
   :tags [:smart-editing :lists]
   :spec-ref "LOGSEQ_SPEC.md §4 (part of FR-Edit-01)"
-  :scenarios [:EDIT-ENTER-EMPTY-LIST-01]}
+  :level :intent
+
+  :behaviors
+  [{:context "Empty list item (just '- '), Enter pressed"
+    :behavior "Remove list marker, create peer block after parent"
+    :scenario :UNFORMAT-EMPTY-LIST}]
+
+  :scenarios
+  {:UNFORMAT-EMPTY-LIST
+   {:name "Enter on empty list item unformats and creates peer"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "- " {:cursor 2}]]]}
+    :action {:type :context-aware-enter :block-id "b" :cursor-pos 2}
+    :expect {:tree [:doc
+                    [:a "Parent"
+                     [:b ""]]
+                    [:new "" {:cursor 0}]]}}}}
 
  :fr.smart/auto-increment
  {:desc "Enter on numbered list auto-increments next item"
@@ -466,7 +1019,23 @@
   :status :active
   :version 1
   :tags [:smart-editing :lists]
-  :spec-ref "LOGSEQ_SPEC.md §7.10"}
+  :spec-ref "LOGSEQ_SPEC.md §7.10"
+  :level :intent
+
+  :behaviors
+  [{:context "Numbered list item (e.g. '1. Hello'), Enter pressed"
+    :behavior "New block gets incremented number (e.g. '2. ')"
+    :scenario :AUTO-INCREMENT}]
+
+  :scenarios
+  {:AUTO-INCREMENT
+   {:name "Enter on numbered list increments number"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "1. First item" {:cursor 13}]]}
+    :action {:type :smart-split :block-id "a" :cursor-pos 13}
+    :expect {:tree [:doc
+                    [:a "1. First item"]
+                    [:new "2. " {:cursor 3}]]}}}}
 
  ;; ── Future / Nice-to-Have ────────────────────────────────────────────────────
 
