@@ -663,23 +663,14 @@
 
   :behaviors
   [{:context "Arrow key in edit mode, cursor not at boundary"
-    :behavior "Native browser cursor movement (no kernel intent)"
-    :scenario :ARROW-WITHIN-NATIVE}
-   {:context "Arrow key pressed, cursor state updated"
-    :behavior "Track first-row/last-row for boundary detection"
+    :behavior "Native browser cursor movement (contenteditable handles this)"}
+   {:context "Arrow key pressed in edit mode"
+    :behavior "Track first-row/last-row state for boundary detection"
     :scenario :UPDATE-CURSOR-STATE}]
 
   :scenarios
-  {:ARROW-WITHIN-NATIVE
-   {:name "Arrow keys within block use native cursor movement"
-    :tags #{:happy-path :browser-native}
-    :setup {:tree [:doc [:a "Hello" {:cursor 2 :editing? true}]]}
-    :action {:type :browser-native :key "ArrowRight"}
-    :expect {:tree [:doc [:a "Hello" {:cursor 3 :editing? true}]]}
-    :note "Cursor movement handled by contenteditable, not kernel"}
-
-   :UPDATE-CURSOR-STATE
-   {:name "Cursor state tracked for boundary detection"
+  {:UPDATE-CURSOR-STATE
+   {:name "Cursor boundary state tracked for navigation decisions"
     :tags #{:ephemeral}
     :setup {:tree [:doc [:a "Hello" {:cursor 0 :editing? true}]]}
     :action {:type :update-cursor-state :block-id "a" :first-row? true :last-row? true}
@@ -1140,10 +1131,10 @@
 
   :behaviors
   [{:context "Typing character in idle state with blocks"
-    :behavior "Enter edit mode on first visible block, prepend character"
+    :behavior "Enter edit mode on first visible block, append character at end"
     :scenario :TYPE-FROM-IDLE}
    {:context "Typing character with single block selected"
-    :behavior "Enter edit mode on selected block, prepend character"
+    :behavior "Enter edit mode on selected block, append character at end"
     :scenario :TYPE-FROM-SELECTION}]
 
   :scenarios
@@ -1152,14 +1143,14 @@
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "Hello"] [:b "World"]]}
     :action {:type :enter-edit-with-char :block-id "a" :char "x"}
-    :expect {:tree [:doc [:a "xHello" {:cursor 1 :editing? true}] [:b "World"]]}}
+    :expect {:tree [:doc [:a "Hellox" {:cursor 6 :editing? true}] [:b "World"]]}}
 
    :TYPE-FROM-SELECTION
    {:name "Typing with block selected enters edit on that block"
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "Hello"] [:b "World" {:selected? true}]]}
     :action {:type :enter-edit-with-char :block-id "b" :char "y"}
-    :expect {:tree [:doc [:a "Hello"] [:b "yWorld" {:cursor 1 :editing? true}]]}}}}
+    :expect {:tree [:doc [:a "Hello"] [:b "Worldy" {:cursor 6 :editing? true}]]}}}}
 
  :fr.state/selection-clears-edit
  {:desc "Entering selection mode clears editing state"
