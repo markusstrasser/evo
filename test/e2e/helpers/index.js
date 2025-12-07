@@ -17,7 +17,19 @@ export { selectPage, enterEditModeAndClick } from './edit-mode.js';
 
 export { getCursorPosition, setCursorPosition, typeAndVerifyCursor } from './cursor.js';
 
-export { pressKeyOnContentEditable, pressKeyCombo } from './keyboard.js';
+export {
+  pressKeyOnContentEditable,
+  pressKeyCombo,
+  // Cross-platform helpers
+  isMac,
+  modKey,
+  pressHome,
+  pressEnd,
+  pressWordLeft,
+  pressWordRight,
+  pressSelectToStart,
+  pressSelectToEnd
+} from './keyboard.js';
 
 export {
   selectBlock,
