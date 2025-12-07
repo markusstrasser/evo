@@ -79,7 +79,72 @@
   :status :active
   :version 1
   :tags [:navigation :editing]
-  :spec-ref "LOGSEQ_SPEC.md §2.3"}
+  :spec-ref "LOGSEQ_SPEC.md §2.3"
+
+  :behaviors
+  [{:context "Editing block, cursor at column 0, ArrowLeft pressed"
+    :behavior "Jump to end of previous block"
+    :scenario :LEFT-AT-START}
+   {:context "Editing block, cursor at end of text, ArrowRight pressed"
+    :behavior "Jump to start of next block"
+    :scenario :RIGHT-AT-END}
+   {:context "First block in document, cursor at column 0, ArrowLeft pressed"
+    :behavior "No-op (already at document boundary)"
+    :scenario :LEFT-AT-DOC-START}
+   {:context "Last block in document, cursor at end, ArrowRight pressed"
+    :behavior "No-op (already at document boundary)"
+    :scenario :RIGHT-AT-DOC-END}]
+
+  :scenarios
+  {:LEFT-AT-START
+   {:name "ArrowLeft at column 0 jumps to previous block end"
+    :setup {:tree [:doc
+                   [:a "First block"]
+                   [:b "Second block" {:cursor 0}]]}
+    :action {:type :navigate-to-adjacent
+             :direction :up
+             :current-block-id "b"
+             :cursor-position :max}
+    :expect {:tree [:doc
+                    [:a "First block" {:cursor :end}]
+                    [:b "Second block"]]}}
+
+   :RIGHT-AT-END
+   {:name "ArrowRight at text end jumps to next block start"
+    :setup {:tree [:doc
+                   [:a "First block" {:cursor :end}]
+                   [:b "Second block"]]}
+    :action {:type :navigate-to-adjacent
+             :direction :down
+             :current-block-id "a"
+             :cursor-position 0}
+    :expect {:tree [:doc
+                    [:a "First block"]
+                    [:b "Second block" {:cursor 0}]]}}
+
+   :LEFT-AT-DOC-START
+   {:name "ArrowLeft at first block is no-op"
+    :setup {:tree [:doc
+                   [:a "Only block" {:cursor 0}]]}
+    :action {:type :navigate-to-adjacent
+             :direction :up
+             :current-block-id "a"
+             :cursor-position :max}
+    ;; No previous block exists, so cursor stays where it is
+    :expect {:tree [:doc
+                    [:a "Only block" {:cursor 0}]]}}
+
+   :RIGHT-AT-DOC-END
+   {:name "ArrowRight at last block is no-op"
+    :setup {:tree [:doc
+                   [:a "Only block" {:cursor :end}]]}
+    :action {:type :navigate-to-adjacent
+             :direction :down
+             :current-block-id "a"
+             :cursor-position 0}
+    ;; No next block exists, so cursor stays where it is
+    :expect {:tree [:doc
+                    [:a "Only block" {:cursor :end}]]}}}}
 
  ;; Navigation: View mode
  :fr.nav/view-arrows
@@ -602,7 +667,41 @@
   :status :active
   :version 1
   :tags [:editing :selection]
-  :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-02"}
+  :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-02"
+  :level :gesture
+
+  :behaviors
+  [{:context "Shift+Arrow in edit mode, text available"
+    :behavior "Extend text selection in arrow direction"
+    :scenario :SHIFT-ARROW-EXTEND}
+   {:context "Shift+Arrow at block boundary with text selected"
+    :behavior "Exit edit mode, extend to adjacent block as multi-block selection"
+    :scenario :SHIFT-ARROW-BOUNDARY}]
+
+  :scenarios
+  {:SHIFT-ARROW-EXTEND
+   {:name "Shift+Right extends text selection"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Hello World" {:cursor 0}]]}
+    :action {:type :update-cursor-state
+             :block-id "a"
+             :first-row? true
+             :last-row? true}
+    :expect {:tree [:doc
+                    [:a "Hello World"]]}}
+
+   :SHIFT-ARROW-BOUNDARY
+   {:name "Shift+Down at last row exits to multi-block selection"
+    :tags #{:boundary}
+    :setup {:tree [:doc
+                   [:a "Hello" {:cursor 5}]
+                   [:b "World"]]}
+    :action {:type :exit-edit-and-extend
+             :direction :down}
+    :expect {:tree [:doc
+                    [:a "Hello" {:selected? true :anchor? true}]
+                    [:b "World" {:selected? true :focus? true}]]}}}}
 
  :fr.edit/delete-forward
  {:desc "Delete key removes character at cursor or merges with next block at end"
@@ -662,7 +761,39 @@
   :status :active
   :version 1
   :tags [:editing]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-06"}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-06"
+  :level :intent
+
+  :behaviors
+  [{:context "Shift+Enter pressed in edit mode"
+    :behavior "Insert literal newline at cursor, keep block intact"
+    :scenario :NEWLINE-MID}
+   {:context "Shift+Enter at end of block"
+    :behavior "Append newline, cursor after newline"
+    :scenario :NEWLINE-END}]
+
+  :scenarios
+  {:NEWLINE-MID
+   {:name "Shift+Enter inserts newline mid-block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Hello World" {:cursor 5}]]}
+    :action {:type :insert-newline
+             :block-id "a"
+             :cursor-pos 5}
+    :expect {:tree [:doc
+                    [:a "Hello\nWorld" {:cursor 6}]]}}
+
+   :NEWLINE-END
+   {:name "Shift+Enter at end appends newline"
+    :tags #{:happy-path}
+    :setup {:tree [:doc
+                   [:a "Hello" {:cursor 5}]]}
+    :action {:type :insert-newline
+             :block-id "a"
+             :cursor-pos 5}
+    :expect {:tree [:doc
+                    [:a "Hello\n" {:cursor 6}]]}}}}
 
  :fr.edit/paired-char-insertion
  {:desc "Auto-insert closing bracket/quote and place cursor inside"
