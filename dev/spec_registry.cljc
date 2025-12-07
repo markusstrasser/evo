@@ -28,15 +28,95 @@
 ;; ── Malli Schema for FR Registry ─────────────────────────────────────────────
 
 (def fr-schema
-  "Schema for a single Functional Requirement entry."
+  "Schema for a single Functional Requirement entry.
+   
+   BREAKING: Only executable scenario format supported.
+   Legacy vector format [:SCENARIO-01 :SCENARIO-02] removed."
   [:map {:closed true}
+   ;; ── Required Fields ───────────────────────────────────────────────────────
    [:desc :string]
    [:priority [:enum :critical :high :medium :low]]
    [:type [:enum :intent-level :invariant :scenario]]
-   [:status [:enum :active :deprecated]]
+   [:status [:enum :active :deprecated :future]]
    [:version :int]
    [:tags [:vector :keyword]]
-   [:spec-ref :string]])
+   [:spec-ref :string]
+
+   ;; ── Optional: Executable Scenarios ────────────────────────────────────────
+   ;; Map of scenario-id → executable scenario with setup/action/expect
+   [:scenarios {:optional true} [:map-of :keyword :any]]
+
+   ;; ── Optional: Spec-as-UI Fields ───────────────────────────────────────────
+
+   ;; Level indicates what layer this FR operates at
+   [:level {:optional true} [:enum :gesture :intent :kernel]]
+
+   ;; Notes for implementation details or future plans
+   [:notes {:optional true} :string]
+
+   ;; Behaviors: Human-readable behavior table (for docs generation)
+   [:behaviors {:optional true}
+    [:vector
+     [:map
+      [:context :string]
+      [:behavior :string]
+      [:scenario {:optional true} :keyword]
+      [:level {:optional true} [:enum :gesture :intent :kernel]]]]]
+
+   ;; Invariants: Conditions that must hold pre/post action
+   [:invariants {:optional true}
+    [:map
+     [:pre {:optional true} [:vector :keyword]]
+     [:post {:optional true} [:vector :keyword]]]]
+
+   ;; Properties: Generative property tests
+   [:properties {:optional true}
+    [:vector
+     [:map
+      [:name :keyword]
+      [:desc :string]
+      [:generator {:optional true} :keyword]]]]])
+
+(def scenario-schema
+  "Schema for an executable scenario within an FR.
+   
+   Tree DSL format: [:doc [:a \"text\"] [:b \"text\" {:cursor 0} [:c \"child\"]]]
+   - First element is parent (keyword for roots, string for block ids)
+   - Following elements are [id text ?attrs ?children...]"
+  [:map
+   [:name :string]
+   [:tags {:optional true} [:set :keyword]]
+
+   ;; Setup: Initial state before action
+   [:setup
+    [:map
+     [:tree :any] ;; Tree DSL, validated by tree-dsl namespace
+     [:session {:optional true}
+      [:map
+       [:editing-block-id {:optional true} [:maybe :string]]
+       [:cursor-position {:optional true} :int]
+       [:selection {:optional true}
+        [:map
+         [:nodes {:optional true} [:set :string]]
+         [:anchor {:optional true} [:maybe :string]]
+         [:focus {:optional true} [:maybe :string]]]]]]]]
+
+   ;; Action: Intent or sequence of intents
+   [:action [:or
+             [:map [:type :keyword]] ;; Single intent
+             [:vector [:map [:type :keyword]]]]] ;; Action sequence (steps)
+
+   ;; Expect: What should be true after action
+   [:expect
+    [:map
+     [:tree {:optional true} :any] ;; Expected tree structure
+     [:ops {:optional true}
+      [:map
+       [:includes {:optional true} [:vector :map]]
+       [:excludes {:optional true} [:vector :map]]
+       [:count {:optional true} :int]]]
+     [:session {:optional true} :map]
+     [:invariants-hold? {:optional true} :boolean]]]])
 
 (def registry-schema
   "Schema for the entire specs.edn registry.
@@ -117,11 +197,11 @@
   ([{:keys [priority type status tag]}]
    (cond->> @!registry
      priority (filter (fn [[_ fr]] (= (:priority fr) priority)))
-     type     (filter (fn [[_ fr]] (= (:type fr) type)))
-     status   (filter (fn [[_ fr]] (= (:status fr) status)))
-     tag      (filter (fn [[_ fr]] (contains? (set (:tags fr)) tag)))
-     true     (map first)
-     true     (into []))))
+     type (filter (fn [[_ fr]] (= (:type fr) type)))
+     status (filter (fn [[_ fr]] (= (:status fr) status)))
+     tag (filter (fn [[_ fr]] (contains? (set (:tags fr)) tag)))
+     true (map first)
+     true (into []))))
 
 (defn critical-frs
   "Shortcut: List all critical FRs.
@@ -150,6 +230,79 @@
                       {:fr-id id
                        :available-frs (keys @!registry)
                        :hint "Check resources/specs.edn for valid FR IDs"})))))
+
+;; ── Scenario Query API ────────────────────────────────────────────────────────
+
+(defn executable-scenario?
+  "Check if a scenario entry is executable (has setup/action/expect).
+   
+   Legacy scenarios are just keyword IDs: [:SCENARIO-01 :SCENARIO-02]
+   Executable scenarios are maps: {:SCENARIO-01 {:setup ... :action ... :expect ...}}"
+  [scenario-entry]
+  (and (map? scenario-entry)
+       (contains? scenario-entry :setup)
+       (contains? scenario-entry :action)
+       (contains? scenario-entry :expect)))
+
+(defn get-scenario
+  "Get a scenario by FR ID and scenario ID.
+   
+   Returns: The scenario map if executable, nil otherwise.
+   
+   Example:
+     (get-scenario :fr.edit/backspace-merge :BACKSPACE-MERGE-01)
+     ;=> {:name \"...\" :setup {...} :action {...} :expect {...}}"
+  [fr-id scenario-id]
+  (when-let [fr (get-fr fr-id)]
+    (when-let [scenarios (:scenarios fr)]
+      (when (map? scenarios)
+        (get scenarios scenario-id)))))
+
+(defn all-executable-scenarios
+  "Get all executable scenarios across all FRs.
+   
+   Returns: Sequence of [fr-id scenario-id scenario-map] tuples.
+   
+   Example:
+     (all-executable-scenarios)
+     ;=> [[:fr.edit/backspace-merge :MERGE-01 {:setup ...}] ...]"
+  []
+  (for [[fr-id fr] @!registry
+        :when (map? (:scenarios fr))
+        [scenario-id scenario] (:scenarios fr)
+        :when (executable-scenario? scenario)]
+    [fr-id scenario-id scenario]))
+
+(defn scenarios-by-fr
+  "Get all executable scenarios grouped by FR ID.
+   
+   Returns: Map of fr-id → scenario-map
+   
+   Example:
+     (scenarios-by-fr)
+     ;=> {:fr.edit/backspace-merge {:MERGE-01 {...} :MERGE-02 {...}}}"
+  []
+  (into {}
+        (for [[fr-id fr] @!registry
+              :let [scenarios (:scenarios fr)]
+              :when (and scenarios (map? scenarios))]
+          [fr-id scenarios])))
+
+(defn scenario-count
+  "Count total executable scenarios.
+   
+   Returns: Number of executable scenarios across all FRs."
+  []
+  (reduce + (for [[_ scenarios] (scenarios-by-fr)]
+              (count scenarios))))
+
+(defn has-executable-scenarios?
+  "Check if an FR has any executable scenarios (with setup/action/expect)."
+  [fr-id]
+  (let [fr (get-fr fr-id)
+        scenarios (:scenarios fr)]
+    (and (map? scenarios)
+         (some executable-scenario? (vals scenarios)))))
 
 ;; ── Auto-Load on Namespace Require ────────────────────────────────────────────
 
