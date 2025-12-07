@@ -658,7 +658,41 @@
   :status :active
   :version 1
   :tags [:editing :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-01"}
+  :spec-ref "LOGSEQ_SPEC.md §2.1 FR-NavEdit-01"
+  :level :gesture
+
+  :behaviors
+  [{:context "Arrow key pressed in edit mode, cursor not at boundary"
+    :behavior "Move cursor one position in arrow direction"
+    :scenario :ARROW-MOVE-WITHIN}
+   {:context "Arrow left at start of block"
+    :behavior "Navigate to end of previous block"
+    :scenario :ARROW-LEFT-BOUNDARY}
+   {:context "Arrow right at end of block"
+    :behavior "Navigate to start of next block"
+    :scenario :ARROW-RIGHT-BOUNDARY}]
+
+  :scenarios
+  {:ARROW-MOVE-WITHIN
+   {:name "Arrow right moves cursor within block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello" {:cursor 2}]]}
+    :action {:type :navigate-within-block :direction :right :block-id "a" :cursor-pos 2}
+    :expect {:tree [:doc [:a "Hello" {:cursor 3}]]}}
+
+   :ARROW-LEFT-BOUNDARY
+   {:name "Arrow left at start navigates to previous block"
+    :tags #{:boundary}
+    :setup {:tree [:doc [:a "Hello"] [:b "World" {:cursor 0}]]}
+    :action {:type :navigate-to-adjacent :direction :left :block-id "b" :cursor-pos 0}
+    :expect {:tree [:doc [:a "Hello" {:cursor 5}] [:b "World"]]}}
+
+   :ARROW-RIGHT-BOUNDARY
+   {:name "Arrow right at end navigates to next block"
+    :tags #{:boundary}
+    :setup {:tree [:doc [:a "Hello" {:cursor 5}] [:b "World"]]}
+    :action {:type :navigate-to-adjacent :direction :right :block-id "a" :cursor-pos 5}
+    :expect {:tree [:doc [:a "Hello"] [:b "World" {:cursor 0}]]}}}}
 
  :fr.edit/shift-arrow-text-select
  {:desc "Shift+Arrow extends text selection within block (seeds multi-block selection)"
@@ -743,7 +777,41 @@
   :status :active
   :version 1
   :tags [:editing :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-04"}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-04"
+  :level :gesture
+
+  :behaviors
+  [{:context "Option+Right in middle of word"
+    :behavior "Move cursor to end of current word"
+    :scenario :WORD-RIGHT-MID}
+   {:context "Option+Left in middle of word"
+    :behavior "Move cursor to start of current word"
+    :scenario :WORD-LEFT-MID}
+   {:context "Option+Right at end of word"
+    :behavior "Move cursor to end of next word"
+    :scenario :WORD-RIGHT-BOUNDARY}]
+
+  :scenarios
+  {:WORD-RIGHT-MID
+   {:name "Option+Right moves to end of current word"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello World" {:cursor 2}]]}
+    :action {:type :move-by-word :direction :right :block-id "a" :cursor-pos 2}
+    :expect {:tree [:doc [:a "Hello World" {:cursor 5}]]}}
+
+   :WORD-LEFT-MID
+   {:name "Option+Left moves to start of current word"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello World" {:cursor 8}]]}
+    :action {:type :move-by-word :direction :left :block-id "a" :cursor-pos 8}
+    :expect {:tree [:doc [:a "Hello World" {:cursor 6}]]}}
+
+   :WORD-RIGHT-BOUNDARY
+   {:name "Option+Right at word end moves to next word end"
+    :tags #{:boundary}
+    :setup {:tree [:doc [:a "Hello World" {:cursor 5}]]}
+    :action {:type :move-by-word :direction :right :block-id "a" :cursor-pos 5}
+    :expect {:tree [:doc [:a "Hello World" {:cursor 11}]]}}}}
 
  :fr.edit/kill-operations
  {:desc "Ctrl+K/U kill to end/beginning of line"
@@ -752,7 +820,41 @@
   :status :active
   :version 1
   :tags [:editing :emacs]
-  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-05"}
+  :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-05"
+  :level :gesture
+
+  :behaviors
+  [{:context "Ctrl+K in middle of line"
+    :behavior "Delete text from cursor to end of line"
+    :scenario :KILL-TO-END}
+   {:context "Ctrl+U in middle of line"
+    :behavior "Delete text from start of line to cursor"
+    :scenario :KILL-TO-START}
+   {:context "Ctrl+K at end of line"
+    :behavior "No-op (nothing to kill)"
+    :scenario :KILL-END-NOOP}]
+
+  :scenarios
+  {:KILL-TO-END
+   {:name "Ctrl+K kills text to end of line"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello World" {:cursor 5}]]}
+    :action {:type :kill-line :direction :forward :block-id "a" :cursor-pos 5}
+    :expect {:tree [:doc [:a "Hello" {:cursor 5}]]}}
+
+   :KILL-TO-START
+   {:name "Ctrl+U kills text from start to cursor"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello World" {:cursor 6}]]}
+    :action {:type :kill-line :direction :backward :block-id "a" :cursor-pos 6}
+    :expect {:tree [:doc [:a "World" {:cursor 0}]]}}
+
+   :KILL-END-NOOP
+   {:name "Ctrl+K at end of line is no-op"
+    :tags #{:boundary}
+    :setup {:tree [:doc [:a "Hello" {:cursor 5}]]}
+    :action {:type :kill-line :direction :forward :block-id "a" :cursor-pos 5}
+    :expect {:tree [:doc [:a "Hello" {:cursor 5}]]}}}}
 
  :fr.edit/newline-no-split
  {:desc "Shift+Enter inserts newline without splitting block"
@@ -1042,7 +1144,41 @@
   :status :active
   :version 1
   :tags [:state-machine :editing]
-  :spec-ref "LOGSEQ_SPEC.md §1.1 FR-Idle-02"}
+  :spec-ref "LOGSEQ_SPEC.md §1.1 FR-Idle-02"
+  :level :gesture
+
+  :behaviors
+  [{:context "Typing character in idle state with blocks"
+    :behavior "Enter edit mode on first visible block, insert character"
+    :scenario :TYPE-FROM-IDLE}
+   {:context "Typing character with single block selected"
+    :behavior "Enter edit mode on selected block, insert character"
+    :scenario :TYPE-FROM-SELECTION}
+   {:context "Typing character with multiple blocks selected"
+    :behavior "Replace all selected blocks with new block containing character"
+    :scenario :TYPE-REPLACES-MULTI}]
+
+  :scenarios
+  {:TYPE-FROM-IDLE
+   {:name "Typing from idle enters edit on first block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello"] [:b "World"]]}
+    :action {:type :type-to-edit :char "x"}
+    :expect {:tree [:doc [:a "xHello" {:cursor 1 :editing? true}] [:b "World"]]}}
+
+   :TYPE-FROM-SELECTION
+   {:name "Typing with block selected enters edit on that block"
+    :tags #{:happy-path}
+    :setup {:tree [:doc [:a "Hello"] [:b "World" {:selected? true}]]}
+    :action {:type :type-to-edit :char "y"}
+    :expect {:tree [:doc [:a "Hello"] [:b "yWorld" {:cursor 1 :editing? true}]]}}
+
+   :TYPE-REPLACES-MULTI
+   {:name "Typing replaces multi-block selection"
+    :tags #{:destructive}
+    :setup {:tree [:doc [:a "Hello" {:selected? true}] [:b "World" {:selected? true}]]}
+    :action {:type :type-to-edit :char "z"}
+    :expect {:tree [:doc [:new "z" {:cursor 1 :editing? true}]]}}}}
 
  :fr.state/selection-clears-edit
  {:desc "Entering selection mode clears editing state"
