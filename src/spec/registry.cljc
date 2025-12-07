@@ -132,12 +132,35 @@
 
 ;; ── Loading & Validation ──────────────────────────────────────────────────────
 
+(defn validate-scenarios!
+  "Validate all executable scenarios against scenario-schema.
+   Returns vector of validation errors, empty if all valid."
+  [registry]
+  (let [scenario-validator (m/validator scenario-schema)]
+    (vec
+     (for [[fr-id fr] registry
+           :when (map? (:scenarios fr))
+           [scenario-id scenario] (:scenarios fr)
+           :when (and (map? scenario)
+                      (contains? scenario :setup)
+                      (contains? scenario :action)
+                      (contains? scenario :expect))
+           :when (not (scenario-validator scenario))]
+       {:fr-id fr-id
+        :scenario-id scenario-id
+        :errors (me/humanize (m/explain scenario-schema scenario))}))))
+
 (defn validate-registry!
   "Validate embedded registry against Malli schema.
+   
+   Two-phase validation:
+   1. Validate overall registry structure (fr-schema for each FR)
+   2. Validate each executable scenario against scenario-schema
+   
    Throws if schema validation fails.
-
    Called automatically on namespace load."
   []
+  ;; Phase 1: Overall registry structure
   (let [validator (m/validator registry-schema)]
     (when-not (validator embedded-registry)
       (let [explanation (m/explain registry-schema embedded-registry)
@@ -145,8 +168,17 @@
         (throw (ex-info "Invalid FR registry (embedded data)"
                         {:errors humanized
                          :explanation explanation
-                         :hint "Check spec.registry embedded-registry definition"}))))
-    embedded-registry))
+                         :hint "Check spec.registry embedded-registry definition"})))))
+
+  ;; Phase 2: Validate each executable scenario
+  (let [scenario-errors (validate-scenarios! embedded-registry)]
+    (when (seq scenario-errors)
+      (throw (ex-info "Invalid scenarios in FR registry"
+                      {:scenario-errors scenario-errors
+                       :count (count scenario-errors)
+                       :hint "Check scenario structure: requires :name, :setup {:tree ...}, :action {:type ...}, :expect {:tree ...}"}))))
+
+  embedded-registry)
 
 (defn load-registry!
   "Validate and load embedded registry.
