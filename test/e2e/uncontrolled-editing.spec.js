@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable } from './helpers/index.js';
+import { pressKeyOnContentEditable, pressHome, pressEnd } from './helpers/index.js';
 
 /**
  * Helper: Enter edit mode on a block by double-clicking and waiting for contenteditable
@@ -129,8 +129,8 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await page.keyboard.press('Meta+A');
     await page.keyboard.type('Hello World Test');
 
-    // Go to start
-    await page.keyboard.press('Home');
+    // Go to start (cross-platform: Cmd+Left on Mac, Home on Windows/Linux)
+    await pressHome(page);
 
     // Arrow right to move cursor
     await page.keyboard.press('ArrowRight');
@@ -143,8 +143,8 @@ test.describe('Uncontrolled Editing Architecture', () => {
     const text = await editable.textContent();
     expect(text).toBe('HeXllo World Test');
 
-    // Go to end
-    await page.keyboard.press('End');
+    // Go to end (cross-platform: Cmd+Right on Mac, End on Windows/Linux)
+    await pressEnd(page);
 
     // Type at end
     await page.keyboard.type(' End');
