@@ -62,7 +62,7 @@
   "Calculate verification coverage percentage.
 
    Requires FR registry to be loaded:
-     (require '[dev.spec-registry :as fr])
+     (require '[spec.registry :as fr])
      (verification-coverage)
      ;=> {:total-frs 12, :verified-frs 5, :coverage-pct 41}"
   []
@@ -71,8 +71,8 @@
     ;; Note: Requires FR registry to be loaded for total count
     ;; This function is safe to call even if registry not loaded
     (try
-      (require 'dev.spec-registry)
-      (let [fr-ns (the-ns 'dev.spec-registry)
+      (require 'spec.registry)
+      (let [fr-ns (the-ns 'spec.registry)
             list-frs-fn (ns-resolve fr-ns 'list-frs)
             total-frs (count (list-frs-fn))]
         {:total-frs total-frs

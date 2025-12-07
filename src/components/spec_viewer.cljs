@@ -7,7 +7,7 @@
    - Before/After diff view for scenarios
    
    Usage: Add ?specs to URL to show spec viewer"
-  (:require [spec-registry :as fr]
+  (:require [spec.registry :as fr]
             [clojure.string :as str]
             [replicant.dom :as d]))
 

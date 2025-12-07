@@ -57,7 +57,7 @@
   "Generate full coverage matrix as markdown string."
   []
   (let [;; Require namespaces
-        _ (require '[spec-registry :as fr])
+        _ (require '[spec.registry :as fr])
         _ (require '[kernel.intent :as intent])
 
         ;; Get full audit
@@ -68,7 +68,7 @@
         priority-order {:critical 0 :high 1 :medium 2 :low 3}
         status-order {:missing 0 :implemented-untested 1 :verified-unimplemented 2 :complete 3}
         sorted-audit (sort-by (juxt (comp priority-order :priority)
-                                     (comp status-order :status))
+                                    (comp status-order :status))
                               audit)
 
         ;; Generate table

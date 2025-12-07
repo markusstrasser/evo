@@ -9,7 +9,7 @@
      bb test -n spec.scenario-test  ; Run via kaocha"
   (:require [clojure.test :refer [deftest testing is]]
             [spec.runner :as runner]
-            [spec-registry :as fr]))
+            [spec.registry :as fr]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Test Generation
