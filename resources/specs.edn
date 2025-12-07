@@ -846,7 +846,33 @@
   :status :active
   :version 1
   :tags [:clipboard]
-  :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-01"}
+  :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-01"
+
+  :behaviors
+  [{:context "Single block selected or editing"
+    :behavior "Copy block text to clipboard"
+    :scenario :COPY-SINGLE}
+   {:context "Multiple blocks selected"
+    :behavior "Copy all blocks with hierarchy (tabs for indentation)"
+    :scenario :COPY-MULTI-HIERARCHY}]
+
+  :scenarios
+  {:COPY-SINGLE
+   {:name "Copy single block text"
+    :setup {:tree [:doc
+                   [:a "Hello world" {:editing true}]]}
+    :action {:type :copy-block
+             :block-id "a"}
+    :expect {:clipboard-text "Hello world"}}
+
+   :COPY-MULTI-HIERARCHY
+   {:name "Copy multiple blocks preserves hierarchy"
+    :setup {:tree [:doc
+                   [:a "Parent" {:selected true}
+                    [:b "Child"]]
+                   [:c "Sibling"]]}
+    :action {:type :copy-selected}
+    :expect {:clipboard-text "- Parent\n\t- Child"}}}}
 
  :fr.clipboard/paste-multiline
  {:desc "Pasting multi-line text creates multiple blocks"
@@ -855,7 +881,40 @@
   :status :active
   :version 1
   :tags [:clipboard]
-  :spec-ref "LOGSEQ_SPEC.md §7.7 FR-Clipboard-02"}
+  :spec-ref "LOGSEQ_SPEC.md §7.7 FR-Clipboard-02"
+
+  :behaviors
+  [{:context "Paste text with no blank lines"
+    :behavior "Insert inline (newlines become literal \\n)"
+    :scenario :PASTE-INLINE}
+   {:context "Paste text with blank lines (\\n\\n)"
+    :behavior "Split into multiple blocks at blank lines"
+    :scenario :PASTE-SPLIT}]
+
+  :scenarios
+  {:PASTE-INLINE
+   {:name "Paste without blank lines stays inline"
+    :setup {:tree [:doc
+                   [:a "Before" {:cursor 6}]]}
+    :action {:type :paste-text
+             :block-id "a"
+             :cursor-pos 6
+             :pasted-text "Line1\nLine2"}
+    :expect {:tree [:doc
+                    [:a "BeforeLine1\nLine2" {:cursor 18}]]}}
+
+   :PASTE-SPLIT
+   {:name "Paste with blank lines creates multiple blocks"
+    :setup {:tree [:doc
+                   [:a "Start" {:cursor 5}]]}
+    :action {:type :paste-text
+             :block-id "a"
+             :cursor-pos 5
+             :pasted-text "Para1\n\nPara2\n\nPara3"}
+    :expect {:tree [:doc
+                    [:a "StartPara1"]
+                    [:new-1 "Para2"]
+                    [:new-2 "Para3" {:cursor :end}]]}}}}
 
  :fr.clipboard/block-reference
  {:desc "Cmd+Shift+C copies block reference ((id))"
@@ -883,7 +942,33 @@
   :status :active
   :version 1
   :tags [:pointer :folding]
-  :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-02"}
+  :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-02"
+
+  :behaviors
+  [{:context "Alt+Click on expanded block with children"
+    :behavior "Collapse the block (fold children)"
+    :scenario :ALT-CLICK-COLLAPSE}
+   {:context "Alt+Click on collapsed block"
+    :behavior "Expand the block (show children)"
+    :scenario :ALT-CLICK-EXPAND}]
+
+  :scenarios
+  {:ALT-CLICK-COLLAPSE
+   {:name "Alt+Click collapses expanded block"
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child"]]]}
+    :action {:type :alt-click-toggle-fold :block-id "a"}
+    :expect {:folded #{"a"}}}
+
+   :ALT-CLICK-EXPAND
+   {:name "Alt+Click expands collapsed block"
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child"]]]
+            :folded #{"a"}}
+    :action {:type :alt-click-toggle-fold :block-id "a"}
+    :expect {:folded #{}}}}}
 
  ;; UI/Commands
  :fr.ui/slash-palette
@@ -995,7 +1080,43 @@
   :status :active
   :version 1
   :tags [:folding]
-  :spec-ref "LOGSEQ_SPEC.md §6"}
+  :spec-ref "LOGSEQ_SPEC.md §6"
+
+  :behaviors
+  [{:context "Block with children, expanded"
+    :behavior "Collapse (hide children)"
+    :scenario :FOLD-COLLAPSE}
+   {:context "Block with children, collapsed"
+    :behavior "Expand (show children)"
+    :scenario :FOLD-EXPAND}
+   {:context "Block without children"
+    :behavior "No-op"
+    :scenario :FOLD-LEAF}]
+
+  :scenarios
+  {:FOLD-COLLAPSE
+   {:name "Collapse expanded block"
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child 1"]
+                    [:c "Child 2"]]]}
+    :action {:type :toggle-fold :block-id "a"}
+    :expect {:folded #{"a"}}}
+
+   :FOLD-EXPAND
+   {:name "Expand collapsed block"
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Child"]]]
+            :folded #{"a"}}
+    :action {:type :toggle-fold :block-id "a"}
+    :expect {:folded #{}}}
+
+   :FOLD-LEAF
+   {:name "Toggle fold on leaf is no-op"
+    :setup {:tree [:doc [:a "Leaf block"]]}
+    :action {:type :toggle-fold :block-id "a"}
+    :expect {:folded #{}}}}}
 
  :fr.fold/expand-collapse-all
  {:desc "Cmd+Shift+Up/Down expands/collapses all blocks in scope"
@@ -1004,7 +1125,33 @@
   :status :active
   :version 1
   :tags [:folding]
-  :spec-ref "LOGSEQ_SPEC.md §6"}
+  :spec-ref "LOGSEQ_SPEC.md §6"
+
+  :behaviors
+  [{:context "Cmd+Shift+Up"
+    :behavior "Collapse all blocks with children in current scope"
+    :scenario :COLLAPSE-ALL}
+   {:context "Cmd+Shift+Down"
+    :behavior "Expand all collapsed blocks in current scope"
+    :scenario :EXPAND-ALL}]
+
+  :scenarios
+  {:COLLAPSE-ALL
+   {:name "Collapse all expands"
+    :setup {:tree [:doc
+                   [:a "P1" [:b "C1"]]
+                   [:c "P2" [:d "C2"]]]}
+    :action {:type :fold-all}
+    :expect {:folded #{"a" "c"}}}
+
+   :EXPAND-ALL
+   {:name "Expand all collapsed"
+    :setup {:tree [:doc
+                   [:a "P1" [:b "C1"]]
+                   [:c "P2" [:d "C2"]]]
+            :folded #{"a" "c"}}
+    :action {:type :unfold-all}
+    :expect {:folded #{}}}}}
 
  :fr.zoom/focus-subtree
  {:desc "Cmd+. zooms into block as temporary root"
@@ -1013,7 +1160,22 @@
   :status :active
   :version 1
   :tags [:zoom :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §6"}
+  :spec-ref "LOGSEQ_SPEC.md §6"
+
+  :behaviors
+  [{:context "Block selected or editing"
+    :behavior "Set block as zoom root, hide all other top-level blocks"
+    :scenario :ZOOM-IN}]
+
+  :scenarios
+  {:ZOOM-IN
+   {:name "Zoom into block"
+    :setup {:tree [:doc
+                   [:a "Other"]
+                   [:b "Target" {:selected true}
+                    [:c "Child"]]]}
+    :action {:type :zoom-in :block-id "b"}
+    :expect {:zoom-root "b"}}}}
 
  :fr.zoom/restore-scope
  {:desc "Escape from zoom restores normal scope"
@@ -1022,7 +1184,22 @@
   :status :active
   :version 1
   :tags [:zoom]
-  :spec-ref "LOGSEQ_SPEC.md §6 FR-Scope-03"}
+  :spec-ref "LOGSEQ_SPEC.md §6 FR-Scope-03"
+
+  :behaviors
+  [{:context "Currently zoomed into a block"
+    :behavior "Clear zoom root, show all top-level blocks"
+    :scenario :ZOOM-OUT}]
+
+  :scenarios
+  {:ZOOM-OUT
+   {:name "Zoom out restores full view"
+    :setup {:tree [:doc
+                   [:a "Other"]
+                   [:b "Target"]]
+            :zoom-root "b"}
+    :action {:type :zoom-out}
+    :expect {:zoom-root nil}}}}
 
  ;; Structural (additional)
  :fr.struct/delete-block
@@ -1032,7 +1209,36 @@
   :status :active
   :version 1
   :tags [:structural]
-  :spec-ref "LOGSEQ_SPEC.md §5"}
+  :spec-ref "LOGSEQ_SPEC.md §5"
+
+  :behaviors
+  [{:context "Block with children deleted"
+    :behavior "Children move up to deleted block's parent"
+    :scenario :DELETE-REPARENT}
+   {:context "Leaf block deleted"
+    :behavior "Block removed, cursor moves to previous sibling"
+    :scenario :DELETE-LEAF}]
+
+  :scenarios
+  {:DELETE-REPARENT
+   {:name "Delete block re-parents children"
+    :setup {:tree [:doc
+                   [:a "Parent"
+                    [:b "Target"
+                     [:c "Child"]]]]}
+    :action {:type :delete-block :block-id "b"}
+    :expect {:tree [:doc
+                    [:a "Parent"
+                     [:c "Child"]]]}}
+
+   :DELETE-LEAF
+   {:name "Delete leaf block"
+    :setup {:tree [:doc
+                   [:a "First"]
+                   [:b "Second" {:selected true}]]}
+    :action {:type :delete-block :block-id "b"}
+    :expect {:tree [:doc
+                    [:a "First" {:selected true}]]}}}}
 
  :fr.struct/create-sibling
  {:desc "Create new block as sibling of current/selected"
@@ -1041,7 +1247,46 @@
   :status :active
   :version 1
   :tags [:structural]
-  :spec-ref "LOGSEQ_SPEC.md §5"}
+  :spec-ref "LOGSEQ_SPEC.md §5"
+
+  :behaviors
+  [{:context "Enter pressed mid-block"
+    :behavior "Split block at cursor, new block gets text after cursor"
+    :scenario :SPLIT-MID}
+   {:context "Enter pressed at end of block"
+    :behavior "Create empty sibling below"
+    :scenario :CREATE-BELOW}
+   {:context "Enter pressed at start of block"
+    :behavior "Create empty sibling above"
+    :scenario :CREATE-ABOVE}]
+
+  :scenarios
+  {:SPLIT-MID
+   {:name "Enter mid-block splits text"
+    :setup {:tree [:doc
+                   [:a "Hello World" {:cursor 5}]]}
+    :action {:type :enter-split :block-id "a" :cursor-pos 5}
+    :expect {:tree [:doc
+                    [:a "Hello"]
+                    [:new "World" {:cursor 0}]]}}
+
+   :CREATE-BELOW
+   {:name "Enter at end creates sibling below"
+    :setup {:tree [:doc
+                   [:a "Complete" {:cursor :end}]]}
+    :action {:type :enter-split :block-id "a" :cursor-pos 8}
+    :expect {:tree [:doc
+                    [:a "Complete"]
+                    [:new "" {:cursor 0}]]}}
+
+   :CREATE-ABOVE
+   {:name "Enter at start creates sibling above"
+    :setup {:tree [:doc
+                   [:a "Content" {:cursor 0}]]}
+    :action {:type :enter-split :block-id "a" :cursor-pos 0}
+    :expect {:tree [:doc
+                    [:new ""]
+                    [:a "Content" {:cursor 0}]]}}}}
 
  ;; Text Formatting
  :fr.format/bold-italic
@@ -1051,7 +1296,35 @@
   :status :active
   :version 1
   :tags [:formatting]
-  :spec-ref "LOGSEQ_SPEC.md §7.9"}
+  :spec-ref "LOGSEQ_SPEC.md §7.9"
+
+  :behaviors
+  [{:context "Text selected, Cmd+B pressed"
+    :behavior "Wrap selection in **markers**"
+    :scenario :BOLD-WRAP}
+   {:context "Text selected, Cmd+I pressed"
+    :behavior "Wrap selection in *markers*"
+    :scenario :ITALIC-WRAP}
+   {:context "Already formatted text selected"
+    :behavior "Remove markers (toggle off)"
+    :scenario :TOGGLE-OFF}]
+
+  :scenarios
+  {:BOLD-WRAP
+   {:name "Bold wraps selection"
+    :setup {:tree [:doc
+                   [:a "Hello world" {:selection [0 5]}]]}
+    :action {:type :format-text :format :bold :block-id "a" :start 0 :end 5}
+    :expect {:tree [:doc
+                    [:a "**Hello** world"]]}}
+
+   :ITALIC-WRAP
+   {:name "Italic wraps selection"
+    :setup {:tree [:doc
+                   [:a "Hello world" {:selection [6 11]}]]}
+    :action {:type :format-text :format :italic :block-id "a" :start 6 :end 11}
+    :expect {:tree [:doc
+                    [:a "Hello *world*"]]}}}}
 
  :fr.format/highlight-strikethrough
  {:desc "Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~"
@@ -1070,7 +1343,22 @@
   :status :active
   :version 1
   :tags [:pages :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §7.1"}
+  :spec-ref "LOGSEQ_SPEC.md §7.1"
+
+  :behaviors
+  [{:context "User selects different page"
+    :behavior "Change current page, clear zoom, maintain page-specific state"
+    :scenario :SWITCH-PAGE}]
+
+  :scenarios
+  {:SWITCH-PAGE
+   {:name "Switch page clears zoom"
+    :setup {:tree [:doc [:a "Content"]]
+            :session {:current-page "page-a"
+                      :zoom-root "block-1"}}
+    :action {:type :switch-page :page-id "page-b"}
+    :expect {:session {:current-page "page-b"
+                       :zoom-root nil}}}}}
 
  :fr.pages/follow-link
  {:desc "Cmd+Click or Cmd+O on page reference navigates to that page"
@@ -1079,7 +1367,21 @@
   :status :active
   :version 1
   :tags [:pages :links]
-  :spec-ref "LOGSEQ_SPEC.md §7.2"}
+  :spec-ref "LOGSEQ_SPEC.md §7.2"
+
+  :behaviors
+  [{:context "Cursor on [[Page Reference]]"
+    :behavior "Navigate to referenced page"
+    :scenario :FOLLOW-LINK}]
+
+  :scenarios
+  {:FOLLOW-LINK
+   {:name "Follow page link"
+    :setup {:tree [:doc
+                   [:a "See [[Other Page]]"]]
+            :current-page "page-a"}
+    :action {:type :follow-link :target "Other Page"}
+    :expect {:current-page "Other Page"}}}}
 
  ;; Smart Editing (additional)
  :fr.smart/checkbox-toggle
