@@ -8,6 +8,7 @@
    
    Usage: Add ?specs to URL to show spec viewer"
   (:require [spec.registry :as fr]
+            [kernel.intent :as intent]
             [clojure.string :as str]
             [replicant.dom :as d]))
 
@@ -552,11 +553,12 @@
         selected (:selected-fr state)
         show-all? (:show-all? state)
         all-frs (fr/list-frs)
-        ;; Filter to only FRs with executable scenarios unless show-all?
+        ;; Filter to only implemented FRs (cited by intents) unless show-all?
+        implemented-set (intent/implemented-frs)
         frs (if show-all?
               all-frs
-              (filter fr/has-executable-scenarios? all-frs))
-        executable-count (count (filter fr/has-executable-scenarios? all-frs))
+              (filter #(contains? implemented-set %) all-frs))
+        implemented-count (count implemented-set)
         by-priority (group-by #(:priority (fr/get-fr %)) frs)
         priority-order [:critical :high :medium :low]]
     [:div {:style (:sidebar styles)}
@@ -574,7 +576,7 @@
                      :font-family "'IBM Plex Mono', monospace"}}
        (if show-all?
          (str (count frs) " FRs · " (fr/scenario-count) " scenarios")
-         (str executable-count "/" (count all-frs) " with scenarios"))]
+         (str implemented-count "/" (count all-frs) " implemented"))]
 
       ;; Toggle
       [:div {:style {:margin-top "10px"
@@ -590,7 +592,7 @@
                          :cursor "pointer"
                          :font-family "'IBM Plex Mono', monospace"}
                  :on {:click (fn [_] (swap! !ui-state update :show-all? not))}}
-        (if show-all? "All FRs" "Testable")]]]
+        (if show-all? "All FRs" "Implemented")]]]
 
      ;; FR list by priority
      (for [priority priority-order
@@ -610,6 +612,7 @@
         (for [fr-id (sort fr-ids)]
           (let [fr (fr/get-fr fr-id)
                 is-selected (= fr-id selected)
+                is-implemented? (contains? implemented-set fr-id)
                 has-scenarios? (fr/has-executable-scenarios? fr-id)]
             ^{:key fr-id}
             [:div {:style (merge (:fr-item styles)
@@ -618,8 +621,11 @@
              [:div {:style {:display "flex" :align-items "center" :gap "6px"}}
               [:span {:style (:fr-title styles)}
                (name fr-id)]
-              (when has-scenarios?
-                [:span {:style {:color "#22c55e" :font-size "8px"}} "●"])]
+              ;; Show implementation status indicator
+              (when is-implemented?
+                [:span {:style {:color "#22c55e" :font-size "8px"}} "●"])
+              (when (and has-scenarios? (not is-implemented?))
+                [:span {:style {:color "#f59e0b" :font-size "8px"}} "○"])]
              [:div {:style (:fr-desc styles)}
               (let [desc (:desc fr)]
                 (if (> (count desc) 55)
