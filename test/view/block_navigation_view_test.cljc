@@ -28,7 +28,7 @@
                  :is-editing is-editing?
                  :on-intent (constantly nil)})))
 
-(deftest ^{:fr/ids #{:fr.nav/horizontal-boundary}}
+(deftest 
   scenario-nav-boundary-left-01-view
   ;; Scenario ID matches docs/specs/logseq_behaviors.md
   (let [db (nav-boundary-db)

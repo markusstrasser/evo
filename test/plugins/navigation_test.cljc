@@ -93,7 +93,7 @@
 
 ;; ── Navigate with cursor memory intent tests ──────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-down-with-cursor-memory-test
   (testing "Navigate down preserves cursor column position"
     (let [db (sample-db)
@@ -114,7 +114,7 @@
       ;; KEY TEST: Cursor at same column (after "foo ba")
       (is (= 6 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-up-with-cursor-memory-test
   (testing "Navigate up preserves cursor column position"
     (let [db (sample-db)
@@ -133,7 +133,7 @@
       ;; Cursor at position 4 (after "hell")
       (is (= 4 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-up-target-shorter-goes-to-end-test
   (testing "Arrow up with short target block goes to end"
     (let [db (-> (DB/empty-db)
@@ -151,7 +151,7 @@
       ;; Target "hi" is only 2 chars, cursor should be at end
       (is (= :end (get-in (:session-updates result) [:ui :cursor-position]))))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-with-empty-block-test
   (testing "Navigate from empty block"
     (let [db (-> (DB/empty-db)
@@ -175,7 +175,7 @@
       ;; Cursor should be at start of target (position 0)
       (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-to-empty-block-test
   (testing "Navigate to empty block"
     (let [db (-> (DB/empty-db)
@@ -193,7 +193,7 @@
       ;; Target is empty, cursor should be at start (0)
       (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-no-sibling-throws-test
   (testing "Arrow navigation with no sibling returns no-op (Logseq behavior)"
     (let [db (-> (DB/empty-db)

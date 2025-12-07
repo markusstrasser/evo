@@ -56,7 +56,7 @@
 
 ;; ── Step 2: From Editing → Select Block ─────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   from-editing-selects-block
   (testing "Cmd+A with all text selected exits edit and selects block"
     (let [db (make-nested-tree)
@@ -70,7 +70,7 @@
 
 ;; ── Step 3: Single Block Selected → Select Parent ──────────────────────────
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   single-block-selects-parent
   (testing "Cmd+A on single block selects parent"
     (let [db (make-nested-tree)
@@ -80,7 +80,7 @@
       (is (= #{"parent"} (get-in session-updates [:selection :nodes]))
           "Should select parent block"))))
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   root-block-selects-all-visible
   (testing "Cmd+A on root-level block selects all visible"
     (let [db (make-nested-tree)
@@ -93,7 +93,7 @@
 
 ;; ── Step 4: Multiple/Parent Selected → Select All Visible ──────────────────
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   multiple-blocks-selects-all-visible
   (testing "Cmd+A with multiple blocks selected selects all visible"
     (let [db (make-nested-tree)
@@ -105,7 +105,7 @@
 
 ;; ── Idle State → Select First Block ─────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   idle-state-selects-first-block
   (testing "Cmd+A from idle state selects first visible block"
     (let [db (make-nested-tree)
@@ -117,7 +117,7 @@
 
 ;; ── Full Cycle Test ─────────────────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.selection/cmd-a-cycle}}
+(deftest 
   full-cmd-a-cycle
   (testing "Complete Cmd+A cycle: edit → block → parent → all"
     (let [db (make-nested-tree)]

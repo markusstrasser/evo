@@ -94,7 +94,7 @@
 
 ;; ── FR-Edit-01: Enter Behavior ───────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.edit/enter}}
+(deftest 
   golden-enter-creates-sibling
   (testing "Enter on block creates new sibling"
     (let [db (setup-simple-doc)
@@ -116,7 +116,7 @@
         (is (= (inc a-idx) new-idx)
             "New block should be positioned after current block")))))
 
-(deftest ^{:fr/ids #{:fr.edit/enter :fr.edit/list-formatting}}
+(deftest 
   golden-enter-empty-list-unformats
   (testing "Enter on empty list item unformats and creates peer"
     (let [db (:db (tx/interpret (db/empty-db)
@@ -143,7 +143,7 @@
 
 ;; ── FR-Edit-07: Backspace Merge ──────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.edit/backspace-merge}}
+(deftest 
   golden-backspace-merge-text
   (testing "Backspace at start of block merges text with previous"
     (let [db (setup-merge-doc)
@@ -161,7 +161,7 @@
       (is (= :trash (q/parent-of db' "b"))
           "Merged block should be in trash"))))
 
-(deftest ^{:fr/ids #{:fr.edit/backspace-merge}}
+(deftest 
   golden-backspace-merge-reparents-children
   (testing "Backspace merge reparents children of merged block"
     (let [db (setup-merge-doc)
@@ -180,7 +180,7 @@
 
 ;; ── FR-Move-02: Climb/Descend Movement ───────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.struct/move-climb}}
+(deftest 
   golden-climb-out-first-child
   (testing "Mod+Shift+Up on first child climbs out to before parent"
     (let [db (setup-nested-doc)
@@ -200,7 +200,7 @@
         (is (< child1-idx parent-idx)
             "Climbed block should be positioned before parent")))))
 
-(deftest ^{:fr/ids #{:fr.struct/move-descend}}
+(deftest 
   golden-descend-into-last-child
   (testing "Mod+Shift+Down on last child descends into parent's next sibling"
     (let [db (setup-nested-doc)
@@ -218,7 +218,7 @@
         (is (= "child2" (first uncle-children))
             "Descended block should be first child")))))
 
-(deftest ^{:fr/ids #{:fr.struct/move-climb}}
+(deftest 
   golden-climb-boundary-at-doc-level
   (testing "Climb at doc level is a no-op"
     (let [db (setup-simple-doc)
@@ -234,7 +234,7 @@
 
 ;; ── FR-Nav: Selection & Navigation ───────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.nav/selection-move}}
+(deftest 
   golden-selection-nav-no-structural-changes
   (testing "Selection + nav up/down doesn't change document structure"
     (let [db (setup-simple-doc)
@@ -261,7 +261,7 @@
              (get-in db [:children-by-parent]))
           "Navigation should not modify tree structure"))))
 
-(deftest ^{:fr/ids #{:fr.nav/selection-state}}
+(deftest 
   golden-selection-state-updates
   (testing "Selection state updates correctly during navigation"
     (let [db (setup-simple-doc)

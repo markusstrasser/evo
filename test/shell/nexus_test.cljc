@@ -46,7 +46,7 @@
 
 ;; ── Action Purity Tests ───────────────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-up-is-pure
   (testing "navigate-up action is pure (same input → same output)"
     (let [state (sample-db)
@@ -56,7 +56,7 @@
       (is (= result1 result2)
           "Multiple calls with same args should return identical results"))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-down-is-pure
   (testing "navigate-down action is pure"
     (let [state (sample-db)
@@ -65,7 +65,7 @@
           result2 (nexus/navigate-down state payload)]
       (is (= result1 result2)))))
 
-(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+(deftest 
   extend-selection-prev-is-pure
   (testing "extend-selection-prev action is pure"
     (let [state (sample-db)
@@ -74,7 +74,7 @@
           result2 (nexus/extend-selection-prev state payload)]
       (is (= result1 result2)))))
 
-(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+(deftest 
   extend-selection-next-is-pure
   (testing "extend-selection-next action is pure"
     (let [state (sample-db)
@@ -83,7 +83,7 @@
           result2 (nexus/extend-selection-next state payload)]
       (is (= result1 result2)))))
 
-(deftest ^{:fr/ids #{:fr.edit/smart-split}}
+(deftest 
   smart-split-is-pure
   (testing "smart-split action is pure"
     (let [state (sample-db)
@@ -102,7 +102,7 @@
 
 ;; ── Action Structure Tests ────────────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-up-returns-valid-effects
   (testing "navigate-up returns list of valid effects"
     (let [state (sample-db)
@@ -114,7 +114,7 @@
       (is (some #(= :effects/log-devtools (first %)) result)
           "Should include log-devtools effect"))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-up-dispatches-correct-intent
   (testing "navigate-up produces :navigate-with-cursor-memory intent"
     (let [state (sample-db)
@@ -126,7 +126,7 @@
       (is (= "b" (:current-block-id intent)) "Should preserve block-id as current-block-id")
       (is (= :up (:direction intent)) "Should set direction to :up"))))
 
-(deftest ^{:fr/ids #{:fr.nav/vertical-cursor-memory}}
+(deftest 
   navigate-down-dispatches-correct-intent
   (testing "navigate-down produces :navigate-with-cursor-memory intent"
     (let [state (sample-db)
@@ -137,7 +137,7 @@
       (is (= "b" (:current-block-id intent)) "Should preserve block-id as current-block-id")
       (is (= :down (:direction intent)) "Should set direction to :down"))))
 
-(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+(deftest 
   extend-selection-prev-dispatches-correct-intent
   (testing "extend-selection-prev produces :selection intent"
     (let [state (sample-db)
@@ -147,7 +147,7 @@
       (is (= :selection (:type intent)))
       (is (= :extend-prev (:mode intent)) "Should extend selection upward"))))
 
-(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+(deftest 
   extend-selection-next-dispatches-correct-intent
   (testing "extend-selection-next produces :selection intent"
     (let [state (sample-db)
@@ -157,7 +157,7 @@
       (is (= :selection (:type intent)))
       (is (= :extend-next (:mode intent)) "Should extend selection downward"))))
 
-(deftest ^{:fr/ids #{:fr.edit/smart-split}}
+(deftest 
   smart-split-dispatches-correct-intent
   (testing "smart-split produces :context-aware-enter intent"
     (let [state (sample-db)
