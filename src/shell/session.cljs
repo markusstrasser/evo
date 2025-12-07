@@ -152,13 +152,36 @@
   []
   (swap-session! assoc-in [:ui :pending-selection] nil))
 
+(defn- deep-merge-session
+  "Deep merge for session state with proper handling of:
+   - Maps: recursively merge
+   - Sets: union (not replace)
+   - Scalars: new value wins
+   
+   This prevents clobbering of nested sets like :selection :nodes."
+  [base updates]
+  (cond
+    ;; Both maps: recursive merge
+    (and (map? base) (map? updates))
+    (merge-with deep-merge-session base updates)
+
+    ;; Both sets: union
+    (and (set? base) (set? updates))
+    (clojure.set/union base updates)
+
+    ;; Otherwise: new value wins (including nil to clear)
+    :else updates))
+
 (defn merge-session-updates!
   "Merge session updates map into current session.
    
    Used by kernel.api and shell runtime for bulk session state updates.
-   Uses merge-with merge for nested maps."
+   Uses deep-merge-session for proper handling of:
+   - Nested maps (recursive merge)
+   - Sets like :selection :nodes (union, not replace)
+   - Scalars (new value overwrites)"
   [updates]
-  (swap-session! #(merge-with merge % updates)))
+  (swap-session! #(deep-merge-session % updates)))
 
 ;; ── Buffer API (high-velocity, no render trigger) ────────────────────────────
 
