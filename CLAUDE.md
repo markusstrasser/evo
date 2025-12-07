@@ -437,17 +437,22 @@ bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 Playwright's keyboard API **DOES** work on contenteditable, but you must use the keyboard helpers and proper syntax:
 
 ```javascript
-import { pressKeyOnContentEditable, pressKeyCombo } from './helpers/keyboard.js';
+import { 
+  pressKeyOnContentEditable, pressKeyCombo,
+  pressHome, pressEnd,  // Cross-platform Home/End
+  pressWordLeft, pressWordRight  // Cross-platform word navigation
+} from './helpers/keyboard.js';
 
 // ✅ CORRECT: Use keyboard helpers
 await pressKeyOnContentEditable(page, 'Enter');
 await pressKeyCombo(page, 'ArrowDown', ['Shift']);  // Shift+ArrowDown
+await pressHome(page);  // Cmd+Left on Mac, Home on Windows/Linux
 
 // ❌ WRONG: Playwright's modifiers option doesn't work!
 await page.keyboard.press('ArrowDown', { modifiers: ['Shift'] });  // Modifiers ignored!
 
-// ✅ WORKS: Playwright's '+' notation (but prefer helper for focus checks)
-await page.keyboard.press('Shift+ArrowDown');
+// ❌ WRONG: Home/End don't work on macOS!
+await page.keyboard.press('Home');  // Scrolls page on Mac, doesn't move cursor
 ```
 
 **Why keyboard helpers?**
