@@ -192,115 +192,141 @@
                      :animation "blink 1s step-end infinite"}} ""]
      [:span after]]))
 
-(defn- outline-block
-  "Render a single block in outline style with visual indicators."
-  [entry depth is-last?]
+(defn- extract-block-info
+  "Extract block info from a tree entry for row-based comparison."
+  [entry]
   (when (and (vector? entry) (seq entry))
     (let [[id text & rest] entry
           attrs (first (filter map? rest))
-          children (filter vector? rest)
-          ;; Extract state from attrs
-          cursor-pos (:cursor attrs)
-          selected? (:selected? attrs)
-          focus? (:focus? attrs)
-          anchor? (:anchor? attrs)
-          folded? (:folded? attrs)
-          ;; Visual styling
-          indent-px (* depth 20)
-          has-children? (seq children)]
-      [:div {:style {:position "relative"}}
-       ;; The block row
-       [:div {:style {:display "flex"
-                      :align-items "flex-start"
-                      :padding "4px 0"
-                      :padding-left (str indent-px "px")
-                      :background (cond
-                                    focus? "rgba(59, 130, 246, 0.15)"
-                                    selected? "rgba(59, 130, 246, 0.08)"
-                                    :else "transparent")
-                      :border-radius "4px"
-                      :margin "1px 0"}}
-        ;; Tree connector lines
-        (when (pos? depth)
-          [:span {:style {:color "#3f3f46"
-                          :margin-right "6px"
-                          :font-size "12px"}}
-           (if is-last? "└" "├")])
-        ;; Bullet point
-        [:span {:style {:color (cond
-                                 cursor-pos "#3b82f6" ; editing = blue
-                                 selected? "#60a5fa" ; selected = lighter blue
-                                 :else "#52525b") ; normal = gray
-                        :margin-right "8px"
-                        :font-size "8px"
-                        :line-height "1.8"}}
-         (if folded? "▸" "•")]
-        ;; Block ID badge
-        [:span {:style {:background "#27272a"
-                        :color "#a1a1aa"
-                        :padding "1px 5px"
-                        :border-radius "3px"
-                        :font-size "10px"
-                        :margin-right "8px"
-                        :font-family "'IBM Plex Mono', monospace"}}
-         (name id)]
-        ;; Block text with optional cursor
-        [:span {:style {:color "#e4e4e7"
-                        :flex "1"}}
-         (if cursor-pos
-           (render-cursor-in-text (or text "") cursor-pos)
-           (or text ""))]
-        ;; State indicators on the right
-        [:span {:style {:display "flex" :gap "4px" :margin-left "8px"}}
-         (when cursor-pos
-           [:span {:style {:background "#1e40af"
-                           :color "#93c5fd"
-                           :padding "1px 6px"
-                           :border-radius "3px"
-                           :font-size "9px"
-                           :font-family "'IBM Plex Mono', monospace"}}
-            (if (= cursor-pos :end) "end" (str "pos:" cursor-pos))])
-         (when focus?
-           [:span {:style {:background "#166534"
-                           :color "#86efac"
-                           :padding "1px 6px"
-                           :border-radius "3px"
-                           :font-size "9px"}}
-            "focus"])
-         (when (and selected? (not focus?))
-           [:span {:style {:background "#1e3a5f"
-                           :color "#7dd3fc"
-                           :padding "1px 6px"
-                           :border-radius "3px"
-                           :font-size "9px"}}
-            "sel"])
-         (when anchor?
-           [:span {:style {:background "#4c1d95"
-                           :color "#c4b5fd"
-                           :padding "1px 6px"
-                           :border-radius "3px"
-                           :font-size "9px"}}
-            "anchor"])]]
-       ;; Render children
-       (when (seq children)
-         [:div
-          (for [[i child] (map-indexed vector children)]
-            ^{:key i}
-            (outline-block child (inc depth) (= i (dec (count children)))))])])))
+          children (filter vector? rest)]
+      {:id id
+       :text (or text "")
+       :cursor (:cursor attrs)
+       :selected? (:selected? attrs)
+       :focus? (:focus? attrs)
+       :anchor? (:anchor? attrs)
+       :folded? (:folded? attrs)
+       :children (mapv extract-block-info children)})))
+
+(defn- flatten-blocks
+  "Flatten tree into sequence of [depth block-info] pairs."
+  [block-info depth]
+  (when block-info
+    (cons [depth block-info]
+          (mapcat #(flatten-blocks % (inc depth)) (:children block-info)))))
+
+(defn- render-block-cell
+  "Render a single block cell (used in both before/after columns)."
+  [block-info depth]
+  (let [{:keys [id text cursor selected? focus? anchor? folded?]} block-info
+        indent-px (* depth 16)]
+    [:div {:style {:display "flex"
+                   :align-items "center"
+                   :padding "3px 8px"
+                   :padding-left (str (+ 8 indent-px) "px")
+                   :background (cond
+                                 focus? "rgba(59, 130, 246, 0.12)"
+                                 selected? "rgba(59, 130, 246, 0.06)"
+                                 :else "transparent")
+                   :min-height "26px"}}
+     ;; Bullet
+     [:span {:style {:color (cond cursor "#3b82f6" selected? "#60a5fa" :else "#52525b")
+                     :margin-right "8px"
+                     :font-size "6px"}}
+      (if folded? "▸" "•")]
+     ;; Block ID
+     [:span {:style {:background "#27272a"
+                     :color "#71717a"
+                     :padding "1px 4px"
+                     :border-radius "2px"
+                     :font-size "9px"
+                     :margin-right "8px"
+                     :min-width "14px"
+                     :text-align "center"}}
+      (name id)]
+     ;; Text with cursor
+     [:span {:style {:color "#d4d4d8" :flex "1" :font-size "12px"}}
+      (if cursor
+        (render-cursor-in-text text cursor)
+        text)]
+     ;; State badges (compact)
+     (when (or cursor focus? selected? anchor?)
+       [:span {:style {:display "flex" :gap "3px" :margin-left "6px"}}
+        (when cursor
+          [:span {:style {:background "#1e3a8a" :color "#93c5fd" :padding "0 4px"
+                          :border-radius "2px" :font-size "8px"}}
+           (if (= cursor :end) "▮end" (str "▮" cursor))])
+        (when focus?
+          [:span {:style {:background "#166534" :color "#86efac" :padding "0 4px"
+                          :border-radius "2px" :font-size "8px"}} "focus"])
+        (when (and selected? (not focus?))
+          [:span {:style {:background "#1e3a5f" :color "#7dd3fc" :padding "0 4px"
+                          :border-radius "2px" :font-size "8px"}} "sel"])
+        (when anchor?
+          [:span {:style {:background "#4c1d95" :color "#c4b5fd" :padding "0 4px"
+                          :border-radius "2px" :font-size "8px"}} "anchor"])])]))
 
 (defn TreeVisualizer
-  "Visualize a tree DSL structure as an outline (like the actual editor UI)."
+  "Visualize a tree DSL structure as an outline."
   [{:keys [tree]}]
   (when tree
-    (let [[_root & entries] tree]
-      [:div {:style {:font-family "'IBM Plex Mono', monospace"
-                     :font-size "12px"
-                     :line-height "1.5"}}
-       ;; Add CSS for cursor blink animation
+    (let [[_root & entries] tree
+          blocks (mapcat #(flatten-blocks (extract-block-info %) 0) entries)]
+      [:div {:style {:font-family "'IBM Plex Mono', monospace"}}
        [:style "@keyframes blink { 50% { opacity: 0; } }"]
-       (for [[i entry] (map-indexed vector entries)]
+       (for [[i [depth block-info]] (map-indexed vector blocks)]
          ^{:key i}
-         (outline-block entry 0 (= i (dec (count entries)))))])))
+         (render-block-cell block-info depth))])))
+
+(defn DiffView
+  "Row-aligned before/after comparison - minimizes eye movement."
+  [{:keys [before after]}]
+  (let [before-blocks (when before
+                        (let [[_root & entries] before]
+                          (vec (mapcat #(flatten-blocks (extract-block-info %) 0) entries))))
+        after-blocks (when after
+                       (let [[_root & entries] after]
+                         (vec (mapcat #(flatten-blocks (extract-block-info %) 0) entries))))
+        max-rows (max (count before-blocks) (count after-blocks))]
+    [:div {:style {:font-family "'IBM Plex Mono', monospace"
+                   :font-size "12px"}}
+     [:style "@keyframes blink { 50% { opacity: 0; } }"]
+     ;; Header row
+     [:div {:style {:display "grid"
+                    :grid-template-columns "1fr 24px 1fr"
+                    :border-bottom "1px solid #27272a"
+                    :padding-bottom "6px"
+                    :margin-bottom "6px"}}
+      [:div {:style {:color "#71717a" :font-size "10px" :text-transform "uppercase"
+                     :letter-spacing "0.5px" :padding-left "8px"}}
+       "Before"]
+      [:div {:style {:color "#3f3f46" :text-align "center"}} "→"]
+      [:div {:style {:color "#22c55e" :font-size "10px" :text-transform "uppercase"
+                     :letter-spacing "0.5px" :padding-left "8px"}}
+       "After"]]
+     ;; Data rows - aligned horizontally
+     (for [i (range max-rows)]
+       (let [[before-depth before-block] (get before-blocks i)
+             [after-depth after-block] (get after-blocks i)]
+         ^{:key i}
+         [:div {:style {:display "grid"
+                        :grid-template-columns "1fr 24px 1fr"
+                        :border-bottom "1px solid #1f1f23"}}
+          ;; Before cell
+          [:div {:style {:border-right "1px solid #27272a"}}
+           (when before-block
+             (render-block-cell before-block before-depth))]
+          ;; Arrow column
+          [:div {:style {:display "flex"
+                         :align-items "center"
+                         :justify-content "center"
+                         :color "#3f3f46"
+                         :font-size "10px"}}
+           (when (or before-block after-block) "→")]
+          ;; After cell
+          [:div
+           (when after-block
+             (render-block-cell after-block after-depth))]]))]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Scenario Card
@@ -309,68 +335,52 @@
 ;; run-scenario! removed - scenarios are for documentation, not interactive execution
 
 (defn ScenarioCard
-  "Render a scenario with Before/After diff view."
+  "Render a scenario with row-aligned before/after diff view."
   [{:keys [scenario-id scenario]}]
   (let [{:keys [setup action expect]} scenario
-        ;; Safe name extraction - handles keywords, strings, or nil
         safe-name (fn [x] (cond (keyword? x) (name x)
                                 (string? x) x
                                 :else (str x)))
-        ;; Check if this is a complete executable scenario
         executable? (and setup action expect)]
     [:div {:style (:scenario-card styles)}
-     ;; Header with green dot for executable scenarios
+     ;; Header
      [:div {:style (:scenario-header styles)}
       [:div {:style {:display "flex" :align-items "center" :gap "10px"}}
-       ;; Green dot indicator
        (when executable?
          [:span {:style {:color "#22c55e" :font-size "10px"}} "●"])
-       [:span {:style {:font-weight "600"
-                       :font-size "13px"
-                       :color "#fafafa"
+       [:span {:style {:font-weight "600" :font-size "13px" :color "#fafafa"
                        :font-family "'IBM Plex Mono', monospace"}}
         (safe-name scenario-id)]
        [:span {:style {:color "#71717a" :font-size "12px"}}
         (:name scenario)]]
-      ;; Tags on right side
       (when-let [tags (:tags scenario)]
         [:div {:style {:display "flex" :gap "4px"}}
          (for [tag (if (set? tags) (sort tags) tags)]
            ^{:key (str tag)}
            [:span {:style (:tag styles)} (safe-name tag)])])]
 
-     ;; Before/After diff view (only for complete scenarios)
+     ;; Row-aligned diff view (Tufte-style: minimal saccades)
      (when executable?
        [:div
-        [:div {:style (:diff-container styles)}
-         ;; BEFORE panel
-         [:div {:style (merge (:diff-panel styles) (:diff-panel-before styles))}
-          [:div {:style (merge (:diff-label styles) (:diff-label-before styles))}
-           [:span {:style {:opacity "0.6"}} "○"]
-           "BEFORE"]
-          (TreeVisualizer {:tree (:tree setup)})]
+        [:div {:style {:padding "12px 16px"}}
+         (DiffView {:before (:tree setup) :after (:tree expect)})]
 
-         ;; AFTER panel  
-         [:div {:style (merge (:diff-panel styles) (:diff-panel-after styles))}
-          [:div {:style (merge (:diff-label styles) (:diff-label-after styles))}
-           [:span {:style {:opacity "0.8"}} "●"]
-           "AFTER"]
-          (TreeVisualizer {:tree (:tree expect)})]]
-
-        ;; Action banner
-        [:div {:style (:action-banner styles)}
-         [:span {:style {:color "#a5b4fc" :font-weight "600"}} "ACTION"]
-         [:span {:style (:action-arrow styles)} "→"]
-         [:span {:style {:color "#e0e7ff"}}
-          (str ":" (safe-name (:type action)))
-          (when-let [bid (:block-id action)]
-            (str " on :" bid))
-          (when-let [dir (:direction action)]
-            (str " " (safe-name dir)))
-          (when-let [pos (:cursor-pos action)]
-            (str " at pos " pos))
-          (when-let [pos (:current-cursor-pos action)]
-            (str " from col " pos))]]])]))
+        ;; Compact action banner
+        [:div {:style {:background "linear-gradient(90deg, #312e81 0%, #3730a3 100%)"
+                       :padding "8px 16px"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :font-size "11px"
+                       :color "#c7d2fe"
+                       :display "flex"
+                       :align-items "center"
+                       :gap "8px"}}
+         [:span {:style {:color "#818cf8" :font-weight "600" :font-size "9px"
+                         :text-transform "uppercase" :letter-spacing "0.5px"}}
+          "action"]
+         [:span {:style {:color "#6366f1"}} "→"]
+         [:span (str ":" (safe-name (:type action))
+                     (when-let [dir (:direction action)] (str " " (safe-name dir)))
+                     (when-let [pos (:current-cursor-pos action)] (str " from col " pos)))]]])]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Detail Panel
