@@ -44,8 +44,8 @@
 ;; We just need to trigger a re-render when our state changes
 (defonce _watcher
   (add-watch !ui-state :render
-             (fn [_ _ old new]
-               (when (not= old new)
+             (fn [_ _ old-state new-state]
+               (when (not= old-state new-state)
                  (request-render!)))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
@@ -198,9 +198,9 @@
   "Extract block info from a tree entry for row-based comparison."
   [entry]
   (when (and (vector? entry) (seq entry))
-    (let [[id text & rest] entry
-          attrs (first (filter map? rest))
-          children (filter vector? rest)]
+    (let [[id text & remaining] entry
+          attrs (first (filter map? remaining))
+          children (filter vector? remaining)]
       {:id id
        :text (or text "")
        :cursor (:cursor attrs)
@@ -284,10 +284,10 @@
   "Render tree DSL with syntax highlighting (raw Clojure notation)."
   [tree depth]
   (when (and (vector? tree) (seq tree))
-    (let [[tag & rest] tree
-          text (first (filter string? rest))
-          attrs (first (filter map? rest))
-          children (filter vector? rest)
+    (let [[tag & remaining] tree
+          text (first (filter string? remaining))
+          attrs (first (filter map? remaining))
+          children (filter vector? remaining)
           indent (apply str (repeat (* depth 2) " "))
           kw-color "#c678dd"
           str-color "#98c379"

@@ -257,12 +257,12 @@
 
 (defn format-result
   "Format a single scenario result for display."
-  [{:keys [pass? fr-id scenario-id name diff]}]
+  [{:keys [pass? fr-id scenario-id diff] scenario-name :name}]
   (if pass?
     (str "✓ " (clojure.core/name fr-id) "/" (clojure.core/name scenario-id)
-         (when name (str " - " name)))
+         (when scenario-name (str " - " scenario-name)))
     (str "✗ " (clojure.core/name fr-id) "/" (clojure.core/name scenario-id)
-         (when name (str " - " name))
+         (when scenario-name (str " - " scenario-name))
          "\n  Diff: " (pr-str diff))))
 
 (defn format-summary

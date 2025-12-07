@@ -1042,7 +1042,7 @@
     :setup {:tree [:doc
                    [:a "Parent"
                     [:b "Child"]]]}
-    :action {:type :alt-click-toggle-fold :block-id "a"}
+    :action {:type :toggle-fold :block-id "a"}
     :expect {:folded #{"a"}}}
 
    :ALT-CLICK-EXPAND
@@ -1051,7 +1051,7 @@
                    [:a "Parent"
                     [:b "Child"]]]
             :folded #{"a"}}
-    :action {:type :alt-click-toggle-fold :block-id "a"}
+    :action {:type :toggle-fold :block-id "a"}
     :expect {:folded #{}}}}}
 
  ;; UI/Commands
@@ -1249,7 +1249,7 @@
     :setup {:tree [:doc
                    [:a "P1" [:b "C1"]]
                    [:c "P2" [:d "C2"]]]}
-    :action {:type :fold-all}
+    :action {:type :toggle-all-folds}
     :expect {:folded #{"a" "c"}}}
 
    :EXPAND-ALL
@@ -1258,7 +1258,7 @@
                    [:a "P1" [:b "C1"]]
                    [:c "P2" [:d "C2"]]]
             :folded #{"a" "c"}}
-    :action {:type :unfold-all}
+    :action {:type :expand-all}
     :expect {:folded #{}}}}}
 
  :fr.zoom/focus-subtree
@@ -1334,7 +1334,7 @@
                    [:a "Parent"
                     [:b "Target"
                      [:c "Child"]]]]}
-    :action {:type :delete-block :block-id "b"}
+    :action {:type :delete :id "b"}
     :expect {:tree [:doc
                     [:a "Parent"
                      [:c "Child"]]]}}
@@ -1344,7 +1344,7 @@
     :setup {:tree [:doc
                    [:a "First"]
                    [:b "Second" {:selected true}]]}
-    :action {:type :delete-block :block-id "b"}
+    :action {:type :delete :id "b"}
     :expect {:tree [:doc
                     [:a "First" {:selected true}]]}}}}
 
@@ -1373,7 +1373,7 @@
    {:name "Enter mid-block splits text"
     :setup {:tree [:doc
                    [:a "Hello World" {:cursor 5}]]}
-    :action {:type :enter-split :block-id "a" :cursor-pos 5}
+    :action {:type :smart-split :block-id "a" :cursor-pos 5}
     :expect {:tree [:doc
                     [:a "Hello"]
                     [:new "World" {:cursor 0}]]}}
@@ -1382,7 +1382,7 @@
    {:name "Enter at end creates sibling below"
     :setup {:tree [:doc
                    [:a "Complete" {:cursor :end}]]}
-    :action {:type :enter-split :block-id "a" :cursor-pos 8}
+    :action {:type :smart-split :block-id "a" :cursor-pos 8}
     :expect {:tree [:doc
                     [:a "Complete"]
                     [:new "" {:cursor 0}]]}}
@@ -1391,7 +1391,7 @@
    {:name "Enter at start creates sibling above"
     :setup {:tree [:doc
                    [:a "Content" {:cursor 0}]]}
-    :action {:type :enter-split :block-id "a" :cursor-pos 0}
+    :action {:type :smart-split :block-id "a" :cursor-pos 0}
     :expect {:tree [:doc
                     [:new ""]
                     [:a "Content" {:cursor 0}]]}}}}
@@ -1422,7 +1422,7 @@
    {:name "Bold wraps selection"
     :setup {:tree [:doc
                    [:a "Hello world" {:selection [0 5]}]]}
-    :action {:type :format-text :format :bold :block-id "a" :start 0 :end 5}
+    :action {:type :format-selection :format :bold :block-id "a" :start 0 :end 5}
     :expect {:tree [:doc
                     [:a "**Hello** world"]]}}
 
@@ -1430,7 +1430,7 @@
    {:name "Italic wraps selection"
     :setup {:tree [:doc
                    [:a "Hello world" {:selection [6 11]}]]}
-    :action {:type :format-text :format :italic :block-id "a" :start 6 :end 11}
+    :action {:type :format-selection :format :italic :block-id "a" :start 6 :end 11}
     :expect {:tree [:doc
                     [:a "Hello *world*"]]}}}}
 
@@ -1488,7 +1488,7 @@
     :setup {:tree [:doc
                    [:a "See [[Other Page]]"]]
             :current-page "page-a"}
-    :action {:type :follow-link :target "Other Page"}
+    :action {:type :follow-link-under-cursor :block-id "a"}
     :expect {:current-page "Other Page"}}}}
 
  ;; Smart Editing (additional)
