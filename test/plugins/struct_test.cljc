@@ -79,7 +79,7 @@
       (is (= ["a"] (get-in res [:db :children-by-parent :trash]))
           "Node 'a' should appear in trash"))))
 
-(deftest ^{:fr/ids #{:fr.struct/indent-outdent}}
+(deftest 
   indent-then-outdent-is-alpha-equivalent
   (testing "Indent followed by outdent restores original structure"
     (let [db (build-doc)
@@ -99,7 +99,7 @@
       (is (= ["a" "b"] (get-in r2 [:db :children-by-parent "doc1"]))
           "After outdent, structure should be restored"))))
 
-(deftest ^{:fr/ids #{:fr.struct/indent-outdent}}
+(deftest 
   logical-outdenting-right-siblings-stay
   (testing "LOGSEQ PARITY: Logical outdenting leaves right siblings under parent"
     ;; Build structure:
@@ -202,7 +202,7 @@
     (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
     db))
 
-(deftest ^{:fr/ids #{:fr.struct/climb-descend}}
+(deftest 
   move-up-climb-out-semantics
   (testing "Move up on first child climbs out to parent's level"
     (let [db (build-nested-doc)
@@ -229,7 +229,7 @@
       (is (= ["child-b" "child-a" "child-c"] (get-in result [:db :children-by-parent "parent"]))
           "child-b should move before child-a"))))
 
-(deftest ^{:fr/ids #{:fr.struct/climb-descend}}
+(deftest 
   move-down-descend-semantics
   (testing "Move down on last child descends into parent's next sibling"
     (let [db (build-nested-doc)
@@ -396,7 +396,7 @@
     (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
     db))
 
-(deftest ^{:fr/ids #{:fr.scope/zoom-guards}}
+(deftest 
   outdent-blocked-by-zoom-boundary
   (testing "FR-Scope-02: Outdent is no-op when grandparent is outside zoom root"
     (let [db (build-zoomed-doc)

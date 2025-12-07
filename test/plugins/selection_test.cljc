@@ -83,7 +83,7 @@
       (is (not (q/selected? session' "b")))
       (is (q/selected? session' "c")))))
 
-(deftest ^{:fr/ids #{:fr.selection/extend-boundary}}
+(deftest 
   extend-selection-test
   (testing "Extend selection adds to selection"
     (let [db (build-doc)
@@ -128,7 +128,7 @@
 
 ;; ── Selection navigation tests ────────────────────────────────────────────────
 
-(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+(deftest 
   select-next-sibling-test
   (testing "Select next sibling replaces selection"
     (let [db (build-doc)
@@ -146,7 +146,7 @@
       (is (= #{"c"} (q/selection session'))
           "Selection should stay on 'c' (last child)"))))
 
-(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+(deftest 
   select-prev-sibling-test
   (testing "Select previous sibling replaces selection"
     (let [db (build-doc)
@@ -187,7 +187,7 @@
       (is (= #{"a" "d"} (q/selection session'))
           "Selection should remain unchanged when parents differ"))))
 
-(deftest ^{:fr/ids #{:fr.nav/view-arrows}}
+(deftest 
   select-all-siblings-test
   (testing "Select all siblings of current selection"
     (let [db (build-doc)
