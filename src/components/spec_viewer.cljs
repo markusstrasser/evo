@@ -219,52 +219,52 @@
   "Render a single block cell (used in both before/after columns)."
   [block-info depth]
   (let [{:keys [id text cursor selected? focus? anchor? folded?]} block-info
-        indent-px (* depth 16)]
+        indent-px (* depth 14)]
     [:div {:style {:display "flex"
                    :align-items "center"
-                   :padding "3px 8px"
-                   :padding-left (str (+ 8 indent-px) "px")
+                   :padding "4px 10px"
+                   :padding-left (str (+ 10 indent-px) "px")
                    :background (cond
                                  focus? "rgba(59, 130, 246, 0.12)"
                                  selected? "rgba(59, 130, 246, 0.06)"
                                  :else "transparent")
-                   :min-height "26px"}}
-     ;; Bullet
+                   :min-height "28px"}}
+     ;; Bullet - BIGGER
      [:span {:style {:color (cond cursor "#3b82f6" selected? "#60a5fa" :else "#52525b")
-                     :margin-right "8px"
-                     :font-size "6px"}}
-      (if folded? "▸" "•")]
+                     :margin-right "10px"
+                     :font-size "10px"}}
+      (if folded? "▶" "●")]
      ;; Block ID
      [:span {:style {:background "#27272a"
-                     :color "#71717a"
-                     :padding "1px 4px"
-                     :border-radius "2px"
-                     :font-size "9px"
-                     :margin-right "8px"
-                     :min-width "14px"
+                     :color "#a1a1aa"
+                     :padding "2px 6px"
+                     :border-radius "3px"
+                     :font-size "10px"
+                     :margin-right "10px"
+                     :min-width "16px"
                      :text-align "center"}}
       (name id)]
      ;; Text with cursor
-     [:span {:style {:color "#d4d4d8" :flex "1" :font-size "12px"}}
+     [:span {:style {:color "#e4e4e7" :font-size "13px"}}
       (if cursor
         (render-cursor-in-text text cursor)
         text)]
      ;; State badges (compact)
      (when (or cursor focus? selected? anchor?)
-       [:span {:style {:display "flex" :gap "3px" :margin-left "6px"}}
+       [:span {:style {:display "flex" :gap "4px" :margin-left "10px"}}
         (when cursor
-          [:span {:style {:background "#1e3a8a" :color "#93c5fd" :padding "0 4px"
-                          :border-radius "2px" :font-size "8px"}}
+          [:span {:style {:background "#1e3a8a" :color "#93c5fd" :padding "2px 6px"
+                          :border-radius "3px" :font-size "10px"}}
            (if (= cursor :end) "▮end" (str "▮" cursor))])
         (when focus?
-          [:span {:style {:background "#166534" :color "#86efac" :padding "0 4px"
-                          :border-radius "2px" :font-size "8px"}} "focus"])
+          [:span {:style {:background "#166534" :color "#86efac" :padding "2px 6px"
+                          :border-radius "3px" :font-size "10px"}} "focus"])
         (when (and selected? (not focus?))
-          [:span {:style {:background "#1e3a5f" :color "#7dd3fc" :padding "0 4px"
-                          :border-radius "2px" :font-size "8px"}} "sel"])
+          [:span {:style {:background "#1e3a5f" :color "#7dd3fc" :padding "2px 6px"
+                          :border-radius "3px" :font-size "10px"}} "sel"])
         (when anchor?
-          [:span {:style {:background "#4c1d95" :color "#c4b5fd" :padding "0 4px"
-                          :border-radius "2px" :font-size "8px"}} "anchor"])])]))
+          [:span {:style {:background "#4c1d95" :color "#c4b5fd" :padding "2px 6px"
+                          :border-radius "3px" :font-size "10px"}} "anchor"])])]))
 
 (defn TreeVisualizer
   "Visualize a tree DSL structure as an outline."
@@ -279,7 +279,8 @@
          (render-block-cell block-info depth))])))
 
 (defn DiffView
-  "Row-aligned before/after comparison - minimizes eye movement."
+  "Row-aligned before/after comparison - minimizes eye movement.
+   Columns shrink to fit content, keeping before/after close together."
   [{:keys [before after]}]
   (let [before-blocks (when before
                         (let [[_root & entries] before]
@@ -289,44 +290,44 @@
                          (vec (mapcat #(flatten-blocks (extract-block-info %) 0) entries))))
         max-rows (max (count before-blocks) (count after-blocks))]
     [:div {:style {:font-family "'IBM Plex Mono', monospace"
-                   :font-size "12px"}}
+                   :font-size "13px"
+                   :display "inline-block"}}
      [:style "@keyframes blink { 50% { opacity: 0; } }"]
-     ;; Header row
-     [:div {:style {:display "grid"
-                    :grid-template-columns "1fr 24px 1fr"
-                    :border-bottom "1px solid #27272a"
-                    :padding-bottom "6px"
-                    :margin-bottom "6px"}}
-      [:div {:style {:color "#71717a" :font-size "10px" :text-transform "uppercase"
-                     :letter-spacing "0.5px" :padding-left "8px"}}
-       "Before"]
-      [:div {:style {:color "#3f3f46" :text-align "center"}} "→"]
-      [:div {:style {:color "#22c55e" :font-size "10px" :text-transform "uppercase"
-                     :letter-spacing "0.5px" :padding-left "8px"}}
-       "After"]]
-     ;; Data rows - aligned horizontally
-     (for [i (range max-rows)]
-       (let [[before-depth before-block] (get before-blocks i)
-             [after-depth after-block] (get after-blocks i)]
-         ^{:key i}
-         [:div {:style {:display "grid"
-                        :grid-template-columns "1fr 24px 1fr"
-                        :border-bottom "1px solid #1f1f23"}}
-          ;; Before cell
-          [:div {:style {:border-right "1px solid #27272a"}}
-           (when before-block
-             (render-block-cell before-block before-depth))]
-          ;; Arrow column
-          [:div {:style {:display "flex"
-                         :align-items "center"
-                         :justify-content "center"
-                         :color "#3f3f46"
-                         :font-size "10px"}}
-           (when (or before-block after-block) "→")]
-          ;; After cell
-          [:div
-           (when after-block
-             (render-block-cell after-block after-depth))]]))]))
+     ;; Use table for auto-sizing columns
+     [:table {:style {:border-collapse "collapse"}}
+      [:thead
+       [:tr
+        [:th {:style {:color "#71717a" :font-size "11px" :text-transform "uppercase"
+                      :letter-spacing "0.5px" :padding "0 12px 8px 0"
+                      :font-weight "500" :text-align "left"}}
+         "Before"]
+        [:th {:style {:color "#4b5563" :padding "0 16px 8px" :font-weight "normal"}}
+         "→"]
+        [:th {:style {:color "#22c55e" :font-size "11px" :text-transform "uppercase"
+                      :letter-spacing "0.5px" :padding "0 0 8px 0"
+                      :font-weight "500" :text-align "left"}}
+         "After"]]]
+      [:tbody
+       (for [i (range max-rows)]
+         (let [[before-depth before-block] (get before-blocks i)
+               [after-depth after-block] (get after-blocks i)]
+           ^{:key i}
+           [:tr {:style {:border-top "1px solid #1f1f23"}}
+            ;; Before cell
+            [:td {:style {:padding "0" :vertical-align "middle"}}
+             (when before-block
+               (render-block-cell before-block before-depth))]
+            ;; Arrow column
+            [:td {:style {:padding "0 12px"
+                          :color "#4b5563"
+                          :font-size "14px"
+                          :vertical-align "middle"
+                          :text-align "center"}}
+             (when (or before-block after-block) "→")]
+            ;; After cell
+            [:td {:style {:padding "0" :vertical-align "middle"}}
+             (when after-block
+               (render-block-cell after-block after-depth))]]))]]]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Scenario Card
