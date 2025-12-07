@@ -1,5 +1,4 @@
-
-(ns spec-registry
+(ns spec.registry
   "Functional Requirements (FR) registry - Single Source of Truth.
 
    Design: Spec as Database Pattern
@@ -15,15 +14,15 @@
    - Dual coverage: implementation (intents) + verification (tests)
 
    Usage:
-     (require '[spec-registry :as fr])
+     (require '[spec.registry :as fr])
      (fr/load-registry!)           ; Load and validate specs.edn
      (fr/fr-exists? :fr.nav/vertical-cursor-memory)  ; Check FR
      (fr/get-fr :fr.nav/vertical-cursor-memory)      ; Get FR metadata
      (fr/audit-coverage)           ; Show implementation coverage"
   (:require [malli.core :as m]
             [malli.error :as me]
-            #?(:clj [spec-registry-macros :refer [inline-registry]]))
-  #?(:cljs (:require-macros [spec-registry-macros :refer [inline-registry]])))
+            #?(:clj [spec.registry-macros :refer [inline-registry]]))
+  #?(:cljs (:require-macros [spec.registry-macros :refer [inline-registry]])))
 
 ;; ── Malli Schema for FR Registry ─────────────────────────────────────────────
 
@@ -125,7 +124,7 @@
 
 ;; ── Registry State ────────────────────────────────────────────────────────────
 
-;; Embedded registry (loaded from resources/specs.edn at compile/compile time)
+;; Embedded registry (loaded from resources/specs.edn at compile time)
 (def embedded-registry (inline-registry))
 
 (defonce !registry
@@ -146,7 +145,7 @@
         (throw (ex-info "Invalid FR registry (embedded data)"
                         {:errors humanized
                          :explanation explanation
-                         :hint "Check spec-registry.cljc embedded-registry definition"}))))
+                         :hint "Check spec.registry embedded-registry definition"}))))
     embedded-registry))
 
 (defn load-registry!
@@ -312,4 +311,4 @@
   (load-registry!)
   (catch #?(:clj Exception :cljs js/Error) e
     (println "⚠️ WARNING: Failed to load FR registry:" (ex-message e))
-    (println "   Run (spec-registry/load-registry!) to retry")))
+    (println "   Run (spec.registry/load-registry!) to retry")))

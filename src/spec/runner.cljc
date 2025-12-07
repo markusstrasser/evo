@@ -18,7 +18,7 @@
      (runner/run-all-scenarios)
      ;=> {:passed 42 :failed 3 :results [...]}"
   (:require [spec.tree-dsl :as dsl]
-            [spec-registry :as fr]
+            [spec.registry :as fr]
             [kernel.api :as api]
             [kernel.db :as db]))
 

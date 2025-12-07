@@ -1,4 +1,4 @@
-(ns spec-registry-macros
+(ns spec.registry-macros
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]))
 

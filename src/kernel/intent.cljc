@@ -24,7 +24,7 @@
             [clojure.string :as str]
             [malli.core :as m]
             [malli.error :as me]
-            [spec-registry :as fr]
+            [spec.registry :as fr]
             [kernel.db :as db]))
 
 ;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────

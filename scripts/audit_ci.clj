@@ -23,7 +23,7 @@
   (println "🔍 Auditing Critical FR Coverage...")
   (println)
 
-  (require '[spec-registry :as fr])
+  (require '[spec.registry :as fr])
   (require '[kernel.intent :as intent])
 
   (let [audit (intent/audit-coverage)
