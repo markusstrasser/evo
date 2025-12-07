@@ -133,3 +133,113 @@ export async function pressKeyCombo(page, key, modifiers = []) {
 
   await pressKeyOnContentEditable(page, key, options);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-Platform Key Mappings
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect if running on macOS.
+ * In Playwright, process.platform reflects the test runner's OS.
+ */
+export const isMac = process.platform === 'darwin';
+
+/**
+ * Cross-platform "Home" - go to start of line.
+ * - macOS: Cmd+Left
+ * - Windows/Linux: Home
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressHome(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowLeft', { metaKey: true });
+  } else {
+    await page.keyboard.press('Home');
+  }
+}
+
+/**
+ * Cross-platform "End" - go to end of line.
+ * - macOS: Cmd+Right
+ * - Windows/Linux: End
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressEnd(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowRight', { metaKey: true });
+  } else {
+    await page.keyboard.press('End');
+  }
+}
+
+/**
+ * Cross-platform "Mod" key helper.
+ * Returns 'Meta' on Mac, 'Control' on Windows/Linux.
+ * Use with pressKeyCombo for Cmd/Ctrl shortcuts.
+ *
+ * @example
+ * await pressKeyCombo(page, 'b', [modKey]); // Bold: Cmd+B on Mac, Ctrl+B elsewhere
+ */
+export const modKey = isMac ? 'Meta' : 'Control';
+
+/**
+ * Cross-platform word-left navigation.
+ * - macOS: Alt+Left
+ * - Windows/Linux: Ctrl+Left
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressWordLeft(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowLeft', { altKey: true });
+  } else {
+    await pressKeyOnContentEditable(page, 'ArrowLeft', { ctrlKey: true });
+  }
+}
+
+/**
+ * Cross-platform word-right navigation.
+ * - macOS: Alt+Right
+ * - Windows/Linux: Ctrl+Right
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressWordRight(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowRight', { altKey: true });
+  } else {
+    await pressKeyOnContentEditable(page, 'ArrowRight', { ctrlKey: true });
+  }
+}
+
+/**
+ * Cross-platform select-to-start.
+ * - macOS: Cmd+Shift+Left
+ * - Windows/Linux: Shift+Home
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressSelectToStart(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowLeft', { metaKey: true, shiftKey: true });
+  } else {
+    await page.keyboard.press('Shift+Home');
+  }
+}
+
+/**
+ * Cross-platform select-to-end.
+ * - macOS: Cmd+Shift+Right
+ * - Windows/Linux: Shift+End
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function pressSelectToEnd(page) {
+  if (isMac) {
+    await pressKeyOnContentEditable(page, 'ArrowRight', { metaKey: true, shiftKey: true });
+  } else {
+    await page.keyboard.press('Shift+End');
+  }
+}
