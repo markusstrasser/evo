@@ -74,6 +74,9 @@
                                    "")]
                         (shell (str "bb scripts/generate_intent_catalog.clj " args)))}
 
+  lint:specs {:doc "Validate specs.edn schema (fast, no compile)"
+              :task (shell "bb scripts/lint_specs.clj")}
+
   docs:verify {:doc "Verify all file references in docs/DX_INDEX.md exist"
                :task (shell "bb scripts/verify-docs.clj")}
 
