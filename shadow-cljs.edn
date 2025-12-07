@@ -32,4 +32,9 @@
   :test-integration
   {:target :node-test
    :output-to "out/tests-integration.js"
-   :ns-regexp "^integration\\.navigation.*-test$"}}}
+   :ns-regexp "^integration\\.navigation.*-test$"}
+
+  :test-specs
+  {:target :node-test
+   :output-to "out/tests-specs.js"
+   :ns-regexp "^spec\\..*-test$"}}}

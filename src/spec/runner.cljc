@@ -92,26 +92,34 @@
   "Execute a single intent action and return result.
    
    Uses kernel.api/dispatch* to go through full pipeline:
-   - State machine validation
+   - State machine validation (enforced by default)
    - Intent → ops compilation
    - Transaction interpretation
    - Index derivation"
   [db session action]
   (api/dispatch* db session action {:history/enabled? false
-                                    :state-machine/enforce? false}))
+                                    :state-machine/enforce? true}))
 
 (defn- execute-action-sequence
-  "Execute a sequence of actions, threading state through."
+  "Execute a sequence of actions, threading state through.
+   
+   Returns:
+   {:db final-db
+    :session final-session
+    :trace [...] ; Full transaction maps from dispatch*
+    :issues [...]}
+   
+   Trace contains full tx maps with :tx-id, :ops, :applied-ops, :notes, etc."
   [db session actions]
   (reduce
-   (fn [{:keys [db session ops]} action]
+   (fn [{:keys [db session trace issues]} action]
      (let [result (execute-single-action db session action)
            new-session (apply-session-updates session (:session-updates result))]
        {:db (:db result)
         :session new-session
-        :ops (into ops (:trace result))
-        :issues (into [] (concat (:issues result)))}))
-   {:db db :session session :ops [] :issues []}
+        :trace (into trace (:trace result))
+        :issues (into issues (:issues result))}))
+   {:db db :session session :trace [] :issues []}
    (if (sequential? actions) actions [actions])))
 
 (defn run-scenario
@@ -128,7 +136,8 @@
     :expected {...}
     :actual {...}
     :diff {...}      ; nil if pass
-    :ops [...]       ; ops emitted
+    :ops [...]       ; flat list of ops emitted
+    :trace [...]     ; full tx maps (with :tx-id, :applied-ops, :notes, etc.)
     :issues [...]    ; validation issues}"
   ([fr-id scenario-id]
    (run-scenario fr-id scenario-id (fr/get-scenario fr-id scenario-id)))
@@ -148,11 +157,15 @@
 
            ;; Execute action(s)
            result (execute-action-sequence db session action)
+           trace (:trace result)
 
            ;; Get actual state after action
            actual-db (:db result)
            actual-session (:session result)
            actual-tree (dsl/state->dsl actual-db actual-session)
+
+           ;; Flat ops from trace
+           flat-ops (vec (mapcat :ops trace))
 
            ;; Compare expectations
            expected-tree (:tree expect)
@@ -161,7 +174,7 @@
                       true)
 
            ops-ok? (if (:ops expect)
-                     (ops-match? (mapcat :ops (:ops result)) (:ops expect))
+                     (ops-match? flat-ops (:ops expect))
                      true)
 
            session-ok? (if (:session expect)
@@ -192,15 +205,15 @@
                          (dsl/tree-diff expected-tree actual-tree))
                  :ops (when-not ops-ok?
                         {:expected (:ops expect)
-                         :actual (mapcat :ops (:ops result))})
+                         :actual flat-ops})
                  :session (when-not session-ok?
                             {:expected (:session expect)
                              :actual actual-session})})
 
         ;; Debug info
-        :ops (mapcat :ops (:ops result))
-        :issues (:issues result)
-        :trace (:ops result)}))))
+        :ops flat-ops ; Flat list of ops
+        :trace trace ; Full tx maps
+        :issues (:issues result)}))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Batch Execution
