@@ -396,6 +396,30 @@
      :implementation-pct implementation-pct
      :intent-citations intent-citations}))
 
+(defn implemented-frs
+  "Return set of FR IDs that have been implemented (cited by at least one intent).
+   
+   Example:
+     (implemented-frs)
+     ;=> #{:fr.nav/vertical-cursor-memory :fr.struct/indent-outdent ...}"
+  []
+  (set (mapcat :fr/ids (vals @!intents))))
+
+(defn fr-implemented?
+  "Check if an FR has been implemented (cited by at least one intent).
+   
+   Example:
+     (fr-implemented? :fr.nav/vertical-cursor-memory) ;=> true
+     (fr-implemented? :fr.ui/slash-palette)           ;=> false"
+  [fr-id]
+  (contains? (implemented-frs) fr-id))
+
+(defn implemented-fr-list
+  "Return sorted list of implemented FR IDs.
+   For use in UI filtering."
+  []
+  (vec (sort (implemented-frs))))
+
 (defn full-audit
   "Complete FR audit showing both implementation and verification coverage.
 

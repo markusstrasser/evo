@@ -208,6 +208,7 @@
 
          LOGSEQ PARITY: After deletion, enters edit mode on previous block
          with cursor at end. Falls back to next block if no previous."
+                          :fr/ids #{:fr.struct/delete-block}
                           :spec [:map [:type [:= :delete]] [:id :string]]
                           :handler (fn [db _session {:keys [id]}]
                                      (let [;; Find focus target BEFORE deletion
@@ -234,6 +235,7 @@
                          {:doc "Indent node under previous sibling.
 
                           LOGSEQ PARITY: If target sibling is collapsed, it's expanded."
+                          :fr/ids #{:fr.struct/indent-outdent}
                           :spec [:map [:type [:= :indent]] [:id :string]]
                           :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [id]}]
@@ -245,6 +247,7 @@
 
 (intent/register-intent! :outdent
                          {:doc "Outdent node to be sibling of parent."
+                          :fr/ids #{:fr.struct/indent-outdent}
                           :spec [:map [:type [:= :outdent]] [:id :string]]
                           :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [id]}]
@@ -252,6 +255,7 @@
 
 (intent/register-intent! :create-and-place
                          {:doc "Create new block and place it under parent."
+                          :fr/ids #{:fr.struct/create-sibling}
                           :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string] [:after {:optional true} :string]]
                           :handler (fn [_db _session {:keys [id parent after]}]
                                      [{:op :create-node :id id :type :block :props {:text ""}}
@@ -261,6 +265,7 @@
                          {:doc "Create new block after focus and immediately enter edit mode.
    This consolidates the two-step UI logic (create + setTimeout + enter-edit) into a single intent.
    Clears selection to maintain edit/view mode mutual exclusivity."
+                          :fr/ids #{:fr.struct/create-sibling}
                           :spec [:map [:type [:= :create-and-enter-edit]]]
                           :handler (fn [db _session _intent]
                                      (let [focus-id (q/focus db)
@@ -278,6 +283,7 @@
                          {:doc "Create new block directly under a page (for empty pages).
    Used when a page has no blocks and user clicks to add one.
    Enters edit mode on the new block."
+                          :fr/ids #{:fr.struct/create-sibling}
                           :spec [:map
                                  [:type [:= :create-block-in-page]]
                                  [:page-id [:or :string :keyword]]
@@ -561,6 +567,7 @@
          1. Previous visible block (preferred)
          2. Next visible block (if no previous)
          3. Nothing (if page becomes empty)"
+                          :fr/ids #{:fr.struct/delete-block}
                           :spec [:map [:type [:= :delete-selected]]]
                           :handler (fn [db session _intent]
                                      (let [targets (active-targets db session)
