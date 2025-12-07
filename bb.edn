@@ -57,13 +57,10 @@
   fr-matrix {:doc "Generate FR coverage matrix (FR_MATRIX.md)"
              :task (shell "bb scripts/gen_coverage.clj")}
 
-  lint:scenarios {:doc "Ensure every Scenario ID in docs/specs/logseq_behaviors.md has automated coverage"
-                  :task (shell "bb scripts/lint_scenarios.clj")}
-
   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
                      :task (shell "node scripts/lint-e2e-keyboard.js")}
 
-  lint:fr-tests {:doc "Report Functional Requirement ↔ test coverage (use -- --strict to fail on gaps)"
+  lint:fr-tests {:doc "Report FR scenario coverage (use -- --strict to fail on gaps)"
                  :task (let [arg-str (when (seq *command-line-args*)
                                        (str " " (str/join " " *command-line-args*)))]
                          (shell (str "bb scripts/lint_fr_tests.clj" arg-str)))}
