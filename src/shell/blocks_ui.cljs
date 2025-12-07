@@ -35,7 +35,8 @@
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
-            [kernel.intent :as intent]))
+            [kernel.intent :as intent]
+            [components.spec-viewer :as spec-viewer]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,12 @@
   []
   (let [search (.-search js/location)]
     (boolean (and search (>= (.indexOf search "devtools") 0)))))
+
+(defn- specs-mode?
+  "Check if spec viewer should be shown (via ?specs query param)"
+  []
+  (let [search (.-search js/location)]
+    (boolean (and search (>= (.indexOf search "specs") 0)))))
 
 (defonce !db
   (atom
@@ -559,7 +566,9 @@
 
 (defn render! []
   (d/render (js/document.getElementById "root")
-            (App)))
+            (if (specs-mode?)
+              (spec-viewer/SpecViewer)
+              (App))))
 
 ;; Batched render using requestAnimationFrame to prevent nested render warnings.
 ;; When multiple state changes (DB + session) happen in the same frame,
