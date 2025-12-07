@@ -23,7 +23,7 @@ Follow the [testing pyramid](https://kentcdodds.com/blog/static-vs-unit-vs-integ
 
 ```
         ╱╲
-       ╱E2E╲        ← Few: critical user journeys only (not yet implemented)
+       ╱E2E╲        ← Few: critical user journeys (81 tests)
       ╱──────╲
      ╱ Integr ╲     ← Session-aware flows (kernel + session + effects)
     ╱──────────╲
@@ -181,12 +181,57 @@ test/
 
 ---
 
-## Future: E2E Tests
+## E2E Tests (Playwright)
 
-For contenteditable edge cases that can't be tested in pure CLJS, consider:
+Located in `test/e2e/`. Run with:
 
-- [Playwright](https://playwright.dev/docs/input) with `locator.fill()` for contenteditable
-- Use `pressSequentially()` when keyboard handling matters
-- Assert focus with `toBeFocused()`
+```bash
+bb e2e              # Run all E2E tests
+bb e2e-watch        # Watch mode
+bb e2e-debug        # Debug mode with browser visible
+```
 
-E2E should be **sparingly used** for critical user journeys only.
+### Keyboard Helpers
+
+Use cross-platform helpers from `test/e2e/helpers/keyboard.js`:
+
+```javascript
+import { 
+  pressKeyOnContentEditable,  // Safe key press on contenteditable
+  pressKeyCombo,              // Key + modifiers (Shift, Meta, etc.)
+  pressHome, pressEnd,        // Cross-platform Home/End
+  pressWordLeft, pressWordRight,  // Word navigation
+  pressSelectToStart, pressSelectToEnd  // Shift+Home/End
+} from './helpers/index.js';
+
+// ✅ CORRECT: Use helpers for contenteditable
+await pressKeyOnContentEditable(page, 'Enter');
+await pressKeyCombo(page, 'ArrowDown', ['Shift']);
+await pressHome(page);  // Cmd+Left on Mac, Home on Windows
+
+// ❌ WRONG: Raw keyboard on contenteditable may not work
+await page.keyboard.press('Home');  // Doesn't work on Mac!
+```
+
+### Why Cross-Platform Helpers?
+
+macOS uses different keys than Windows/Linux:
+- `Home`/`End` → `Cmd+Arrow` on Mac
+- `Ctrl+Arrow` (word nav) → `Alt+Arrow` on Mac
+- `Shift+Home` → `Cmd+Shift+Arrow` on Mac
+
+### Test Helpers
+
+```javascript
+import { enterEditModeAndClick, selectPage } from './helpers/index.js';
+
+// Enter edit mode on first block
+await enterEditModeAndClick(page);
+
+// Dispatch intents directly (bypass keyboard)
+await page.evaluate(() => {
+  window.TEST_HELPERS.dispatchIntent({ type: 'indent-selected' });
+});
+```
+
+E2E tests focus on **user-facing behavior**, not internal state.
