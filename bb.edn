@@ -36,12 +36,10 @@
                     (shell "npx shadow-cljs compile :test-integration")
                     (shell "node out/tests-integration.js"))}
 
-  test:specs {:doc "Run executable spec scenarios (part of full test suite)"
+  test:specs {:doc "Run executable spec scenarios only"
               :task (do
-                      (println "Spec scenarios are integrated into bb test via spec.scenario-test")
-                      (println "Running full test suite...")
-                      (shell "npx shadow-cljs compile :test")
-                      (shell "node out/tests.js"))}
+                      (shell "npx shadow-cljs compile :test-specs")
+                      (shell "node out/tests-specs.js"))}
 
   test-watch {:doc "Watch entire suite (shadow-cljs)"
               :task (shell "npx shadow-cljs watch :test")}

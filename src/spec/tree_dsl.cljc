@@ -143,19 +143,23 @@
    {:db {:nodes {...} :children-by-parent {...} :roots [...] :derived {...}}
     :session {:ui {...} :selection {...}}}
    
+   The returned DB has explicit :roots set to only the root specified in the DSL,
+   making tests self-contained and independent of kernel.constants/roots.
+   
    Example:
      (dsl->state [:doc [:a \"Hello\"] [:b \"World\" {:cursor 0}]])
-     ;=> {:db {...} :session {:ui {:editing-block-id \"b\" :cursor-position 0}}}"
+     ;=> {:db {:roots [:doc] ...} :session {:ui {:editing-block-id \"b\" :cursor-position 0}}}"
   [tree]
   (let [[root & children] tree
         root-kw (if (keyword? root) root (keyword root))
         {:keys [nodes children-by-parent session-hints]} (collect-blocks root-kw children)
 
-        ;; Build canonical DB
+        ;; Build canonical DB with explicit roots (self-contained for tests)
         base-db (db/empty-db)
         db-with-nodes (-> base-db
                           (assoc :nodes nodes)
-                          (assoc :children-by-parent children-by-parent))
+                          (assoc :children-by-parent children-by-parent)
+                          (assoc :roots [root-kw])) ; Explicit: only DSL root
         derived-db (db/derive-indexes db-with-nodes)
 
         ;; Build session
