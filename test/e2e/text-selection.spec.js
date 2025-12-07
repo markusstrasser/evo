@@ -103,8 +103,7 @@ test.describe('Text Selection Utilities', () => {
     expect(cursorPos).toBe(6); // "Line 2" = 6 characters
   });
 
-  // NOTE: Skipped - flaky in parallel execution due to timing/race conditions
-  test.skip('arrow keys maintain cursor position correctly', async ({ page }) => {
+  test('arrow keys maintain cursor position correctly', async ({ page }) => {
     const block = page.locator('[data-block-id]').first();
     await block.click();
     await page.keyboard.type('Hello world');
