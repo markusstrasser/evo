@@ -136,6 +136,8 @@
          3. Remaining paragraphs → create new blocks below
          4. Preserve list markers from pasted text"
 
+                          :fr/ids #{:fr.clipboard/paste-multiline}
+
                           :spec [:map
                                  [:type [:= :paste-text]]
                                  [:block-id :string]
@@ -215,6 +217,7 @@
 
          Returns nil (actual clipboard operation must be handled by UI layer
          using browser Clipboard API)."
+                          :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
                                      ;; Return block text in clipboard-compatible format
@@ -232,6 +235,8 @@
 
          If no selection, copies current editing block.
          UI layer handles navigator.clipboard.writeText()."
+
+                          :fr/ids #{:fr.clipboard/copy-block}
 
                           :handler (fn [db session _intent]
                                      (let [selection (get-in session [:selection :nodes])
@@ -251,6 +256,7 @@
 
 (intent/register-intent! :cut-block
                          {:doc "Cut single block (copy + delete)."
+                          :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (get-block-text db block-id)]
@@ -269,6 +275,8 @@
          - Clears selection after cut
 
          If no selection, cuts current editing block."
+
+                          :fr/ids #{:fr.clipboard/copy-block}
 
                           :handler (fn [db session _intent]
                                      (let [selection (get-in session [:selection :nodes])

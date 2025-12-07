@@ -247,6 +247,7 @@
 
          Simpler than :navigate-with-cursor-memory - doesn't preserve column.
          Just enters adjacent block at specified position."
+                          :fr/ids #{:fr.nav/horizontal-boundary}
                           :spec [:map
                                  [:type [:= :navigate-to-adjacent]]
                                  [:direction [:enum :up :down]]

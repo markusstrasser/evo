@@ -82,10 +82,12 @@
 ;; Auto-register intents on namespace load
 (intent/register-intent! :switch-page
                          {:doc "Switch to a specific page by ID"
+                          :fr/ids #{:fr.pages/switch-page}
                           :handler handle-switch-page})
 
 (intent/register-intent! :navigate-to-page
                          {:doc "Navigate to page by name (from page ref)"
+                          :fr/ids #{:fr.pages/switch-page}
                           :handler handle-navigate-to-page})
 
 (intent/register-intent! :follow-link-under-cursor
@@ -96,6 +98,7 @@
          - No ref → no-op
 
          Mirrors Logseq's Cmd+O behavior."
+                          :fr/ids #{:fr.pages/follow-link}
                           :spec [:map
                                  [:type [:= :follow-link-under-cursor]]
                                  [:block-id :string]

@@ -21,6 +21,7 @@
                          {:doc "Enter edit mode for a block. Ephemeral - not in undo/redo history.
          Optional :cursor-at can be :start or :end to position cursor.
          Clears selection to maintain edit/view mode mutual exclusivity."
+                          :fr/ids #{:fr.selection/edit-view-exclusive}
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
                           :handler (fn [_db _session {:keys [block-id cursor-at]}]
                                      {:session-updates
@@ -30,6 +31,7 @@
 
 (intent/register-intent! :exit-edit
                          {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
+                          :fr/ids #{:fr.selection/edit-view-exclusive}
                           :spec [:map [:type [:= :exit-edit]]]
                           :handler (fn [_db _session _intent]
                                      {:session-updates {:ui {:editing-block-id nil :cursor-position nil}}})})
@@ -37,6 +39,7 @@
 (intent/register-intent! :exit-edit-and-select
                          {:doc "Exit edit mode and select the block (Logseq parity).
                                 This is the default Escape behavior in Logseq."
+                          :fr/ids #{:fr.selection/edit-view-exclusive}
                           :spec [:map [:type [:= :exit-edit-and-select]]]
                           :handler (fn [_db session _intent]
                                      (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
@@ -49,6 +52,7 @@
 (intent/register-intent! :exit-edit-and-extend
                          {:doc "Exit edit mode and extend selection (Shift+Arrow boundary behavior).
                                 Atomically: exit edit, select block, extend in direction."
+                          :fr/ids #{:fr.selection/extend-boundary :fr.edit/shift-arrow-text-select}
                           :spec [:map
                                  [:type [:= :exit-edit-and-extend]]
                                  [:direction [:enum :next :prev]]]
@@ -77,6 +81,7 @@
 (intent/register-intent! :enter-edit-selected
                          {:doc "Enter edit mode in selected block (Logseq parity).
                                 cursor-at: :start or :end (default :end for Enter/Right, :start for Left)"
+                          :fr/ids #{:fr.selection/edit-view-exclusive}
                           :spec [:map
                                  [:type [:= :enter-edit-selected]]
                                  [:cursor-at {:optional true} [:enum :start :end]]]
@@ -96,6 +101,7 @@
          LOGSEQ PARITY §7.1: When a block is selected (but not editing), 
          pressing any printable key instantly enters edit mode, appends 
          that character, and positions the caret after it."
+                          :fr/ids #{:fr.state/type-to-edit}
                           :spec [:map
                                  [:type [:= :enter-edit-with-char]]
                                  [:block-id :string]
@@ -113,12 +119,14 @@
 
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
+                          :fr/ids #{:fr.nav/vertical-cursor-memory}
                           :spec [:map [:type [:= :clear-cursor-position]]]
                           :handler (fn [_db _session _intent]
                                      {:session-updates {:ui {:cursor-position nil}}})})
 
 (intent/register-intent! :update-cursor-state
                          {:doc "Update cursor position state for boundary detection. Ephemeral - not in history."
+                          :fr/ids #{:fr.edit/arrow-nav-mode}
                           :spec [:map [:type [:= :update-cursor-state]] [:block-id :string] [:first-row? :boolean] [:last-row? :boolean]]
                           :handler (fn [_db session {:keys [block-id first-row? last-row?]}]
                                      (let [current-cursor (get-in session [:ui :cursor] {})
@@ -129,6 +137,7 @@
 
 (intent/register-intent! :update-content
                          {:doc "Update block text content."
+                          :fr/ids #{:fr.edit/smart-split}
                           :spec [:map [:type [:= :update-content]] [:block-id :string] [:text :string]]
                           :handler (fn [_db _session {:keys [block-id text]}]
                                      [{:op :update-node :id block-id :props {:text text}}])})
@@ -136,6 +145,7 @@
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
                                 LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text."
+                          :fr/ids #{:fr.edit/newline-no-split}
                           :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
@@ -191,6 +201,7 @@
 
 (intent/register-intent! :split-at-cursor
                          {:doc "Split block at cursor position into two blocks."
+                          :fr/ids #{:fr.edit/smart-split}
                           :spec [:map [:type [:= :split-at-cursor]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
@@ -215,6 +226,7 @@
          1. First child (if exists)
          2. Next sibling (if no children)
          3. No-op (if neither exists)"
+                          :fr/ids #{:fr.edit/delete-forward}
                           :spec [:map
                                  [:type [:= :delete-forward]]
                                  [:block-id :string]
@@ -261,6 +273,7 @@
                          {:doc "Move cursor to start of next word (Alt+F / Ctrl+Shift+F on Mac).
 
          Uses word boundary detection (stops at spaces/newlines)."
+                          :fr/ids #{:fr.edit/word-navigation}
                           :spec [:map
                                  [:type [:= :move-cursor-forward-word]]
                                  [:block-id :string]]
@@ -272,6 +285,7 @@
 
 (intent/register-intent! :move-cursor-backward-word
                          {:doc "Move cursor to start of previous word (Alt+B / Ctrl+Shift+B on Mac)."
+                          :fr/ids #{:fr.edit/word-navigation}
                           :spec [:map
                                  [:type [:= :move-cursor-backward-word]]
                                  [:block-id :string]]
@@ -288,6 +302,7 @@
                          {:doc "Clear entire block content (Cmd+L).
 
          Sets text to empty string, cursor to position 0."
+                          :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :clear-block-content]]
                                  [:block-id :string]]
@@ -299,6 +314,7 @@
                          {:doc "Kill from cursor to beginning of block (Cmd+U).
 
          Deletes text before cursor, copies to clipboard."
+                          :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :kill-to-beginning]]
                                  [:block-id :string]]
@@ -316,6 +332,7 @@
                          {:doc "Kill from cursor to end of block (Cmd+K).
 
          Deletes text after cursor, copies to clipboard."
+                          :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :kill-to-end]]
                                  [:block-id :string]]
@@ -331,6 +348,7 @@
                          {:doc "Kill next word (Cmd+Delete).
 
          Deletes from cursor to next word boundary, copies to clipboard."
+                          :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :kill-word-forward]]
                                  [:block-id :string]]
@@ -348,6 +366,7 @@
                          {:doc "Kill previous word (Alt+Delete / Option+Delete on Mac).
 
          Deletes from cursor back to previous word boundary, copies to clipboard."
+                          :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :kill-word-backward]]
                                  [:block-id :string]]
