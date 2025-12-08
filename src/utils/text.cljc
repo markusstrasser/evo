@@ -128,6 +128,32 @@
                        p))]
     skip-spaces))
 
+(defn find-word-end
+  "Find position at end of current word (before trailing whitespace).
+
+   Unlike find-next-word-boundary which skips whitespace to next word start,
+   this stops immediately after the current word ends.
+
+   Args:
+     text: String
+     pos: Current cursor position
+
+   Returns: Integer (position at word end)
+
+   Examples:
+     (find-word-end \"hello world\" 2)  => 5  (after 'hello')
+     (find-word-end \"hello world\" 0)  => 5  (after 'hello')
+     (find-word-end \"hello\" 0)        => 5  (at end)
+     (find-word-end \"  hello\" 0)      => 0  (already at whitespace)"
+  [text pos]
+  (let [len (count text)]
+    ;; Skip non-whitespace (current word) only
+    (loop [p pos]
+      (if (and (< p len)
+               (not (whitespace? (nth text p))))
+        (recur (inc p))
+        p))))
+
 (defn find-prev-word-boundary
   "Find position of start of previous word.
 
