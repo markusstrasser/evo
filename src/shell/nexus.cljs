@@ -14,7 +14,7 @@
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [shell.runtime :as runtime]
+            [shell.executor :as executor]
             [clojure.string :as str]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@
 (defn dispatch-intent
   "Effect that dispatches kernel intents via shared runtime."
   [_ !db intent-map]
-  (runtime/apply-intent! !db intent-map "NEXUS"))
+  (executor/apply-intent! !db intent-map "NEXUS"))
 
 (defn log-devtools
   "Effect that logs actions + intents to window.__nexusLog (dev only)."

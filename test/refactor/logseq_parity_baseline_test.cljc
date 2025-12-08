@@ -331,7 +331,7 @@
   (testing "Session state is now in separate atom, not DB nodes"
     (let [db (setup-simple-doc)]
       ;; DB should only contain document nodes, not session nodes
-      ;; (session moved to shell/session.cljs atom)
+      ;; (session moved to shell/view-state.cljs atom)
       (is (empty? (filter #(str/starts-with? (str %) "session/")
                           (keys (:nodes db))))
           "No session/* nodes should exist in DB"))))

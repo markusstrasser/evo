@@ -25,9 +25,9 @@
             ;; Required here so dispatch* can route to handlers
             [plugins.editing :as p-editing]
             [plugins.navigation :as p-navigation]
-            [plugins.struct :as p-struct]
+            [plugins.structural :as p-struct]
             [plugins.selection :as p-selection]
-            [plugins.smart-editing :as p-smart-editing]
+            [plugins.context-editing :as p-context-editing]
             [plugins.folding :as p-folding]
             [plugins.clipboard :as p-clipboard]
             [plugins.pages :as p-pages]
@@ -46,7 +46,7 @@
        p-navigation/loaded?
        p-struct/loaded?
        p-selection/loaded?
-       p-smart-editing/loaded?
+       p-context-editing/loaded?
        p-folding/loaded?
        p-clipboard/loaded?
        p-pages/loaded?

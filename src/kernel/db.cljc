@@ -11,7 +11,7 @@
   "Create an empty database with canonical shape.
 
    Phases 4 & 5: Session nodes removed - ephemeral state (cursor, selection,
-   fold, zoom, buffer) lives purely in shell.session atom.
+   fold, zoom, buffer) lives purely in shell.view-state atom.
 
    DB now contains only the persistent document graph."
   []

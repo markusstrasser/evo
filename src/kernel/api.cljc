@@ -68,7 +68,7 @@
 
 ;; Phases 4 & 5: ephemeral-op? removed - session nodes no longer in DB
 ;; All ops are now structural (affect document graph only)
-;; Ephemeral state (cursor, selection, fold, zoom, buffer) lives purely in shell.session
+;; Ephemeral state (cursor, selection, fold, zoom, buffer) lives purely in shell.view-state
 
 ;; ── State Machine Configuration ─────────────────────────────────────────────
 
@@ -178,10 +178,10 @@
      ;=> {:db db' :issues [] :session-updates nil}
 
    Use in app:
-     (let [{:keys [db session-updates]} (api/dispatch @!db (session/get-session) intent)]
+     (let [{:keys [db session-updates]} (api/dispatch @!db (vs/get-view-state) intent)]
        (reset! !db db)
        (when session-updates
-         (session/merge-session-updates! session-updates)))
+         (vs/merge-view-state-updates! session-updates)))
 
    Use in tests/REPL:
      (let [{:keys [db issues]} (api/dispatch db test-session intent)]

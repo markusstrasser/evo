@@ -10,7 +10,7 @@
             [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]
             [utils.text-selection :as text-sel]
-            [shell.session :as session]
+            [shell.view-state :as vs]
             [clojure.string :as str]))
 
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@
   (.preventDefault e)
   (.execCommand js/document "insertLineBreak" false nil)
   (let [new-text (extract-text-with-newlines target)]
-    (session/buffer-set! block-id new-text)))
+    (vs/buffer-set! block-id new-text)))
 
 (defn- collapse-selection-start!
   "Collapse text selection to start, preventing default event."
@@ -122,7 +122,7 @@
 
    LOGSEQ PARITY (FR-Pointer-01): Respects folding/zoom/page visibility."
   [db block-id on-intent]
-  (let [sess @session/!session
+  (let [sess @vs/!view-state
         anchor (get-in sess [:selection :anchor])]
     (if anchor
       ;; Has anchor: select range with clicked block as new focus
@@ -163,7 +163,7 @@
    overwriting the drag state when dragging child blocks."
   [e block-id]
   (.stopPropagation e) ; Prevent bubbling to parent blocks!
-  (let [selection (session/selection-nodes)
+  (let [selection (vs/selection-nodes)
         drag-ids (if (contains? selection block-id)
                    selection
                    #{block-id})]
@@ -171,7 +171,7 @@
     (.setData (.-dataTransfer e) "text/plain" (pr-str drag-ids))
     (set! (.-effectAllowed (.-dataTransfer e)) "move")
     ;; Update session
-    (session/drag-start! drag-ids)))
+    (vs/drag-start! drag-ids)))
 
 (defn- handle-drag-enter
   "Allow drop by preventing default on dragenter."
@@ -181,9 +181,9 @@
   ;; Also update drop target on enter for immediate feedback
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
-        dragging (session/dragging-ids)]
+        dragging (vs/dragging-ids)]
     (when-not (contains? dragging block-id)
-      (session/drag-over! block-id zone))))
+      (vs/drag-over! block-id zone))))
 
 (defn- handle-drag-over
   "Update drop target based on mouse position."
@@ -193,10 +193,10 @@
   (set! (.-dropEffect (.-dataTransfer e)) "move")
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
-        dragging (session/dragging-ids)]
+        dragging (vs/dragging-ids)]
     ;; Don't allow dropping on self
     (when-not (contains? dragging block-id)
-      (session/drag-over! block-id zone))))
+      (vs/drag-over! block-id zone))))
 
 (defn- handle-drag-leave
   "Clear drop target when leaving."
@@ -211,11 +211,11 @@
   (.preventDefault e)
   (.stopPropagation e)
   ;; Capture state immediately before any async operations
-  (let [dragging (session/dragging-ids)
-        drop-target (session/drop-target)
+  (let [dragging (vs/dragging-ids)
+        drop-target (vs/drop-target)
         zone (:zone drop-target)]
     ;; Clear drag state first to prevent race conditions
-    (session/drag-end!)
+    (vs/drag-end!)
     ;; Execute move if valid
     (when (and (seq dragging)
                (not (contains? dragging block-id))
@@ -238,12 +238,12 @@
   "Clean up drag state."
   [e]
   (.stopPropagation e) ; Prevent bubbling to parent blocks
-  (session/drag-end!))
+  (vs/drag-end!))
 
 (defn- drop-zone-style
   "Visual feedback style for drop zones."
   [block-id]
-  (let [{:keys [id zone]} (session/drop-target)]
+  (let [{:keys [id zone]} (vs/drop-target)]
     (when (= id block-id)
       (case zone
         :above {:border-top "2px solid #0066cc"}
@@ -299,7 +299,7 @@
    (No text selection within blocks - that's what mouse drag is for)
    
    Buffer auto-commit: Handled automatically by kernel.intent/apply-intent via
-   :pending-buffer injection in shell.runtime. No manual commit needed here."
+   :pending-buffer injection in shell.executor. No manual commit needed here."
   [direction e _db _block-id on-intent]
   (.preventDefault e)
   ;; Collapse any text selection before exiting
@@ -421,7 +421,7 @@
   ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
   ;; Read from buffer (more reliable than DOM textContent with Playwright)
   ;; Fallback to DOM with extract-text-with-newlines to preserve BR as \n
-  (let [buffer-text (session/buffer-text block-id)
+  (let [buffer-text (vs/buffer-text block-id)
         dom-text (extract-text-with-newlines (.-target e))
         final-text (or buffer-text dom-text)]
     (when final-text
@@ -536,7 +536,7 @@
         ;; Normal mode: Enter = new block, Shift+Enter = newline
         ;; Doc-mode: Enter = newline, Shift+Enter = new block
       (and (= key "Enter") shift? (not mod?) (not alt?))
-      (if (session/doc-mode?)
+      (if (vs/document-view?)
         ;; Doc-mode: Shift+Enter creates new block
         (handle-enter e db block-id on-intent)
         ;; Normal mode: Shift+Enter inserts literal newline
@@ -544,7 +544,7 @@
 
         ;; Enter - behavior depends on doc-mode
       (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (if (session/doc-mode?)
+      (if (vs/document-view?)
         ;; Doc-mode: Enter inserts newline
         (insert-linebreak! e target block-id)
         ;; Normal mode: Enter creates new block
@@ -608,7 +608,7 @@
       ;; On mount: Set text once, focus, position cursor
       :replicant/on-mount
       (fn [{:replicant/keys [node]}]
-        (let [initial-cursor (session/cursor-position)
+        (let [initial-cursor (vs/cursor-position)
               cursor-pos (cond
                            (number? initial-cursor) initial-cursor
                            (= initial-cursor :start) 0
@@ -632,7 +632,7 @@
 
           ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
           (when initial-cursor
-            (session/clear-cursor-position!))))
+            (vs/clear-cursor-position!))))
 
       ;; On render: Maintain focus AND apply pending cursor position
       ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
@@ -649,8 +649,8 @@
         ;; 2. This block is the current editing block
         ;; For NEW elements, on-mount handles cursor positioning.
         (let [mounted? (.-mounted (.-dataset node))]
-          (when (and mounted? (= block-id (session/editing-block-id)))
-            (when-let [pending-cursor (session/cursor-position)]
+          (when (and mounted? (= block-id (vs/editing-block-id)))
+            (when-let [pending-cursor (vs/cursor-position)]
               (let [text-content (.-textContent node)
                     text-length (count text-content)
                     cursor-pos (cond
@@ -662,7 +662,7 @@
                 (when cursor-pos
                   (set-cursor! node cursor-pos))
                 ;; Clear the pending cursor position to prevent reapplication
-                (session/clear-cursor-position!))))))
+                (vs/clear-cursor-position!))))))
 
       ;; Event handlers for edit mode
       :on {:click (fn [e]
@@ -676,15 +676,15 @@
                           ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
                           new-text (extract-text-with-newlines target)]
                       ;; Update buffer atom directly - does NOT trigger re-render
-                      (session/buffer-set! block-id new-text)))
+                      (vs/buffer-set! block-id new-text)))
 
            ;; Blur handler: Commit to canonical DB
            :blur (fn [e]
                    (let [target (.-target e)
                          ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
                          final-text (extract-text-with-newlines target)
-                         suppress? (session/suppress-blur-exit?)
-                         same-block? (= (session/editing-block-id) block-id)]
+                         suppress? (vs/keep-edit-on-blur?)
+                         same-block? (= (vs/editing-block-id) block-id)]
                      ;; Commit to canonical DB
                      (on-intent {:type :update-content
                                  :block-id block-id
@@ -756,7 +756,7 @@
 
         ;; Drag visual feedback
         drop-style (drop-zone-style block-id)
-        is-dragging (contains? (session/dragging-ids) block-id)
+        is-dragging (contains? (vs/dragging-ids) block-id)
 
         ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
         block-classes (cond-> ["block"]
@@ -805,10 +805,10 @@
                   (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db}))
 
         ;; Session state for children (computed once per render)
-        editing-block-id (session/editing-block-id)
-        focus-block-id (session/focus-id)
-        selection-set (session/selection-nodes)
-        folded-set (session/folded)
+        editing-block-id (vs/editing-block-id)
+        focus-block-id (vs/focus-id)
+        selection-set (vs/selection-nodes)
+        folded-set (vs/folded)
 
         children-el
         (when (seq children)
