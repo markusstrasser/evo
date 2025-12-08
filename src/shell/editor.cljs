@@ -529,8 +529,7 @@
                :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
-               :max-width "800px"
-               :transition "margin-left 0.2s ease"}
+               :max-width "800px"}
        ;; Background click to clear selection (Logseq parity)
        ;; Blocks call stopPropagation, so this only fires for empty background clicks
        :on {:click (fn [e]

@@ -6,7 +6,8 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.query :as q]
-            [utils.text :as text]))
+            [utils.text :as text]
+            [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 (def loaded? true)
@@ -154,7 +155,7 @@
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
                                            before (subs text 0 cursor-pos)
-                                           after (clojure.string/triml (subs text cursor-pos))
+                                           after (str/triml (subs text cursor-pos))
                                            new-text (str before "\n" after)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates {:ui {:editing-block-id block-id

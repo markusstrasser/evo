@@ -17,7 +17,7 @@
     ;=> #js {:tag \"SPAN\" :contenteditable \"true\" :block-id \"block-123\"}
 
   10x faster than Playwright - no browser launch!"
-  (:require [shell.blocks-ui :as blocks-ui]
+  (:require [shell.editor :as editor]
             [components.block :as block]
             [kernel.query :as q]))
 
@@ -144,7 +144,7 @@
 
       ;; Verify cursor works
       (let [typed (type-text "x")
-            db-state @blocks-ui/!db
+            db-state @editor/!db
             dom-state (contenteditable-state)
             cursor-ok? (:order-correct? typed)
             focus-ok? (some :focused? dom-state)
@@ -215,7 +215,7 @@
 
   Returns summary of pass/fail"
   []
-  (let [db @blocks-ui/!db]
+  (let [db @editor/!db]
     {:focus-test
      (let [before (focused-element)]
        {:focused? (not (:is-body? before))
@@ -239,7 +239,7 @@
       #js {:focused focused-element
            :cursor cursor-position
            :state contenteditable-state
-           :dbVsDom #(db-vs-dom @blocks-ui/!db)
+           :dbVsDom #(db-vs-dom @editor/!db)
            :typeText type-text
            :simulateEnter simulate-enter
            :testEdgeCases test-all-edge-cases

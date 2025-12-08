@@ -1,6 +1,6 @@
 (ns debug
   "REPL debugging helpers - load in browser console or REPL"
-  (:require [shell.blocks-ui :as app]
+  (:require [shell.editor :as app]
             [kernel.db :as db]
             [kernel.query :as q]
             [kernel.history :as H]

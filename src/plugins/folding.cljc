@@ -209,8 +209,8 @@
                           :spec [:map [:type [:= :toggle-doc-mode]]]
                           :fr/ids #{:fr.edit/newline-no-split}
                           :handler (fn [_db session _intent]
-                                     (let [current-mode (get-in session [:ui :doc-mode?] false)]
-                                       {:session-updates {:ui {:doc-mode? (not current-mode)}}}))})
+                                     (let [current-mode (get-in session [:ui :document-view?] false)]
+                                       {:session-updates {:ui {:document-view? (not current-mode)}}}))})
 
 ;; ── UI Chrome Intents ─────────────────────────────────────────────────────────
 
