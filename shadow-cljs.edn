@@ -15,7 +15,7 @@
   {:target :browser
    :output-dir "public/js/blocks-ui"
    :asset-path "/js/blocks-ui"
-   :modules {:main {:init-fn shell.blocks-ui/main}}
+   :modules {:main {:init-fn shell.editor/main}}
    :preloads [debug]}
 
   :test

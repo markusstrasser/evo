@@ -17,7 +17,7 @@
                                                           core.permutation-test
                                                           plugins.permute-test
                                                           test-util
-                                                          plugins.struct-test
+                                                          plugins.structural-test
                                                           integration.keybinding-test
                                                           plugins.integration-edge-cases-test
                                                           core.history-test
