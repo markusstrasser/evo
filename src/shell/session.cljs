@@ -47,7 +47,9 @@
         :cursor-position nil
         :suppress-blur-exit false
         :doc-mode? false
-        :drag nil}
+        :drag nil
+        :sidebar-visible? true      ; Left sidebar (pages) visibility
+        :hotkeys-visible? false}    ; Hotkeys reference panel visibility
    :sidebar {:right []}})
 
 (defonce !session (atom default-session))
@@ -128,6 +130,16 @@
   "Get focused block ID from session."
   []
   (get-in @!session [:selection :focus]))
+
+(defn sidebar-visible?
+  "Check if the left sidebar (pages) is visible."
+  []
+  (get-in @!session [:ui :sidebar-visible?] true))
+
+(defn hotkeys-visible?
+  "Check if the hotkeys reference panel is visible."
+  []
+  (get-in @!session [:ui :hotkeys-visible?] false))
 
 ;; ── Session Mutation API ─────────────────────────────────────────────────────
 
@@ -239,6 +251,16 @@
    LOGSEQ PARITY: In doc-mode, Enter inserts newline and Shift+Enter creates new block."
   []
   (get-in @!session [:ui :doc-mode?]))
+
+(defn toggle-sidebar!
+  "Toggle left sidebar visibility. Bound to Cmd+B."
+  []
+  (swap-session! update-in [:ui :sidebar-visible?] not))
+
+(defn toggle-hotkeys!
+  "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
+  []
+  (swap-session! update-in [:ui :hotkeys-visible?] not))
 
 ;; ── Drag State API ────────────────────────────────────────────────────────────
 

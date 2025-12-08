@@ -211,3 +211,19 @@
                           :handler (fn [_db session _intent]
                                      (let [current-mode (get-in session [:ui :doc-mode?] false)]
                                        {:session-updates {:ui {:doc-mode? (not current-mode)}}}))})
+
+;; ── UI Chrome Intents ─────────────────────────────────────────────────────────
+
+(intent/register-intent! :toggle-sidebar
+                         {:doc "Toggle left sidebar (pages) visibility. Bound to Cmd+B."
+                          :spec [:map [:type [:= :toggle-sidebar]]]
+                          :handler (fn [_db session _intent]
+                                     (let [visible? (get-in session [:ui :sidebar-visible?] true)]
+                                       {:session-updates {:ui {:sidebar-visible? (not visible?)}}}))})
+
+(intent/register-intent! :toggle-hotkeys
+                         {:doc "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
+                          :spec [:map [:type [:= :toggle-hotkeys]]]
+                          :handler (fn [_db session _intent]
+                                     (let [visible? (get-in session [:ui :hotkeys-visible?] false)]
+                                       {:session-updates {:ui {:hotkeys-visible? (not visible?)}}}))})
