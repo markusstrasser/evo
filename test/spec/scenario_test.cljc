@@ -8,7 +8,7 @@
      bb test:specs           ; Run all scenario tests
      bb test -n spec.scenario-test  ; Run via kaocha"
   (:require [clojure.test :refer [deftest testing is]]
-            [spec.runner :as runner]
+            [spec.runner :as runner] ; Loads plugins via its requires
             [spec.registry :as fr]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@
 
 (defn passes?
   "Check if a scenario passes. For use in test assertions.
-   
+
    Example:
      (is (passes? :fr.edit/backspace-merge :MERGE-01))"
   [fr-id scenario-id]
@@ -27,7 +27,9 @@
       (println "  Expected:" (:expected result))
       (println "  Actual:" (:actual result))
       (when (:diff result)
-        (println "  Diff:" (:diff result))))
+        (println "  Diff:" (:diff result)))
+      (when (seq (:issues result))
+        (println "  Issues:" (:issues result))))
     (:pass? result)))
 
 (defn scenario-test-name

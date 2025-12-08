@@ -547,4 +547,5 @@
           new-id (second children)]
       (is (= "New" (get-in db''' [:nodes "a" :props :text])))
       ;; Should not have number since original was unformatted
-      (is (= " content" (get-in db''' [:nodes new-id :props :text]))))))
+      ;; LOGSEQ PARITY: Leading whitespace is trimmed from new blocks
+      (is (= "content" (get-in db''' [:nodes new-id :props :text]))))))
