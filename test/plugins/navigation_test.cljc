@@ -148,8 +148,8 @@
                                  :current-text "hello world"
                                  :current-cursor-pos 8})] ; After "hello wo"
 
-      ;; Target "hi" is only 2 chars, cursor should be at end
-      (is (= :end (get-in (:session-updates result) [:ui :cursor-position]))))))
+      ;; Target "hi" is only 2 chars, cursor should be clamped to end (position 2)
+      (is (= 2 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest 
   navigate-with-empty-block-test
@@ -172,8 +172,8 @@
       ;; Should navigate to prev block
       (is (= "a" (get-in (:session-updates result) [:ui :editing-block-id])))
 
-      ;; Cursor should be at start of target (position 0)
-      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
+      ;; Cursor should be at start of target (numeric position 0)
+      (is (= 0 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest 
   navigate-to-empty-block-test
@@ -190,8 +190,8 @@
                                  :current-text "hello"
                                  :current-cursor-pos 3})]
 
-      ;; Target is empty, cursor should be at start (0)
-      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
+      ;; Target is empty, cursor should be at start (numeric position 0)
+      (is (= 0 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest 
   navigate-no-sibling-throws-test
@@ -252,8 +252,8 @@
       ;; Line pos = 0
       (is (= 0 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
-      ;; Target cursor should be at start
-      (is (= :start (get-in (:session-updates result) [:ui :cursor-position]))))))
+      ;; Target cursor should be at start (numeric position 0)
+      (is (= 0 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 (deftest cursor-at-end-of-block-test
   (testing "Navigate up from end of block"
@@ -267,8 +267,8 @@
       ;; Line pos = 11
       (is (= 11 (get-in (:session-updates result) [:ui :cursor-memory :line-pos])))
 
-      ;; Target "hello world" is also 11 chars, should be at end
-      (is (= :end (get-in (:session-updates result) [:ui :cursor-position]))))))
+      ;; Target "hello world" is also 11 chars, should be at end (numeric position 11)
+      (is (= 11 (get-in (:session-updates result) [:ui :cursor-position]))))))
 
 ;; ── Navigate To Adjacent Tests ────────────────────────────────────────────────
 
