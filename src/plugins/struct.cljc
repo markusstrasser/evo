@@ -29,6 +29,9 @@
             [kernel.position :as pos]
             [kernel.db :as db]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 
 (defn- within-zoom-scope?
@@ -50,11 +53,32 @@
     true))
 
 (defn delete-ops
-  "Compiles a delete intent into a :place operation that moves the node to :trash.
+  "Compiles a delete intent into operations that:
+   1. Reparent children under deleted block's parent (LOGSEQ PARITY)
+   2. Move deleted block to :trash
+
+   Children are placed at the same position the deleted block occupied,
+   preserving document order.
 
    Signature: [db session id] - uniform with all op-fns for apply-to-active-targets."
-  [_db _session id]
-  [{:op :place :id id :under const/root-trash :at :last}])
+  [db _session id]
+  (let [children (q/children db id)
+        parent (q/parent-of db id)]
+    (if (and (seq children) parent)
+      ;; Has children: reparent them under our parent, then move self to trash
+      ;; Place first child where deleted block was, remaining children after each other
+      (let [reparent-ops (vec
+                          (concat
+                           ;; First child takes our position
+                           [{:op :place :id (first children) :under parent :at {:before id}}]
+                           ;; Remaining children placed after each other
+                           (map-indexed
+                            (fn [idx child-id]
+                              {:op :place :id child-id :under parent :at {:after (nth children idx)}})
+                            (rest children))))]
+        (conj reparent-ops {:op :place :id id :under const/root-trash :at :last}))
+      ;; No children or no parent: just move to trash
+      [{:op :place :id id :under const/root-trash :at :last}])))
 
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
