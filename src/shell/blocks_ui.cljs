@@ -500,27 +500,37 @@
        (hotkey (kbd "⌘" ".") "Zoom in")
        (hotkey (kbd "⌘" ",") "Zoom out")
        (hotkey (kbd "⌘" "Z") "Undo")
-       (hotkey (kbd "⌘" "Shift" "Z") "Redo")]]]))
+       (hotkey (kbd "⌘" "Shift" "Z") "Redo")]
+      ;; UI
+      [:div
+       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
+                     :letter-spacing "0.05em" :color "#9ca3af"}} "UI"]
+       (hotkey (kbd "⌘" "B") "Toggle sidebar")
+       (hotkey (kbd "⌘" "?") "Toggle this panel")]]]))
 
 (defn App []
   "Main app - pure composition, no business logic."
   (let [db @!db
         current-page-id (session/current-page)
-        page-title (when current-page-id (pages/page-title db current-page-id))]
+        page-title (when current-page-id (pages/page-title db current-page-id))
+        sidebar-visible? (session/sidebar-visible?)
+        hotkeys-visible? (session/hotkeys-visible?)]
     [:div.app
      {:style {:display "flex"
               :min-height "100vh"}}
 
-     ;; Sidebar for page navigation
-     (sidebar/Sidebar {:db db :on-intent handle-intent})
+     ;; Sidebar for page navigation (toggleable via Cmd+B)
+     (when sidebar-visible?
+       (sidebar/Sidebar {:db db :on-intent handle-intent}))
 
      ;; Main content area
      [:div.main-content
       {:style {:flex "1"
-               :margin-left "220px" ; Offset for fixed sidebar
+               :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
-               :max-width "800px"}
+               :max-width "800px"
+               :transition "margin-left 0.2s ease"}
        ;; Background click to clear selection (Logseq parity)
        ;; Blocks call stopPropagation, so this only fires for empty background clicks
        :on {:click (fn [e]
@@ -559,8 +569,9 @@
       (when (devtools-enabled?)
         (devtools/DevToolsPanel {:db db}))
 
-      ;; Hotkeys reference
-      (HotkeysReference)]]))
+      ;; Hotkeys reference (toggleable via Cmd+?)
+      (when hotkeys-visible?
+        (HotkeysReference))]]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
