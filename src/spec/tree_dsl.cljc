@@ -159,7 +159,7 @@
         db-with-nodes (-> base-db
                           (assoc :nodes nodes)
                           (assoc :children-by-parent children-by-parent)
-                          (assoc :roots [root-kw])) ; Explicit: only DSL root
+                          (assoc :roots [root-kw :trash])) ; Explicit: only DSL root
         derived-db (db/derive-indexes db-with-nodes)
 
         ;; Build session
@@ -229,9 +229,17 @@
 ;; ══════════════════════════════════════════════════════════════════════════════
 
 (defn- wildcard-id?
-  "Check if an ID is a wildcard (matches any block ID)."
+  "Check if an ID is a wildcard (matches any block ID).
+
+   Wildcards:
+   - :_ or \"_\" - matches any block ID
+   - :new or \"new\" - matches any new block ID
+   - :new-N (e.g., :new-1, :new-2) - matches any new block ID"
   [id]
-  (or (= id :_) (= id :new) (= id "_") (= id "new")))
+  (let [id-str (name id)]
+    (or (= id :_) (= id "_")
+        (= id :new) (= id "new")
+        (clojure.string/starts-with? id-str "new-"))))
 
 (defn- block-matches?
   "Check if expected block matches actual block (supporting wildcards).
@@ -256,11 +264,16 @@
         exp-children (filter vector? exp-rest)
         act-children (filter vector? act-rest)
 
-        ;; Attrs match (with wildcard support for cursor)
+        ;; Attrs match (with wildcard support)
+        ;; :_ matches any value, :end matches text length (or :end keyword) for :cursor
         attrs-ok? (every? (fn [[k v]]
-                            (if (= v :_)
-                              (contains? act-attrs k)
-                              (= v (get act-attrs k))))
+                            (cond
+                              (= v :_) (contains? act-attrs k)
+                              (and (= k :cursor) (= v :end))
+                              (let [actual-cursor (get act-attrs k)]
+                                (or (= actual-cursor :end)
+                                    (= actual-cursor (count act-text))))
+                              :else (= v (get act-attrs k))))
                           (or exp-attrs {}))
 
         ;; Children match (recursively)

@@ -20,7 +20,38 @@
   (:require [spec.tree-dsl :as dsl]
             [spec.registry :as fr]
             [kernel.api :as api]
-            [kernel.db :as db]))
+            [kernel.db :as db]
+            ;; Load plugins - these register intent handlers at load time
+            ;; Required here so dispatch* can route to handlers
+            [plugins.editing :as p-editing]
+            [plugins.navigation :as p-navigation]
+            [plugins.struct :as p-struct]
+            [plugins.selection :as p-selection]
+            [plugins.smart-editing :as p-smart-editing]
+            [plugins.folding :as p-folding]
+            [plugins.clipboard :as p-clipboard]
+            [plugins.pages :as p-pages]
+            [plugins.text-formatting :as p-text-formatting]
+            ;; Derived index plugins (register with plugins.registry)
+            [plugins.visible-order :as p-visible-order]))
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; Plugin Loading (prevents DCE - dead code elimination)
+;; ══════════════════════════════════════════════════════════════════════════════
+
+;; Reference plugin sentinels to prevent DCE from eliminating side-effect-only
+;; namespaces. Each plugin registers intents at load time.
+(def ^:private plugins-loaded?
+  (and p-editing/loaded?
+       p-navigation/loaded?
+       p-struct/loaded?
+       p-selection/loaded?
+       p-smart-editing/loaded?
+       p-folding/loaded?
+       p-clipboard/loaded?
+       p-pages/loaded?
+       p-text-formatting/loaded?
+       p-visible-order/loaded?))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Matching Utilities
