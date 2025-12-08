@@ -1,4 +1,4 @@
-(ns shell.blocks-ui
+(ns shell.editor
   "Blocks UI demo - composition layer only.
 
    Demonstrates proper architecture:
@@ -16,18 +16,18 @@
             [components.devtools :as devtools]
             [dataspex.core :as dataspex]
             [shell.nexus :as nexus]
-            [shell.runtime :as runtime]
+            [shell.executor :as executor]
             [shell.demo-data :as demo-data]
             [shell.e2e-scenarios]
-            [shell.session :as session]
+            [shell.view-state :as vs]
             ;; Load all plugins to register intents
             [plugins.selection]
             [plugins.editing]
             [plugins.clipboard]
             [plugins.navigation]
-            [plugins.struct]
+            [plugins.structural]
             [plugins.folding]
-            [plugins.smart-editing]
+            [plugins.context-editing]
             [plugins.text-formatting]
             [plugins.visible-order]
             ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
@@ -93,9 +93,9 @@
     (do
       ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
       (when (contains? structural-intents (:type intent-or-actions))
-        (session/suppress-blur-exit!))
+        (vs/keep-edit-on-blur!))
       ;; Use shared runtime for the actual dispatch
-      (runtime/apply-intent! !db intent-or-actions "DIRECT"))
+      (executor/apply-intent! !db intent-or-actions "DIRECT"))
 
     ;; Keyword: wrap in :type map
     :else
@@ -116,12 +116,12 @@
   (when-not (.-defaultPrevented e)
     (let [event (keymap/parse-dom-event e)
           db @!db
-          current-session (session/get-session)
+          current-session (vs/get-view-state)
           key (.-key e)
           mod? (or (.-metaKey e) (.-ctrlKey e))
           shift? (.-shiftKey e)
-          focus-id (session/focus-id)
-          editing? (session/editing-block-id)
+          focus-id (vs/focus-id)
+          editing? (vs/editing-block-id)
           idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
           intent-type (keymap/resolve-intent-type event current-session)
 
@@ -214,20 +214,20 @@
             ;; Undo/Redo - modify DB directly, not via operations
             ;; Also restore session state (cursor, selection) for proper context
               (= intent-type :undo)
-              (when-let [{:keys [db session]} (H/undo @!db (session/get-session))]
+              (when-let [{:keys [db session]} (H/undo @!db (vs/get-view-state))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
                 (when session
-                  (session/merge-session-updates! session))
+                  (vs/merge-view-state-updates! session))
                 (reset! !db db)
-                (runtime/assert-derived-fresh! db "after undo"))
+                (executor/assert-derived-fresh! db "after undo"))
 
               (= intent-type :redo)
-              (when-let [{:keys [db session]} (H/redo @!db (session/get-session))]
+              (when-let [{:keys [db session]} (H/redo @!db (vs/get-view-state))]
               ;; Restore session BEFORE db to ensure cursor is set before re-render
                 (when session
-                  (session/merge-session-updates! session))
+                  (vs/merge-view-state-updates! session))
                 (reset! !db db)
-                (runtime/assert-derived-fresh! db "after redo"))
+                (executor/assert-derived-fresh! db "after redo"))
 
             ;; All other intents - go through normal intent dispatch
               :else
@@ -293,11 +293,11 @@
                 ;; Commit text AND preserve cursor before structural operations while editing
                   (when (and editing? structural-intent?)
                   ;; Suppress blur FIRST to prevent focus loss during re-renders
-                    (session/suppress-blur-exit!)
+                    (vs/keep-edit-on-blur!)
                   ;; Capture cursor position BEFORE any changes (will be saved after text commit)
                     (let [sel (.getSelection js/window)
                           saved-cursor-pos (when (and sel editable-el) (.-anchorOffset sel))
-                          buffer-text (session/buffer-text editing?)
+                          buffer-text (vs/buffer-text editing?)
                           dom-text (when editable-el (.-textContent editable-el))
                           final-text (or buffer-text dom-text)]
                     ;; Commit text first
@@ -308,7 +308,7 @@
                     ;; Save cursor position AFTER text commit (on-render may have cleared it)
                     ;; on-mount will read this and restore cursor position after block remounts
                       (when saved-cursor-pos
-                        (session/set-cursor-position! saved-cursor-pos))))
+                        (vs/set-cursor-position! saved-cursor-pos))))
                   (cond
                 ;; Map intent: use directly (with injected block-id if needed)
                     (map? enriched-intent)
@@ -353,17 +353,17 @@
    Also handles drag & drop at the container level for drops to first position."
   [{:keys [db root-id on-intent]}]
   (let [children (get-in db [:children-by-parent root-id] [])
-        editing-block-id (session/editing-block-id)
-        focus-block-id (session/focus-id)
-        selection-set (session/selection-nodes)
-        folded-set (session/folded)
+        editing-block-id (vs/editing-block-id)
+        focus-block-id (vs/focus-id)
+        selection-set (vs/selection-nodes)
+        folded-set (vs/folded)
         first-child-id (first children)
         ;; Check if dropping at top of outline
-        drop-target (session/drop-target)
+        drop-target (vs/drop-target)
         dropping-at-top? (and (= (:id drop-target) ::outline-top)
                               (= (:zone drop-target) :first))
         ;; Check if actively dragging
-        dragging? (seq (session/dragging-ids))]
+        dragging? (seq (vs/dragging-ids))]
     (if (empty? children)
       ;; Empty state: clickable placeholder to create first block
       [:div.outline.outline--empty
@@ -384,11 +384,11 @@
              :dragover (fn [e]
                          (.preventDefault e)
                          (set! (.-dropEffect (.-dataTransfer e)) "move")
-                         (session/drag-over! ::outline-top :first))
+                         (vs/drag-over! ::outline-top :first))
              :drop (fn [e]
                      (.preventDefault e)
-                     (let [dragging (session/dragging-ids)]
-                       (session/drag-end!)
+                     (let [dragging (vs/dragging-ids)]
+                       (vs/drag-end!)
                        (when (seq dragging)
                          (on-intent {:type :move
                                      :selection (vec dragging)
@@ -411,17 +411,17 @@
                             (.preventDefault e)
                             (.stopPropagation e)
                             (set! (.-dropEffect (.-dataTransfer e)) "move")
-                            (let [dragging (session/dragging-ids)]
+                            (let [dragging (vs/dragging-ids)]
                               (when-not (contains? dragging first-child-id)
-                                (session/drag-over! ::outline-top :first))))
+                                (vs/drag-over! ::outline-top :first))))
                 :dragleave (fn [_e]
-                             (when (= (:id (session/drop-target)) ::outline-top)
-                               (session/drag-over! nil nil)))
+                             (when (= (:id (vs/drop-target)) ::outline-top)
+                               (vs/drag-over! nil nil)))
                 :drop (fn [e]
                         (.preventDefault e)
                         (.stopPropagation e)
-                        (let [dragging (session/dragging-ids)]
-                          (session/drag-end!)
+                        (let [dragging (vs/dragging-ids)]
+                          (vs/drag-end!)
                           (when (seq dragging)
                             (on-intent {:type :move
                                         :selection (vec dragging)
@@ -511,10 +511,10 @@
 (defn App []
   "Main app - pure composition, no business logic."
   (let [db @!db
-        current-page-id (session/current-page)
+        current-page-id (vs/current-page)
         page-title (when current-page-id (pages/page-title db current-page-id))
-        sidebar-visible? (session/sidebar-visible?)
-        hotkeys-visible? (session/hotkeys-visible?)]
+        sidebar-visible? (vs/sidebar-visible?)
+        hotkeys-visible? (vs/hotkeys-visible?)]
     [:div.app
      {:style {:display "flex"
               :min-height "100vh"}}
@@ -529,13 +529,12 @@
                :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
                :font-family "system-ui, -apple-system, sans-serif"
                :padding "20px"
-               :max-width "800px"
-               :transition "margin-left 0.2s ease"}
+               :max-width "800px"}
        ;; Background click to clear selection (Logseq parity)
        ;; Blocks call stopPropagation, so this only fires for empty background clicks
        :on {:click (fn [e]
                      ;; Only clear if not editing and clicking empty background
-                     (when-not (session/editing-block-id)
+                     (when-not (vs/editing-block-id)
                        (handle-intent {:type :selection :mode :clear})))}}
 
       ;; Mock-text for cursor detection
@@ -612,8 +611,8 @@
                   :db
                   (H/record)))
   ;; Reset session and set current page
-  (session/reset-session!)
-  (session/set-current-page! "test-page"))
+  (vs/reset-view-state!)
+  (vs/set-current-page! "test-page"))
 
 (defn main []
   (when ^boolean goog.DEBUG
@@ -625,7 +624,7 @@
   (if (test-mode?)
     (reset-to-empty-db!)
     ;; Normal mode: auto-select first page (Projects) for demo data
-    (session/set-current-page! "projects"))
+    (vs/set-current-page! "projects"))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
@@ -647,7 +646,7 @@
              :getBlockText (fn [block-id]
                              (get-in @!db [:nodes block-id :props :text] ""))
              :getDb (fn [] (clj->js @!db))
-             :getSession (fn [] (clj->js (session/get-session)))
+             :getSession (fn [] (clj->js (vs/get-view-state)))
              ;; Transact raw ops (for test setup - creates blocks, places them, etc.)
              :transact (fn [ops-js]
                          (let [ops (js->clj ops-js :keywordize-keys true)
@@ -672,7 +671,7 @@
                                   intent (cond-> raw
                                            (:type raw) (update :type keyword)
                                            (:mode raw) (update :mode keyword))
-                                  current-session (session/get-session)
+                                  current-session (vs/get-view-state)
                                   state (sm/current-state current-session)
                                   allowed? (sm/intent-allowed? current-session intent)
                                   requirements (get sm/intent-state-requirements (:type intent))]
@@ -688,7 +687,7 @@
 
              ;; Get a snapshot of current app state for debugging
              :snapshot (fn []
-                         (let [current-session (session/get-session)]
+                         (let [current-session (vs/get-view-state)]
                            #js {:state (name (sm/current-state current-session))
                                 :editingBlockId (get-in current-session [:ui :editing-block-id])
                                 :selectedIds (clj->js (vec (get-in current-session [:selection :nodes] #{})))
@@ -698,7 +697,7 @@
 
              ;; Copy full debug state to clipboard for bug reports
              :copyDebugState (fn []
-                               (let [current-session (session/get-session)
+                               (let [current-session (vs/get-view-state)
                                      db-snapshot @!db
                                      debug-data {:timestamp (.toISOString (js/Date.))
                                                  :state (sm/current-state current-session)
@@ -724,7 +723,7 @@
                                  json-str))})
 
   ;; Phase 2: Expose session for debugging
-  (set! (.-SESSION js/window) session/!session)
+  (set! (.-SESSION js/window) vs/!view-state)
 
   ;; Initialize keyboard bindings (explicit, not side-effect)
   (bindings/reload!)
@@ -735,7 +734,7 @@
   ;; Set initial current page to first page (for navigation scope)
   (when-not (test-mode?)
     (when-let [first-page (first (q/children @!db :doc))]
-      (session/set-current-page! first-page)))
+      (vs/set-current-page! first-page)))
 
   ;; Enable lifecycle hooks + Nexus dispatch
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
@@ -764,14 +763,14 @@
   ;; Set up auto-render on state changes (both DB and session)
   ;; Uses request-render! to batch multiple changes into single render (prevents nested render warnings)
   (add-watch !db :render (fn [_ _ _ _] (request-render!)))
-  (add-watch session/!session :render (fn [_ _ _ _] (request-render!)))
+  (add-watch vs/!view-state :render (fn [_ _ _ _] (request-render!)))
 
   ;; Initialize Dataspex for DB inspection
   (dataspex/inspect "App DB" !db {:track-changes? true})
 
   ;; Apply text selection effects from formatting operations
   ;; Watch session for pending-selection instead of DB
-  (add-watch session/!session :text-selection-effects
+  (add-watch vs/!view-state :text-selection-effects
              (fn [_ _ _ new-session]
                (when-let [{:keys [block-id start end]}
                           (get-in new-session [:ui :pending-selection])]
@@ -791,6 +790,6 @@
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
                     ;; Clear pending selection after applying
-                    (session/clear-pending-selection!))))))
+                    (vs/clear-pending-selection!))))))
 
   (render!))

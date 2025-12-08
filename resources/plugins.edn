@@ -3,9 +3,9 @@
  plugins.editing
  plugins.clipboard
  plugins.navigation
- plugins.struct
+ plugins.structural
  plugins.folding
- plugins.smart-editing
+ plugins.context-editing
  plugins.text-formatting
  plugins.visible-order
  plugins.pages

@@ -1,4 +1,4 @@
-(ns plugins.smart-editing
+(ns plugins.context-editing
   "Smart editing behaviors: context-aware editing operations.
 
    Features:

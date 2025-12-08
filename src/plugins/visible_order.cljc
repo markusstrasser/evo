@@ -175,6 +175,6 @@
   (get-in db [:derived :visible-order :by-parent :doc])
   ;; => ["b1"]
 
-  ;; Note: Folding and zoom are now controlled via shell.session atom, not DB operations.
+  ;; Note: Folding and zoom are now controlled via shell.view-state atom, not DB operations.
   ;; Use (session/swap-session! assoc-in [:ui :folded] #{"b1"}) to fold blocks.
   )

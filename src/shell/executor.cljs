@@ -1,11 +1,11 @@
-(ns shell.runtime
+(ns shell.executor
   "Shared runtime helpers for intent dispatch.
 
    Extracted from nexus.cljs and blocks_ui.cljs to eliminate duplication.
    Both files had near-identical intent application logic."
   (:require [kernel.api :as api]
             [kernel.db :as db]
-            [shell.session :as session]
+            [shell.view-state :as vs]
             [dev.tooling :as dev]))
 
 (defn assert-derived-fresh!
@@ -45,19 +45,19 @@
   [!db intent-map label]
   ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
-    (session/set-cursor-position! cursor-pos))
+    (vs/set-cursor-position! cursor-pos))
 
   ;; BUFFER INJECTION: Attach pending buffer text to intent for single-transaction commit
   ;; Handlers can check :pending-buffer and emit :update-content ops if needed
-  (let [editing-block-id (session/editing-block-id)
-        buffer-text (when editing-block-id (session/buffer-text editing-block-id))
+  (let [editing-block-id (vs/editing-block-id)
+        buffer-text (when editing-block-id (vs/buffer-text editing-block-id))
         intent-with-buffer (if buffer-text
                              (assoc intent-map
                                     :pending-buffer {:block-id editing-block-id
                                                      :text buffer-text})
                              intent-map)
         intent-type (:type intent-map)
-        current-session (session/get-session)
+        current-session (vs/get-view-state)
         db-before @!db
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
         db-after db
@@ -71,14 +71,14 @@
     ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
     ;; Those hooks read session state (cursor-position), so session must be updated first.
     (when session-updates
-      (session/merge-session-updates! session-updates))
+      (vs/merge-view-state-updates! session-updates))
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
 
     ;; Clear buffer after successful dispatch (if buffer was injected and used)
     (when buffer-text
-      (session/buffer-clear! editing-block-id))
+      (vs/buffer-clear! editing-block-id))
 
     ;; Assert derived indexes are fresh
     (assert-derived-fresh! db-after (str "after " label " dispatch: " intent-type))

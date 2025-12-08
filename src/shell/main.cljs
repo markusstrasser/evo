@@ -1,7 +1,7 @@
 (ns shell.main
   "Main entry point for browser application"
-  (:require [shell.blocks-ui :as blocks-ui]))
+  (:require [shell.editor :as editor]))
 
 (defn main []
   (println "App starting...")
-  (blocks-ui/main))
+  (editor/main))

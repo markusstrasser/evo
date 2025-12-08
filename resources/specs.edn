@@ -391,7 +391,7 @@
   :type :intent-level
   :status :active
   :version 1
-  :tags [:editing :smart-editing]
+  :tags [:editing :context-editing]
   :spec-ref "LOGSEQ_SPEC.md §4"
   :level :intent
 
@@ -885,7 +885,7 @@
   :type :intent-level
   :status :active
   :version 1
-  :tags [:editing :smart-editing]
+  :tags [:editing :context-editing]
   :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-07"
   :level :intent
 
@@ -1502,7 +1502,7 @@
   :type :intent-level
   :status :active
   :version 1
-  :tags [:smart-editing]
+  :tags [:context-editing]
   :spec-ref "LOGSEQ_SPEC.md §7.10"
   :level :intent
 
@@ -1535,7 +1535,7 @@
   :type :intent-level
   :status :active
   :version 1
-  :tags [:smart-editing :lists]
+  :tags [:context-editing :lists]
   :spec-ref "LOGSEQ_SPEC.md §4 (part of FR-Edit-01)"
   :level :intent
 
@@ -1563,7 +1563,7 @@
   :type :intent-level
   :status :active
   :version 1
-  :tags [:smart-editing :lists]
+  :tags [:context-editing :lists]
   :spec-ref "LOGSEQ_SPEC.md §7.10"
   :level :intent
 

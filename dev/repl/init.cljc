@@ -227,12 +227,12 @@
    Usage: (inspect-db!)
           (inspect-db! '[:nodes])  ; Specific path"
   ([]
-   #?(:clj (cljs! '(do (require '[shell.blocks-ui :as app])
+   #?(:clj (cljs! '(do (require '[shell.editor :as app])
                        (js/console.log "DB:" (pr-str @app/!db))
                        @app/!db))
       :cljs nil))
   ([path]
-   #?(:clj (cljs! `(do (require '[shell.blocks-ui :as app])
+   #?(:clj (cljs! `(do (require '[shell.editor :as app])
                        (let [val# (get-in @app/!db ~path)]
                          (js/console.log ~(str "DB " path ":") (pr-str val#))
                          val#)))
@@ -243,7 +243,7 @@
 
    Usage: (send-intent! {:type :select :ids \"a\"})"
   [intent]
-  #?(:clj (cljs! `(do (require '[shell.blocks-ui :as app])
+  #?(:clj (cljs! `(do (require '[shell.editor :as app])
                       (app/handle-intent! ~intent)))
       :cljs nil))
 
@@ -258,11 +258,11 @@
   ([action]
    #?(:clj
       (case action
-        :reset (cljs! '(do (require '[shell.blocks-ui :as app]
+        :reset (cljs! '(do (require '[shell.editor :as app]
                                     '[kernel.db :as db])
                            (reset! app/!db (db/empty-db))
                            @app/!db))
-        :fixture (cljs! '(do (require '[shell.blocks-ui :as app]
+        :fixture (cljs! '(do (require '[shell.editor :as app]
                                       '[kernel.transaction :as tx]
                                       '[kernel.db :as db])
                              (reset! app/!db

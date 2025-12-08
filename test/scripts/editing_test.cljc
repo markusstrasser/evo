@@ -1,8 +1,8 @@
-(ns macros.editing-test
+(ns scripts.editing-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [macros.editing :as edit]
-            [macros.script :as script]
+            [scripts.editing :as edit]
+            [scripts.script :as script]
             [kernel.transaction :as tx]
             [kernel.db :as db]
             [kernel.constants :as const]

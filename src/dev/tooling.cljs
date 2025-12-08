@@ -5,7 +5,7 @@
    so humans/agents can inspect ops without leaving the browser."
   (:require [clojure.pprint :as pprint]
             [clojure.string :as str]
-            [shell.session :as session]))
+            [shell.view-state :as vs]))
 
 (def ^:const max-entries 200)
 (defonce !log (atom []))
@@ -16,8 +16,8 @@
                       (when (= type :page) id))
                     nodes)
         ;; Read from session atom (not from deprecated DB nodes)
-        selection (session/selection-nodes)
-        editing (session/editing-block-id)]
+        selection (vs/selection-nodes)
+        editing (vs/editing-block-id)]
     {:node-count (count nodes)
      :page-count (count pages)
      :selection-count (count selection)
@@ -64,8 +64,8 @@
 
 (defn format-entry-with-diff [{:keys [intent hotkey timestamp summary]} current-page-id]
   (let [;; Read current session state (not historical - we no longer track session in DB history)
-        editing (session/editing-block-id)
-        selection (session/selection-nodes)]
+        editing (vs/editing-block-id)
+        selection (vs/selection-nodes)]
     (with-out-str
       (pprint/pprint
        {:intent intent

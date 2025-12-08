@@ -45,7 +45,7 @@ rg "def root-" src/kernel/constants.cljc
 (q/folded? session "block-id")
 ```
 
-**Why:** Session state moved to separate atom (`shell/session.cljs`).
+**Why:** Session state moved to separate atom (`shell/view-state.cljs`).
 DB only contains persistent document graph.
 
 **Handler signature:**
@@ -252,7 +252,7 @@ When writing complex `case` or `cond` with nested maps/vectors:
 **Why:** Clojure's dynamic typing + HOFs = arity mismatches fail silently.
 `clj-kondo` can't track function arities through `mapcat`, `map`, etc.
 
-**Fix:** Use uniform signatures. See `plugins.struct` namespace docstring.
+**Fix:** Use uniform signatures. See `plugins.structural` namespace docstring.
 
 ---
 
@@ -269,7 +269,7 @@ This indicates `:derived :parent-of` doesn't match `:children-by-parent`.
 
 **Debug assertions are in place to detect corruption:**
 - `kernel/intent.cljc:apply-intent` - Checks BEFORE intent processing
-- `shell/blocks_ui.cljs:handle-intent` - Checks AFTER DB reset
+- `shell/editor.cljs:handle-intent` - Checks AFTER DB reset
 - `shell/nexus.cljs:dispatch-intent` - Checks AFTER Nexus dispatch
 
 **When triggered, you'll see:**
@@ -398,7 +398,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 ### Session State Shape
 
 ```clojure
-;; shell/session.cljs atom structure
+;; shell/view-state.cljs atom structure
 {:ui {:editing-block-id nil      ; Currently editing block or nil
       :cursor-position nil       ; Pending cursor pos (number, :start, :end)
       :folded #{}                ; Set of folded block IDs
@@ -465,7 +465,7 @@ Computed by `kernel.db/derive-indexes` after every transaction:
 
 **Check if in edit mode:**
 ```clojure
-(require '[shell.session :as session])
+(require '[shell.view-state :as session])
 (session/editing-block-id)  ; → "block-id" or nil
 ```
 
@@ -493,4 +493,4 @@ From `kernel/constants.cljc`:
 
 **Always use keywords in ops:** `:doc`, `:trash` (not `:root-doc`)
 
-**Session state:** Lives in `shell.session` atom, not in DB. Query via `session/editing-block-id`, `session/selection-nodes`, etc.
+**Session state:** Lives in `shell.view-state` atom, not in DB. Query via `session/editing-block-id`, `session/selection-nodes`, etc.
