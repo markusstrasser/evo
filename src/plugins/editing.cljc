@@ -8,6 +8,9 @@
             [kernel.query :as q]
             [utils.text :as text]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
 (defn- get-block-text
@@ -144,14 +147,15 @@
 
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
-                                LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text."
+                                LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text.
+                                Trims leading whitespace from text after cursor for clean line start."
                           :fr/ids #{:fr.edit/newline-no-split}
                           :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (get-block-text db block-id)
-                                           new-text (str (subs text 0 cursor-pos)
-                                                         "\n"
-                                                         (subs text cursor-pos))]
+                                           before (subs text 0 cursor-pos)
+                                           after (clojure.string/triml (subs text cursor-pos))
+                                           new-text (str before "\n" after)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates {:ui {:editing-block-id block-id
                                                                :cursor-position (inc cursor-pos)}}}))})
@@ -200,7 +204,8 @@
                                                                  :cursor-position cursor-at}}})))})
 
 (intent/register-intent! :split-at-cursor
-                         {:doc "Split block at cursor position into two blocks."
+                         {:doc "Split block at cursor position into two blocks.
+         LOGSEQ PARITY: Cursor moves to NEW block at position 0."
                           :fr/ids #{:fr.edit/smart-split}
                           :spec [:map [:type [:= :split-at-cursor]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
@@ -210,9 +215,11 @@
                                            parent (get-in db [:derived :parent-of block-id])
                                            new-id (str "block-" (random-uuid))]
                                        (when parent
-                                         [{:op :update-node :id block-id :props {:text before}}
-                                          {:op :create-node :id new-id :type :block :props {:text after}}
-                                          {:op :place :id new-id :under parent :at {:after block-id}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text before}}
+                                                {:op :create-node :id new-id :type :block :props {:text after}}
+                                                {:op :place :id new-id :under parent :at {:after block-id}}]
+                                          :session-updates {:ui {:editing-block-id new-id
+                                                                 :cursor-position 0}}})))})
 
 (intent/register-intent! :delete-forward
                          {:doc "Handle Delete key (forward delete).
@@ -270,9 +277,10 @@
 ;; ── Word Navigation Intents ──────────────────────────────────────────────────
 
 (intent/register-intent! :move-cursor-forward-word
-                         {:doc "Move cursor to start of next word (Alt+F / Ctrl+Shift+F on Mac).
+                         {:doc "Move cursor to end of current word (Alt+F / Ctrl+Shift+F on Mac).
 
-         Uses word boundary detection (stops at spaces/newlines)."
+         LOGSEQ PARITY: Stops at end of current word, not start of next word.
+         Example: 'He|llo World' → 'Hello| World' (position 5, not 6)"
                           :fr/ids #{:fr.edit/word-navigation}
                           :spec [:map
                                  [:type [:= :move-cursor-forward-word]]
@@ -280,7 +288,8 @@
                           :handler (fn [db session {:keys [block-id]}]
                                      (let [block-text (get-block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position])
-                                           next-pos (text/find-next-word-boundary block-text (or cursor-pos 0))]
+                                           ;; Use find-word-end to stop at word boundary, not skip whitespace
+                                           next-pos (text/find-word-end block-text (or cursor-pos 0))]
                                        {:session-updates {:ui {:cursor-position next-pos}}}))})
 
 (intent/register-intent! :move-cursor-backward-word
@@ -347,7 +356,8 @@
 (intent/register-intent! :kill-word-forward
                          {:doc "Kill next word (Cmd+Delete).
 
-         Deletes from cursor to next word boundary, copies to clipboard."
+         Deletes from cursor to end of current word, preserving trailing whitespace.
+         LOGSEQ PARITY: 'Hello| World' kills 'Hello', leaving ' World'"
                           :fr/ids #{:fr.edit/kill-operations}
                           :spec [:map
                                  [:type [:= :kill-word-forward]]
@@ -355,7 +365,8 @@
                           :handler (fn [db session {:keys [block-id]}]
                                      (let [block-text (get-block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
-                                           next-pos (text/find-next-word-boundary block-text cursor-pos)
+                                           ;; Use find-word-end to stop at word boundary, preserving trailing space
+                                           next-pos (text/find-word-end block-text cursor-pos)
                                            killed-text (subs block-text cursor-pos next-pos)
                                            new-text (str (subs block-text 0 cursor-pos)
                                                          (subs block-text next-pos))]
