@@ -235,6 +235,9 @@
   .table {
     display: table;
   }
+  .shrink {
+    flex-shrink: 1;
+  }
   .border-collapse {
     border-collapse: collapse;
   }
@@ -409,17 +412,15 @@ code {
   padding: 4px 0 4px 20px;
   margin: 1px 0;
   border-radius: 3px;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
 }
 .block.selected {
   background: var(--color-selected-bg);
   border-left-color: var(--color-accent);
-  border-left-width: 3px;
 }
 .block.focused {
   background: var(--color-focused-bg);
   border-left-color: var(--color-accent);
-  border-left-width: 3px;
 }
 .block.editing {
   background: var(--color-bg);

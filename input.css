@@ -190,7 +190,9 @@ code {
   padding: 4px 0 4px 20px;
   margin: 1px 0;
   border-radius: 3px;
-  border-left: 2px solid transparent;
+  /* IMPORTANT: Keep border-left-width consistent (3px) to prevent
+     horizontal shift when selection state changes during indent/outdent */
+  border-left: 3px solid transparent;
 }
 
 /* Keyboard-first: no hover styling on blocks - focus/selection indicates state */
@@ -199,14 +201,14 @@ code {
 .block.selected {
   background: var(--color-selected-bg);
   border-left-color: var(--color-accent);
-  border-left-width: 3px;
+  /* No border-left-width change - base .block already has 3px */
 }
 
 /* Focused - strong visual (current cursor position) */
 .block.focused {
   background: var(--color-focused-bg);
   border-left-color: var(--color-accent);
-  border-left-width: 3px;
+  /* No border-left-width change - base .block already has 3px */
 }
 
 /* Editing - subtle indicator, no distracting focus ring */
