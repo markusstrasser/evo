@@ -156,19 +156,22 @@
 (defn- deep-merge-session
   "Deep merge for session state with proper handling of:
    - Maps: recursively merge
-   - Sets: union (not replace)
+   - Sets: union UNLESS update is empty (empty set = clear)
    - Scalars: new value wins
-   
-   This prevents clobbering of nested sets like :selection :nodes."
+
+   This prevents clobbering of nested sets like :selection :nodes,
+   while still allowing {:selection {:nodes #{}}} to clear selection."
   [base updates]
   (cond
     ;; Both maps: recursive merge
     (and (map? base) (map? updates))
     (merge-with deep-merge-session base updates)
 
-    ;; Both sets: union
+    ;; Both sets: union UNLESS update is empty (empty = explicit clear)
     (and (set? base) (set? updates))
-    (set/union base updates)
+    (if (empty? updates)
+      updates  ; Empty set = clear
+      (set/union base updates))
 
     ;; Otherwise: new value wins (including nil to clear)
     :else updates))
