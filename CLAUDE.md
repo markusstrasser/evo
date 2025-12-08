@@ -108,7 +108,7 @@ src/components/      # Replicant UI components
 resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
 resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
 resources/plugins.edn   # Declarative plugin manifest consumed by shell.plugin-manifest
-resources/demo-pages.edn# Blocks UI seed data (load via shell.demo-data)
+resources/seed-data.edn # Editor seed data (load via shell.demo-data)
 dev/spec_registry.cljc  # FR loader + validation
 dev/test_scanner.cljc   # Test verification coverage scanner
 ```
@@ -146,21 +146,22 @@ All state changes flow through a strict pipeline:
            :post {"a" 2 "b" 1}
            :id-by-pre {0 "a" 1 "b"}}}
 
-;; Session atom (ephemeral UI state) - see shell/session.cljs
+;; View state atom (ephemeral UI state) - see shell/view_state.cljs
 {:cursor {:block-id nil :offset 0}
  :selection {:nodes #{} :focus nil :anchor nil}
- :buffer {:block-id nil :text "" :dirty? false}
  :ui {:folded #{}
       :zoom-root nil
       :editing-block-id nil
-      :cursor-position nil}
+      :cursor-position nil
+      :keep-edit-on-blur false
+      :document-view? false}
  :sidebar {:right []}}
 ```
 
 **Critical**:
 - Derived indexes are recomputed automatically. Never mutate them directly.
-- Session state queries use `kernel.query` functions with session parameter: `(q/selection session)` not `(q/selection db)`
-- Session mutations use `shell.session` API functions (e.g., `set-cursor-position!`, `set-current-page!`, `buffer-set!`) - avoid raw `swap-session!` outside session.cljs
+- View state queries use `kernel.query` functions with view-state parameter: `(q/selection view-state)` not `(q/selection db)`
+- View state mutations use `shell.view-state` API functions (e.g., `set-cursor-position!`, `set-current-page!`, `buffer-set!`) - avoid raw `swap-view-state!` outside view_state.cljs
 
 ### Intent → Operations Pattern
 
@@ -180,17 +181,17 @@ Component Re-renders       # Replicant diffs DOM
 
 Components never mutate state directly. They describe what happened via intents.
 
-### Multi-Step Operations: Macro Pattern
+### Multi-Step Operations: Script Pattern
 
-For operations where step N depends on results of step N-1, use the **macro pattern** (`src/macros/`):
+For operations where step N depends on results of step N-1, use the **script pattern** (`src/scripts/`):
 
 ```clojure
 ;; Problem: Delete block, then select previous block
 ;; Single-pass plugins can't see intermediate state
 
-;; Solution: Macro simulates on scratch DB
-(ns macros.editing
-  (:require [macros.script :as script]))
+;; Solution: Script simulates on scratch DB
+(ns scripts.editing
+  (:require [scripts.script :as script]))
 
 (defn smart-backspace [db {:keys [id]}]
   (:ops
@@ -218,7 +219,7 @@ For operations where step N depends on results of step N-1, use the **macro patt
 - Single-pass logic (one intent → ops)
 - No dependency on intermediate state
 
-See `src/macros/script.cljc` for implementation, `test/macros/` for examples.
+See `src/scripts/script.cljc` for implementation, `test/scripts/` for examples.
 
 ### Replicant (View Layer)
 
@@ -346,7 +347,7 @@ This matches Logseq's one-step workflow for exiting nested list contexts.
 ;; After Enter: Parent → [Child with content, (empty unformatted)], New Peer (cursor here)
 ```
 
-**Implementation**: `plugins.smart_editing/context-aware-enter` handles the `:list-item` context, emitting `:update-node` (to clear marker) + `:create-node` + `:place` operations when content is blank.
+**Implementation**: `plugins.context-editing/context-aware-enter` handles the `:list-item` context, emitting `:update-node` (to clear marker) + `:create-node` + `:place` operations when content is blank.
 
 ### Replicant Keys
 
