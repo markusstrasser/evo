@@ -9,6 +9,9 @@
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 (defn- get-block-text
   "Get text content of a block."
   [db block-id]
@@ -228,11 +231,8 @@
                                       ;; Calculate target cursor position
                                       target-pos (get-target-cursor-pos target-text line-pos direction)
 
-                                      ;; Determine cursor position mode (:start, :end, or specific pos)
-                                      cursor-at (cond
-                                                  (zero? target-pos) :start
-                                                  (>= target-pos (count target-text)) :end
-                                                  :else target-pos)]
+                                      ;; Clamp to valid range (always numeric - no :end/:start keywords)
+                                      cursor-at (max 0 (min target-pos (count target-text)))]
 
                                   ;; Return session-updates (ephemeral UI state)
                                   {:session-updates
