@@ -10,6 +10,9 @@
             [kernel.query :as q]
             [plugins.context :as ctx]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Query Helpers ─────────────────────────────────────────────────────────────
 
 (defn current-page
@@ -49,9 +52,11 @@
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
 (defn- handle-switch-page
-  "Switch to a specific page by ID."
+  "Switch to a specific page by ID.
+   LOGSEQ PARITY: Clears zoom-root when switching pages."
   [_db _session {:keys [page-id]}]
-  {:session-updates {:ui {:current-page page-id}}})
+  {:session-updates {:ui {:current-page page-id
+                          :zoom-root nil}}})
 
 (defn- navigate-or-create-page
   "Navigate to page by name, creating it if it doesn't exist.
