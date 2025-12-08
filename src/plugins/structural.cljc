@@ -1,4 +1,4 @@
-(ns plugins.struct
+(ns plugins.structural
   "Structural-edit and movement intent compiler → core ops.
 
    Lowers high-level structural editing intents (delete, indent, outdent, move, etc.)

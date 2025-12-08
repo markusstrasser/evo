@@ -66,7 +66,7 @@
     (catch Exception _ nil)))
 
 (defn find-entry-points-documented []
-  [{:point "shell.blocks-ui/handle-intent"
+  [{:point "shell.editor/handle-intent"
     :desc "Main intent dispatcher"
     :triggers "All user interactions"}
    {:point "shell.nexus/dispatch-intent"
@@ -88,13 +88,13 @@
     :components ["components.block" "shell.nexus" "plugins.*" "kernel.transaction" "kernel.db"]}
    {:path "Selection change → Navigation plugin → Query → Update session → Re-render"
     :frequency "Every arrow key / click"
-    :components ["plugins.navigation" "plugins.selection" "kernel.query" "shell.blocks-ui"]}
+    :components ["plugins.navigation" "plugins.selection" "kernel.query" "shell.editor"]}
    {:path "Structure change → Struct plugin → Create/Place ops → Transaction → Derive indexes"
     :frequency "Indent/outdent/move operations"
-    :components ["plugins.struct" "kernel.ops" "kernel.transaction" "kernel.db"]}
+    :components ["plugins.structural" "kernel.ops" "kernel.transaction" "kernel.db"]}
    {:path "Enter key → Smart editing → Context detection → Split/merge ops → Transaction"
     :frequency "Every Enter in edit mode"
-    :components ["plugins.smart-editing" "plugins.context" "kernel.transaction"]}])
+    :components ["plugins.context-editing" "plugins.context" "kernel.transaction"]}])
 
 ;; ── Output Functions ────────────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@
   (println)
   (println "### View Layer")
   (println "```")
-  (println "shell.blocks-ui → components.* → shell.nexus")
+  (println "shell.editor → components.* → shell.nexus")
   (println "       ↓                              ↓")
   (println "  kernel.api                   plugins.registry")
   (println "```"))

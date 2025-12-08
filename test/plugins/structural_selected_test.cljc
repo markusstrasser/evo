@@ -1,4 +1,4 @@
-(ns plugins.struct-selected-test
+(ns plugins.structural-selected-test
   "Tests for selection-based structural operations.
 
    CRITICAL: These test the ACTUAL keyboard code paths (:indent-selected, :outdent-selected)
@@ -14,7 +14,7 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [plugins.struct]))
+            [plugins.structural]))
 
 ;; ── Test Fixtures ────────────────────────────────────────────────────────────
 

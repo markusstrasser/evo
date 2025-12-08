@@ -1,7 +1,7 @@
-(ns macros.editing
-  "Compositional editing macros.
+(ns scripts.editing
+  "Compositional editing scripts.
 
-   These macros handle multi-step editing operations where step N depends on
+   These scripts handle multi-step editing operations where step N depends on
    the result of step N-1.
 
    Examples:
@@ -9,9 +9,9 @@
    - Paste Lines: Create multiple blocks, then navigate to first
    - Insert Block: Create + place + focus in one action
 
-   All macros return operations for atomic commit via tx/interpret."
+   All scripts return operations for atomic commit via tx/interpret."
   (:require [clojure.string :as str]
-            [macros.script :as script]
+            [scripts.script :as script]
             [kernel.query :as q]))
 
 ;; ── Smart Backspace ────────────────────────────────────────────────────────────

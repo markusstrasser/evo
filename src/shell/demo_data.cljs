@@ -3,5 +3,5 @@
             [shadow.resource :as resource]))
 
 (def ops
-  (-> (resource/inline "demo-pages.edn")
+  (-> (resource/inline "seed-data.edn")
       reader/read-string))

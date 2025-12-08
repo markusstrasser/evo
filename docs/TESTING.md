@@ -165,7 +165,7 @@ test/
 ├── shell/          # Nexus actions, effects
 ├── integration/    # Multi-layer flows with session
 ├── view/           # Hiccup generation tests
-├── macros/         # Multi-step scripts
+├── scripts/         # Multi-step scripts
 └── fixtures.cljc   # Shared test data
 ```
 

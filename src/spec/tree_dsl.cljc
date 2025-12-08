@@ -25,7 +25,8 @@
    Round-trip:
      (= dsl (state->dsl db session))  ; Should be true (modulo ordering)"
   (:require [kernel.db :as db]
-            [kernel.constants :as const]))
+            [kernel.constants :as const]
+            [clojure.string :as str]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DSL → State Conversion
@@ -239,7 +240,7 @@
   (let [id-str (name id)]
     (or (= id :_) (= id "_")
         (= id :new) (= id "new")
-        (clojure.string/starts-with? id-str "new-"))))
+        (str/starts-with? id-str "new-"))))
 
 (defn- block-matches?
   "Check if expected block matches actual block (supporting wildcards).

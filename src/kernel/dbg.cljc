@@ -90,7 +90,7 @@
    - Root structure
    - Derived index sizes
 
-   Note: Session state (selection, editing) is in shell.session atom, not in DB.
+   Note: Session state (selection, editing) is in shell.view-state atom, not in DB.
 
    Example:
      (println (dbg/pp-db-summary db))"

@@ -1,4 +1,4 @@
-(ns plugins.struct-test
+(ns plugins.structural-test
   "Integration tests for structural editing intent compiler.
    Tests verify end-to-end behavior: intent → ops → final DB state."
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
@@ -7,7 +7,7 @@
             [kernel.db :as D]
             [kernel.intent :as intent]
             [kernel.transaction :as tx]
-            [plugins.struct :as S]))
+            [plugins.structural :as S]))
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 

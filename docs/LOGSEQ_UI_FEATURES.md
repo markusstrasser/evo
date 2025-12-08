@@ -298,7 +298,7 @@ When cursor is at position 0 and backspace is pressed:
 5. Delete current block
 6. Position cursor at join point (end of original prev-text)
 
-**Location**: Add to `plugins/smart_editing.cljc` as `:merge-with-previous`
+**Location**: Add to `plugins/context_editing.cljc` as `:merge-with-previous`
 
 ### Block References `((uuid))`
 

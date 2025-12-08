@@ -1,11 +1,11 @@
-(ns plugins.smart-editing-test
+(ns plugins.context-editing-test
   "Tests for smart editing behaviors: merge, list formatting, checkboxes."
   (:require [clojure.test :refer [deftest is testing]]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.query :as q]
             [kernel.intent :as intent]
-            [plugins.smart-editing])) ;; Load to register intents
+            [plugins.context-editing])) ;; Load to register intents
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -510,7 +510,7 @@
 
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 
-(deftest smart-editing-integration
+(deftest context-editing-integration
   (testing "merge and split round-trip"
     (let [db (:db (tx/interpret (db/empty-db)
                                 [{:op :create-node :id "a" :type :block :props {:text "Hello"}}
