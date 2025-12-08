@@ -16,6 +16,9 @@
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Pattern Detection Helpers ────────────────────────────────────────────────
 
 (defn- checkbox-pattern?
@@ -216,7 +219,9 @@
                                          [{:op :update-node :id block-id :props {:text ""}}])))})
 
 (intent/register-intent! :split-with-list-increment
-                         {:doc "Split block at cursor, incrementing numbered list marker if applicable."
+                         {:doc "Split block at cursor, incrementing numbered list marker if applicable.
+         LOGSEQ PARITY: Cursor moves to new block after the list number prefix.
+         For plain list items (- item), no prefix is added."
                           :spec [:map [:type [:= :split-with-list-increment]]
                                  [:block-id :string]
                                  [:cursor-pos :int]]
@@ -228,13 +233,18 @@
                                            parent (get-in db [:derived :parent-of block-id])
                                            new-id (str "block-" (random-uuid))
                                            list-num (extract-list-number text)
-                                           new-text (if list-num
-                                                      (str (inc list-num) ". " after)
-                                                      after)]
+                                           ;; Only add numbered prefix if original was a numbered list
+                                           ;; Plain list items (- item) get no prefix
+                                           [prefix new-text] (if list-num
+                                                               (let [p (str (inc list-num) ". ")]
+                                                                 [p (str p (str/triml after))])
+                                                               ["" (str/triml after)])]
                                        (when parent
-                                         [{:op :update-node :id block-id :props {:text before}}
-                                          {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                          {:op :place :id new-id :under parent :at {:after block-id}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text before}}
+                                                {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                                {:op :place :id new-id :under parent :at {:after block-id}}]
+                                          :session-updates {:ui {:editing-block-id new-id
+                                                                 :cursor-position (count prefix)}}})))})
 
 ;; ── Checkbox Operations ───────────────────────────────────────────────────────
 
@@ -294,28 +304,57 @@
                                 [{:op :update-node :id block-id :props {:text ""}}]
 
          ;; Numbered list - increment
+         ;; LOGSEQ PARITY: Cursor moves to new block after the list number prefix
                                 (extract-list-number text)
                                 (let [num-value (extract-list-number before)
-                                      new-text (str (inc num-value) ". " after)]
+                                      new-number (inc num-value)
+                                      prefix (str new-number ". ")
+                                      new-text (str prefix (str/triml after))]
                                   (when parent
-                                    [{:op :update-node :id block-id :props {:text before}}
-                                     {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                     {:op :place :id new-id :under parent :at {:after block-id}}]))
+                                    {:ops [{:op :update-node :id block-id :props {:text before}}
+                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}]
+                                     :session-updates {:ui {:editing-block-id new-id
+                                                           :cursor-position (count prefix)}}}))
 
          ;; Checkbox - continue pattern
+         ;; LOGSEQ PARITY: Cursor moves to new block after "[ ] " prefix
                                 (checkbox-pattern? text)
-                                (let [new-text (str "[ ] " after)]
+                                (let [new-text (str "[ ] " (str/triml after))]
                                   (when parent
-                                    [{:op :update-node :id block-id :props {:text before}}
-                                     {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                     {:op :place :id new-id :under parent :at {:after block-id}}]))
+                                    {:ops [{:op :update-node :id block-id :props {:text before}}
+                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}]
+                                     :session-updates {:ui {:editing-block-id new-id
+                                                           :cursor-position 4}}}))
 
-         ;; Default split
+         ;; Default split - handle cursor position
                                 :else
                                 (when parent
-                                  [{:op :update-node :id block-id :props {:text before}}
-                                   {:op :create-node :id new-id :type :block :props {:text after}}
-                                   {:op :place :id new-id :under parent :at {:after block-id}}]))))})
+                                  (cond
+                                    ;; LOGSEQ PARITY: Cursor at position 0 → create empty block ABOVE
+                                    ;; Keep cursor on current block
+                                    (zero? cursor-pos)
+                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                           {:op :place :id new-id :under parent :at {:before block-id}}]
+                                     :session-updates {:ui {:editing-block-id block-id
+                                                           :cursor-position 0}}}
+
+                                    ;; LOGSEQ PARITY: Cursor at end → create empty block BELOW
+                                    ;; Cursor moves to new block
+                                    (empty? after)
+                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}]
+                                     :session-updates {:ui {:editing-block-id new-id
+                                                           :cursor-position 0}}}
+
+                                    ;; Normal split: trim leading whitespace, cursor on new block
+                                    :else
+                                    {:ops [{:op :update-node :id block-id :props {:text before}}
+                                           {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
+                                           {:op :place :id new-id :under parent :at {:after block-id}}]
+                                     :session-updates {:ui {:editing-block-id new-id
+                                                           :cursor-position 0}}})))))})
 
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
 
