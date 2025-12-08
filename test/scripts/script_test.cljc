@@ -1,6 +1,6 @@
-(ns macros.script-test
+(ns scripts.script-test
   (:require [clojure.test :refer [deftest is testing]]
-            [macros.script :as script]
+            [scripts.script :as script]
             [kernel.transaction :as tx]
             [kernel.db :as db]
             [fixtures :as fix]))

@@ -1,4 +1,4 @@
-(ns macros.script
+(ns scripts.script
   "Macro script runner for multi-step operations.
 
    CONCEPT:
@@ -18,8 +18,8 @@
 
    USAGE:
    ```clojure
-   (ns macros.editing
-     (:require [macros.script :as script]))
+   (ns scripts.editing
+     (:require [scripts.script :as script]))
 
    (defn smart-backspace [db {:keys [id]}]
      (:ops
