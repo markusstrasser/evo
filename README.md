@@ -44,7 +44,7 @@ src/plugins/        # Intent handlers (navigation, editing, selection, etc.)
 src/shell/          # UI adapters, session state, Nexus dispatcher
 src/components/     # Replicant components (Block, PageRef, Sidebar)
 src/keymap/         # Keybinding definitions and dispatch
-src/macros/         # Multi-step operation scripts
+src/scripts/         # Multi-step operation scripts
 src/parser/         # Page refs and text parsing
 src/utils/          # Shared utilities
 test/               # Unit/property + view/integration tests (CLJS + Playwright)
@@ -62,7 +62,7 @@ docs/               # Architecture notes, rendering/dispatch reference, testing 
 **Key docs & data**:
 - `docs/DX_INDEX.md` - Entry point for all documentation
 - `resources/plugins.edn` - Declarative plugin manifest (loaded via `shell.plugin-manifest`)
-- `resources/demo-pages.edn` - Seed operations for the Blocks UI demo
+- `resources/seed-data.edn` - Seed operations for the Blocks UI demo
 - `CLAUDE.md` - Agent instructions and tooling index
 - `VISION.md` - Product philosophy and architectural direction
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant/Nexus event handling reference
