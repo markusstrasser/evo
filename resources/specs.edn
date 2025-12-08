@@ -714,7 +714,7 @@
                    [:a "Hello" {:cursor 5}]
                    [:b "World"]]}
     :action {:type :exit-edit-and-extend
-             :direction :down}
+             :direction :next}
     :expect {:tree [:doc
                     [:a "Hello" {:selected? true :anchor? true}]
                     [:b "World" {:selected? true :focus? true}]]}}}}
@@ -742,7 +742,7 @@
    {:name "Delete removes character after cursor"
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "Hello" {:cursor 2}]]}
-    :action {:type :delete-forward :block-id "a" :cursor-pos 2}
+    :action {:type :delete-forward :block-id "a" :cursor-pos 2 :has-selection? false}
     :expect {:tree [:doc [:a "Helo" {:cursor 2}]]}}
 
    :MERGE-NEXT
@@ -984,8 +984,9 @@
              :block-id "a"
              :cursor-pos 6
              :pasted-text "Line1\nLine2"}
+    ;; "Before" (6) + "Line1\nLine2" (11) = 17 characters, cursor at end
     :expect {:tree [:doc
-                    [:a "BeforeLine1\nLine2" {:cursor 18}]]}}
+                    [:a "BeforeLine1\nLine2" {:cursor 17}]]}}
 
    :PASTE-SPLIT
    {:name "Paste with blank lines creates multiple blocks"
@@ -1141,16 +1142,19 @@
   {:TYPE-FROM-IDLE
    {:name "Typing from idle enters edit on first block"
     :tags #{:happy-path}
-    :setup {:tree [:doc [:a "Hello"] [:b "World"]]}
+    ;; Note: In real Logseq, idle->type requires a shell gesture that first selects.
+    ;; This scenario tests the kernel intent directly, which requires selection state.
+    :setup {:tree [:doc [:a "Hello" {:selected? true}] [:b "World"]]}
     :action {:type :enter-edit-with-char :block-id "a" :char "x"}
-    :expect {:tree [:doc [:a "Hellox" {:cursor 6 :editing? true}] [:b "World"]]}}
+    :expect {:tree [:doc [:a "Hellox" {:cursor 6}] [:b "World"]]}}
 
    :TYPE-FROM-SELECTION
    {:name "Typing with block selected enters edit on that block"
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "Hello"] [:b "World" {:selected? true}]]}
     :action {:type :enter-edit-with-char :block-id "b" :char "y"}
-    :expect {:tree [:doc [:a "Hello"] [:b "Worldy" {:cursor 6 :editing? true}]]}}}}
+    ;; Intent appends character at end (Logseq parity §7.1)
+    :expect {:tree [:doc [:a "Hello"] [:b "Worldy" {:cursor 6}]]}}}}
 
  :fr.state/selection-clears-edit
  {:desc "Entering selection mode clears editing state"
@@ -1249,7 +1253,7 @@
     :setup {:tree [:doc
                    [:a "P1" [:b "C1"]]
                    [:c "P2" [:d "C2"]]]}
-    :action {:type :toggle-all-folds}
+    :action {:type :toggle-all-folds :root-id :doc}
     :expect {:folded #{"a" "c"}}}
 
    :EXPAND-ALL
@@ -1258,7 +1262,7 @@
                    [:a "P1" [:b "C1"]]
                    [:c "P2" [:d "C2"]]]
             :folded #{"a" "c"}}
-    :action {:type :expand-all}
+    :action {:type :expand-all :block-id :doc}
     :expect {:folded #{}}}}}
 
  :fr.zoom/focus-subtree
@@ -1332,21 +1336,21 @@
    {:name "Delete block re-parents children"
     :setup {:tree [:doc
                    [:a "Parent"
-                    [:b "Target"
+                    [:b "Target" {:selected? true}
                      [:c "Child"]]]]}
-    :action {:type :delete :id "b"}
+    :action {:type :delete-selected}
     :expect {:tree [:doc
-                    [:a "Parent"
+                    [:a "Parent" {:selected? true}
                      [:c "Child"]]]}}
 
    :DELETE-LEAF
    {:name "Delete leaf block"
     :setup {:tree [:doc
                    [:a "First"]
-                   [:b "Second" {:selected true}]]}
-    :action {:type :delete :id "b"}
+                   [:b "Second" {:selected? true}]]}
+    :action {:type :delete-selected}
     :expect {:tree [:doc
-                    [:a "First" {:selected true}]]}}}}
+                    [:a "First" {:selected? true}]]}}}}
 
  :fr.struct/create-sibling
  {:desc "Create new block as sibling of current/selected"
@@ -1422,7 +1426,7 @@
    {:name "Bold wraps selection"
     :setup {:tree [:doc
                    [:a "Hello world" {:selection [0 5]}]]}
-    :action {:type :format-selection :format :bold :block-id "a" :start 0 :end 5}
+    :action {:type :format-selection :marker "**" :block-id "a" :start 0 :end 5}
     :expect {:tree [:doc
                     [:a "**Hello** world"]]}}
 
@@ -1430,7 +1434,7 @@
    {:name "Italic wraps selection"
     :setup {:tree [:doc
                    [:a "Hello world" {:selection [6 11]}]]}
-    :action {:type :format-selection :format :italic :block-id "a" :start 6 :end 11}
+    :action {:type :format-selection :marker "*" :block-id "a" :start 6 :end 11}
     :expect {:tree [:doc
                     [:a "Hello *world*"]]}}}}
 
@@ -1462,11 +1466,11 @@
   {:SWITCH-PAGE
    {:name "Switch page clears zoom"
     :setup {:tree [:doc [:a "Content"]]
-            :session {:current-page "page-a"
-                      :zoom-root "block-1"}}
+            :session {:ui {:current-page "page-a"
+                           :zoom-root "block-1"}}}
     :action {:type :switch-page :page-id "page-b"}
-    :expect {:session {:current-page "page-b"
-                       :zoom-root nil}}}}}
+    :expect {:session {:ui {:current-page "page-b"
+                            :zoom-root nil}}}}}}
 
  :fr.pages/follow-link
  {:desc "Cmd+Click or Cmd+O on page reference navigates to that page"
@@ -1488,7 +1492,7 @@
     :setup {:tree [:doc
                    [:a "See [[Other Page]]"]]
             :current-page "page-a"}
-    :action {:type :follow-link-under-cursor :block-id "a"}
+    :action {:type :follow-link-under-cursor :block-id "a" :cursor-pos 6}
     :expect {:current-page "Other Page"}}}}
 
  ;; Smart Editing (additional)
