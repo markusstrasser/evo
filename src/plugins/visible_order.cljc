@@ -28,6 +28,9 @@
    changes dynamically based on ephemeral session state (fold/zoom)."
   (:require [plugins.registry :as registry]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
 ;; ── Session State Access ──────────────────────────────────────────────────────
@@ -90,8 +93,8 @@
   [parent-of subtree-root node-id]
   (cond
     (= node-id subtree-root) true
-    (keyword? node-id) false         ; reached a root
-    (nil? node-id) false              ; no parent
+    (keyword? node-id) false ; reached a root
+    (nil? node-id) false ; no parent
     :else (recur parent-of subtree-root (get parent-of node-id))))
 
 (defn- compute-visible-children
@@ -113,7 +116,7 @@
 
       ;; Outline scope is active (zoom or page) → filter out children not under outline root
       (and outline-root
-           (not= outline-root :doc)  ; :doc means no scope restriction
+           (not= outline-root :doc) ; :doc means no scope restriction
            (not= parent-id outline-root))
       (filterv #(under-subtree? parent-of outline-root %) children)
 
@@ -166,7 +169,7 @@
   ;; Create a simple tree
   (def db0 (db/empty-db))
   (def {:keys [db]} (api/dispatch db0 nil
-                      {:type :create-node :id "b1" :node-type :block :text "Parent" :under :doc}))
+                                  {:type :create-node :id "b1" :node-type :block :text "Parent" :under :doc}))
 
   ;; Query visible order
   (get-in db [:derived :visible-order :by-parent :doc])

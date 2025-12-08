@@ -13,6 +13,9 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
 (defn- get-folded-set

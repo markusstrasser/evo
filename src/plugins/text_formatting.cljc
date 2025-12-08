@@ -3,6 +3,9 @@
    Handles bold, italic with proper toggle behavior."
   (:require [kernel.intent :as intent]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 (defn- toggle-text-range
   "Pure function: wraps or unwraps a substring with markers.
    If text is already wrapped with the marker, unwraps it.
@@ -43,13 +46,10 @@
                                                                :start start
                                                                :end end
                                                                :marker marker})]
-                ;; Return transaction list
-                                       [{:op :update-node
-                                         :id block-id
-                                         :props {:text text}}
-                 ;; Store new selection position for shell to apply
-                                        {:op :update-node
-                                         :id "session/ui"
-                                         :props {:pending-selection {:block-id block-id
-                                                                     :start selection-start
-                                                                     :end selection-end}}}]))})
+                                       {:ops [{:op :update-node
+                                               :id block-id
+                                               :props {:text text}}]
+                                        :session-updates {:ui {:pending-selection
+                                                               {:block-id block-id
+                                                                :start selection-start
+                                                                :end selection-end}}}}))})

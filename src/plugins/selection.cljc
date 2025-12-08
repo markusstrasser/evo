@@ -17,15 +17,19 @@
             [kernel.intent :as intent]
             [kernel.query :as q]))
 
+;; Sentinel for DCE prevention - referenced by spec.runner
+(def loaded? true)
+
 ;; ── Pure Selection Property Calculators ──────────────────────────────────────
 
 (defn- calc-select-props
-  "Pure: calculate props for replacing selection with given IDs."
+  "Pure: calculate props for replacing selection with given IDs.
+   Explicitly clears :direction to prevent stale extend-selection state."
   [ids]
   (let [ids-vec (if (coll? ids) (vec ids) [ids])
         ids-set (set ids-vec)
         new-focus (last ids-vec)]
-    {:nodes ids-set :focus new-focus :anchor new-focus}))
+    {:nodes ids-set :focus new-focus :anchor new-focus :direction nil}))
 
 (defn- calc-extend-props
   "Pure: calculate props for extending selection with given IDs."
