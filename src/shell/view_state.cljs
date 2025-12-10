@@ -49,7 +49,8 @@
         :drag nil
         :sidebar-visible? true ; Left sidebar (pages) visibility
         :hotkeys-visible? false ; Hotkeys reference panel visibility
-        :autocomplete nil} ; Autocomplete popup state (see autocomplete-show!)
+        :autocomplete nil ; Autocomplete popup state (see autocomplete-show!)
+        :quick-switcher nil} ; Quick switcher state {:query "" :selected-idx 0}
    :sidebar {:right []}})
 
 (defonce !view-state (atom default-view-state))
@@ -373,6 +374,56 @@
                   :down (min max-idx (inc selected))
                   selected)]
     (swap-view-state! assoc-in [:ui :autocomplete :selected] new-idx)))
+
+;; ── Quick Switcher (Cmd+K) ────────────────────────────────────────────────────
+
+(defn quick-switcher
+  "Get current quick-switcher state.
+   Returns nil if closed, or {:query \"...\" :selected-idx 0} if open."
+  []
+  (get-in @!view-state [:ui :quick-switcher]))
+
+(defn quick-switcher-visible?
+  "Check if quick switcher overlay is open."
+  []
+  (some? (quick-switcher)))
+
+(defn quick-switcher-open!
+  "Open the quick switcher overlay."
+  []
+  (swap-view-state! assoc-in [:ui :quick-switcher] {:query "" :selected-idx 0}))
+
+(defn quick-switcher-close!
+  "Close the quick switcher overlay."
+  []
+  (swap-view-state! assoc-in [:ui :quick-switcher] nil))
+
+(defn quick-switcher-toggle!
+  "Toggle quick switcher visibility. Bound to Cmd+K."
+  []
+  (if (quick-switcher-visible?)
+    (quick-switcher-close!)
+    (quick-switcher-open!)))
+
+(defn quick-switcher-set-query!
+  "Update the search query in quick switcher."
+  [query]
+  (swap-view-state! assoc-in [:ui :quick-switcher :query] query)
+  ;; Reset selection to first result when query changes
+  (swap-view-state! assoc-in [:ui :quick-switcher :selected-idx] 0))
+
+(defn quick-switcher-navigate!
+  "Navigate selection up or down in quick switcher results.
+   direction: :up or :down
+   result-count: total number of results (needed for bounds checking)"
+  [direction result-count]
+  (let [{:keys [selected-idx]} (quick-switcher)
+        max-idx (max 0 (dec result-count))
+        new-idx (case direction
+                  :up (max 0 (dec selected-idx))
+                  :down (min max-idx (inc selected-idx))
+                  selected-idx)]
+    (swap-view-state! assoc-in [:ui :quick-switcher :selected-idx] new-idx)))
 
 ;; ── Debug Helpers ─────────────────────────────────────────────────────────────
 

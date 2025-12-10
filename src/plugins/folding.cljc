@@ -228,3 +228,12 @@
                           :handler (fn [_db session _intent]
                                      (let [visible? (get-in session [:ui :hotkeys-visible?] false)]
                                        {:session-updates {:ui {:hotkeys-visible? (not visible?)}}}))})
+
+(intent/register-intent! :toggle-quick-switcher
+                         {:doc "Toggle quick switcher (page search) visibility. Bound to Cmd+K."
+                          :spec [:map [:type [:= :toggle-quick-switcher]]]
+                          :handler (fn [_db session _intent]
+                                     (let [visible? (some? (get-in session [:ui :quick-switcher]))]
+                                       {:session-updates {:ui {:quick-switcher (when-not visible?
+                                                                                 {:query ""
+                                                                                  :selected-idx 0})}}}))})
