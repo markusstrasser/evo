@@ -19,6 +19,7 @@
             [shell.nexus :as nexus]
             [shell.executor :as executor]
             [shell.demo-data :as demo-data]
+            [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
             ;; Load all plugins to register intents
@@ -62,17 +63,85 @@
   (let [search (.-search js/location)]
     (boolean (and search (>= (.indexOf search "specs") 0)))))
 
+;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
   (atom
    (if (test-mode?)
-     ;; E2E test mode: empty database
-     (-> (db/empty-db)
-         (H/record))
-     ;; Normal mode: load demo content
+     (-> (db/empty-db) (H/record))
      (-> (db/empty-db)
          (tx/interpret demo-data/ops)
          :db
-         (H/record))))) ;; Record initial state for undo
+         (H/record)))))
+
+;; Storage status atom for UI feedback
+(defonce !storage-status (atom {:folder-name nil :loading? false}))
+
+(defn load-from-folder!
+  "Load pages from the currently selected folder into DB."
+  []
+  (swap! !storage-status assoc :loading? true)
+  (-> (storage/load-all-pages)
+      (.then (fn [ops]
+               (when (seq ops)
+                 (js/console.log "📂 Loading" (count ops) "ops from folder...")
+                 (reset! !db (-> (db/empty-db)
+                                 (tx/interpret ops)
+                                 :db
+                                 (H/record))))
+               (swap! !storage-status assoc
+                      :loading? false
+                      :folder-name (storage/get-folder-name))))
+      (.catch (fn [err]
+                (js/console.error "Failed to load from folder:" err)
+                (swap! !storage-status assoc :loading? false)))))
+
+(defn pick-folder!
+  "Show folder picker dialog and load pages from selected folder."
+  []
+  (-> (storage/pick-folder!)
+      (.then (fn [handle]
+               (when handle
+                 (load-from-folder!))))))
+
+(defn clear-folder!
+  "Disconnect from the current folder and reload demo data."
+  []
+  (storage/clear-folder!)
+  (swap! !storage-status assoc :folder-name nil)
+  ;; Reload demo data
+  (reset! !db (-> (db/empty-db)
+                  (tx/interpret demo-data/ops)
+                  :db
+                  (H/record)))
+  (vs/set-current-page! "projects"))
+
+;; Try to restore previously selected folder on startup
+(defonce _restore-folder
+  (when-not (test-mode?)
+    (-> (storage/restore-folder!)
+        (.then (fn [restored?]
+                 (when restored?
+                   (load-from-folder!)))))))
+
+;; Auto-save to folder on DB changes (debounced)
+(defonce ^:private save-timeout (atom nil))
+
+(defn- schedule-save!
+  "Debounced save - waits 500ms after last change before saving."
+  [db-val]
+  (when-let [t @save-timeout]
+    (js/clearTimeout t))
+  (reset! save-timeout
+          (js/setTimeout
+           (fn []
+             (when (and (not (test-mode?)) (storage/has-folder?))
+               (storage/save-db! db-val)))
+           500)))
+
+(defonce _db-watcher
+  (add-watch !db :auto-save
+             (fn [_ _ _ new-val]
+               (schedule-save! new-val))))
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
@@ -527,7 +596,11 @@
 
      ;; Sidebar for page navigation (toggleable via Cmd+B)
      (when sidebar-visible?
-       (sidebar/Sidebar {:db db :on-intent handle-intent}))
+       (sidebar/Sidebar {:db db
+                         :on-intent handle-intent
+                         :on-pick-folder pick-folder!
+                         :on-clear-folder clear-folder!
+                         :storage-status @!storage-status}))
 
      ;; Main content area
      [:div.main-content
@@ -775,10 +848,11 @@
   ;; Set up global keyboard listener (Cmd+Z, etc)
   (.addEventListener js/document "keydown" handle-global-keydown)
 
-  ;; Set up auto-render on state changes (both DB and session)
+  ;; Set up auto-render on state changes (DB, session, and storage status)
   ;; Uses request-render! to batch multiple changes into single render (prevents nested render warnings)
   (add-watch !db :render (fn [_ _ _ _] (request-render!)))
   (add-watch vs/!view-state :render (fn [_ _ _ _] (request-render!)))
+  (add-watch !storage-status :render (fn [_ _ _ _] (request-render!)))
 
   ;; Initialize Dataspex for DB inspection
   (dataspex/inspect "App DB" !db {:track-changes? true})
