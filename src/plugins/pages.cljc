@@ -73,6 +73,25 @@
   (when target-page
     (let [target-lower (str/lower-case target-page)
           all-nodes (:nodes db)
+          parent-of (:parent-of (:derived db))
+
+          ;; Find the page that contains a block by walking up the parent chain
+          find-source-page (fn [block-id]
+                             (loop [id block-id]
+                               (let [parent (get parent-of id)]
+                                 (cond
+                                   ;; Reached doc root - return nil (orphan block)
+                                   (or (nil? parent) (= parent :doc))
+                                   nil
+
+                                   ;; Found a page - return it
+                                   (= :page (get-in all-nodes [parent :type]))
+                                   parent
+
+                                   ;; Keep traversing up
+                                   :else
+                                   (recur parent)))))
+
           blocks (->> all-nodes
                       (filter (fn [[_id node]] (= (:type node) :block)))
                       (keep (fn [[block-id node]]
@@ -80,24 +99,17 @@
                                     refs (extract-page-refs text)
                                     refs-lower (set (map str/lower-case refs))]
                                 (when (contains? refs-lower target-lower)
-                                  {:block-id block-id
-                                   :block-text text})))))]
-      ;; Add page context to each backlink
-      (map (fn [{:keys [block-id] :as backlink}]
-             (let [parent-chain (loop [id block-id
-                                       chain []]
-                                  (let [parent (get-in db [:derived :parent-of id])]
-                                    (if (or (nil? parent) (= parent :doc))
-                                      chain
-                                      (let [parent-node (get all-nodes parent)]
-                                        (if (= (:type parent-node) :page)
-                                          (conj chain parent)
-                                          (recur parent (conj chain parent)))))))
-                   source-page-id (first parent-chain)]
-               (assoc backlink
-                      :page-id source-page-id
-                      :page-title (when source-page-id (page-title db source-page-id)))))
-           blocks))))
+                                  (let [source-page-id (find-source-page block-id)]
+                                    {:block-id block-id
+                                     :block-text text
+                                     :page-id source-page-id
+                                     :page-title (when source-page-id
+                                                   (page-title db source-page-id))}))))))]
+      ;; Filter out blocks from the current page (don't show self-references)
+      (remove (fn [backlink]
+                (= (str/lower-case (or (:page-title backlink) ""))
+                   target-lower))
+              blocks))))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
