@@ -152,6 +152,11 @@
   [db _session {:keys [page-name]}]
   (navigate-or-create-page db page-name))
 
+(defn- handle-create-page
+  "Create a new page with the given title."
+  [db _session {:keys [title]}]
+  (navigate-or-create-page db title))
+
 (defn- collect-descendants
   "Recursively collect all descendant IDs of a node."
   [db node-id]
@@ -194,9 +199,12 @@
                           :fr/ids #{:fr.pages/switch-page}
                           :handler handle-navigate-to-page})
 
+(intent/register-intent! :create-page
+                         {:doc "Create a new page with given title"
+                          :handler handle-create-page})
+
 (intent/register-intent! :delete-page
                          {:doc "Delete a page and all its contents"
-                          :fr/ids #{:fr.pages/delete-page}
                           :handler handle-delete-page})
 
 (intent/register-intent! :follow-link-under-cursor
