@@ -15,7 +15,8 @@
    ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props."
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [kernel.navigation :as nav]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 (def loaded? true)
@@ -70,6 +71,22 @@
     :next q/next-block-dom-order
     :prev q/prev-block-dom-order))
 
+(defn- same-page?
+  "Check if two blocks are on the same page.
+   Returns true if:
+   - No current-page is set (not in page-scoped mode)
+   - Both blocks have the same page ancestor
+   - Either block has no page ancestor (doc root level)"
+  [db session block-a block-b]
+  (let [current-page (q/current-page session)]
+    (or
+     ;; Not page-scoped mode - allow all navigation
+     (nil? current-page)
+     ;; Check if both blocks belong to the same page
+     (let [page-a (q/page-of db block-a)
+           page-b (q/page-of db block-b)]
+       (= page-a page-b)))))
+
 (def ^:private container-types
   "Node types that are containers and should not be included in block selection."
   #{:doc :page})
@@ -88,14 +105,18 @@
 (defn- next-selectable-block
   "Get the next selectable block in DOM order, skipping containers.
 
-   Continues navigation until finding a :block type node or reaching boundary."
-  [db current-id direction]
+   Continues navigation until finding a :block type node or reaching boundary.
+   Respects page boundaries - won't navigate out of current page (Logseq parity)."
+  [db session current-id direction]
   (let [nav-fn (get-dom-nav-fn direction)]
     (loop [current current-id]
       (when-let [next-id (nav-fn db current)]
-        (if (is-selectable-block? db next-id)
+        (if (and (is-selectable-block? db next-id)
+                 (same-page? db session current-id next-id))
           next-id
-          (recur next-id))))))
+          ;; Keep searching only if still on same page
+          (when (same-page? db session current-id next-id)
+            (recur next-id)))))))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
@@ -138,7 +159,7 @@
 
           ;; Get next selectable block in the specified direction (skip containers)
           next-block (when current-focus
-                       (next-selectable-block db current-focus direction))]
+                       (next-selectable-block db session current-focus direction))]
 
       (cond
         ;; No focus → start fresh selection
@@ -188,7 +209,7 @@
     ;; Non-extend mode (plain arrow navigation)
     (if-let [current (:focus state)]
       ;; Normal case: navigate from current focus (skip containers)
-      (when-let [next-id (next-selectable-block db current direction)]
+      (when-let [next-id (next-selectable-block db session current direction)]
         (calc-select-props next-id))
       ;; Edge case: no focus (after Escape) → select first/last block
       (when-let [first-or-last (get-first-last-visible-block db session direction)]
