@@ -464,9 +464,9 @@
 
 (defn- detect-page-ref-trigger
   "Detect if user just typed [[ to trigger page-ref autocomplete.
-   
+
    Returns trigger-pos (position after [[) if triggered, nil otherwise.
-   
+
    Logic: Check if previous 2 chars before cursor are [["
   [text cursor-pos]
   (when (>= cursor-pos 2)
@@ -474,13 +474,28 @@
       (when (= prev-two "[[")
         cursor-pos)))) ; Return position after [[
 
-(defn- get-autocomplete-query
-  "Extract current autocomplete query from text.
-   
-   Query is the text between trigger-pos and cursor-pos."
-  [text trigger-pos cursor-pos]
-  (when (and trigger-pos (<= trigger-pos cursor-pos))
-    (subs text trigger-pos cursor-pos)))
+(defn- detect-slash-command-trigger
+  "Detect if user just typed / to trigger slash command autocomplete.
+
+   Returns trigger-pos (position after /) if triggered, nil otherwise.
+
+   Logic:
+   - Previous char is /
+   - / is at start of text OR preceded by whitespace
+   - Not inside an existing word"
+  [text cursor-pos]
+  (when (>= cursor-pos 1)
+    (let [prev-char (subs text (dec cursor-pos) cursor-pos)]
+      (when (= prev-char "/")
+        ;; Check that / is at start or after whitespace
+        (let [at-start? (= cursor-pos 1)
+              after-space? (and (> cursor-pos 1)
+                                (let [before-slash (subs text (- cursor-pos 2) (dec cursor-pos))]
+                                  (or (= before-slash " ")
+                                      (= before-slash "\n")
+                                      (= before-slash "\t"))))]
+          (when (or at-start? after-space?)
+            cursor-pos))))))
 
 (defn- handle-autocomplete-keydown
   "Handle keyboard events when autocomplete is active.
@@ -516,108 +531,141 @@
               (on-intent {:type :autocomplete/navigate :direction :down})
               true)
 
-          ;; ArrowLeft - close popup if cursor moves before [[
+          ;; ArrowLeft - close popup if cursor moves before trigger
           (= key "ArrowLeft")
-          (let [target (.-target e)
+          (let [{:keys [type trigger-length]} autocomplete-state
+                trig-len (or trigger-length (if (= type :command) 1 2))
                 selection (.getSelection js/window)
                 cursor-pos (when selection (.-anchorOffset selection))
-                ;; trigger-pos is after [[, so [[ starts at trigger-pos - 2
-                at-or-before-open? (and cursor-pos (<= cursor-pos (- trigger-pos 1)))]
-            (when at-or-before-open?
+                ;; For page-ref: trigger-pos is after [[, so [[ starts at trigger-pos - 2
+                ;; For command: trigger-pos is after /, so / starts at trigger-pos - 1
+                trigger-start (- trigger-pos trig-len)
+                at-or-before-trigger? (and cursor-pos (<= cursor-pos trigger-start))]
+            (when at-or-before-trigger?
               (on-intent {:type :autocomplete/dismiss}))
-            ;; Let arrow key through for normal cursor movement
             false)
 
-;; ArrowRight - close popup if cursor moves past ]]
+          ;; ArrowRight - close popup if cursor moves past region
+          ;; For page-ref: past ]]
+          ;; For command: past word boundary (space or end of text)
           (= key "ArrowRight")
-          (let [target (.-target e)
+          (let [{:keys [type]} autocomplete-state
+                target (.-target e)
                 text (.-textContent target)
                 selection (.getSelection js/window)
-                cursor-pos (when selection (.-anchorOffset selection))
-                ;; Find actual ]] position
-                close-bracket-pos (str/index-of text "]]" trigger-pos)
-                ;; After pressing right, cursor will be at cursor-pos + 1
-                ;; We want to dismiss if that lands past the ]]
-                will-be-past-close? (and cursor-pos
-                                         close-bracket-pos
-                                         (>= (inc cursor-pos) (+ close-bracket-pos 2)))]
-            (when will-be-past-close?
-              (on-intent {:type :autocomplete/dismiss}))
-            ;; Let arrow key through for normal cursor movement
+                cursor-pos (when selection (.-anchorOffset selection))]
+            (if (= type :command)
+              ;; Command mode: dismiss if moving past word boundary
+              (let [query-end (or (str/index-of text " " trigger-pos)
+                                  (str/index-of text "\n" trigger-pos)
+                                  (count text))
+                    will-be-past-end? (and cursor-pos (>= (inc cursor-pos) query-end))]
+                (when will-be-past-end?
+                  (on-intent {:type :autocomplete/dismiss})))
+              ;; Page-ref mode: dismiss if moving past ]]
+              (let [close-bracket-pos (str/index-of text "]]" trigger-pos)
+                    will-be-past-close? (and cursor-pos
+                                             close-bracket-pos
+                                             (>= (inc cursor-pos) (+ close-bracket-pos 2)))]
+                (when will-be-past-close?
+                  (on-intent {:type :autocomplete/dismiss}))))
             false)
 
-          ;; Backspace - delete both [[ and ]] if at trigger position (Logseq parity)
+          ;; Backspace - delete trigger chars if at trigger position
+          ;; For page-ref: delete both [[ and ]]
+          ;; For command: delete just /
           (= key "Backspace")
-          (let [target (.-target e)
+          (let [{:keys [type]} autocomplete-state
+                target (.-target e)
                 text (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-pos (when selection (.-anchorOffset selection))
-                ;; Check if cursor is right after [[ (at trigger-pos) with empty query
+                ;; Check if cursor is right after trigger with empty query
                 at-trigger? (and cursor-pos (= cursor-pos trigger-pos) (empty? query))]
             (if at-trigger?
-              ;; Delete both [[ and ]] - Logseq parity
-              (let [start-pos (- trigger-pos 2) ; Start of [[
-                    end-pos (+ trigger-pos 2) ; End of ]]
-                    new-text (str (subs text 0 start-pos)
-                                  (subs text (min end-pos (count text))))
-                    new-cursor start-pos]
-                (.preventDefault e)
-                (.stopPropagation e)
-                ;; Update DOM directly
-                (set! (.-textContent target) new-text)
-                ;; Update buffer
-                (vs/buffer-set! block-id new-text)
-                ;; Position cursor
-                (set-cursor! target new-cursor)
-                ;; Dismiss autocomplete
-                (on-intent {:type :autocomplete/dismiss})
-                true)
-              ;; Not at trigger - let backspace through, input handler will update query
+              (if (= type :command)
+                ;; Command mode: just delete the /
+                (let [start-pos (dec trigger-pos) ; Position of /
+                      new-text (str (subs text 0 start-pos)
+                                    (subs text trigger-pos))
+                      new-cursor start-pos]
+                  (.preventDefault e)
+                  (.stopPropagation e)
+                  (set! (.-textContent target) new-text)
+                  (vs/buffer-set! block-id new-text)
+                  (set-cursor! target new-cursor)
+                  (on-intent {:type :autocomplete/dismiss})
+                  true)
+                ;; Page-ref mode: delete both [[ and ]]
+                (let [start-pos (- trigger-pos 2)
+                      end-pos (+ trigger-pos 2)
+                      new-text (str (subs text 0 start-pos)
+                                    (subs text (min end-pos (count text))))
+                      new-cursor start-pos]
+                  (.preventDefault e)
+                  (.stopPropagation e)
+                  (set! (.-textContent target) new-text)
+                  (vs/buffer-set! block-id new-text)
+                  (set-cursor! target new-cursor)
+                  (on-intent {:type :autocomplete/dismiss})
+                  true))
+              ;; Not at trigger - let backspace through
               false))
 
 ;; Enter or Tab - select current item (Logseq parity: stay in edit mode)
           (or (= key "Enter") (= key "Tab"))
           (do (.preventDefault e)
               (.stopPropagation e)
-              (let [item (get items selected)]
+              (let [{:keys [type]} autocomplete-state
+                    item (get items selected)]
                 (when item
-                  ;; Get current DOM state
                   (let [target (.-target e)
-                        text (.-textContent target)
-                        ;; Calculate replacement: from [[ to cursor (which is after query)
-                        ;; trigger-pos is after [[, so start at trigger-pos - 2
-                        start-pos (- trigger-pos 2)
-                        ;; End position: trigger-pos + query length + 2 (for closing ]])
-                        ;; The ]] was auto-inserted, so we need to replace [[query]]
-                        end-pos (+ trigger-pos (count query) 2)
-                        ;; Build the page ref text
-                        page-title (:title item)
-                        insert-str (str "[[" page-title "]]")
-                        ;; Build new text
-                        new-text (str (subs text 0 start-pos)
-                                      insert-str
-                                      (subs text (min end-pos (count text))))
-                        ;; New cursor position: right after the inserted text
-                        new-cursor (+ start-pos (count insert-str))
-                        ;; Check if this is a "create new page" action
-                        is-create-new? (= (:type item) :create-new)]
-                    ;; Update DOM directly (browser owns it during edit mode)
-                    (set! (.-textContent target) new-text)
-                    ;; Update buffer to stay in sync
-                    (vs/buffer-set! block-id new-text)
-                    ;; Position cursor after inserted text
-                    (set-cursor! target new-cursor)
-                    ;; Dismiss autocomplete popup
-                    (on-intent {:type :autocomplete/dismiss})
-                    ;; Create page if needed (before updating content)
-                    (when is-create-new?
-                      (on-intent {:type :page/create
-                                  :title page-title
-                                  :navigate? false}))
-                    ;; Commit to DB (for persistence)
-                    (on-intent {:type :update-content
-                                :block-id block-id
-                                :text new-text}))))
+                        text (.-textContent target)]
+                    (if (= type :command)
+                      ;; Command mode: insert command output
+                      (let [;; Start at / position
+                            start-pos (dec trigger-pos)
+                            ;; End at cursor (trigger-pos + query length)
+                            end-pos (+ trigger-pos (count query))
+                            ;; Get insert text from command's insert-fn
+                            insert-str ((:insert-fn item))
+                            ;; Apply backward-pos if specified
+                            item-backward (get item :backward-pos 0)
+                            ;; Build new text
+                            new-text (str (subs text 0 start-pos)
+                                          insert-str
+                                          (subs text (min end-pos (count text))))
+                            ;; New cursor: after insert, minus backward-pos
+                            new-cursor (- (+ start-pos (count insert-str)) item-backward)]
+                        (set! (.-textContent target) new-text)
+                        (vs/buffer-set! block-id new-text)
+                        (set-cursor! target new-cursor)
+                        (on-intent {:type :autocomplete/dismiss})
+                        (on-intent {:type :update-content
+                                    :block-id block-id
+                                    :text new-text}))
+
+                      ;; Page-ref mode: original logic
+                      (let [start-pos (- trigger-pos 2)
+                            end-pos (+ trigger-pos (count query) 2)
+                            page-title (:title item)
+                            insert-str (str "[[" page-title "]]")
+                            new-text (str (subs text 0 start-pos)
+                                          insert-str
+                                          (subs text (min end-pos (count text))))
+                            new-cursor (+ start-pos (count insert-str))
+                            is-create-new? (= (:type item) :create-new)]
+                        (set! (.-textContent target) new-text)
+                        (vs/buffer-set! block-id new-text)
+                        (set-cursor! target new-cursor)
+                        (on-intent {:type :autocomplete/dismiss})
+                        (when is-create-new?
+                          (on-intent {:type :page/create
+                                      :title page-title
+                                      :navigate? false}))
+                        (on-intent {:type :update-content
+                                    :block-id block-id
+                                    :text new-text}))))))
               true)
 
 ;; Home - moves cursor to start, always outside autocomplete region
@@ -642,66 +690,76 @@
 
 (defn- handle-autocomplete-input
   "Handle input events for autocomplete trigger and query updates.
-   
+
    Called on every input event while editing.
-   - Detects [[ trigger to start autocomplete
-   - Auto-inserts ]] closing brackets (Logseq parity)
+   - Detects [[ trigger for page-ref autocomplete (auto-inserts ]])
+   - Detects / trigger for slash command autocomplete
    - Updates query as user types
    - Dismisses if cursor moves outside trigger region"
   [text cursor-pos block-id on-intent]
   (let [autocomplete-state (vs/autocomplete)]
     (if autocomplete-state
       ;; Autocomplete is active - update query or dismiss
-      (let [{:keys [trigger-pos]} autocomplete-state
-            ;; Find the actual ]] position by searching from trigger-pos
-            ;; The user may have typed new characters, so we need to find where ]] actually is
-            close-bracket-pos (str/index-of text "]]" trigger-pos)
-            ;; Check if cursor is past the closing ]]
-            cursor-past-close? (and close-bracket-pos
-                                    (> cursor-pos (+ close-bracket-pos 2)))
-            ;; Check if we're still within the autocomplete region
-            ;; Cursor should be between trigger-pos and the ]]
-            valid-region? (and close-bracket-pos
-                               (>= cursor-pos trigger-pos)
-                               (<= cursor-pos close-bracket-pos)
-                               (>= trigger-pos 2)
-                               (= (subs text (- trigger-pos 2) trigger-pos) "[["))]
-        (cond
-          ;; Cursor moved past ]] - dismiss autocomplete
-          cursor-past-close?
-          (on-intent {:type :autocomplete/dismiss})
+      (let [{:keys [trigger-pos type]} autocomplete-state]
+        (if (= type :command)
+          ;; Slash command mode - simpler region check (no closing bracket)
+          (let [query-end (or (str/index-of text " " trigger-pos)
+                              (str/index-of text "\n" trigger-pos)
+                              (count text))
+                valid-region? (and (>= cursor-pos trigger-pos)
+                                   (<= cursor-pos query-end)
+                                   (>= trigger-pos 1)
+                                   (= (subs text (dec trigger-pos) trigger-pos) "/"))]
+            (if valid-region?
+              (let [new-query (subs text trigger-pos cursor-pos)]
+                (on-intent {:type :autocomplete/update :query new-query}))
+              (on-intent {:type :autocomplete/dismiss})))
 
-          ;; Still in valid region - update query
-          valid-region?
-          (let [new-query (subs text trigger-pos close-bracket-pos)]
-            (on-intent {:type :autocomplete/update :query new-query}))
+          ;; Page-ref mode - original logic with closing bracket tracking
+          (let [close-bracket-pos (str/index-of text "]]" trigger-pos)
+                cursor-past-close? (and close-bracket-pos
+                                        (> cursor-pos (+ close-bracket-pos 2)))
+                valid-region? (and close-bracket-pos
+                                   (>= cursor-pos trigger-pos)
+                                   (<= cursor-pos close-bracket-pos)
+                                   (>= trigger-pos 2)
+                                   (= (subs text (- trigger-pos 2) trigger-pos) "[["))]
+            (cond
+              cursor-past-close?
+              (on-intent {:type :autocomplete/dismiss})
 
-          ;; Cursor moved outside or brackets broken - dismiss
-          :else
-          (on-intent {:type :autocomplete/dismiss})))
+              valid-region?
+              (let [new-query (subs text trigger-pos close-bracket-pos)]
+                (on-intent {:type :autocomplete/update :query new-query}))
 
-      ;; Autocomplete not active - check for trigger
-      (when-let [trigger-pos (detect-page-ref-trigger text cursor-pos)]
-        ;; Auto-insert ]] closing brackets (Logseq parity)
-        ;; Insert at cursor position, then reposition cursor between [[ and ]]
-        (when-let [selection (.getSelection js/window)]
-          (when-let [range (.getRangeAt selection 0)]
-            (let [text-node (.-startContainer range)
-                  ;; Insert ]] at cursor position
-                  closing "]]"]
-              ;; Only insert if we have a text node
-              (when (= (.-nodeType text-node) 3) ; TEXT_NODE
-                (.insertData text-node cursor-pos closing)
-                ;; Cursor stays at same position (between [[ and ]])
-                (.setStart range text-node cursor-pos)
-                (.setEnd range text-node cursor-pos)
-                (.removeAllRanges selection)
-                (.addRange selection range)))))
-        ;; Trigger autocomplete
-        (on-intent {:type :autocomplete/trigger
-                    :source :page-ref
-                    :block-id block-id
-                    :trigger-pos trigger-pos})))))
+              :else
+              (on-intent {:type :autocomplete/dismiss})))))
+
+      ;; Autocomplete not active - check for triggers
+      (if-let [page-trigger (detect-page-ref-trigger text cursor-pos)]
+        ;; Page-ref trigger: auto-insert ]] closing brackets (Logseq parity)
+        (do
+          (when-let [selection (.getSelection js/window)]
+            (when-let [range (.getRangeAt selection 0)]
+              (let [text-node (.-startContainer range)
+                    closing "]]"]
+                (when (= (.-nodeType text-node) 3)
+                  (.insertData text-node cursor-pos closing)
+                  (.setStart range text-node cursor-pos)
+                  (.setEnd range text-node cursor-pos)
+                  (.removeAllRanges selection)
+                  (.addRange selection range)))))
+          (on-intent {:type :autocomplete/trigger
+                      :source :page-ref
+                      :block-id block-id
+                      :trigger-pos page-trigger}))
+
+        ;; Check for / slash command trigger
+        (when-let [cmd-trigger (detect-slash-command-trigger text cursor-pos)]
+          (on-intent {:type :autocomplete/trigger
+                      :source :command
+                      :block-id block-id
+                      :trigger-pos cmd-trigger}))))))
 
 (defn handle-keydown
   "Handle keyboard events while editing a block.

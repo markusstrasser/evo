@@ -81,6 +81,157 @@
   [{:keys [item]}]
   (:title item))
 
+;; ── Slash Command Implementation ─────────────────────────────────────────────
+
+(defn- format-date
+  "Format a date as a page reference string like [[Dec 10, 2025]]"
+  [date-obj]
+  #?(:cljs
+     (let [months ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+                   "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
+           month (nth months (.getMonth date-obj))
+           day (.getDate date-obj)
+           year (.getFullYear date-obj)]
+       (str "[[" month " " day ", " year "]]"))
+     :clj
+     (do
+       (assert date-obj "date-obj required") ; Silence unused binding warning
+       (str "[[" (java.time.LocalDate/now) "]]"))))
+
+(defn- get-today []
+  #?(:cljs (js/Date.) :clj (java.util.Date.)))
+
+(defn- get-tomorrow []
+  #?(:cljs
+     (let [d (js/Date.)]
+       (.setDate d (inc (.getDate d)))
+       d)
+     :clj
+     (java.util.Date.)))
+
+(defn- get-yesterday []
+  #?(:cljs
+     (let [d (js/Date.)]
+       (.setDate d (dec (.getDate d)))
+       d)
+     :clj
+     (java.util.Date.)))
+
+(defn- get-current-time []
+  #?(:cljs
+     (let [d (js/Date.)
+           hours (.getHours d)
+           minutes (.getMinutes d)
+           pad #(if (< % 10) (str "0" %) (str %))]
+       (str (pad hours) ":" (pad minutes)))
+     :clj
+     "00:00"))
+
+(def ^:private slash-commands
+  "Registry of slash commands.
+   Each command: {:id :keyword :name \"Display Name\" :description \"...\" :icon \"emoji\"
+                  :insert-fn (fn [] \"text to insert\") :backward-pos int}"
+  [{:id :today
+    :name "Today"
+    :description "Insert today's date"
+    :icon "📅"
+    :category "Date & Time"
+    :insert-fn #(format-date (get-today))}
+
+   {:id :tomorrow
+    :name "Tomorrow"
+    :description "Insert tomorrow's date"
+    :icon "📆"
+    :category "Date & Time"
+    :insert-fn #(format-date (get-tomorrow))}
+
+   {:id :yesterday
+    :name "Yesterday"
+    :description "Insert yesterday's date"
+    :icon "📆"
+    :category "Date & Time"
+    :insert-fn #(format-date (get-yesterday))}
+
+   {:id :current-time
+    :name "Current time"
+    :description "Insert current time"
+    :icon "🕐"
+    :category "Date & Time"
+    :insert-fn get-current-time}
+
+   {:id :date-picker
+    :name "Date picker"
+    :description "Pick a date from calendar"
+    :icon "📅"
+    :category "Date & Time"
+    :insert-fn #(format-date (get-today))}  ; TODO: Show actual date picker
+
+   {:id :tweet
+    :name "Embed Tweet"
+    :description "Embed a Twitter/X post"
+    :icon "🐦"
+    :category "Embeds"
+    :insert-fn (constantly "{{tweet }}")
+    :backward-pos 2}
+
+   {:id :video
+    :name "Embed Video"
+    :description "Embed a video URL (YouTube, Vimeo, etc.)"
+    :icon "🎬"
+    :category "Embeds"
+    :insert-fn (constantly "{{video }}")
+    :backward-pos 2}
+
+   {:id :code
+    :name "Code block"
+    :description "Insert a code block"
+    :icon "💻"
+    :category "Blocks"
+    :insert-fn (constantly "```\n\n```")
+    :backward-pos 4}
+
+   {:id :quote
+    :name "Quote"
+    :description "Insert a block quote"
+    :icon "💬"
+    :category "Blocks"
+    :insert-fn (constantly "> ")}
+
+   {:id :heading-1
+    :name "Heading 1"
+    :description "Large heading"
+    :icon "H1"
+    :category "Headings"
+    :insert-fn (constantly "# ")}
+
+   {:id :heading-2
+    :name "Heading 2"
+    :description "Medium heading"
+    :icon "H2"
+    :category "Headings"
+    :insert-fn (constantly "## ")}
+
+   {:id :heading-3
+    :name "Heading 3"
+    :description "Small heading"
+    :icon "H3"
+    :category "Headings"
+    :insert-fn (constantly "### ")}])
+
+(defmethod search-items :command
+  [_db {:keys [query]}]
+  (if (str/blank? query)
+    slash-commands
+    (fuzzy/fuzzy-filter slash-commands query :name 15)))
+
+(defmethod insert-text :command
+  [_db {:keys [item]}]
+  ((:insert-fn item)))
+
+(defmethod item-label :command
+  [{:keys [item]}]
+  (:name item))
+
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
 (defn- get-block-text [db block-id]
@@ -89,22 +240,33 @@
 (intent/register-intent! :autocomplete/trigger
                          {:doc "Trigger autocomplete popup.
 
-         Called when a trigger sequence is detected (e.g., [[).
-         Initializes autocomplete state and performs initial search."
+         Called when a trigger sequence is detected (e.g., [[ or /).
+         Initializes autocomplete state and performs initial search.
+
+         trigger-length: Length of trigger chars (2 for [[, 1 for /)"
 
                           :spec [:map
                                  [:type [:= :autocomplete/trigger]]
                                  [:source [:enum :page-ref :block-ref :command :tag]]
                                  [:block-id :string]
-                                 [:trigger-pos :int]]
+                                 [:trigger-pos :int]
+                                 [:trigger-length {:optional true} :int]]
 
                           :handler
-                          (fn [db _session {:keys [source block-id trigger-pos]}]
-                            (let [items (search-items db {:type source :query ""})]
+                          (fn [db _session {:keys [source block-id trigger-pos trigger-length]}]
+                            (let [items (search-items db {:type source :query ""})
+                                  ;; Default trigger-length based on source
+                                  trig-len (or trigger-length
+                                               (case source
+                                                 :page-ref 2    ; [[
+                                                 :command 1     ; /
+                                                 :tag 1         ; #
+                                                 2))]
                               {:session-updates
                                {:ui {:autocomplete {:type source
                                                     :block-id block-id
                                                     :trigger-pos trigger-pos
+                                                    :trigger-length trig-len
                                                     :query ""
                                                     :selected 0
                                                     :items (vec items)}}}}))})
@@ -133,7 +295,8 @@
 
          Replaces trigger + query with the selected item's text.
          Uses pending-buffer text (injected by executor) since we're in edit mode.
-         
+
+         For commands: Uses trigger-length (1 for /) and item's backward-pos if set.
          Exits edit mode to force DOM sync, sets cursor-position for re-entry."
 
                           :spec [:map
@@ -142,24 +305,29 @@
                           :handler
                           (fn [db session intent]
                             (let [autocomplete (get-in session [:ui :autocomplete])
-                                  {:keys [type block-id trigger-pos query selected items]} autocomplete
+                                  {:keys [type block-id trigger-pos trigger-length query selected items]} autocomplete
                                   item (get items selected)
                                   ;; Use buffer text (injected by executor) since we're editing
                                   ;; Fall back to DB text if buffer not available
                                   buffer-text (get-in intent [:pending-buffer :text])
                                   db-text (get-block-text db block-id)
-                                  text (or buffer-text db-text)]
+                                  text (or buffer-text db-text)
+                                  ;; Default trigger-length for backward compat
+                                  trig-len (or trigger-length 2)]
                               (when (and autocomplete item text)
-                                (let [;; Calculate what to replace: from trigger-pos to current cursor
-                                      ;; trigger-pos is after [[ so we go back 2 chars
-                                      start-pos (- trigger-pos 2)
-                                      ;; End is trigger-pos + query length
-                                      end-pos (+ trigger-pos (count query))
+                                (let [;; Calculate what to replace: from trigger start to end of query
+                                      ;; trigger-pos is AFTER trigger chars, so go back by trigger-length
+                                      start-pos (- trigger-pos trig-len)
+                                      ;; End is trigger-pos + query length (for page-ref, also skip closing ]])
+                                      end-pos (+ trigger-pos (count query)
+                                                 (if (= type :page-ref) 2 0))
                                       insert-str (insert-text db {:type type :item item :query query})
                                       new-text (str (subs text 0 start-pos)
                                                     insert-str
-                                                    (subs text end-pos))
-                                      new-cursor (+ start-pos (count insert-str))]
+                                                    (subs text (min end-pos (count text))))
+                                      ;; For commands, apply item's backward-pos if set
+                                      item-backward (get item :backward-pos 0)
+                                      new-cursor (- (+ start-pos (count insert-str)) item-backward)]
                                   {:ops [{:op :update-node
                                           :id block-id
                                           :props {:text new-text}}]
