@@ -38,7 +38,8 @@
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
             [kernel.intent :as intent]
-            [components.spec-viewer :as spec-viewer]))
+            [components.spec-viewer :as spec-viewer]
+            [components.quick-switcher :as quick-switcher]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -518,7 +519,8 @@
         current-page-id (vs/current-page)
         page-title (when current-page-id (pages/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
-        hotkeys-visible? (vs/hotkeys-visible?)]
+        hotkeys-visible? (vs/hotkeys-visible?)
+        quick-switcher-visible? (vs/quick-switcher-visible?)]
     [:div.app
      {:style {:display "flex"
               :min-height "100vh"}}
@@ -579,7 +581,11 @@
 
       ;; Hotkeys reference (toggleable via Cmd+?)
       (when hotkeys-visible?
-        (HotkeysReference))]]))
+        (HotkeysReference))]
+
+     ;; Quick Switcher overlay (Cmd+K) - rendered outside main content for proper modal behavior
+     (when quick-switcher-visible?
+       (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent}))]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
