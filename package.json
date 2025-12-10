@@ -9,9 +9,9 @@
     "watch": "npm run dev:fast",
     "watch:clean": "npm run clean && npm run dev:fast",
     "watch:cljs": "npx shadow-cljs watch blocks-ui",
-    "watch:css": "tailwindcss -i input.css -o public/output.css --watch",
+    "watch:css": "node scripts/watch-css.mjs",
     "compile": "npx shadow-cljs compile blocks-ui",
-    "build": "npm run clean && npx shadow-cljs release blocks-ui && tailwindcss -i input.css -o public/output.css --minify",
+    "build": "npm run clean && npx shadow-cljs release blocks-ui && cp input.css public/output.css",
     "lint": "npm run lint:clj && npm run lint:js && npm run lint:e2e-keyboard",
     "lint:clj": "bb lint",
     "lint:js": "biome check .",
@@ -38,10 +38,8 @@
     "@biomejs/biome": "^2.3.6",
     "@percy/playwright": "^1.0.9",
     "@playwright/test": "^1.56.0",
-    "@tailwindcss/cli": "^4.1.14",
     "concurrently": "^9.2.1",
-    "shadow-cljs": "^3.2.0",
-    "tailwindcss": "^4.1.14"
+    "shadow-cljs": "^3.2.0"
   },
   "dependencies": {
     "three": "^0.180.0"

@@ -1,560 +1,761 @@
-@import "tailwindcss";
+/* ═══════════════════════════════════════════════════════════════════════════
+   EVO - Modern Vanilla CSS
+   
+   Features used:
+   - CSS Nesting (native)
+   - Container Queries
+   - :has() selector
+   - CSS Custom Properties
+   - Modern viewport units (dvh)
+   - color-mix() with oklch
+   - @layer for cascade control
+   
+   No build tool required - just copy to output.css
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Typography: Geometric sans */
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
 
-@source "./src/**/*.{cljs,cljc}";
-@source "./public/**/*.html";
+/* ═══════════════════════════════════════════════════════════════════════════
+   CASCADE LAYERS - Control specificity without !important
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer reset, base, components, utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM: Light Brutalist
-
-   Philosophy: Clean, tight, purposeful. No fluff.
+   RESET LAYER - Modern CSS reset
    ═══════════════════════════════════════════════════════════════════════════ */
-
-@theme {
-  --font-sans: "Manrope", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
-  /* Light palette */
-  --color-bg: #ffffff;
-  --color-surface: #f8f8f8;
-  --color-border: #e5e5e5;
-  --color-border-strong: #d4d4d4;
-
-  /* Text */
-  --color-text: #171717;
-  --color-text-muted: #737373;
-  --color-text-faint: #6b7280; /* WCAG AA compliant (~5.4:1 contrast with white) */
-
-  /* Accent - Teal (WCAG AA compliant) */
-  --color-accent: #0f766e; /* Darker teal for 4.5:1 contrast on white */
-  --color-accent-subtle: #ffffff; /* White background for sufficient contrast */
-
-  /* Selection states - semantic tokens */
-  --color-selected-bg: #f0f9ff;
-  --color-selected-border: #93c5fd;
-  --color-focused-bg: #dbeafe;
-  --color-focused-border: #3b82f6;
-
-  /* Semantic */
-  --color-danger: #dc2626;
-  --color-success: #16a34a;
-}
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html {
-  color-scheme: light;
-  text-size-adjust: 100%;
-}
-
-body {
-  font-family: var(--font-sans);
-  font-size: 0.9375rem; /* 15px */
-  line-height: 1.5;
-  color: var(--color-text);
-  background: var(--color-bg);
-  min-height: 100dvh;
-  margin: 0;
-  padding: 0;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-/* Respect user motion preferences */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-::selection {
-  background: var(--color-accent);
-  color: white;
-}
-
-/* Typography */
-h1, h2, h3 {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-  margin: 0;
-}
-
-h1 { font-size: 1.5rem; font-weight: 700; }
-h2 { font-size: 1.125rem; }
-h3 { font-size: 1rem; }
-
-p {
-  margin: 0;
-  color: var(--color-text-muted);
-}
-
-code {
-  font-family: var(--font-mono);
-  font-size: 0.875em;
-  background: var(--color-surface);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-/* Layout */
-.app {
-  display: flex;
-  min-height: 100vh;
-}
-
-.main-content {
-  flex: 1;
-  padding: 32px 40px;
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 200px;
-  background: var(--color-bg);
-  border-right: 1px solid var(--color-border);
-  padding: 20px 12px;
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
-  overflow-y: auto;
-}
-
-.sidebar h3 {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-faint);
-  padding: 0 10px;
-  margin-bottom: 8px;
-}
-
-.sidebar-item {
-  display: block;
-  padding: 6px 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.1s;
-}
-
-.sidebar-item:hover {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.sidebar-item.active {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
-}
-
-/* Outline container */
-.outline {
-  margin-top: 16px;
-  outline: none !important; /* Override Tailwind's .outline utility */
-}
-
-.outline--empty {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--color-text-faint);
-  border: 1px dashed var(--color-border);
-  border-radius: 4px;
-  cursor: text;
-}
-
-.outline--empty:hover {
-  border-color: var(--color-text-faint);
-}
-
-/* Blocks */
-.block {
-  position: relative;
-  padding: 4px 0 4px 20px;
-  margin: 1px 0;
-  border-radius: 3px;
-  /* IMPORTANT: Keep border-left-width consistent (3px) to prevent
-     horizontal shift when selection state changes during indent/outdent */
-  border-left: 3px solid transparent;
-}
-
-/* Keyboard-first: no hover styling on blocks - focus/selection indicates state */
-
-/* Selected but not focused - visible but subtle */
-.block.selected {
-  background: var(--color-selected-bg);
-  border-left-color: var(--color-accent);
-  /* No border-left-width change - base .block already has 3px */
-}
-
-/* Focused - strong visual (current cursor position) */
-.block.focused {
-  background: var(--color-focused-bg);
-  border-left-color: var(--color-accent);
-  /* No border-left-width change - base .block already has 3px */
-}
-
-/* Editing - subtle indicator, no distracting focus ring */
-.block.editing {
-  background: var(--color-bg);
-  border-left-color: var(--color-border-strong);
-}
-
-.block-content {
-  font-family: var(--font-sans);
-  font-size: inherit;
-  line-height: inherit;
-  color: var(--color-text);
-  outline: none;
-  min-height: 1.5em;
-  display: block;
-  width: 100%;
-  caret-color: var(--color-accent);
-}
-
-/* Suppress focus ring on contenteditable - the block border indicates state */
-.block-content:focus,
-.block-content:focus-visible {
-  outline: none;
-}
-
-.block-content:empty::before {
-  content: "\00a0"; /* non-breaking space to maintain clickable area */
-  color: transparent;
-}
-
-/* Nesting indicator - visible hierarchy line */
-.block-children {
-  margin-left: 0;
-  padding-left: 6px;
-  border-left: 2px solid var(--color-border);
-}
-
-/* Bullets - aligned with first line of text */
-.block-bullet {
-  position: absolute;
-  left: 4px;
-  top: 0.65em; /* Align with text baseline */
-  width: 12px;
-  height: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* Bullet clickable affordance - keep subtle hover for fold toggle discoverability */
-.block-bullet:hover {
-  color: var(--color-text-muted);
-}
-
-/* All bullets show the dot - everything is a node */
-.block-bullet::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-}
-
-/* Collapsed nodes: larger filled circle indicates hidden content */
-.block-bullet.bullet-collapsed::before {
-  width: 10px;
-  height: 10px;
-  background: var(--color-text);
-}
-
-/* Expanded nodes: hollow circle shows children are visible */
-.block-bullet.bullet-expanded::before {
-  width: 8px;
-  height: 8px;
-  background: transparent;
-  border: 2px solid var(--color-text-muted);
-}
-
-/* Bullet highlight on focus/selected only (keyboard-first, no hover) */
-.block.focused:not(.editing) .block-bullet::before,
-.block.selected:not(.editing) .block-bullet::before {
-  background: var(--color-accent);
-}
-
-.block.focused:not(.editing) .block-bullet.bullet-expanded::before,
-.block.selected:not(.editing) .block-bullet.bullet-expanded::before {
-  background: transparent;
-  border-color: var(--color-accent);
-}
-
-/* Editing state keeps bullet subtle */
-.block.editing .block-bullet.bullet-dot::before {
-  background: var(--color-border-strong);
-}
-
-.block.dragging {
-  opacity: 0.5;
-}
-
-/* Page refs */
-.page-ref {
-  color: var(--color-accent);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.page-ref:hover {
-  text-decoration: underline;
-}
-
-.block-ref {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
-  padding: 1px 4px;
-  border-radius: 2px;
-  font-size: 0.95em;
-  cursor: pointer;
-}
-
-.block-ref-missing {
-  background: #fef2f2;
-  color: var(--color-danger);
-}
-
-/* Buttons */
-button {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  background: var(--color-surface);
-  border-color: var(--color-border-strong);
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-button.primary {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
-
-kbd {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 5px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 3px;
-  color: var(--color-text-muted);
-}
-
-/* Forms */
-input, textarea, select {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-/* Hotkeys */
-.hotkeys-reference {
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-border);
-}
-
-.hotkeys-reference h4 {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-faint);
-  margin-bottom: 12px;
-}
-
-.hotkeys-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
-}
-
-.hotkey-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 0;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-/* Devtools */
-.devtools-panel {
-  margin-top: 32px;
-  padding: 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-/* Drop indicators */
-.drop-indicator {
-  position: absolute;
-  left: 20px;
-  right: 0;
-  height: 2px;
-  background: var(--color-accent);
-  pointer-events: none;
-}
-
-.drop-indicator--above { top: 0; }
-.drop-indicator--below { bottom: 0; }
-
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   AUTOCOMPLETE POPUP
-   
-   Uses HTML Popover API for top-layer rendering.
-   Modern CSS features: nesting, :has() ready.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.autocomplete-popup {
-  /* Reset popover defaults */
-  margin: 0;
-  padding: 0;
-  border: none;
-  
-  /* Popup styling */
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
-  min-width: 200px;
-  max-width: 320px;
-  max-height: 300px;
-  overflow: hidden;
-  
-  /* Animation */
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-
-  &:popover-open {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.autocomplete-items {
-  overflow-y: auto;
-  max-height: 300px;
-  padding: 4px 0;
-}
-
-.autocomplete-item {
-  padding: 8px 12px;
-  font-size: 14px;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background 0.1s ease;
-
-  &:hover {
-    background: var(--color-surface);
+@layer reset {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
 
-  &.selected {
-    background: var(--color-focused-bg);
-    color: var(--color-accent);
+  html {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    tab-size: 4;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Highlight matched characters */
-  & mark {
+  body {
+    line-height: inherit;
+  }
+
+  hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+
+  abbr:where([title]) {
+    text-decoration: underline dotted;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  b, strong {
+    font-weight: bolder;
+  }
+
+  code, kbd, samp, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1em;
+  }
+
+  small {
+    font-size: 80%;
+  }
+
+  sub, sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+  }
+
+  sub { bottom: -0.25em; }
+  sup { top: -0.5em; }
+
+  table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+
+  button, input, select, optgroup, textarea {
+    font: inherit;
+    color: inherit;
     background: transparent;
-    color: var(--color-accent);
+    border-radius: 0;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  :-moz-focusring {
+    outline: auto;
+  }
+
+  progress {
+    vertical-align: baseline;
+  }
+
+  summary {
+    display: list-item;
+  }
+
+  ol, ul, menu {
+    list-style: none;
+  }
+
+  img, svg, video, canvas, audio, iframe, embed, object {
+    display: block;
+    vertical-align: middle;
+  }
+
+  img, video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  [hidden]:not([hidden="until-found"]) {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE LAYER - Design tokens & global styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  :root {
+    /* Typography */
+    --font-sans: "Manrope", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+    /* Light palette - using oklch for perceptual uniformity */
+    --color-bg: oklch(100% 0 0);
+    --color-surface: oklch(98% 0 0);
+    --color-border: oklch(92% 0 0);
+    --color-border-strong: oklch(86% 0 0);
+
+    /* Text hierarchy */
+    --color-text: oklch(15% 0 0);
+    --color-text-muted: oklch(50% 0 0);
+    --color-text-faint: oklch(55% 0 0); /* WCAG AA compliant */
+
+    /* Accent - Teal in oklch (WCAG AA compliant) */
+    --color-accent: oklch(45% 0.12 180);
+    --color-accent-hover: oklch(40% 0.14 180);
+    --color-accent-subtle: oklch(97% 0.02 180);
+
+    /* Selection states */
+    --color-selected-bg: oklch(97% 0.02 240);
+    --color-selected-border: oklch(75% 0.1 240);
+    --color-focused-bg: oklch(94% 0.04 240);
+    --color-focused-border: oklch(60% 0.15 240);
+
+    /* Semantic */
+    --color-danger: oklch(55% 0.2 25);
+    --color-success: oklch(55% 0.15 145);
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* Transitions */
+    --transition-fast: 100ms ease;
+    --transition-normal: 150ms ease;
+
+    /* Radius */
+    --radius-sm: 3px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.5;
+    color: var(--color-text);
+    background: var(--color-bg);
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Respect user motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: white;
+  }
+
+  /* Placeholder styling with color-mix */
+  ::placeholder {
+    color: color-mix(in oklch, currentColor 50%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENTS LAYER - All UI components with CSS nesting
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Typography
+     ───────────────────────────────────────────────────────────────────────── */
+  h1, h2, h3 {
+    font-family: var(--font-sans);
     font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
   }
-}
 
-.autocomplete-empty {
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
+  h1 { font-size: 1.5rem; font-weight: 700; }
+  h2 { font-size: 1.125rem; }
+  h3 { font-size: 1rem; }
 
-.autocomplete-item.create-new {
-  border-top: 1px solid var(--color-border);
-  margin-top: 4px;
-  padding-top: 10px;
-  color: var(--color-text-muted);
-  
-  &.selected {
-    background: var(--color-focused-bg);
+  p {
+    color: var(--color-text-muted);
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    background: var(--color-surface);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Layout
+     ───────────────────────────────────────────────────────────────────────── */
+  .app {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .main-content {
+    flex: 1;
+    padding: var(--space-8) 40px;
+    max-width: 640px;
+    margin: 0 auto;
+    container-type: inline-size; /* Enable container queries */
+    container-name: main;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Sidebar - with container query support
+     ───────────────────────────────────────────────────────────────────────── */
+  .sidebar {
+    width: 200px;
+    background: var(--color-bg);
+    border-right: 1px solid var(--color-border);
+    padding: var(--space-5) var(--space-3);
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    overflow-y: auto;
+    container-type: inline-size;
+    container-name: sidebar;
+
+    & h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-faint);
+      padding: 0 10px;
+      margin-bottom: var(--space-2);
+    }
+  }
+
+  .sidebar-item {
+    display: block;
+    padding: 6px 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+
+    &.active {
+      background: var(--color-accent-subtle);
+      color: var(--color-accent);
+    }
+  }
+
+  /* Container query: tighter sidebar on narrow screens */
+  @container sidebar (max-width: 180px) {
+    .sidebar-item {
+      font-size: 12px;
+      padding: 4px 8px;
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Outline container
+     ───────────────────────────────────────────────────────────────────────── */
+  .outline {
+    margin-top: var(--space-4);
+    outline: none;
+    container-type: inline-size;
+    container-name: outline;
+
+    &--empty {
+      padding: var(--space-8) var(--space-4);
+      text-align: center;
+      color: var(--color-text-faint);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: text;
+
+      &:hover {
+        border-color: var(--color-text-faint);
+      }
+    }
+
+    /* :has() - Style outline when it contains selected blocks */
+    &:has(.block.selected) {
+      /* Could add subtle container styling when blocks are selected */
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Blocks - Core editing component with full nesting
+     ───────────────────────────────────────────────────────────────────────── */
+  .block {
+    position: relative;
+    padding: var(--space-1) 0 var(--space-1) var(--space-5);
+    margin: 1px 0;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid transparent;
+
+    /* State classes with nesting */
+    &.selected {
+      background: var(--color-selected-bg);
+      border-left-color: var(--color-accent);
+    }
+
+    &.focused {
+      background: var(--color-focused-bg);
+      border-left-color: var(--color-accent);
+    }
+
+    &.editing {
+      background: var(--color-bg);
+      border-left-color: var(--color-border-strong);
+    }
+
+    &.dragging {
+      opacity: 0.5;
+    }
+
+    /* Bullet styling based on block state - using :has() */
+    &.focused:not(.editing),
+    &.selected:not(.editing) {
+      & .block-bullet::before {
+        background: var(--color-accent);
+      }
+
+      & .block-bullet.bullet-expanded::before {
+        background: transparent;
+        border-color: var(--color-accent);
+      }
+    }
+
+    &.editing .block-bullet.bullet-dot::before {
+      background: var(--color-border-strong);
+    }
+  }
+
+  .block-content {
+    font-family: var(--font-sans);
+    font-size: inherit;
+    line-height: inherit;
+    color: var(--color-text);
+    outline: none;
+    min-height: 1.5em;
+    display: block;
+    width: 100%;
+    caret-color: var(--color-accent);
+
+    &:focus,
+    &:focus-visible {
+      outline: none;
+    }
+
+    &:empty::before {
+      content: "\00a0"; /* non-breaking space for clickable area */
+      color: transparent;
+    }
+  }
+
+  .block-children {
+    margin-left: 0;
+    padding-left: 6px;
+    border-left: 2px solid var(--color-border);
+  }
+
+  /* Container query: tighter nesting on narrow containers */
+  @container outline (max-width: 400px) {
+    .block-children {
+      padding-left: 4px;
+    }
+    
+    .block {
+      padding-left: var(--space-4);
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Block bullets
+     ───────────────────────────────────────────────────────────────────────── */
+  .block-bullet {
+    position: absolute;
+    left: 4px;
+    top: 0.65em;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+      color: var(--color-text-muted);
+    }
+
+    &::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-text-muted);
+      transition: all var(--transition-fast);
+    }
+
+    &.bullet-collapsed::before {
+      width: 10px;
+      height: 10px;
+      background: var(--color-text);
+    }
+
+    &.bullet-expanded::before {
+      width: 8px;
+      height: 8px;
+      background: transparent;
+      border: 2px solid var(--color-text-muted);
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Page & Block refs
+     ───────────────────────────────────────────────────────────────────────── */
+  .page-ref {
+    color: var(--color-accent);
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .block-ref {
+    background: var(--color-accent-subtle);
+    color: var(--color-accent);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 0.95em;
+    cursor: pointer;
+
+    &-missing {
+      background: oklch(97% 0.03 25);
+      color: var(--color-danger);
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Buttons
+     ───────────────────────────────────────────────────────────────────────── */
+  button {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    transition: all var(--transition-fast);
+
+    &:hover:not(:disabled) {
+      background: var(--color-surface);
+      border-color: var(--color-border-strong);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &.primary {
+      background: var(--color-accent);
+      color: white;
+      border-color: var(--color-accent);
+
+      &:hover:not(:disabled) {
+        background: var(--color-accent-hover);
+      }
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Keyboard shortcuts (kbd)
+     ───────────────────────────────────────────────────────────────────────── */
+  kbd {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 5px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Forms
+     ───────────────────────────────────────────────────────────────────────── */
+  input, textarea, select {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    padding: var(--space-2) 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    transition: border-color var(--transition-fast);
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Hotkeys reference
+     ───────────────────────────────────────────────────────────────────────── */
+  .hotkeys-reference {
+    margin-top: 40px;
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--color-border);
+
+    & h4 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-faint);
+      margin-bottom: var(--space-3);
+    }
+  }
+
+  .hotkeys-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 6px;
+  }
+
+  .hotkey-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-1) 0;
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Devtools panel
+     ───────────────────────────────────────────────────────────────────────── */
+  .devtools-panel {
+    margin-top: var(--space-8);
+    padding: var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Drop indicators (drag & drop)
+     ───────────────────────────────────────────────────────────────────────── */
+  .drop-indicator {
+    position: absolute;
+    left: 20px;
+    right: 0;
+    height: 2px;
+    background: var(--color-accent);
+    pointer-events: none;
+
+    &--above { top: 0; }
+    &--below { bottom: 0; }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Autocomplete popup - using Popover API patterns
+     ───────────────────────────────────────────────────────────────────────── */
+  .autocomplete-popup {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 
+      0 4px 16px color-mix(in oklch, var(--color-text) 12%, transparent),
+      0 1px 4px color-mix(in oklch, var(--color-text) 8%, transparent);
+    min-width: 200px;
+    max-width: 320px;
+    max-height: 300px;
+    overflow: hidden;
+
+    /* Popover animation */
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: 
+      opacity var(--transition-normal),
+      transform var(--transition-normal);
+
+    &:popover-open {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .autocomplete-items {
+    overflow-y: auto;
+    max-height: 300px;
+    padding: var(--space-1) 0;
+  }
+
+  .autocomplete-item {
+    padding: var(--space-2) var(--space-3);
+    font-size: 14px;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+
+    &:hover {
+      background: var(--color-surface);
+    }
+
+    &.selected {
+      background: var(--color-focused-bg);
+      color: var(--color-accent);
+    }
+
+    & mark {
+      background: transparent;
+      color: var(--color-accent);
+      font-weight: 600;
+    }
+
+    &.create-new {
+      border-top: 1px solid var(--color-border);
+      margin-top: var(--space-1);
+      padding-top: 10px;
+      color: var(--color-text-muted);
+
+      &.selected {
+        background: var(--color-focused-bg);
+        color: var(--color-accent);
+      }
+    }
+  }
+
+  .autocomplete-empty {
+    padding: var(--space-3) var(--space-4);
+    font-size: 13px;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  .create-new-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .create-icon {
+    font-weight: bold;
+    font-size: 16px;
     color: var(--color-accent);
   }
 }
 
-.create-new-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILITIES LAYER - Helper classes
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
-.create-icon {
-  font-weight: bold;
-  font-size: 16px;
-  color: var(--color-accent);
+  /* For elements that should be non-interactive during certain states */
+  [inert] {
+    pointer-events: none;
+    user-select: none;
+  }
 }
