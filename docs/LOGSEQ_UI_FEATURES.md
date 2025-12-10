@@ -321,9 +321,9 @@ Clipboard with `<whiteboard-tldr>` metadata extracts shapes instead of text.
 | Drag & drop | ✅ Implemented | - |
 | Multi-block copy w/ hierarchy | ✅ Implemented | - |
 | Multi-block cut | ✅ Implemented | - |
-| Backspace merge-previous | Not implemented | High |
-| Block refs `((uuid))` rendering | Not implemented | High |
-| Block embeds `{{embed}}` | Not implemented | Medium |
+| Backspace merge-previous | ✅ Implemented | - |
+| Block refs `((uuid))` rendering | Not planned | - |
+| Block embeds `{{embed}}` | Not planned | - |
 | Smart paste (URL detection) | Not implemented | Medium |
 | **Commands & Search** | | |
 | Slash commands | Not implemented | Could add |
@@ -343,39 +343,7 @@ Clipboard with `<whiteboard-tldr>` metadata extracts shapes instead of text.
 
 ---
 
-## High Priority Gaps (Implementation Notes)
-
-### Backspace at Block Start → Merge with Previous
-
-When cursor is at position 0 and backspace is pressed:
-1. Get previous sibling block text
-2. Concatenate: `prev-text + current-text`
-3. Update previous block with merged text
-4. Move current block's children to previous block
-5. Delete current block
-6. Position cursor at join point (end of original prev-text)
-
-**Location**: Add to `plugins/context_editing.cljc` as `:merge-with-previous`
-
-### Block References `((uuid))`
-
-Rendering block references inline:
-1. Parser already handles `((uuid))` syntax (check `parser/page_refs.cljc`)
-2. Need component similar to `PageRef` for block refs
-3. On render: lookup referenced block text, render inline
-4. On click: navigate to referenced block (or open in sidebar)
-
-**Location**: Add `components/block_ref.cljs`, update `block.cljs` render
-
-### Block Embeds `{{embed ((uuid))}}`
-
-Full block embed (not just reference):
-1. Parse `{{embed ((uuid))}}` syntax
-2. Render referenced block + children inline (read-only)
-3. Skip embeds during keyboard navigation
-4. Track embed depth to prevent infinite recursion
-
-**Location**: Parser extension + `components/block_embed.cljs`
+## Implementation Notes
 
 ### Smart Paste Detection
 
