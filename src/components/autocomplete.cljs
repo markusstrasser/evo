@@ -105,6 +105,9 @@
      {:class [(when selected? "selected")
               (when is-create-new? "create-new")
               (when is-command? "command-item")]
+      :replicant/on-render (when selected?
+                             (fn [{:replicant/keys [node]}]
+                               (.scrollIntoView node #js {:block "nearest"})))
       :on {:click (fn [e]
                     (.preventDefault e)
                     (.stopPropagation e)
