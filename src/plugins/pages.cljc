@@ -68,7 +68,10 @@
     :page-id \"...\"
     :page-title \"...\"}
    
-   Searches all blocks in the DB for [[target-page]] references."
+   Searches all blocks in the DB for [[target-page]] references.
+   Excludes:
+   - Blocks in trash (no valid page ancestor)
+   - Self-references (blocks on the target page itself)"
   [db target-page]
   (when target-page
     (let [target-lower (str/lower-case target-page)
@@ -76,12 +79,15 @@
           parent-of (:parent-of (:derived db))
 
           ;; Find the page that contains a block by walking up the parent chain
+          ;; Returns nil if block is in trash or orphaned (no page ancestor)
           find-source-page (fn [block-id]
                              (loop [id block-id]
                                (let [parent (get parent-of id)]
                                  (cond
-                                   ;; Reached doc root - return nil (orphan block)
-                                   (or (nil? parent) (= parent :doc))
+                                   ;; Reached doc root or trash - return nil
+                                   (or (nil? parent)
+                                       (= parent :doc)
+                                       (= parent :trash))
                                    nil
 
                                    ;; Found a page - return it
@@ -100,11 +106,13 @@
                                     refs-lower (set (map str/lower-case refs))]
                                 (when (contains? refs-lower target-lower)
                                   (let [source-page-id (find-source-page block-id)]
-                                    {:block-id block-id
-                                     :block-text text
-                                     :page-id source-page-id
-                                     :page-title (when source-page-id
-                                                   (page-title db source-page-id))}))))))]
+                                    ;; Only include blocks that have a valid page ancestor
+                                    ;; (excludes trashed/orphaned blocks)
+                                    (when source-page-id
+                                      {:block-id block-id
+                                       :block-text text
+                                       :page-id source-page-id
+                                       :page-title (page-title db source-page-id)})))))))]
       ;; Filter out blocks from the current page (don't show self-references)
       (remove (fn [backlink]
                 (= (str/lower-case (or (:page-title backlink) ""))
