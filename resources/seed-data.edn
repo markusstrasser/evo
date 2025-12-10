@@ -12,6 +12,8 @@
  {:op :place :id "proj-2" :under "projects" :at :last}
  {:op :create-node :id "proj-3" :type :block :props {:text "See also: [[Tasks]] page for work items"}}
  {:op :place :id "proj-3" :under "projects" :at :last}
+ {:op :create-node :id "proj-4" :type :block :props {:text "{{tweet https://x.com/BornsteinMatt/status/1991263767376593030}}"}}
+ {:op :place :id "proj-4" :under "projects" :at :last}
 
  ;; ── Tasks Page ──
  {:op :create-node :id "tasks" :type :page :props {:title "Tasks"}}
