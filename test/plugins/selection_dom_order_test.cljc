@@ -6,7 +6,7 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
   (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
                :cljs [cljs.test :refer [deftest is testing use-fixtures]])
-            [kernel.db :as D]
+            [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.query :as q]
@@ -58,8 +58,8 @@
    DOM order (pre-order traversal): a, a1, a2, b, b1, c
    Sibling order (WRONG): a, b, c"
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                               [{:op :create-node :id "doc1" :type :doc :props {}}
                                {:op :place :id "doc1" :under :doc :at :last}
                                ;; Create parent blocks

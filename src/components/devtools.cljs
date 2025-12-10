@@ -175,7 +175,7 @@
          "📋 Copy Last Diff"])]
 
      (if last-entry
-       (let [current-page (pages/current-page db)
+       (let [_current-page (pages/current-page db) ; TODO: use for page-specific diff view
              state-before (devtools/format-state-snapshot (:db-before last-entry))
              state-after (devtools/format-state-snapshot (:db-after last-entry))
              scrollable-code-style (assoc code-block-style

@@ -49,8 +49,9 @@
 
 (defn folded?
   "Check if a block is currently folded (children hidden).
-   Takes session (not db) since fold state is ephemeral."
-  [db session block-id]
+   Takes session (not db) since fold state is ephemeral.
+   db param kept for API consistency with other predicates."
+  [_db session block-id]
   (contains? (get-folded-set session) block-id))
 
 (defn collapsible?

@@ -26,7 +26,7 @@
        (= (action state payload) (action state payload))))"
   (:require [clojure.test :refer [deftest testing is]]
             [shell.nexus :as nexus]
-            [kernel.db :as DB]
+            [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]))
 
@@ -35,7 +35,7 @@
 (defn sample-db
   "Create a simple DB for testing actions."
   []
-  (-> (DB/empty-db)
+  (-> (db/empty-db)
       (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "first block"}}
                      {:op :place :id "a" :under :doc :at :last}
                      {:op :create-node :id "b" :type :block :props {:text "second block"}}

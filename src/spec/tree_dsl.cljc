@@ -25,7 +25,6 @@
    Round-trip:
      (= dsl (state->dsl db session))  ; Should be true (modulo ordering)"
   (:require [kernel.db :as db]
-            [kernel.constants :as const]
             [clojure.string :as str]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════

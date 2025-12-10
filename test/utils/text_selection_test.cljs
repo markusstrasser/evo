@@ -5,8 +5,7 @@
    See test/e2e/text-selection.spec.js for comprehensive browser-based tests.
 
    These unit tests only cover non-DOM utility functions."
-  (:require [clojure.test :refer [deftest testing is]]
-            [utils.text-selection :as text-sel]))
+  (:require [clojure.test :refer [deftest testing is]]))
 
 ;; ── Utility Function Tests (No DOM Required) ────────────────────────────────
 

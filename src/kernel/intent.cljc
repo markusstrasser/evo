@@ -25,6 +25,7 @@
             [malli.core :as m]
             [malli.error :as me]
             [spec.registry :as fr]
+            #_{:clj-kondo/ignore [:unused-namespace]} ; db/ used in CLJS reader conditional
             [kernel.db :as db]))
 
 ;; ── Intent Registry (Data, No Macros) ────────────────────────────────────────

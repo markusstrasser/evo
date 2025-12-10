@@ -20,7 +20,6 @@
   (:require [spec.tree-dsl :as dsl]
             [spec.registry :as fr]
             [kernel.api :as api]
-            [kernel.db :as db]
             ;; Load plugins - these register intent handlers at load time
             ;; Required here so dispatch* can route to handlers
             [plugins.editing :as p-editing]
@@ -32,6 +31,7 @@
             [plugins.clipboard :as p-clipboard]
             [plugins.pages :as p-pages]
             [plugins.text-formatting :as p-text-formatting]
+            [plugins.autocomplete :as p-autocomplete]
             ;; Derived index plugins (register with plugins.registry)
             [plugins.visible-order :as p-visible-order]))
 
@@ -41,7 +41,9 @@
 
 ;; Reference plugin sentinels to prevent DCE from eliminating side-effect-only
 ;; namespaces. Each plugin registers intents at load time.
-(def ^:private plugins-loaded?
+(def plugins-loaded?
+  "True when all intent-handling plugins have loaded their handlers.
+   Referenced by spec runner to ensure intents can be dispatched."
   (and p-editing/loaded?
        p-navigation/loaded?
        p-struct/loaded?
@@ -51,7 +53,11 @@
        p-clipboard/loaded?
        p-pages/loaded?
        p-text-formatting/loaded?
+       p-autocomplete/loaded?
        p-visible-order/loaded?))
+
+;; Runtime check - ensures DCE doesn't eliminate the sentinel check
+(assert plugins-loaded? "All plugins must be loaded for spec runner")
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Matching Utilities

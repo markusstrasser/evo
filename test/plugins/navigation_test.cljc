@@ -3,16 +3,15 @@
   (:require [clojure.test :refer [deftest testing is]]
             [plugins.navigation :as nav]
             [kernel.intent :as intent]
-            [kernel.db :as DB]
-            [kernel.transaction :as tx]
-            [kernel.constants :as const]))
+            [kernel.db :as db]
+            [kernel.transaction :as tx]))
 
 ;; ── Test fixtures ─────────────────────────────────────────────────────────────
 
 (defn sample-db
   "Create a simple DB with two blocks for testing navigation."
   []
-  (-> (DB/empty-db)
+  (-> (db/empty-db)
       (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hello world"}}
                      {:op :place :id "a" :under :doc :at :last}
                      {:op :create-node :id "b" :type :block :props {:text "foo bar baz"}}
@@ -136,7 +135,7 @@
 (deftest 
   navigate-up-target-shorter-goes-to-end-test
   (testing "Arrow up with short target block goes to end"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hi"}}
                                 {:op :place :id "a" :under :doc :at :last}
                                 {:op :create-node :id "b" :type :block :props {:text "hello world"}}
@@ -154,7 +153,7 @@
 (deftest 
   navigate-with-empty-block-test
   (testing "Navigate from empty block"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hello"}}
                                 {:op :place :id "a" :under :doc :at :last}
                                 {:op :create-node :id "b" :type :block :props {:text ""}}
@@ -178,7 +177,7 @@
 (deftest 
   navigate-to-empty-block-test
   (testing "Navigate to empty block"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "hello"}}
                                 {:op :place :id "a" :under :doc :at :last}
                                 {:op :create-node :id "b" :type :block :props {:text ""}}
@@ -196,7 +195,7 @@
 (deftest 
   navigate-no-sibling-throws-test
   (testing "Arrow navigation with no sibling returns no-op (Logseq behavior)"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "only block"}}
                                 {:op :place :id "a" :under :doc :at :last}])
                  :db)
@@ -215,7 +214,7 @@
 
 (deftest navigate-multi-line-cursor-memory-test
   (testing "Navigate between multi-line blocks preserves column"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block
                                  :props {:text "line 1\nline 2\nline 3"}}
                                 {:op :place :id "a" :under :doc :at :last}
@@ -310,7 +309,7 @@
 
 (deftest navigate-to-adjacent-no-target-test
   (testing "Navigate with no adjacent block does nothing"
-    (let [db (-> (DB/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "Only"}}
                                 {:op :place :id "a" :under :doc :at :last}])
                  :db)

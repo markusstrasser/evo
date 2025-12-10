@@ -332,7 +332,7 @@
                           :handler (fn [db session {:keys [from-editing? block-id]}]
                                      (let [state (q/selection-state session)
                                            selection-nodes (:nodes state)
-                                           focus-id (:focus state)
+                                           _focus-id (:focus state) ; Extracted for future use in multi-step selection
                                            root-id (or (q/zoom-root session)
                                                        (q/current-page session)
                                                        :doc)]

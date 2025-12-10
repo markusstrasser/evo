@@ -15,8 +15,7 @@
    View state is intentionally NOT reactive (plain atom):
    - Replicant uses explicit render calls, not reactive subscriptions
    - UI updates are triggered by explicit (d/render!) calls
-   - This keeps the mental model simple and predictable"
-  (:require [clojure.set :as set]))
+   - This keeps the mental model simple and predictable")
 
 ;; ── View State Atom ─────────────────────────────────────────────────────────
 ;; Holds UI state that TRIGGERS re-renders when changed.
@@ -48,8 +47,9 @@
         :keep-edit-on-blur false
         :document-view? false
         :drag nil
-        :sidebar-visible? true      ; Left sidebar (pages) visibility
-        :hotkeys-visible? false}    ; Hotkeys reference panel visibility
+        :sidebar-visible? true ; Left sidebar (pages) visibility
+        :hotkeys-visible? false ; Hotkeys reference panel visibility
+        :autocomplete nil} ; Autocomplete popup state (see autocomplete-show!)
    :sidebar {:right []}})
 
 (defonce !view-state (atom default-view-state))
@@ -311,6 +311,68 @@
   (swap-view-state! assoc-in [:ui :keep-edit-on-blur] true)
   ;; Auto-clear after delay - 200ms covers re-render cycle with margin
   (js/setTimeout #(swap-view-state! assoc-in [:ui :keep-edit-on-blur] false) 200))
+
+;; ── Autocomplete API ──────────────────────────────────────────────────────────
+;; Ephemeral state for autocomplete popups (page refs, block refs, commands, etc.)
+;;
+;; Structure when active:
+;; {:type :page-ref        ; Source type (:page-ref, :block-ref, :command, :tag)
+;;  :block-id "block-123"  ; Block being edited
+;;  :trigger-pos 5         ; Cursor position where trigger started (after [[)
+;;  :query "proj"          ; Current search text (typed after trigger)
+;;  :selected 0            ; Index of selected item in results
+;;  :items [...]}          ; Filtered results (cached for render)
+
+(defn autocomplete
+  "Get current autocomplete state, or nil if not active."
+  []
+  (get-in @!view-state [:ui :autocomplete]))
+
+(defn autocomplete-active?
+  "Check if autocomplete popup is currently active."
+  []
+  (some? (get-in @!view-state [:ui :autocomplete])))
+
+(defn autocomplete-show!
+  "Show autocomplete popup with initial state.
+
+   type: Source type (:page-ref, :block-ref, :command, :tag)
+   block-id: Block being edited
+   trigger-pos: Cursor position where trigger started"
+  [type block-id trigger-pos]
+  (swap-view-state! assoc-in [:ui :autocomplete]
+                    {:type type
+                     :block-id block-id
+                     :trigger-pos trigger-pos
+                     :query ""
+                     :selected 0
+                     :items []}))
+
+(defn autocomplete-update!
+  "Update autocomplete state (query, items, selected).
+
+   Example:
+     (autocomplete-update! {:query \"proj\" :items [...]})"
+  [updates]
+  (swap-view-state! update-in [:ui :autocomplete] merge updates))
+
+(defn autocomplete-dismiss!
+  "Dismiss/hide autocomplete popup."
+  []
+  (swap-view-state! assoc-in [:ui :autocomplete] nil))
+
+(defn autocomplete-navigate!
+  "Navigate selection up or down in autocomplete list.
+
+   direction: :up or :down"
+  [direction]
+  (let [{:keys [selected items]} (autocomplete)
+        max-idx (max 0 (dec (count items)))
+        new-idx (case direction
+                  :up (max 0 (dec selected))
+                  :down (min max-idx (inc selected))
+                  selected)]
+    (swap-view-state! assoc-in [:ui :autocomplete :selected] new-idx)))
 
 ;; ── Debug Helpers ─────────────────────────────────────────────────────────────
 

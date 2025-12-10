@@ -4,10 +4,9 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
   (:require #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
-            [kernel.db :as D]
+            [kernel.db :as db]
             [kernel.intent :as intent]
-            [kernel.transaction :as tx]
-            [plugins.structural :as S]))
+            [kernel.transaction :as tx]))
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -54,8 +53,8 @@
 (defn build-doc
   "Creates a test DB with structure: doc1 -> [a, b]"
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                                           [{:op :create-node :id "doc1" :type :doc :props {}}
                                            {:op :place :id "doc1" :under :doc :at :last}
                                            {:op :create-node :id "a" :type :p :props {}}
@@ -109,7 +108,7 @@
     ;;     - child-b  <- will outdent this
     ;;     - child-c
     ;;     - child-d
-    (let [db (-> (D/empty-db)
+    (let [db (-> (db/empty-db)
                  (tx/interpret
                   [{:op :create-node :id "doc1" :type :doc :props {}}
                    {:op :place :id "doc1" :under :doc :at :last}
@@ -187,8 +186,8 @@
           └─ child-c
      └─ uncle"
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                                           [{:op :create-node :id "parent" :type :block :props {:text "Parent"}}
                                            {:op :place :id "parent" :under :doc :at :last}
                                            {:op :create-node :id "uncle" :type :block :props {:text "Uncle"}}
@@ -347,8 +346,8 @@
           ├─ block-b
           └─ block-c"
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                                           [{:op :create-node :id "page" :type :page :props {:title "Test Page"}}
                                            {:op :place :id "page" :under :doc :at :last}
                                            {:op :create-node :id "block-a" :type :block :props {:text "Block A"}}
@@ -383,8 +382,8 @@
    Note: Zoom root is set via session, not in DB.
    Use session-with-zoom or session-with-zoom-and-editing in tests."
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                                           [{:op :create-node :id "page" :type :page :props {:title "Page"}}
                                            {:op :place :id "page" :under :doc :at :last}
                                            {:op :create-node :id "parent" :type :block :props {:text "Parent"}}
@@ -456,7 +455,7 @@
 (deftest create-block-in-page-for-empty-pages
   (testing "create-block-in-page creates block and enters edit mode"
     (let [;; Start with empty page
-          db (-> (D/empty-db)
+          db (-> (db/empty-db)
                  (tx/interpret [{:op :create-node :id "page1" :type :page :props {:title "Empty Page"}}])
                  :db)
           session (empty-session)

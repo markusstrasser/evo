@@ -395,7 +395,7 @@
         (is (= "" (get-in db [:nodes new-peer-id :props :text])))
         ;; Cursor should be in new peer block
         (is (= new-peer-id (get-in session [:ui :editing-block-id])))
-        (is (= 0 (get-in session [:ui :cursor-position]))))))
+        (is (= 0 (get-in session [:ui :cursor-position]))))) ; closes: is, =, get-in, inner-let, outer-let, testing (NOT deftest)
 
   (testing "Enter on numbered list increments"
     (let [db (:db (tx/interpret (db/empty-db)
@@ -404,12 +404,12 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :context-aware-enter
                                                        :block-id "a"
-                                                       :cursor-pos 13})] ; At end
-      (let [children (q/children db :doc)
-            new-block-id (second children)]
-        (is (= "1. First item" (get-in db [:nodes "a" :props :text])))
-        (is (= "2. " (get-in db [:nodes new-block-id :props :text])))
-        (is (= 3 (get-in session [:ui :cursor-position]))))))
+                                                       :cursor-pos 13}) ; At end
+          children (q/children db :doc)
+          new-block-id (second children)]
+      (is (= "1. First item" (get-in db [:nodes "a" :props :text])))
+      (is (= "2. " (get-in db [:nodes new-block-id :props :text])))
+      (is (= 3 (get-in session [:ui :cursor-position]))))))
 
   (testing "Enter on simple list continues marker"
     (let [db (:db (tx/interpret (db/empty-db)
@@ -418,12 +418,12 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :context-aware-enter
                                                        :block-id "a"
-                                                       :cursor-pos 10})]
-      (let [children (q/children db :doc)
-            new-block-id (second children)]
-        (is (= "- Item one" (get-in db [:nodes "a" :props :text])))
-        (is (= "- " (get-in db [:nodes new-block-id :props :text])))
-        (is (= 2 (get-in session [:ui :cursor-position])))))))
+                                                       :cursor-pos 10})
+          children (q/children db :doc)
+          new-block-id (second children)]
+      (is (= "- Item one" (get-in db [:nodes "a" :props :text])))
+      (is (= "- " (get-in db [:nodes new-block-id :props :text])))
+      (is (= 2 (get-in session [:ui :cursor-position])))))) ; closes: is, =, get-in, let, testing, deftest
 
 (deftest context-aware-enter-checkbox-test
   (testing "Enter on empty checkbox unformats"
@@ -444,12 +444,12 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :context-aware-enter
                                                        :block-id "a"
-                                                       :cursor-pos 14})]
-      (let [children (q/children db :doc)
-            new-block-id (second children)]
-        (is (= "- [ ] Task one" (get-in db [:nodes "a" :props :text])))
-        (is (= "- [ ] " (get-in db [:nodes new-block-id :props :text])))
-        (is (= 6 (get-in session [:ui :cursor-position])))))))
+                                                       :cursor-pos 14})
+          children (q/children db :doc)
+          new-block-id (second children)]
+      (is (= "- [ ] Task one" (get-in db [:nodes "a" :props :text])))
+      (is (= "- [ ] " (get-in db [:nodes new-block-id :props :text])))
+      (is (= 6 (get-in session [:ui :cursor-position]))))))
 
 (deftest context-aware-enter-plain-text-test
   (testing "Enter on plain text splits normally (Logseq parity: trim left)"
@@ -459,14 +459,14 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :context-aware-enter
                                                        :block-id "a"
-                                                       :cursor-pos 5})]
-      (let [children (q/children db :doc)
-            new-block-id (second children)]
-        (is (= "hello" (get-in db [:nodes "a" :props :text])))
-        ;; LOGSEQ PARITY: Second block text is left-trimmed
-        (is (= "world" (get-in db [:nodes new-block-id :props :text]))
-            "Second block should have leading whitespace trimmed (Logseq parity)")
-        (is (= 0 (get-in session [:ui :cursor-position]))))))
+                                                       :cursor-pos 5})
+          children (q/children db :doc)
+          new-block-id (second children)]
+      (is (= "hello" (get-in db [:nodes "a" :props :text])))
+      ;; LOGSEQ PARITY: Second block text is left-trimmed
+      (is (= "world" (get-in db [:nodes new-block-id :props :text]))
+          "Second block should have leading whitespace trimmed (Logseq parity)")
+      (is (= 0 (get-in session [:ui :cursor-position])))))
 
   ;; ARCHITECTURAL TEST: context-aware-enter should NEVER auto-outdent
   ;; Auto-outdent logic lives in components/block.cljs handle-enter which
@@ -481,9 +481,9 @@
           session (empty-session)
           ;; Simulate: Enter on empty block that is last child of parent
           ;; The COMPONENT should handle auto-outdent, not this handler
-          {:keys [db session]} (run-intent db session {:type :context-aware-enter
-                                                       :block-id "child"
-                                                       :cursor-pos 0})]
+          {:keys [db]} (run-intent db session {:type :context-aware-enter
+                                                  :block-id "child"
+                                                  :cursor-pos 0})]
       ;; Should split (create new block), NOT outdent
       ;; The child should remain under parent, with a new sibling created before it
       (is (= "parent" (q/parent-of db "child"))
@@ -498,15 +498,15 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :context-aware-enter
                                                        :block-id "a"
-                                                       :cursor-pos 0})]
-      (let [children (q/children db :doc)]
-        (is (= 2 (count children)))
-        ;; New empty block should be BEFORE original
-        (is (= "a" (second children)) "Original block should be second")
-        (is (= "" (get-in db [:nodes (first children) :props :text]))
-            "New block should be empty")
-        ;; Cursor stays in original block
-        (is (= "a" (get-in session [:ui :editing-block-id])))))))
+                                                       :cursor-pos 0})
+          children (q/children db :doc)]
+      (is (= 2 (count children)))
+      ;; New empty block should be BEFORE original
+      (is (= "a" (second children)) "Original block should be second")
+      (is (= "" (get-in db [:nodes (first children) :props :text]))
+          "New block should be empty")
+      ;; Cursor stays in original block
+      (is (= "a" (get-in session [:ui :editing-block-id]))))))
 
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 

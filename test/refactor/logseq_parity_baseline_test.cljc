@@ -15,8 +15,7 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]
-            [kernel.constants :as const]))
+            [kernel.query :as q]))
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
 
@@ -253,12 +252,12 @@
           _session3 (apply-session-updates session2 session-updates)]
 
       ;; Document structure should be unchanged (no ops applied)
-      (is (= (get-in db [:nodes])
-             (get-in db [:nodes]))
+      (is (= (:nodes db)
+             (:nodes db))
           "Navigation should not modify document nodes")
 
-      (is (= (get-in db [:children-by-parent])
-             (get-in db [:children-by-parent]))
+      (is (= (:children-by-parent db)
+             (:children-by-parent db))
           "Navigation should not modify tree structure"))))
 
 (deftest 
@@ -312,7 +311,7 @@
 
       ;; Every child has exactly one parent
       (doseq [[child-id parent-id] (get-in db2 [:derived :parent-of])]
-        (is (contains? (get-in db2 [:nodes]) child-id)
+        (is (contains? (:nodes db2) child-id)
             "All children in :parent-of should exist in :nodes")
         (is (some #{child-id} (get-in db2 [:children-by-parent parent-id]))
             "Parent should list child in :children-by-parent"))
@@ -342,7 +341,7 @@
   (testing "Buffer updates are now session-only (no DB operations)"
     (let [db (setup-simple-doc)
           session (empty-session)
-          derived-before (get-in db [:derived])
+          derived-before (:derived db)
 
           ;; Buffer updates are now purely session state
           ;; They don't touch the DB at all
@@ -352,7 +351,7 @@
                            (range 10))]
 
       ;; DB derived indexes should be unchanged
-      (is (= derived-before (get-in db [:derived]))
+      (is (= derived-before (:derived db))
           "Buffer updates don't touch DB at all")
 
       ;; Buffer state is in session

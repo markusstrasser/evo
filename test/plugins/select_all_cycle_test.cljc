@@ -1,6 +1,6 @@
 (ns plugins.select-all-cycle-test
   "Tests for Cmd+A cycle behavior (Logseq parity).
-   
+
    LOGSEQ_SPEC §7.2: Cmd+A cycles through selection levels:
    1. First press (editing) → select all text (browser handles)
    2. Second press (all text selected) → exit edit, select block
@@ -10,7 +10,6 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]
             [plugins.selection]))
 
 ;; ── Test Fixtures ────────────────────────────────────────────────────────────
@@ -117,31 +116,27 @@
 
 ;; ── Full Cycle Test ─────────────────────────────────────────────────────────
 
-(deftest 
+(deftest
   full-cmd-a-cycle
   (testing "Complete Cmd+A cycle: edit → block → parent → all"
-    (let [db (make-nested-tree)]
-      ;; Step 2: From editing (simulating all text selected)
-      (let [session (session-with-editing "child-a")
-            {:keys [session-updates]} (intent/apply-intent db session
-                                                           {:type :select-all-cycle
-                                                            :from-editing? true
-                                                            :block-id "child-a"})]
-        (is (= #{"child-a"} (get-in session-updates [:selection :nodes]))
-            "Step 2: Should select child-a")
-
-        ;; Step 3: Block selected → parent
-        (let [session2 {:ui {:editing-block-id nil}
-                        :selection (get session-updates :selection)}
-              {:keys [session-updates]} (intent/apply-intent db session2
-                                                             {:type :select-all-cycle})]
-          (is (= #{"parent"} (get-in session-updates [:selection :nodes]))
-              "Step 3: Should select parent")
-
+    (let [db (make-nested-tree)
+          ;; Step 2: From editing (simulating all text selected)
+          session1 (session-with-editing "child-a")
+          result1 (intent/apply-intent db session1
+                                       {:type :select-all-cycle
+                                        :from-editing? true
+                                        :block-id "child-a"})
+          _ (is (= #{"child-a"} (get-in result1 [:session-updates :selection :nodes]))
+                "Step 2: Should select child-a")
+          ;; Step 3: Block selected → parent
+          session2 {:ui {:editing-block-id nil}
+                    :selection (get-in result1 [:session-updates :selection])}
+          result2 (intent/apply-intent db session2 {:type :select-all-cycle})
+          _ (is (= #{"parent"} (get-in result2 [:session-updates :selection :nodes]))
+                "Step 3: Should select parent")
           ;; Step 4: Parent selected → all visible
-          (let [session3 {:ui {:editing-block-id nil}
-                          :selection (get session-updates :selection)}
-                {:keys [session-updates]} (intent/apply-intent db session3
-                                                               {:type :select-all-cycle})]
-            (is (= 4 (count (get-in session-updates [:selection :nodes])))
-                "Step 4: Should select all 4 blocks")))))))
+          session3 {:ui {:editing-block-id nil}
+                    :selection (get-in result2 [:session-updates :selection])}
+          result3 (intent/apply-intent db session3 {:type :select-all-cycle})]
+      (is (= 4 (count (get-in result3 [:session-updates :selection :nodes])))
+          "Step 4: Should select all 4 blocks"))))

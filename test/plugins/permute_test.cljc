@@ -1,7 +1,9 @@
 (ns plugins.permute-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.test.check.generators :as gen]
+            #_{:clj-kondo/ignore [:unused-namespace]} ; Used by prop/for-all
             [clojure.test.check.properties :as prop]
+            #_{:clj-kondo/ignore [:unused-namespace]} ; defspec macro
             [clojure.test.check.clojure-test :refer [defspec]]
             [plugins.structural :as struct]
             [kernel.db :as db]

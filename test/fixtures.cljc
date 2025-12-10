@@ -35,7 +35,7 @@
                       {}
                       children-by-parent)
         index-of (reduce-kv
-                  (fn [m parent-id child-ids]
+                  (fn [m _parent-id child-ids]
                     (merge m (into {} (map-indexed (fn [i id] [id i]) child-ids))))
                   {}
                   children-by-parent)
@@ -164,7 +164,7 @@
         :c {:text \"Third\" :children [:d]}
         :d {:text \"Fourth\"}})"
   [block-map]
-  (let [ops (for [[id {:keys [text children] :or {text "" children []}}] block-map]
+  (let [ops (for [[id {:keys [text] :or {text ""}}] block-map]
               {:op :create-node :id (name id) :type :block :props {:text text}})
         place-ops (for [[id {:keys [children]}] block-map
                         child children]

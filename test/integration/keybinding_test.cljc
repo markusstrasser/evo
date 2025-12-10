@@ -5,12 +5,8 @@
    Agent-friendly: minimal setup, clear assertions, red/green feedback."
   (:require [clojure.test :refer [deftest is testing]]
             [kernel.db :as db]
-            [kernel.ops :as ops]
             [kernel.transaction :as tx]
-            [kernel.api :as api]
-            [kernel.query :as q]
-            [plugins.selection :as sel]
-            [plugins.editing :as edit]))
+            [kernel.api :as api]))
 
 ;; ── Test Fixtures ─────────────────────────────────────────────────────────────
 

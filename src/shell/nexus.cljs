@@ -14,8 +14,7 @@
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [shell.executor :as executor]
-            [clojure.string :as str]))
+            [shell.executor :as executor]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
 
@@ -26,7 +25,7 @@
 
 (defn log-devtools
   "Effect that logs actions + intents to window.__nexusLog (dev only)."
-  [ctx _ action-data]
+  [_ctx _ action-data]
   (when ^boolean goog.DEBUG
     (let [timestamp (js/Date.now)
           log-entry (merge {:timestamp timestamp}
@@ -40,7 +39,7 @@
 (defn event-selection-start
   "Placeholder: DOM selection start offset."
   [{:keys [dispatch-data]}]
-  (when-let [e (:dom-event dispatch-data)]
+  (when-let [_e (:dom-event dispatch-data)]
     (try
       (let [sel (.getSelection js/window)]
         (when sel
@@ -51,7 +50,7 @@
 (defn event-selection-end
   "Placeholder: DOM selection end offset."
   [{:keys [dispatch-data]}]
-  (when-let [e (:dom-event dispatch-data)]
+  (when-let [_e (:dom-event dispatch-data)]
     (try
       (let [sel (.getSelection js/window)]
         (when sel
@@ -88,7 +87,7 @@
   "Action: Navigate cursor up from current block.
 
    Dispatches :navigate-with-cursor-memory intent."
-  [state {:keys [block-id current-text current-cursor-pos cursor-row]}]
+  [_state {:keys [block-id current-text current-cursor-pos cursor-row]}]
   [[:effects/dispatch-intent {:type :navigate-with-cursor-memory
                               :current-block-id block-id
                               :current-text current-text
@@ -100,7 +99,7 @@
 
 (defn navigate-down
   "Action: Navigate cursor down from current block."
-  [state {:keys [block-id current-text current-cursor-pos cursor-row]}]
+  [_state {:keys [block-id current-text current-cursor-pos cursor-row]}]
   [[:effects/dispatch-intent {:type :navigate-with-cursor-memory
                               :current-block-id block-id
                               :current-text current-text
@@ -112,7 +111,7 @@
 
 (defn extend-selection-prev
   "Action: Extend block selection upward (Shift+Arrow up at boundary)."
-  [state {:keys [block-id direction]}]
+  [_state {:keys [block-id direction]}]
   [[:effects/dispatch-intent {:type :selection
                               :mode :extend-prev}]
    [:effects/log-devtools {:action :selection/extend-prev
@@ -121,7 +120,7 @@
 
 (defn extend-selection-next
   "Action: Extend block selection downward (Shift+Arrow down at boundary)."
-  [state {:keys [block-id direction]}]
+  [_state {:keys [block-id direction]}]
   [[:effects/dispatch-intent {:type :selection
                               :mode :extend-next}]
    [:effects/log-devtools {:action :selection/extend-next
@@ -130,7 +129,7 @@
 
 (defn smart-split
   "Action: Smart split block (Enter key)."
-  [state {:keys [block-id cursor-pos]}]
+  [_state {:keys [block-id cursor-pos]}]
   [[:effects/dispatch-intent {:type :context-aware-enter
                               :block-id block-id
                               :cursor-pos cursor-pos}]
@@ -140,7 +139,7 @@
 
 (defn escape-edit
   "Action: Exit edit mode and select block (Escape key, Logseq parity)."
-  [state {:keys [block-id]}]
+  [_state {:keys [block-id]}]
   [[:effects/dispatch-intent {:type :exit-edit-and-select
                               :block-id block-id}]
    [:effects/log-devtools {:action :editing/escape
