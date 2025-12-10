@@ -9,6 +9,7 @@
             [kernel.query :as q]
             [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]
+            [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
             [shell.view-state :as vs]
             [clojure.string :as str]))
@@ -256,11 +257,11 @@
 
 (defn- handle-vertical-arrow
   "Parametric handler for ArrowUp/ArrowDown navigation.
-   
+
    Args:
    - direction: :up or :down
-   - e, db, block-id, on-intent: standard handler args"
-  [direction e db block-id on-intent]
+   - e, _db, block-id, on-intent: standard handler args"
+  [direction e _db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)
         [boundary-key collapse-fn intent-key cursor-row]
@@ -294,12 +295,14 @@
 
 (defn- handle-shift-vertical-arrow
   "Parametric handler for Shift+ArrowUp/Down while editing: exit edit and extend selection.
-   
+
    Logseq parity: Shift+Arrow ALWAYS exits edit mode and starts block selection.
    (No text selection within blocks - that's what mouse drag is for)
-   
+
    Buffer auto-commit: Handled automatically by kernel.intent/apply-intent via
-   :pending-buffer injection in shell.executor. No manual commit needed here."
+   :pending-buffer injection in shell.executor. No manual commit needed here.
+
+   Note: db and block-id unused here; standard keyboard handler signature kept for consistency."
   [direction e _db _block-id on-intent]
   (.preventDefault e)
   ;; Collapse any text selection before exiting
@@ -329,7 +332,7 @@
    - Has text selection → Collapse to start
    - At start of block → Edit previous block at end
    - Middle of text → Move cursor left (browser default)"
-  [e db block-id on-intent]
+  [e _db block-id on-intent]
   (let [target (.-target e)
         selection (.getSelection js/window)
         anchor-offset (.-anchorOffset selection)
@@ -374,7 +377,7 @@
    - Has text selection → Collapse to end
    - At end of block → Edit next block at start
    - Middle of text → Move cursor right (browser default)"
-  [e db block-id on-intent]
+  [e _db block-id on-intent]
   (let [target (.-target e)
         text-content (.-textContent target)
         selection (.getSelection js/window)
@@ -415,7 +418,7 @@
       (on-intent [[:editing/smart-split {:block-id block-id
                                          :cursor-pos cursor-pos}]]))))
 
-(defn handle-escape [e db block-id on-intent]
+(defn handle-escape [e _db block-id on-intent]
   (.preventDefault e)
   (.stopPropagation e) ; Prevent global keydown from also handling Escape
   ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
@@ -431,7 +434,7 @@
   ;; Then exit edit mode via Nexus action
   (on-intent [[:editing/escape {:block-id block-id}]]))
 
-(defn handle-backspace [e db block-id on-intent]
+(defn handle-backspace [e _db block-id on-intent]
   (let [target (.-target e)
         text-content (.-textContent target)
         selection (.getSelection js/window)
@@ -447,7 +450,7 @@
 
 (defn handle-delete
   "Handle Delete key - merge with next block if at end."
-  [e db block-id on-intent]
+  [e _db block-id on-intent]
   (let [target (.-target e)
         text-content (.-textContent target)
         selection (.getSelection js/window)
@@ -457,112 +460,351 @@
       ;; CRITICAL: Pass current text from DOM (buffer may not be synced to DB yet)
       (on-intent {:type :merge-with-next :block-id block-id :text text-content}))))
 
+;; ── Autocomplete Helpers ──────────────────────────────────────────────────────
+
+(defn- detect-page-ref-trigger
+  "Detect if user just typed [[ to trigger page-ref autocomplete.
+   
+   Returns trigger-pos (position after [[) if triggered, nil otherwise.
+   
+   Logic: Check if previous 2 chars before cursor are [["
+  [text cursor-pos]
+  (when (>= cursor-pos 2)
+    (let [prev-two (subs text (- cursor-pos 2) cursor-pos)]
+      (when (= prev-two "[[")
+        cursor-pos)))) ; Return position after [[
+
+(defn- get-autocomplete-query
+  "Extract current autocomplete query from text.
+   
+   Query is the text between trigger-pos and cursor-pos."
+  [text trigger-pos cursor-pos]
+  (when (and trigger-pos (<= trigger-pos cursor-pos))
+    (subs text trigger-pos cursor-pos)))
+
+(defn- handle-autocomplete-keydown
+  "Handle keyboard events when autocomplete is active.
+   
+   Returns true if event was handled (and should not propagate),
+   false otherwise.
+   
+   For Enter/Tab selection: Handles DOM manipulation directly to stay in edit mode.
+   This is necessary because browser owns the DOM during editing - we can't just
+   update the DB and expect the DOM to reflect it.
+   
+   Edge cases (Logseq parity):
+   - Backspace on [[ deletes both brackets and closes popup
+   - Left arrow at trigger-pos closes popup
+   - Right arrow past ]] closes popup"
+  [e on-intent]
+  (let [key (.-key e)
+        autocomplete-state (vs/autocomplete)]
+    (when autocomplete-state
+      (let [{:keys [trigger-pos query selected items block-id]} autocomplete-state]
+        (cond
+          ;; Arrow Up - navigate up in list
+          (= key "ArrowUp")
+          (do (.preventDefault e)
+              (.stopPropagation e)
+              (on-intent {:type :autocomplete/navigate :direction :up})
+              true)
+
+          ;; Arrow Down - navigate down in list  
+          (= key "ArrowDown")
+          (do (.preventDefault e)
+              (.stopPropagation e)
+              (on-intent {:type :autocomplete/navigate :direction :down})
+              true)
+
+          ;; ArrowLeft - close popup if cursor moves before [[
+          (= key "ArrowLeft")
+          (let [target (.-target e)
+                selection (.getSelection js/window)
+                cursor-pos (when selection (.-anchorOffset selection))
+                ;; trigger-pos is after [[, so [[ starts at trigger-pos - 2
+                at-or-before-open? (and cursor-pos (<= cursor-pos (- trigger-pos 1)))]
+            (when at-or-before-open?
+              (on-intent {:type :autocomplete/dismiss}))
+            ;; Let arrow key through for normal cursor movement
+            false)
+
+;; ArrowRight - close popup if cursor moves past ]]
+          (= key "ArrowRight")
+          (let [target (.-target e)
+                text (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (when selection (.-anchorOffset selection))
+                ;; Find actual ]] position
+                close-bracket-pos (str/index-of text "]]" trigger-pos)
+                ;; After pressing right, cursor will be at cursor-pos + 1
+                ;; We want to dismiss if that lands past the ]]
+                will-be-past-close? (and cursor-pos
+                                         close-bracket-pos
+                                         (>= (inc cursor-pos) (+ close-bracket-pos 2)))]
+            (when will-be-past-close?
+              (on-intent {:type :autocomplete/dismiss}))
+            ;; Let arrow key through for normal cursor movement
+            false)
+
+          ;; Backspace - delete both [[ and ]] if at trigger position (Logseq parity)
+          (= key "Backspace")
+          (let [target (.-target e)
+                text (.-textContent target)
+                selection (.getSelection js/window)
+                cursor-pos (when selection (.-anchorOffset selection))
+                ;; Check if cursor is right after [[ (at trigger-pos) with empty query
+                at-trigger? (and cursor-pos (= cursor-pos trigger-pos) (empty? query))]
+            (if at-trigger?
+              ;; Delete both [[ and ]] - Logseq parity
+              (let [start-pos (- trigger-pos 2) ; Start of [[
+                    end-pos (+ trigger-pos 2) ; End of ]]
+                    new-text (str (subs text 0 start-pos)
+                                  (subs text (min end-pos (count text))))
+                    new-cursor start-pos]
+                (.preventDefault e)
+                (.stopPropagation e)
+                ;; Update DOM directly
+                (set! (.-textContent target) new-text)
+                ;; Update buffer
+                (vs/buffer-set! block-id new-text)
+                ;; Position cursor
+                (set-cursor! target new-cursor)
+                ;; Dismiss autocomplete
+                (on-intent {:type :autocomplete/dismiss})
+                true)
+              ;; Not at trigger - let backspace through, input handler will update query
+              false))
+
+          ;; Enter or Tab - select current item (Logseq parity: stay in edit mode)
+          (or (= key "Enter") (= key "Tab"))
+          (do (.preventDefault e)
+              (.stopPropagation e)
+              (let [item (get items selected)]
+                (when item
+                  ;; Get current DOM state
+                  (let [target (.-target e)
+                        text (.-textContent target)
+                        ;; Calculate replacement: from [[ to cursor (which is after query)
+                        ;; trigger-pos is after [[, so start at trigger-pos - 2
+                        start-pos (- trigger-pos 2)
+                        ;; End position: trigger-pos + query length + 2 (for closing ]])
+                        ;; The ]] was auto-inserted, so we need to replace [[query]]
+                        end-pos (+ trigger-pos (count query) 2)
+                        ;; Build the page ref text
+                        page-title (:title item)
+                        insert-str (str "[[" page-title "]]")
+                        ;; Build new text
+                        new-text (str (subs text 0 start-pos)
+                                      insert-str
+                                      (subs text (min end-pos (count text))))
+                        ;; New cursor position: right after the inserted text
+                        new-cursor (+ start-pos (count insert-str))]
+                    ;; Update DOM directly (browser owns it during edit mode)
+                    (set! (.-textContent target) new-text)
+                    ;; Update buffer to stay in sync
+                    (vs/buffer-set! block-id new-text)
+                    ;; Position cursor after inserted text
+                    (set-cursor! target new-cursor)
+                    ;; Dismiss autocomplete popup
+                    (on-intent {:type :autocomplete/dismiss})
+                    ;; Also commit to DB (for persistence)
+                    (on-intent {:type :update-content
+                                :block-id block-id
+                                :text new-text}))))
+              true)
+
+;; Home - moves cursor to start, always outside autocomplete region
+          (= key "Home")
+          (do (on-intent {:type :autocomplete/dismiss})
+              false)
+
+          ;; End - moves cursor to end, always outside autocomplete region  
+          (= key "End")
+          (do (on-intent {:type :autocomplete/dismiss})
+              false)
+
+          ;; Escape - dismiss
+          (= key "Escape")
+          (do (.preventDefault e)
+              (.stopPropagation e)
+              (on-intent {:type :autocomplete/dismiss})
+              true)
+
+          ;; Any other key - let it through, input handler will update query
+          :else false)))))
+
+(defn- handle-autocomplete-input
+  "Handle input events for autocomplete trigger and query updates.
+   
+   Called on every input event while editing.
+   - Detects [[ trigger to start autocomplete
+   - Auto-inserts ]] closing brackets (Logseq parity)
+   - Updates query as user types
+   - Dismisses if cursor moves outside trigger region"
+  [text cursor-pos block-id on-intent]
+  (let [autocomplete-state (vs/autocomplete)]
+    (if autocomplete-state
+      ;; Autocomplete is active - update query or dismiss
+      (let [{:keys [trigger-pos]} autocomplete-state
+            ;; Find the actual ]] position by searching from trigger-pos
+            ;; The user may have typed new characters, so we need to find where ]] actually is
+            close-bracket-pos (str/index-of text "]]" trigger-pos)
+            ;; Check if cursor is past the closing ]]
+            cursor-past-close? (and close-bracket-pos
+                                    (> cursor-pos (+ close-bracket-pos 2)))
+            ;; Check if we're still within the autocomplete region
+            ;; Cursor should be between trigger-pos and the ]]
+            valid-region? (and close-bracket-pos
+                               (>= cursor-pos trigger-pos)
+                               (<= cursor-pos close-bracket-pos)
+                               (>= trigger-pos 2)
+                               (= (subs text (- trigger-pos 2) trigger-pos) "[["))]
+        (cond
+          ;; Cursor moved past ]] - dismiss autocomplete
+          cursor-past-close?
+          (on-intent {:type :autocomplete/dismiss})
+
+          ;; Still in valid region - update query
+          valid-region?
+          (let [new-query (subs text trigger-pos close-bracket-pos)]
+            (on-intent {:type :autocomplete/update :query new-query}))
+
+          ;; Cursor moved outside or brackets broken - dismiss
+          :else
+          (on-intent {:type :autocomplete/dismiss})))
+
+      ;; Autocomplete not active - check for trigger
+      (when-let [trigger-pos (detect-page-ref-trigger text cursor-pos)]
+        ;; Auto-insert ]] closing brackets (Logseq parity)
+        ;; Insert at cursor position, then reposition cursor between [[ and ]]
+        (when-let [selection (.getSelection js/window)]
+          (when-let [range (.getRangeAt selection 0)]
+            (let [text-node (.-startContainer range)
+                  ;; Insert ]] at cursor position
+                  closing "]]"]
+              ;; Only insert if we have a text node
+              (when (= (.-nodeType text-node) 3) ; TEXT_NODE
+                (.insertData text-node cursor-pos closing)
+                ;; Cursor stays at same position (between [[ and ]])
+                (.setStart range text-node cursor-pos)
+                (.setEnd range text-node cursor-pos)
+                (.removeAllRanges selection)
+                (.addRange selection range)))))
+        ;; Trigger autocomplete
+        (on-intent {:type :autocomplete/trigger
+                    :source :page-ref
+                    :block-id block-id
+                    :trigger-pos trigger-pos})))))
+
 (defn handle-keydown
   "Handle keyboard events while editing a block.
 
-   Delegates to editing handlers for navigation, splits, and escapes."
+   Delegates to editing handlers for navigation, splits, and escapes.
+   When autocomplete is active, intercepts navigation keys."
   [e db block-id on-intent]
-  (let [key (.-key e)
-        shift? (.-shiftKey e)
-        mod? (or (.-metaKey e) (.-ctrlKey e))
-        alt? (.-altKey e)
-        ctrl? (.-ctrlKey e)
-        target (.-target e)]
+  ;; Check autocomplete first - it intercepts arrow keys, Enter, Escape, Tab
+  (when-not (handle-autocomplete-keydown e on-intent)
+    (let [key (.-key e)
+          shift? (.-shiftKey e)
+          mod? (or (.-metaKey e) (.-ctrlKey e))
+          alt? (.-altKey e)
+          ctrl? (.-ctrlKey e)
+          target (.-target e)]
 
-    (cond
+      (cond
         ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
-      (and (= key "a") ctrl? (not shift?) (not alt?))
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)
-                line-start (loop [pos (dec cursor-pos)]
-                             (cond
-                               (< pos 0) 0
-                               (= (nth text-content pos) \newline) (inc pos)
-                               :else (recur (dec pos))))]
-            (set-cursor! target line-start)))
+        (and (= key "a") ctrl? (not shift?) (not alt?))
+        (do (.preventDefault e)
+            (let [text-content (.-textContent target)
+                  selection (.getSelection js/window)
+                  cursor-pos (.-anchorOffset selection)
+                  line-start (loop [pos (dec cursor-pos)]
+                               (cond
+                                 (< pos 0) 0
+                                 (= (nth text-content pos) \newline) (inc pos)
+                                 :else (recur (dec pos))))]
+              (set-cursor! target line-start)))
 
-      (and (= key "e") ctrl? (not shift?) (not alt?))
-      (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-pos (.-anchorOffset selection)
-                text-length (count text-content)
-                line-end (loop [pos cursor-pos]
-                           (cond
-                             (>= pos text-length) text-length
-                             (= (nth text-content pos) \newline) pos
-                             :else (recur (inc pos))))]
-            (set-cursor! target line-end)))
+        (and (= key "e") ctrl? (not shift?) (not alt?))
+        (do (.preventDefault e)
+            (let [text-content (.-textContent target)
+                  selection (.getSelection js/window)
+                  cursor-pos (.-anchorOffset selection)
+                  text-length (count text-content)
+                  line-end (loop [pos cursor-pos]
+                             (cond
+                               (>= pos text-length) text-length
+                               (= (nth text-content pos) \newline) pos
+                               :else (recur (inc pos))))]
+              (set-cursor! target line-end)))
 
         ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
-      (and (= key "a") alt? (not shift?) (not ctrl?))
-      (do (.preventDefault e)
-          (set-cursor! target 0))
+        (and (= key "a") alt? (not shift?) (not ctrl?))
+        (do (.preventDefault e)
+            (set-cursor! target 0))
 
-      (and (= key "e") alt? (not shift?) (not ctrl?))
-      (do (.preventDefault e)
-          (set-cursor! target (count (.-textContent target))))
+        (and (= key "e") alt? (not shift?) (not ctrl?))
+        (do (.preventDefault e)
+            (set-cursor! target (count (.-textContent target))))
 
         ;; Shift+Arrow - exit edit and extend block selection (Logseq parity)
-      (and (= key "ArrowUp") shift? (not mod?) (not alt?))
-      (handle-shift-arrow-up e db block-id on-intent)
+        (and (= key "ArrowUp") shift? (not mod?) (not alt?))
+        (handle-shift-arrow-up e db block-id on-intent)
 
-      (and (= key "ArrowDown") shift? (not mod?) (not alt?))
-      (handle-shift-arrow-down e db block-id on-intent)
+        (and (= key "ArrowDown") shift? (not mod?) (not alt?))
+        (handle-shift-arrow-down e db block-id on-intent)
 
         ;; Ctrl+P/N - Emacs-style navigation aliases
-      (and (= key "p") ctrl? (not shift?) (not alt?))
-      (handle-arrow-up e db block-id on-intent)
+        (and (= key "p") ctrl? (not shift?) (not alt?))
+        (handle-arrow-up e db block-id on-intent)
 
-      (and (= key "n") ctrl? (not shift?) (not alt?))
-      (handle-arrow-down e db block-id on-intent)
+        (and (= key "n") ctrl? (not shift?) (not alt?))
+        (handle-arrow-down e db block-id on-intent)
 
         ;; Plain arrows - navigate between blocks while editing
-      (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-up e db block-id on-intent)
+        (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-up e db block-id on-intent)
 
-      (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-down e db block-id on-intent)
+        (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-down e db block-id on-intent)
 
-      (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-left e db block-id on-intent)
+        (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-left e db block-id on-intent)
 
-      (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
-      (handle-arrow-right e db block-id on-intent)
+        (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
+        (handle-arrow-right e db block-id on-intent)
 
         ;; LOGSEQ PARITY: Enter/Shift+Enter behavior depends on doc-mode
         ;; Normal mode: Enter = new block, Shift+Enter = newline
         ;; Doc-mode: Enter = newline, Shift+Enter = new block
-      (and (= key "Enter") shift? (not mod?) (not alt?))
-      (if (vs/document-view?)
-        ;; Doc-mode: Shift+Enter creates new block
-        (handle-enter e db block-id on-intent)
-        ;; Normal mode: Shift+Enter inserts literal newline
-        (insert-linebreak! e target block-id))
+        (and (= key "Enter") shift? (not mod?) (not alt?))
+        (if (vs/document-view?)
+          ;; Doc-mode: Shift+Enter creates new block
+          (handle-enter e db block-id on-intent)
+          ;; Normal mode: Shift+Enter inserts literal newline
+          (insert-linebreak! e target block-id))
 
         ;; Enter - behavior depends on doc-mode
-      (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-      (if (vs/document-view?)
-        ;; Doc-mode: Enter inserts newline
-        (insert-linebreak! e target block-id)
-        ;; Normal mode: Enter creates new block
-        (handle-enter e db block-id on-intent))
+        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+        (if (vs/document-view?)
+          ;; Doc-mode: Enter inserts newline
+          (insert-linebreak! e target block-id)
+          ;; Normal mode: Enter creates new block
+          (handle-enter e db block-id on-intent))
 
         ;; Escape - exit edit mode
-      (= key "Escape")
-      (handle-escape e db block-id on-intent)
+        (= key "Escape")
+        (handle-escape e db block-id on-intent)
 
         ;; Backspace - delete/merge at cursor boundary
-      (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
-      (handle-backspace e db block-id on-intent)
+        (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
+        (handle-backspace e db block-id on-intent)
 
         ;; Delete at end - merge with next block
-      (and (= key "Delete") (not shift?) (not mod?) (not alt?))
-      (handle-delete e db block-id on-intent)
+        (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+        (handle-delete e db block-id on-intent)
 
-      :else nil)))
+        :else nil))))
 
 ;; ── Content Rendering with Page Refs ─────────────────────────────────────────
 
@@ -670,13 +912,18 @@
                     ;; When clicking inside contenteditable, we just want cursor positioning
                     (.stopPropagation e))
 
-           ;; Input handler: Update buffer directly (no render trigger)
+;; Input handler: Update buffer and check autocomplete triggers
            :input (fn [e]
                     (let [target (.-target e)
                           ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
-                          new-text (extract-text-with-newlines target)]
+                          new-text (extract-text-with-newlines target)
+                          selection (.getSelection js/window)
+                          cursor-pos (when selection (.-anchorOffset selection))]
                       ;; Update buffer atom directly - does NOT trigger re-render
-                      (vs/buffer-set! block-id new-text)))
+                      (vs/buffer-set! block-id new-text)
+                      ;; Check for autocomplete triggers (e.g., [[)
+                      (when cursor-pos
+                        (handle-autocomplete-input new-text cursor-pos block-id on-intent))))
 
            ;; Blur handler: Commit to canonical DB
            :blur (fn [e]
@@ -685,6 +932,9 @@
                          final-text (extract-text-with-newlines target)
                          suppress? (vs/keep-edit-on-blur?)
                          same-block? (= (vs/editing-block-id) block-id)]
+                     ;; Dismiss autocomplete if active
+                     (when (vs/autocomplete-active?)
+                       (on-intent {:type :autocomplete/dismiss}))
                      ;; Commit to canonical DB
                      (on-intent {:type :update-content
                                  :block-id block-id
@@ -780,7 +1030,7 @@
                          (on-intent {:type :selection :mode :replace :ids block-id})))
               :dragstart (fn [e] (handle-drag-start e block-id))
               :dragenter (fn [e] (handle-drag-enter e block-id))
-              :dragend (fn [e] (handle-drag-end e))
+              :dragend handle-drag-end
               :dragover (fn [e] (handle-drag-over e block-id))
               :dragleave handle-drag-leave
               :drop (fn [e] (handle-drop e db block-id on-intent))}}
@@ -797,12 +1047,18 @@
                                (when has-children?
                                  (if (.-altKey e)
                                    (on-intent {:type :toggle-subtree :block-id block-id})
-                                   (on-intent {:type :toggle-fold :block-id block-id}))))}}] ; CSS handles bullet visualization via ::before
+                                   (on-intent {:type :toggle-fold :block-id block-id}))))}}]
 
         ;; Content: delegate to mode-specific helpers
         content (if is-editing
                   (edit-content {:block-id block-id :text text :on-intent on-intent :db db})
                   (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db}))
+
+        ;; Autocomplete popup - only show when editing this block and autocomplete is active for it
+        autocomplete-state (vs/autocomplete)
+        show-autocomplete? (and is-editing
+                                autocomplete-state
+                                (= (:block-id autocomplete-state) block-id))
 
         ;; Session state for children (computed once per render)
         editing-block-id (vs/editing-block-id)
@@ -826,6 +1082,12 @@
 
     (cond-> [:div container-props
              bullet
-             content]
+             content
+             ;; Render autocomplete popup when active for this block
+             (when show-autocomplete?
+               (autocomplete/Popup
+                {:autocomplete autocomplete-state
+                 :on-select #(on-intent {:type :autocomplete/select})
+                 :on-dismiss #(on-intent {:type :autocomplete/dismiss})}))]
       ;; Only show children if not folded
       (and children-el (not is-folded)) (conj children-el))))

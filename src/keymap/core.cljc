@@ -108,6 +108,7 @@
 
 ;; ── Event Parsing ─────────────────────────────────────────────────────────────
 
+#_{:clj-kondo/ignore [:unused-binding]} ; e used in CLJS reader conditional
 (defn parse-dom-event
   "Parse DOM KeyboardEvent to event map.
 

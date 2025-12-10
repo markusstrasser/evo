@@ -161,6 +161,7 @@
                      id
                      (conj ops {:op :place :id id :under gp :at {:after prev-anchor}})))))))))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for batch indent
 (defn- collect-right-siblings
   "Collect all right siblings of a node (all siblings after it).
    Returns vector of sibling IDs in document order.
@@ -357,6 +358,7 @@
     ;; Keep only blocks whose parent is NOT in the selection
     (vec (remove #(contains? parent-ids-in-selection (q/parent-of db %)) targets))))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Entry point for multi-select ops
 (defn- apply-to-active-targets
   "Apply op-fn to each active target node, returning combined ops vector.
 
@@ -400,6 +402,7 @@
           (every? (fn [[a b]] (= b (inc a)))
                   (partition 2 1 (sort indices)))))))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for Logseq gap-fill behavior
 (defn- consolidate-to-consecutive
   "Fill gaps in non-consecutive selection to make it consecutive.
 
@@ -857,15 +860,15 @@
                          {:doc "Move current editing block up, preserving edit mode."
                           :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
                           :fr/ids #{:fr.struct/climb-descend}
-                          :handler (fn [db session {:keys [block-id]}]
+                          :handler (fn [db session {:keys [_block-id]}]
               ;; Use existing move-selected-up logic but don't exit edit mode
-              ;; Just return the structural move ops
+              ;; Just return the structural move ops (uses selection, not block-id)
                                      (move-selected-up-ops db session))})
 
 (intent/register-intent! :move-block-down-while-editing
                          {:doc "Move current editing block down, preserving edit mode."
                           :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
                           :fr/ids #{:fr.struct/climb-descend}
-                          :handler (fn [db session {:keys [block-id]}]
-              ;; Use existing move-selected-down logic
+                          :handler (fn [db session {:keys [_block-id]}]
+              ;; Use existing move-selected-down logic (uses selection, not block-id)
                                      (move-selected-down-ops db session))})

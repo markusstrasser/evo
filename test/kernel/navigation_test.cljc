@@ -7,7 +7,6 @@
             [matcher-combinators.matchers :as m]
             [kernel.db :as db]
             [kernel.transaction :as tx]
-            [kernel.constants :as const]
             [kernel.navigation :as nav]))
 
 (defn apply-ops

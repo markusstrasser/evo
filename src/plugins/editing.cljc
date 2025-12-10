@@ -331,10 +331,9 @@
                           :handler (fn [db session {:keys [block-id]}]
                                      (let [block-text (get-block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
-                                           killed-text (subs block-text 0 cursor-pos)
                                            new-text (subs block-text cursor-pos)]
-                ;; TODO: Copy killed-text to clipboard (requires browser API or MCP)
-                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       ;; TODO: Copy killed-text to clipboard
+                                       #?(:cljs (js/console.log "Killed:" (subs block-text 0 cursor-pos)))
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates {:ui {:cursor-position 0}}}))})
 
@@ -349,9 +348,9 @@
                           :handler (fn [db session {:keys [block-id]}]
                                      (let [block-text (get-block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
-                                           killed-text (subs block-text cursor-pos)
                                            new-text (subs block-text 0 cursor-pos)]
-                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       ;; TODO: Copy killed-text to clipboard
+                                       #?(:cljs (js/console.log "Killed:" (subs block-text cursor-pos)))
                                        [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-forward
@@ -368,10 +367,10 @@
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            ;; Use find-word-end to stop at word boundary, preserving trailing space
                                            next-pos (text/find-word-end block-text cursor-pos)
-                                           killed-text (subs block-text cursor-pos next-pos)
                                            new-text (str (subs block-text 0 cursor-pos)
                                                          (subs block-text next-pos))]
-                                       #?(:cljs (js/console.log "Killed:" killed-text))
+                                       ;; TODO: Copy killed-text to clipboard
+                                       #?(:cljs (js/console.log "Killed:" (subs block-text cursor-pos next-pos)))
                                        [{:op :update-node :id block-id :props {:text new-text}}]))})
 
 (intent/register-intent! :kill-word-backward
@@ -387,9 +386,9 @@
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
                                        (when prev-pos
-                                         (let [killed-text (subs block-text prev-pos cursor-pos)
-                                               new-text (str (subs block-text 0 prev-pos)
+                                         (let [new-text (str (subs block-text 0 prev-pos)
                                                              (subs block-text cursor-pos))]
-                                           #?(:cljs (js/console.log "Killed:" killed-text))
+                                           ;; TODO: Copy killed-text to clipboard
+                                           #?(:cljs (js/console.log "Killed:" (subs block-text prev-pos cursor-pos)))
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                             :session-updates {:ui {:cursor-position prev-pos}}}))))})

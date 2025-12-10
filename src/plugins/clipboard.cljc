@@ -35,6 +35,7 @@
   [text]
   (boolean (re-find #"\n\n" text)))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for smart paste
 (defn- detect-list-marker
   "Detect list marker at start of text.
    Returns {:type :bullet|:numbered|:checkbox :marker string :content string}
@@ -69,6 +70,7 @@
   [n]
   (str/join (repeat n "\t")))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for hierarchical copy
 (defn- block-depth
   "Get depth of a block relative to a given root.
    Returns 0 for immediate children of root, 1 for grandchildren, etc."
@@ -90,6 +92,7 @@
     (cons {:id block-id :depth base-depth}
           (mapcat #(collect-block-tree db % (inc base-depth)) children))))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for multi-block copy
 (defn- find-common-parent
   "Find the common parent of a set of block IDs."
   [db block-ids]

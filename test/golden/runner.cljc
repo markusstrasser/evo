@@ -1,6 +1,8 @@
 (ns golden.runner
   "Golden test runner - loads golden test cases and verifies behavior."
-  (:require [clojure.test :refer [deftest testing is]]
+  #_{:clj-kondo/ignore [:unused-referred-var]} ; is used in CLJ reader conditional
+  (:require #?(:clj [clojure.test :refer [deftest testing is]]
+               :cljs [cljs.test :refer [deftest testing is]])
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [plugins.permute :as permute]

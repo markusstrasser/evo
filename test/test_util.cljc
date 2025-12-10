@@ -2,8 +2,7 @@
   "Test utilities and macros for transaction testing.
 
    Enhanced with matcher-combinators for rich diff output."
-  (:require [kernel.db :as db]
-            [kernel.transaction :as tx]
+  (:require [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [clojure.data :as data]
             #?(:clj [clojure.test :refer [is]]

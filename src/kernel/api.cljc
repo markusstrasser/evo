@@ -14,6 +14,7 @@
             [kernel.history :as H]
             [kernel.db :as db]
             [kernel.state-machine :as sm]
+            #_{:clj-kondo/ignore [:unused-namespace]} ; str/ used in CLJ reader conditional
             [clojure.string :as str]
             #?(:clj [clojure.java.io :as io]))
   #?(:clj (:import [java.io File])))

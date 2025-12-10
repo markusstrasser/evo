@@ -3,11 +3,10 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
   (:require #?(:clj  [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
-            [kernel.db :as D]
+            [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]
-            [plugins.selection :as S]))
+            [kernel.query :as q]))
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -45,8 +44,8 @@
 (defn build-doc
   "Creates a test DB with structure: doc1 -> [a, b, c]"
   []
-  (let [DB0 (D/empty-db)
-        {:keys [db issues]} (tx/interpret DB0
+  (let [db0 (db/empty-db)
+        {:keys [db issues]} (tx/interpret db0
                               [{:op :create-node :id "doc1" :type :doc :props {}}
                                {:op :place :id "doc1" :under :doc :at :last}
                                {:op :create-node :id "a" :type :p :props {}}

@@ -17,6 +17,7 @@
   [db block-id]
   (get-in db [:nodes block-id :props :text] ""))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for zoom navigation
 (defn- visible-in-context?
   "Check if a block is visible given fold and zoom context.
 

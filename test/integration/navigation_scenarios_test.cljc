@@ -1,7 +1,6 @@
 (ns integration.navigation-scenarios-test
   "Integration-level scenarios wired to docs/specs/logseq_behaviors.md."
   (:require [clojure.test :refer [deftest testing is]]
-            [kernel.constants :as const]
             [kernel.db :as db]
             [kernel.intent :as intent]
             [kernel.transaction :as tx]

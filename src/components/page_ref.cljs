@@ -8,14 +8,14 @@
   "Render a page reference link (Logseq-style orange).
 
    Props:
-   - db: application database
+   - _db: application database (unused, reserved for future page existence check)
    - page-name: Name of the page to reference
    - on-intent: Intent dispatch callback for navigation
 
    Behavior:
    - Renders [[page-name]] with orange Logseq-style color
    - Click navigates to page (or creates if new)"
-  [{:keys [db page-name on-intent]}]
+  [{:keys [_db page-name on-intent]}]
   [:a.page-ref
    {:href "#"
     :style {:color "#d9730d" ; Logseq orange

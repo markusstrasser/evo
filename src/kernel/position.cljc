@@ -41,6 +41,7 @@
                    :available-siblings kids
                    :suggest {:replace-anchor :at-end}})))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for future use
 (defn- throw-out-of-bounds
   "Throw consistent error for out-of-bounds index."
   [idx n parent-id]

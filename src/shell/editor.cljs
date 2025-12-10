@@ -7,7 +7,7 @@
    - App just composes components and routes intents"
   (:require [clojure.string :as str]
             [replicant.dom :as d]
-            [kernel.db :as DB]
+            [kernel.db :as db]
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
@@ -30,6 +30,7 @@
             [plugins.context-editing]
             [plugins.text-formatting]
             [plugins.visible-order]
+            [plugins.autocomplete]
             ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
             [plugins.pages :as pages]
             [keymap.core :as keymap]
@@ -63,10 +64,10 @@
   (atom
    (if (test-mode?)
      ;; E2E test mode: empty database
-     (-> (DB/empty-db)
+     (-> (db/empty-db)
          (H/record))
      ;; Normal mode: load demo content
-     (-> (DB/empty-db)
+     (-> (db/empty-db)
          (tx/interpret demo-data/ops)
          :db
          (H/record))))) ;; Record initial state for undo
@@ -103,7 +104,7 @@
 
 ;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
 
-(defn handle-global-keydown [e]
+(defn handle-global-keydown
   "Global keyboard shortcuts via central keymap resolver.
 
    Single source of truth: keymap/bindings.cljc registers all bindings.
@@ -112,6 +113,7 @@
    NOTE: Arrow key navigation at block boundaries is handled by the Block component
    (see components/block.cljs handle-arrow-up/down) using cursor row detection,
    NOT here. The block component dispatches :navigate-with-cursor-memory intents."
+  [e]
   ;; Skip if another handler already handled this event (e.g., Block component)
   (when-not (.-defaultPrevented e)
     (let [event (keymap/parse-dom-event e)
@@ -508,8 +510,9 @@
        (hotkey (kbd "⌘" "B") "Toggle sidebar")
        (hotkey (kbd "⌘" "?") "Toggle this panel")]]]))
 
-(defn App []
+(defn App
   "Main app - pure composition, no business logic."
+  []
   (let [db @!db
         current-page-id (vs/current-page)
         page-title (when current-page-id (pages/page-title db current-page-id))
@@ -532,7 +535,7 @@
                :max-width "800px"}
        ;; Background click to clear selection (Logseq parity)
        ;; Blocks call stopPropagation, so this only fires for empty background clicks
-       :on {:click (fn [e]
+       :on {:click (fn [_e]
                      ;; Only clear if not editing and clicking empty background
                      (when-not (vs/editing-block-id)
                        (handle-intent {:type :selection :mode :clear})))}}
@@ -603,7 +606,7 @@
    Exposed on window.TEST_HELPERS for Playwright."
   []
   ;; Reset DB (document only, no session data)
-  (reset! !db (-> (DB/empty-db)
+  (reset! !db (-> (db/empty-db)
                   (tx/interpret [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
                                  {:op :place :id "test-page" :under :doc :at :last}
                                  {:op :create-node :id "test-block-1" :type :block :props {:text ""}}

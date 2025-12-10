@@ -3,7 +3,7 @@
 
    Scenario-level tests that verify refactor-proof behaviors across the system."
   (:require [clojure.test :refer [deftest is testing]]
-            [kernel.db :as DB]
+            [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]
             [kernel.query :as q]
@@ -13,7 +13,7 @@
 (defn demo-db
   "Create a demo database with simple page + blocks structure."
   []
-  (-> (DB/empty-db)
+  (-> (db/empty-db)
       (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "P"}}
                      {:op :place :id "page" :under :doc :at :last}
                      {:op :create-node :id "a" :type :block :props {:text "A"}}
