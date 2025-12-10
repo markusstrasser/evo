@@ -876,6 +876,10 @@
           ;; Focus UNCONDITIONALLY (required side effect, never conditional)
           (.focus node)
 
+          ;; Scroll into view - ensures block is visible when navigating with arrows
+          ;; Use "nearest" to avoid jarring jumps when block is already partially visible
+          (.scrollIntoView node #js {:block "nearest" :inline "nearest"})
+
           ;; Position cursor (set-cursor! handles empty text node edge case)
           (set-cursor! node cursor-pos)
 
@@ -890,7 +894,9 @@
       (fn [{:replicant/keys [node]}]
         ;; Focus if needed
         (when (not= (.-activeElement js/document) node)
-          (.focus node))
+          (.focus node)
+          ;; Also scroll into view when focus changes (e.g., after undo/redo)
+          (.scrollIntoView node #js {:block "nearest" :inline "nearest"}))
 
         ;; Apply pending cursor position from session (set by undo/redo)
         ;; IMPORTANT: Only handle cursor-position if:
@@ -919,7 +925,7 @@
                     ;; When clicking inside contenteditable, we just want cursor positioning
                     (.stopPropagation e))
 
-;; Input handler: Update buffer and check autocomplete triggers
+           ;; Input handler: Update buffer and check autocomplete triggers
            :input (fn [e]
                     (let [target (.-target e)
                           ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
