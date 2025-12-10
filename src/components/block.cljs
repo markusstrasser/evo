@@ -44,18 +44,37 @@
 ;; In view mode, renders with semantic HTML; in edit mode, shows raw markdown.
 
 (defn- parse-block-format
-  "Parse text to detect formatting prefix (quote, heading, or plain).
+  "Parse text to detect formatting prefix (quote, heading, embed, or plain).
 
-   Returns {:format :quote/:heading/:plain
+   Returns {:format :quote/:heading/:tweet/:video/:plain
             :level n  (1-6 for headings, nil for others)
-            :content \"text after prefix\"}
+            :content \"text after prefix\"
+            :url \"embed URL\" (for tweet/video)}
 
    Prefix rules:
    - Quote: starts with '> ' (space required)
    - Heading: starts with 1-6 '#' followed by space
+   - Tweet: {{tweet URL}}
+   - Video: {{video URL}}
    - Plain: everything else"
   [text]
   (cond
+    ;; Tweet embed: {{tweet URL}}
+    (re-find #"^\{\{tweet\s+(.*?)\}\}$" (or text ""))
+    (let [[_ url] (re-find #"^\{\{tweet\s+(.*?)\}\}$" text)]
+      {:format :tweet
+       :level nil
+       :url (str/trim url)
+       :content text})
+
+    ;; Video embed: {{video URL}}
+    (re-find #"^\{\{video\s+(.*?)\}\}$" (or text ""))
+    (let [[_ url] (re-find #"^\{\{video\s+(.*?)\}\}$" text)]
+      {:format :video
+       :level nil
+       :url (str/trim url)
+       :content text})
+
     ;; Quote: > followed by space
     (str/starts-with? (or text "") "> ")
     {:format :quote
@@ -1059,35 +1078,126 @@
                       (handle-keydown e db block-id on-intent))
 
            ;; Paste: Multi-paragraph splitting (Logseq parity)
+           ;; CRITICAL: We must update both:
+           ;; 1. The DOM (contenteditable owns its text in edit mode)
+           ;; 2. The DB (via intent for undo/redo and multi-block paste)
+           ;; 3. The buffer (keeps DOM and buffer in sync)
            :paste (fn [e]
                     (.preventDefault e)
-                    (let [clipboard-data (.-clipboardData e)
+                    (let [target (.-target e)
+                          clipboard-data (.-clipboardData e)
                           pasted-text (.getData clipboard-data "text/plain")
                           selection (.getSelection js/window)
-                          cursor-pos (.-anchorOffset selection)]
+                          ;; Handle selection range (not just cursor position)
+                          ;; anchorOffset = start of selection, focusOffset = end
+                          ;; When selecting backwards, anchor > focus, so use min/max
+                          anchor-offset (.-anchorOffset selection)
+                          focus-offset (.-focusOffset selection)
+                          selection-start (min anchor-offset focus-offset)
+                          selection-end (max anchor-offset focus-offset)
+                          ;; Get current text from contenteditable
+                          current-text (extract-text-with-newlines target)
+                          ;; Replace selected range with pasted text
+                          before (subs current-text 0 selection-start)
+                          after (subs current-text selection-end)
+                          ;; Build new text (selected text is replaced)
+                          new-text (str before pasted-text after)
+                          new-cursor-pos (+ selection-start (count pasted-text))]
+                      ;; 1. Update DOM directly (uncontrolled architecture)
+                      (set! (.-innerHTML target) (text->html new-text))
+                      ;; 2. Update buffer to stay in sync
+                      (vs/buffer-set! block-id new-text)
+                      ;; 3. Position cursor after pasted text
+                      (set-cursor! target new-cursor-pos)
+                      ;; 4. Dispatch intent for DB update (handles multi-block paste, undo/redo)
                       (on-intent {:type :paste-text
                                   :block-id block-id
-                                  :cursor-pos cursor-pos
+                                  :cursor-pos selection-start
+                                  :selection-end selection-end
                                   :pasted-text pasted-text})))}}]))
 
-(defn- view-content
-  "View mode content: controlled rendering from DB with page-ref support.
+(defn- extract-tweet-id
+  "Extract tweet ID from X/Twitter URL."
+  [url]
+  (when url
+    (second (re-find #"/status/(\d+)" url))))
 
-   Detects markdown formatting:
-   - '> ' prefix: renders as blockquote
-   - '# '-'###### ' prefix: renders as h1-h6
-   - Otherwise: renders as span
+(defn- extract-username
+  "Extract username from X/Twitter URL."
+  [url]
+  (when url
+    (or (second (re-find #"x\.com/([^/]+)/status" url))
+        (second (re-find #"twitter\.com/([^/]+)/status" url)))))
 
-   In view mode, the prefix is hidden and content is styled appropriately.
-   In edit mode (edit-content), the raw markdown is shown."
-  [{:keys [block-id text is-focused on-intent db]}]
-  (let [view-key (str block-id "-view")
-        {:keys [format level content]} (parse-block-format text)
-        ;; Choose container element based on format
-        container-tag (case format
-                        :quote :blockquote.block-content
-                        :heading (keyword (str "h" level ".block-content"))
-                        :span.block-content)
+;; Tweet data cache - stores oEmbed results by URL
+(defonce !tweet-cache (atom {}))
+
+(defn- fetch-tweet-oembed!
+  "Fetch tweet data via Twitter oEmbed API (no auth needed).
+   Returns author name - actual tweet content requires Twitter API auth."
+  [url on-complete]
+  (when-not (get @!tweet-cache url)
+    ;; Mark as loading
+    (swap! !tweet-cache assoc url {:loading? true})
+    (-> (js/fetch (str "https://publish.twitter.com/oembed?url=" (js/encodeURIComponent url)))
+        (.then (fn [resp]
+                 (if (.-ok resp)
+                   (.json resp)
+                   (throw (js/Error. "Failed to fetch tweet")))))
+        (.then (fn [data]
+                 (swap! !tweet-cache assoc url
+                        {:author-name (.-author_name data)
+                         :author-url (.-author_url data)
+                         :loading? false})
+                 (when on-complete (on-complete))))
+        (.catch (fn [_err]
+                  (swap! !tweet-cache assoc url {:error? true :loading? false})
+                  (when on-complete (on-complete)))))))
+
+(defn- tweet-embed
+  "Render a compact tweet preview card."
+  [{:keys [block-id url is-focused on-intent db]}]
+  (let [tweet-id (extract-tweet-id url)
+        username (extract-username url)
+        cached (get @!tweet-cache url)
+        view-key (str block-id "-tweet")
+        click-handler {:on {:click (fn [e]
+                                     (.stopPropagation e)
+                                     (cond
+                                       (.-shiftKey e)
+                                       (shift-click-select-range! db block-id on-intent)
+
+                                       is-focused
+                                       (on-intent {:type :enter-edit :block-id block-id})
+
+                                       :else
+                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}
+        ;; Use cached author name if available, fallback to username
+        display-name (or (:author-name cached) (str "@" username) "@unknown")]
+    [:a.tweet-embed
+     (merge {:replicant/key view-key
+             :href url
+             :target "_blank"
+             :rel "noopener noreferrer"
+             ;; Fetch author info on mount
+             :replicant/on-mount (fn [_node]
+                                   (fetch-tweet-oembed! url nil))}
+            click-handler)
+     [:div.tweet-embed-header
+      [:span.tweet-icon "𝕏"]
+      [:span.tweet-author display-name]]
+     [:div.tweet-embed-body
+      (cond
+        (:loading? cached) "Loading..."
+        (:error? cached) "Tweet unavailable"
+        :else (str "Tweet #" tweet-id))]
+     [:div.tweet-embed-footer
+      "Click to view on X →"]]))
+
+(defn- video-embed
+  "Render a video embed preview."
+  [{:keys [block-id url is-focused on-intent db]}]
+  (let [view-key (str block-id "-video")
         click-handler {:on {:click (fn [e]
                                      (.stopPropagation e)
                                      (cond
@@ -1099,9 +1209,57 @@
 
                                        :else
                                        (on-intent {:type :selection :mode :replace :ids block-id})))}}]
-    (into [container-tag
+    [:div.video-embed
+     (merge {:replicant/key view-key} click-handler)
+     [:div.video-embed-header
+      [:span.video-icon "🎬"]
+      [:span "Video"]]
+     [:a.video-link {:href url :target "_blank" :rel "noopener noreferrer"}
+      url]]))
+
+(defn- view-content
+  "View mode content: controlled rendering from DB with page-ref support.
+
+   Detects markdown formatting:
+   - '> ' prefix: renders as blockquote
+   - '# '-'###### ' prefix: renders as h1-h6
+   - {{tweet URL}}: renders as tweet embed preview
+   - {{video URL}}: renders as video embed preview
+   - Otherwise: renders as span
+
+   In view mode, the prefix is hidden and content is styled appropriately.
+   In edit mode (edit-content), the raw markdown is shown."
+  [{:keys [block-id text is-focused on-intent db]}]
+  (let [view-key (str block-id "-view")
+        {:keys [format level content url]} (parse-block-format text)]
+
+    ;; Special handling for embeds - they render their own container
+    (case format
+      :tweet (tweet-embed {:block-id block-id :url url :is-focused is-focused
+                           :on-intent on-intent :db db})
+
+      :video (video-embed {:block-id block-id :url url :is-focused is-focused
+                           :on-intent on-intent :db db})
+
+      ;; Default: quote, heading, or plain text
+      (let [container-tag (case format
+                            :quote :blockquote.block-content
+                            :heading (keyword (str "h" level ".block-content"))
+                            :span.block-content)
+            click-handler {:on {:click (fn [e]
+                                         (.stopPropagation e)
+                                         (cond
+                                           (.-shiftKey e)
+                                           (shift-click-select-range! db block-id on-intent)
+
+                                           is-focused
+                                           (on-intent {:type :enter-edit :block-id block-id})
+
+                                           :else
+                                           (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+        (into [container-tag
            (merge {:replicant/key view-key} click-handler)]
-          (render-text-with-page-refs db content on-intent))))
+          (render-text-with-page-refs db content on-intent))))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
