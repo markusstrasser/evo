@@ -304,7 +304,8 @@
   }
 
   .sidebar-item {
-    display: block;
+    display: flex;
+    align-items: center;
     padding: 6px 10px;
     font-size: 14px;
     font-weight: 500;
@@ -316,11 +317,25 @@
     &:hover {
       background: var(--color-surface);
       color: var(--color-text);
+
+      .sidebar-delete {
+        opacity: 0.6;
+      }
     }
 
     &.active {
       background: var(--color-accent-subtle);
       color: var(--color-accent);
+    }
+
+    .sidebar-delete {
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      &:hover {
+        opacity: 1 !important;
+        color: var(--color-danger, #dc2626);
+      }
     }
   }
 
