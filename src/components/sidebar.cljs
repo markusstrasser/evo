@@ -73,8 +73,27 @@
            "Loading..."
            [:span "\uD83D\uDCC2 Open Folder"])])]
 
-     ;; Header
-     [:h3 "Pages"]
+     ;; Header with New Page button
+     [:div {:style {:display "flex"
+                    :align-items "center"
+                    :justify-content "space-between"
+                    :padding "0 12px"}}
+      [:h3 {:style {:margin "0"}} "Pages"]
+      [:button.sidebar-btn
+       {:style {:padding "4px 8px"
+                :font-size "12px"
+                :background "transparent"
+                :border "1px solid var(--color-border)"
+                :border-radius "4px"
+                :cursor "pointer"
+                :color "var(--color-ink-faint)"}
+        :on {:click (fn [e]
+                      (.preventDefault e)
+                      (let [title (js/prompt "Page title:")]
+                        (when (and title (not= title ""))
+                          (when on-intent
+                            (on-intent {:type :create-page :title title})))))}}
+       "+ New"]]
 
      ;; Page list
      [:div.page-list

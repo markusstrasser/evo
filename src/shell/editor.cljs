@@ -77,17 +77,28 @@
 (defonce !storage-status (atom {:folder-name nil :loading? false}))
 
 (defn load-from-folder!
-  "Load pages from the currently selected folder into DB."
+  "Load pages from the currently selected folder into DB.
+   If folder is empty, starts with empty DB (no demo data)."
   []
   (swap! !storage-status assoc :loading? true)
   (-> (storage/load-all-pages)
       (.then (fn [ops]
-               (when (seq ops)
-                 (js/console.log "📂 Loading" (count ops) "ops from folder...")
-                 (reset! !db (-> (db/empty-db)
-                                 (tx/interpret ops)
-                                 :db
-                                 (H/record))))
+               (if (seq ops)
+                 ;; Folder has pages - load them
+                 (do
+                   (js/console.log "📂 Loading" (count ops) "ops from folder...")
+                   (reset! !db (-> (db/empty-db)
+                                   (tx/interpret ops)
+                                   :db
+                                   (H/record)))
+                   (let [first-page (first (pages/all-pages @!db))]
+                     (when first-page
+                       (vs/set-current-page! first-page))))
+                 ;; Empty folder - start with empty DB (no demo data)
+                 (do
+                   (js/console.log "📂 Empty folder, starting fresh")
+                   (reset! !db (-> (db/empty-db) (H/record)))
+                   (vs/set-current-page! nil)))
                (swap! !storage-status assoc
                       :loading? false
                       :folder-name (storage/get-folder-name))))
