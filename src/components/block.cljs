@@ -575,7 +575,7 @@
               ;; Not at trigger - let backspace through, input handler will update query
               false))
 
-          ;; Enter or Tab - select current item (Logseq parity: stay in edit mode)
+;; Enter or Tab - select current item (Logseq parity: stay in edit mode)
           (or (= key "Enter") (= key "Tab"))
           (do (.preventDefault e)
               (.stopPropagation e)
@@ -598,7 +598,9 @@
                                       insert-str
                                       (subs text (min end-pos (count text))))
                         ;; New cursor position: right after the inserted text
-                        new-cursor (+ start-pos (count insert-str))]
+                        new-cursor (+ start-pos (count insert-str))
+                        ;; Check if this is a "create new page" action
+                        is-create-new? (= (:type item) :create-new)]
                     ;; Update DOM directly (browser owns it during edit mode)
                     (set! (.-textContent target) new-text)
                     ;; Update buffer to stay in sync
@@ -607,7 +609,12 @@
                     (set-cursor! target new-cursor)
                     ;; Dismiss autocomplete popup
                     (on-intent {:type :autocomplete/dismiss})
-                    ;; Also commit to DB (for persistence)
+                    ;; Create page if needed (before updating content)
+                    (when is-create-new?
+                      (on-intent {:type :page/create
+                                  :title page-title
+                                  :navigate? false}))
+                    ;; Commit to DB (for persistence)
                     (on-intent {:type :update-content
                                 :block-id block-id
                                 :text new-text}))))
