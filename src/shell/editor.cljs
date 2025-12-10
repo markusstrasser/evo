@@ -14,6 +14,7 @@
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
+            [components.backlinks :as backlinks]
             [dataspex.core :as dataspex]
             [shell.nexus :as nexus]
             [shell.executor :as executor]
@@ -558,7 +559,12 @@
          ;; Main outline for current page only
          (Outline {:db db
                    :root-id current-page-id
-                   :on-intent handle-intent})]
+                   :on-intent handle-intent})
+
+         ;; Backlinks panel - shows "Linked References" from other pages
+         (backlinks/BacklinksPanel {:db db
+                                    :page-title page-title
+                                    :on-intent handle-intent})]
 
         ;; No page selected
         [:div {:style {:padding "40px"
