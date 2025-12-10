@@ -148,13 +148,16 @@
                                  [:type [:= :paste-text]]
                                  [:block-id :string]
                                  [:cursor-pos :int]
+                                 [:selection-end {:optional true} :int]
                                  [:pasted-text :string]]
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos pasted-text]}]
+                          (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text]}]
                             (let [current-text (get-block-text db block-id)
+                                  ;; Handle selection range - selection-end defaults to cursor-pos (no selection)
+                                  sel-end (or selection-end cursor-pos)
                                   before (subs current-text 0 cursor-pos)
-                                  after (subs current-text cursor-pos)
+                                  after (subs current-text sel-end)
                                   parent (get-in db [:derived :parent-of block-id])]
 
                               (cond
