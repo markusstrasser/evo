@@ -19,7 +19,7 @@ test.describe('Text Selection Utilities', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for empty database with clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     // Don't call selectPage() - test mode auto-selects test-page
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
@@ -276,7 +276,7 @@ test.describe('Text Selection Integration with Block Component', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state (avoids demo data interference)
     await page.goto('/blocks.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

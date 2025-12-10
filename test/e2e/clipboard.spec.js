@@ -16,7 +16,7 @@ test.describe('Clipboard Operations', () => {
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/index.html');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

@@ -20,7 +20,7 @@ import { enterEditModeAndClick, pressKeyCombo } from './helpers/index.js';
 test.describe('Buffer Auto-Commit', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

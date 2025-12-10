@@ -27,7 +27,7 @@ test.describe('Shift+Arrow Block Selection', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
@@ -310,7 +310,7 @@ test.describe('Selection Operations', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
@@ -376,7 +376,7 @@ test.describe.skip('Undo/Redo', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
@@ -436,7 +436,7 @@ test.describe('Ctrl+P/N Navigation Aliases', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });

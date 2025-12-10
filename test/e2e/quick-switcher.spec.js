@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Quick Switcher', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

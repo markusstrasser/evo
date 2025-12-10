@@ -14,8 +14,9 @@ const wait = (page, ms = 100) => page.waitForTimeout(ms);
 test.describe('Slash Commands', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
-    await page.waitForLoadState('networkidle');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    // Use domcontentloaded instead of networkidle (shadow-cljs keeps websocket open)
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('[data-block-id]', { timeout: 10000 });
   });
 
   test.describe('Triggering', () => {
@@ -215,14 +216,14 @@ test.describe('Slash Commands', () => {
       expect(text).toMatch(/\[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]/);
     });
 
-    test('/current-time inserts current time', async ({ page }) => {
+    test('/time inserts current time', async ({ page }) => {
       await enterEditModeAndClick(page);
       await pressHome(page);
-      await page.keyboard.type('/curr');
+      await page.keyboard.type('/time');
       await wait(page);
 
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Current time' })).toBeVisible();
+      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Time' })).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);
@@ -243,7 +244,7 @@ test.describe('Slash Commands', () => {
       await wait(page);
 
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Embed Tweet' })).toBeVisible();
+      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Tweet' })).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);
@@ -307,16 +308,16 @@ test.describe('Slash Commands', () => {
   });
 
   test.describe('Heading Commands', () => {
-    test('/heading-1 inserts h1 marker', async ({ page }) => {
+    test('/h1 inserts h1 marker', async ({ page }) => {
       await enterEditModeAndClick(page);
       // Clear existing text first
       await page.keyboard.press('Meta+a');
-      await page.keyboard.type('/head');
+      await page.keyboard.type('/h1');
       await wait(page);
 
-      // Select Heading 1
+      // Select H1
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Heading 1' })).toBeVisible();
+      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'H1' })).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);
@@ -326,18 +327,16 @@ test.describe('Slash Commands', () => {
       expect(text).toBe('# ');
     });
 
-    test('/heading-2 inserts h2 marker', async ({ page }) => {
+    test('/h2 inserts h2 marker', async ({ page }) => {
       await enterEditModeAndClick(page);
       // Clear existing text first
       await page.keyboard.press('Meta+a');
-      await page.keyboard.type('/head');
+      await page.keyboard.type('/h2');
       await wait(page);
 
-      // First result is Heading 1, arrow down to Heading 2
+      // Select H2
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Heading 1' })).toBeVisible();
-      await page.keyboard.press('ArrowDown');
-      await wait(page);
+      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'H2' })).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);
