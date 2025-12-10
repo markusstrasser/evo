@@ -39,6 +39,43 @@
       (str/replace #">" "&gt;")
       (str/replace #"\n" "<br>")))
 
+;; ── Block Format Detection ────────────────────────────────────────────────────
+;; Detect markdown-style formatting from text prefix.
+;; In view mode, renders with semantic HTML; in edit mode, shows raw markdown.
+
+(defn- parse-block-format
+  "Parse text to detect formatting prefix (quote, heading, or plain).
+
+   Returns {:format :quote/:heading/:plain
+            :level n  (1-6 for headings, nil for others)
+            :content \"text after prefix\"}
+
+   Prefix rules:
+   - Quote: starts with '> ' (space required)
+   - Heading: starts with 1-6 '#' followed by space
+   - Plain: everything else"
+  [text]
+  (cond
+    ;; Quote: > followed by space
+    (str/starts-with? (or text "") "> ")
+    {:format :quote
+     :level nil
+     :content (subs text 2)}
+
+    ;; Heading: match #+ followed by space
+    (re-find #"^(#{1,6}) " (or text ""))
+    (let [[match hashes] (re-find #"^(#{1,6}) " text)
+          heading-level (count hashes)]
+      {:format :heading
+       :level heading-level
+       :content (subs text (count match))})
+
+    ;; Plain text
+    :else
+    {:format :plain
+     :level nil
+     :content text}))
+
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
 (defn- detect-cursor-row-position
@@ -1034,23 +1071,37 @@
                                   :pasted-text pasted-text})))}}]))
 
 (defn- view-content
-  "View mode content: controlled rendering from DB with page-ref support."
+  "View mode content: controlled rendering from DB with page-ref support.
+
+   Detects markdown formatting:
+   - '> ' prefix: renders as blockquote
+   - '# '-'###### ' prefix: renders as h1-h6
+   - Otherwise: renders as span
+
+   In view mode, the prefix is hidden and content is styled appropriately.
+   In edit mode (edit-content), the raw markdown is shown."
   [{:keys [block-id text is-focused on-intent db]}]
-  (let [view-key (str block-id "-view")]
-    (into [:span.block-content
-           {:replicant/key view-key
-            :on {:click (fn [e]
-                          (.stopPropagation e)
-                          (cond
-                            (.-shiftKey e)
-                            (shift-click-select-range! db block-id on-intent)
+  (let [view-key (str block-id "-view")
+        {:keys [format level content]} (parse-block-format text)
+        ;; Choose container element based on format
+        container-tag (case format
+                        :quote :blockquote.block-content
+                        :heading (keyword (str "h" level ".block-content"))
+                        :span.block-content)
+        click-handler {:on {:click (fn [e]
+                                     (.stopPropagation e)
+                                     (cond
+                                       (.-shiftKey e)
+                                       (shift-click-select-range! db block-id on-intent)
 
-                            is-focused
-                            (on-intent {:type :enter-edit :block-id block-id})
+                                       is-focused
+                                       (on-intent {:type :enter-edit :block-id block-id})
 
-                            :else
-                            (on-intent {:type :selection :mode :replace :ids block-id})))}}]
-          (render-text-with-page-refs db text on-intent))))
+                                       :else
+                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+    (into [container-tag
+           (merge {:replicant/key view-key} click-handler)]
+          (render-text-with-page-refs db content on-intent))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
