@@ -4,16 +4,45 @@
    Logseq calls this 'Linked References' - shows all blocks containing
    [[Current Page]] references, grouped by source page."
   (:require [plugins.pages :as pages]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [components.page-ref :as page-ref]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
 
-(defn- highlight-page-ref
-  "Highlight the page reference in text by wrapping it in a styled span."
-  [text page-title]
-  (let [pattern (re-pattern (str "\\[\\[" (str/re-quote-replacement page-title) "\\]\\]"))]
-    (str/replace text pattern
-                 (str "[[" page-title "]]"))))
+(defn- parse-text-with-refs
+  "Parse text and return hiccup with page refs as clickable links.
+   Text like 'See [[Projects]] and [[Tasks]]' becomes mixed content
+   with PageRef components for the links."
+  [text on-intent]
+  (let [;; Non-capturing pattern for split (to avoid CLJS including captured groups)
+        split-pattern #"\[\[[^\]]+\]\]"
+        ;; Capturing pattern to extract page names
+        match-pattern #"\[\[([^\]]+)\]\]"
+        parts (str/split text split-pattern)
+        refs (->> (re-seq match-pattern text)
+                  (map second))]
+    (if (empty? refs)
+      ;; No refs, just return text
+      text
+      ;; Interleave text parts with page ref components
+      (into [:span]
+            (loop [result []
+                   remaining-parts parts
+                   remaining-refs refs]
+              (if (empty? remaining-parts)
+                result
+                (let [text-part (first remaining-parts)
+                      ref-name (first remaining-refs)]
+                  (recur (cond-> result
+                           ;; Add text part if non-empty
+                           (seq text-part)
+                           (conj text-part)
+                           ;; Add page ref if we have one
+                           ref-name
+                           (conj (page-ref/PageRef {:page-name ref-name
+                                                    :on-intent on-intent})))
+                         (rest remaining-parts)
+                         (rest remaining-refs)))))))))
 
 (defn- group-by-page
   "Group backlinks by their source page."
@@ -29,7 +58,7 @@
 ;; ── Components ────────────────────────────────────────────────────────────────
 
 (defn- BacklinkBlock
-  "Single backlink block showing the referencing text."
+  "Single backlink block showing the referencing text with clickable page refs."
   [{:keys [block-text block-id on-intent]}]
   [:div.backlink-block
    {:style {:padding "8px 12px"
@@ -37,16 +66,10 @@
             :background "var(--color-surface, #f5f5f5)"
             :border-radius "4px"
             :font-size "13px"
-            :line-height "1.5"
-            :cursor "pointer"}
-    :on {:click (fn [e]
-                  (.preventDefault e)
-                  (.stopPropagation e)
-                  ;; Navigate to the block's page and focus the block
-                  (when on-intent
-                    (on-intent {:type :navigate-to-block
-                                :block-id block-id})))}}
-   block-text])
+            :line-height "1.5"}
+    :replicant/key block-id}
+   ;; Parse text and render [[Page]] refs as clickable links
+   (parse-text-with-refs block-text on-intent)])
 
 (defn- BacklinkGroup
   "Group of backlinks from a single page."
