@@ -197,6 +197,63 @@ Opens picker to move selected blocks under arbitrary target block/page.
 
 ---
 
+## 7.5 Page References & Backlinks
+
+### Page References (`[[Page]]`)
+
+Typing `[[` triggers page autocomplete. Selecting or completing inserts a page reference link.
+
+**Behavior**:
+- `[[` opens autocomplete popup at cursor
+- Arrow keys navigate suggestions
+- Enter/Tab selects highlighted page
+- Typing filters by fuzzy match
+- "Create new page" option appears when no exact match
+- Escape dismisses without action
+
+**Page ref rendering**:
+- Displayed as orange clickable links (Logseq style: `#d9730d`)
+- Click navigates to the referenced page
+- If page doesn't exist, creates it on navigation
+
+**Source**: `src/main/frontend/components/editor.cljs`, `handler/page.cljs`
+
+### Linked References (Backlinks)
+
+Every page shows "Linked References" - blocks from other pages that reference it via `[[Page]]`.
+
+**Query behavior**:
+- Scans all blocks for `[[Current Page]]` pattern
+- Case-insensitive matching
+- Excludes self-references (blocks on the current page)
+- Groups results by source page
+
+**Display**:
+- Appears below page outline
+- Shows count badge with total backlinks
+- Blocks grouped under source page headers
+- Source page header is clickable (navigates to that page)
+- `[[Page]]` refs within backlink text are clickable
+
+**Filtering** (Logseq advanced):
+- Include/exclude filters stored as page properties
+- Shift-click toggles between include/exclude modes
+- Filter state persists in DB
+
+**Source**: `src/main/frontend/components/reference.cljs`, `deps/db/src/logseq/db/common/reference.cljs`
+
+### Block References (`((block-id))`)
+
+Reference a specific block by its UUID.
+
+**Behavior**:
+- `((` triggers block search autocomplete
+- Shows block content preview
+- Click on rendered ref navigates to source block
+- Cmd+Shift+R replaces ref with actual content
+
+---
+
 ## 8. Block Properties
 
 ### 8.1 Property Trigger (`:`)
