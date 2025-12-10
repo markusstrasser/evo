@@ -90,20 +90,29 @@
   "Single autocomplete item.
 
    Props:
-   - item: The item data
+   - item: The item data (may have :type :create-new for new page option)
    - source-type: :page-ref, :block-ref, etc.
    - query: Current search query (for highlighting)
    - selected?: Is this item selected?
    - on-click: Click handler"
   [{:keys [item source-type query selected? on-click]}]
-  (let [label (ac/item-label {:type source-type :item item})]
+  (let [is-create-new? (= (:type item) :create-new)
+        label (if is-create-new?
+                (:title item)
+                (ac/item-label {:type source-type :item item}))]
     [:div.autocomplete-item
-     {:class (when selected? "selected")
+     {:class [(when selected? "selected")
+              (when is-create-new? "create-new")]
       :on {:click (fn [e]
                     (.preventDefault e)
                     (.stopPropagation e)
                     (on-click))}}
-     (render-highlighted-label query label)]))
+     (if is-create-new?
+       [:span.create-new-label
+        [:span.create-icon "+"]
+        " Create page: "
+        [:strong (:title item)]]
+       (render-highlighted-label query label))]))
 
 ;; ── Main Popup Component ──────────────────────────────────────────────────────
 

@@ -52,11 +52,26 @@
   (let [pages (get-in db [:children-by-parent :doc] [])
         page-data (map (fn [id]
                          {:id id
-                          :title (get-in db [:nodes id :props :title] "Untitled")})
-                       pages)]
-    (if (str/blank? query)
-      (take 10 page-data)
-      (fuzzy/fuzzy-filter page-data query :title 10))))
+                          :title (get-in db [:nodes id :props :title] "Untitled")
+                          :type :existing})
+                       pages)
+        ;; Filter existing pages
+        filtered (if (str/blank? query)
+                   (take 10 page-data)
+                   (fuzzy/fuzzy-filter page-data query :title 10))
+        ;; Check if query exactly matches an existing page title (case-insensitive)
+        query-lower (str/lower-case (or query ""))
+        exact-match? (some #(= (str/lower-case (:title %)) query-lower) filtered)
+        ;; Add "Create new page" option if query is non-empty and no exact match
+        create-option (when (and (not (str/blank? query))
+                                 (not exact-match?))
+                        {:id :new
+                         :title query
+                         :type :create-new})]
+    ;; Put create option at end
+    (if create-option
+      (conj (vec filtered) create-option)
+      filtered)))
 
 (defmethod insert-text :page-ref
   [_db {:keys [item]}]
@@ -187,3 +202,82 @@
                                             selected)]
                               {:session-updates
                                {:ui {:autocomplete {:selected new-idx}}}}))})
+
+(defn- generate-page-id
+  "Generate a unique page ID from title.
+   Converts to lowercase, replaces spaces with hyphens."
+  [title]
+  (-> title
+      str/lower-case
+      (str/replace #"\s+" "-")
+      (str/replace #"[^a-z0-9-]" "")
+      (str "-" (rand-int 10000)))) ; Add random suffix for uniqueness
+
+(intent/register-intent! :page/create
+                         {:doc "Create a new page and optionally navigate to it.
+
+         Creates a page node under :doc with the given title."
+
+                          :spec [:map
+                                 [:type [:= :page/create]]
+                                 [:title :string]
+                                 [:navigate? {:optional true} :boolean]]
+
+                          :handler
+                          (fn [_db _session {:keys [title navigate?]}]
+                            (let [page-id (generate-page-id title)]
+                              {:ops [{:op :create-node
+                                      :id page-id
+                                      :type :page
+                                      :props {:title title}}
+                                     {:op :place
+                                      :id page-id
+                                      :under :doc
+                                      :at :last}]
+                               :session-updates
+                               (when navigate?
+                                 {:ui {:current-page page-id}})}))})
+
+(defn- find-page-by-title
+  "Find a page ID by its title (case-insensitive)."
+  [db title]
+  (let [pages (get-in db [:children-by-parent :doc] [])
+        title-lower (str/lower-case title)]
+    (some (fn [id]
+            (let [page-title (get-in db [:nodes id :props :title] "")]
+              (when (= (str/lower-case page-title) title-lower)
+                id)))
+          pages)))
+
+(intent/register-intent! :navigate-to-page
+                         {:doc "Navigate to a page by name.
+
+         If page exists, sets it as current page.
+         If page doesn't exist, creates it first then navigates."
+
+                          :spec [:map
+                                 [:type [:= :navigate-to-page]]
+                                 [:page-name :string]]
+
+                          :handler
+                          (fn [db _session {:keys [page-name]}]
+                            (if-let [page-id (find-page-by-title db page-name)]
+                              ;; Page exists - just navigate
+                              {:session-updates
+                               {:ui {:current-page page-id
+                                     :editing-block-id nil}
+                                :selection {:focus nil :anchor nil :nodes #{}}}}
+                              ;; Page doesn't exist - create and navigate
+                              (let [new-page-id (generate-page-id page-name)]
+                                {:ops [{:op :create-node
+                                        :id new-page-id
+                                        :type :page
+                                        :props {:title page-name}}
+                                       {:op :place
+                                        :id new-page-id
+                                        :under :doc
+                                        :at :last}]
+                                 :session-updates
+                                 {:ui {:current-page new-page-id
+                                       :editing-block-id nil}
+                                  :selection {:focus nil :anchor nil :nodes #{}}}})))})
