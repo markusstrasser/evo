@@ -15,7 +15,7 @@ const wait = (page, ms = 100) => page.waitForTimeout(ms);
 test.describe('Block Formats', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
@@ -108,10 +108,10 @@ test.describe('Block Formats', () => {
   });
 
   test.describe('Headings', () => {
-    test('/heading-1 command inserts h1 marker', async ({ page }) => {
+    test('/h1 command inserts h1 marker', async ({ page }) => {
       await enterEditModeAndClick(page);
       await page.keyboard.press('Meta+a');
-      await page.keyboard.type('/head');
+      await page.keyboard.type('/h1');
       await wait(page);
 
       // Select Heading 1 (first option)

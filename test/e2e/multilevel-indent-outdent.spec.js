@@ -24,7 +24,7 @@ test.describe('Multi-Level Indent/Outdent', () => {
   test.beforeEach(async ({ page }) => {
     // Use the demo page which has pre-existing nested structure
     await page.goto('/index.html');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 

@@ -12,7 +12,7 @@ test.describe('Text Editing', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for empty database with clean state
     await page.goto('/index.html?test=true');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
