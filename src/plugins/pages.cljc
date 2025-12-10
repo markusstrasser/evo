@@ -152,6 +152,35 @@
   [db _session {:keys [page-name]}]
   (navigate-or-create-page db page-name))
 
+(defn- collect-descendants
+  "Recursively collect all descendant IDs of a node."
+  [db node-id]
+  (let [children (q/children db node-id)]
+    (into children
+          (mapcat #(collect-descendants db %) children))))
+
+(defn- handle-delete-page
+  "Delete a page and all its contents.
+   If deleting the current page, switches to another page."
+  [db session {:keys [page-id]}]
+  (when page-id
+    (let [current-page-id (current-page session)
+          pages (all-pages db)
+          ;; Get all child blocks to delete
+          descendants (collect-descendants db page-id)
+          ;; Figure out which page to switch to if deleting current
+          other-pages (remove #{page-id} pages)
+          next-page (first other-pages)
+          deleting-current? (= page-id current-page-id)]
+      {:ops (into
+             ;; Delete all descendants first (bottom-up would be safer but bulk delete works)
+             (mapv (fn [id] {:op :delete :id id}) descendants)
+             ;; Then delete the page itself
+             [{:op :delete :id page-id}])
+       ;; If we deleted the current page, switch to another
+       :session-updates (when deleting-current?
+                          {:ui {:current-page next-page}})})))
+
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;; Auto-register intents on namespace load
@@ -164,6 +193,11 @@
                          {:doc "Navigate to page by name (from page ref)"
                           :fr/ids #{:fr.pages/switch-page}
                           :handler handle-navigate-to-page})
+
+(intent/register-intent! :delete-page
+                         {:doc "Delete a page and all its contents"
+                          :fr/ids #{:fr.pages/delete-page}
+                          :handler handle-delete-page})
 
 (intent/register-intent! :follow-link-under-cursor
                          {:doc "Follow link/reference under cursor (Cmd+O in Logseq).
