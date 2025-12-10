@@ -133,58 +133,58 @@
                   :insert-fn (fn [] \"text to insert\") :backward-pos int}"
   [{:id :today
     :name "Today"
-    :description "Insert today's date"
+    :description "[[Dec 10, 2025]]"
     :icon "📅"
     :category "Date & Time"
     :insert-fn #(format-date (get-today))}
 
    {:id :tomorrow
     :name "Tomorrow"
-    :description "Insert tomorrow's date"
+    :description "[[Dec 11, 2025]]"
     :icon "📆"
     :category "Date & Time"
     :insert-fn #(format-date (get-tomorrow))}
 
    {:id :yesterday
     :name "Yesterday"
-    :description "Insert yesterday's date"
+    :description "[[Dec 9, 2025]]"
     :icon "📆"
     :category "Date & Time"
     :insert-fn #(format-date (get-yesterday))}
 
    {:id :current-time
-    :name "Current time"
-    :description "Insert current time"
+    :name "Time"
+    :description "HH:MM"
     :icon "🕐"
     :category "Date & Time"
     :insert-fn get-current-time}
 
    {:id :date-picker
     :name "Date picker"
-    :description "Pick a date from calendar"
+    :description "Calendar"
     :icon "📅"
     :category "Date & Time"
     :insert-fn #(format-date (get-today))}  ; TODO: Show actual date picker
 
    {:id :tweet
-    :name "Embed Tweet"
-    :description "Embed a Twitter/X post"
+    :name "Tweet"
+    :description "{{tweet URL}}"
     :icon "🐦"
     :category "Embeds"
     :insert-fn (constantly "{{tweet }}")
     :backward-pos 2}
 
    {:id :video
-    :name "Embed Video"
-    :description "Embed a video URL (YouTube, Vimeo, etc.)"
+    :name "Video"
+    :description "{{video URL}}"
     :icon "🎬"
     :category "Embeds"
     :insert-fn (constantly "{{video }}")
     :backward-pos 2}
 
    {:id :code
-    :name "Code block"
-    :description "Insert a code block"
+    :name "Code"
+    :description "```lang```"
     :icon "💻"
     :category "Blocks"
     :insert-fn (constantly "```\n\n```")
@@ -192,28 +192,28 @@
 
    {:id :quote
     :name "Quote"
-    :description "Insert a block quote"
+    :description "> text"
     :icon "💬"
     :category "Blocks"
     :insert-fn (constantly "> ")}
 
    {:id :heading-1
-    :name "Heading 1"
-    :description "Large heading"
+    :name "H1"
+    :description "# Large"
     :icon "H1"
     :category "Headings"
     :insert-fn (constantly "# ")}
 
    {:id :heading-2
-    :name "Heading 2"
-    :description "Medium heading"
+    :name "H2"
+    :description "## Medium"
     :icon "H2"
     :category "Headings"
     :insert-fn (constantly "## ")}
 
    {:id :heading-3
-    :name "Heading 3"
-    :description "Small heading"
+    :name "H3"
+    :description "### Small"
     :icon "H3"
     :category "Headings"
     :insert-fn (constantly "### ")}])
