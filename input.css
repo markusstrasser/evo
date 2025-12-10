@@ -735,6 +735,50 @@
     font-size: 16px;
     color: var(--color-accent);
   }
+
+  /* ── Slash Command Items ─────────────────────────────────────────────────── */
+  .autocomplete-item.command-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .command-icon {
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .command-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0; /* Enable text truncation */
+  }
+
+  .command-name {
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .command-description {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .autocomplete-item.command-item.selected {
+    .command-name {
+      color: var(--color-accent);
+    }
+    .command-description {
+      color: var(--color-text);
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

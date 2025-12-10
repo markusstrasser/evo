@@ -69,7 +69,7 @@
             (if (>= idx (count chars))
               (into [:span] result)
               (let [[start end] (first remaining-ranges)
-                    char (nth chars idx)]
+                    c (nth chars idx)]
                 (cond
                   ;; At start of highlight range
                   (and start (= idx start))
@@ -82,7 +82,7 @@
                   :else
                   (recur (inc idx)
                          remaining-ranges
-                         (conj result (str char))))))))))))
+                         (conj result (str c))))))))))))
 
 ;; ── Item Component ────────────────────────────────────────────────────────────
 
@@ -91,27 +91,44 @@
 
    Props:
    - item: The item data (may have :type :create-new for new page option)
-   - source-type: :page-ref, :block-ref, etc.
+   - source-type: :page-ref, :command, etc.
    - query: Current search query (for highlighting)
    - selected?: Is this item selected?
    - on-click: Click handler"
   [{:keys [item source-type query selected? on-click]}]
   (let [is-create-new? (= (:type item) :create-new)
+        is-command? (= source-type :command)
         label (if is-create-new?
                 (:title item)
                 (ac/item-label {:type source-type :item item}))]
     [:div.autocomplete-item
      {:class [(when selected? "selected")
-              (when is-create-new? "create-new")]
+              (when is-create-new? "create-new")
+              (when is-command? "command-item")]
       :on {:click (fn [e]
                     (.preventDefault e)
                     (.stopPropagation e)
                     (on-click))}}
-     (if is-create-new?
+
+     (cond
+       ;; Create new page option
+       is-create-new?
        [:span.create-new-label
         [:span.create-icon "+"]
         " Create page: "
         [:strong (:title item)]]
+
+       ;; Slash command with icon and description
+       ;; Note: Replicant doesn't support :<> fragments, use wrapper with display:contents
+       is-command?
+       (list
+        [:span.command-icon {:replicant/key "icon"} (:icon item)]
+        [:span.command-content {:replicant/key "content"}
+         [:span.command-name (render-highlighted-label query label)]
+         [:span.command-description (:description item)]])
+
+       ;; Default: page-ref style
+       :else
        (render-highlighted-label query label))]))
 
 ;; ── Main Popup Component ──────────────────────────────────────────────────────
