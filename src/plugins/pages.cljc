@@ -49,6 +49,56 @@
                               str/lower-case)))))
            first))))
 
+(defn- extract-page-refs
+  "Extract all [[page]] references from text.
+   Returns a set of page names (as found in text, preserving case)."
+  [text]
+  (when text
+    (let [pattern #"\[\[([^\]]+)\]\]"]
+      (->> (re-seq pattern text)
+           (map second)
+           set))))
+
+(defn find-backlinks
+  "Find all blocks that reference a given page.
+   
+   Returns a list of maps:
+   {:block-id \"...\"
+    :block-text \"...\"
+    :page-id \"...\"
+    :page-title \"...\"}
+   
+   Searches all blocks in the DB for [[target-page]] references."
+  [db target-page]
+  (when target-page
+    (let [target-lower (str/lower-case target-page)
+          all-nodes (:nodes db)
+          blocks (->> all-nodes
+                      (filter (fn [[_id node]] (= (:type node) :block)))
+                      (keep (fn [[block-id node]]
+                              (let [text (get-in node [:props :text] "")
+                                    refs (extract-page-refs text)
+                                    refs-lower (set (map str/lower-case refs))]
+                                (when (contains? refs-lower target-lower)
+                                  {:block-id block-id
+                                   :block-text text})))))]
+      ;; Add page context to each backlink
+      (map (fn [{:keys [block-id] :as backlink}]
+             (let [parent-chain (loop [id block-id
+                                       chain []]
+                                  (let [parent (get-in db [:derived :parent-of id])]
+                                    (if (or (nil? parent) (= parent :doc))
+                                      chain
+                                      (let [parent-node (get all-nodes parent)]
+                                        (if (= (:type parent-node) :page)
+                                          (conj chain parent)
+                                          (recur parent (conj chain parent)))))))
+                   source-page-id (first parent-chain)]
+               (assoc backlink
+                      :page-id source-page-id
+                      :page-title (when source-page-id (page-title db source-page-id)))))
+           blocks))))
+
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
 (defn- handle-switch-page
