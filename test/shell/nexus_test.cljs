@@ -45,60 +45,18 @@
       :db))
 
 ;; ── Action Purity Tests ───────────────────────────────────────────────────────
-
-(deftest 
-  navigate-up-is-pure
-  (testing "navigate-up action is pure (same input → same output)"
-    (let [state (sample-db)
-          payload {:block-id "b" :cursor-row :first}
-          result1 (nexus/navigate-up state payload)
-          result2 (nexus/navigate-up state payload)]
-      (is (= result1 result2)
-          "Multiple calls with same args should return identical results"))))
-
-(deftest 
-  navigate-down-is-pure
-  (testing "navigate-down action is pure"
-    (let [state (sample-db)
-          payload {:block-id "b" :cursor-row :last}
-          result1 (nexus/navigate-down state payload)
-          result2 (nexus/navigate-down state payload)]
-      (is (= result1 result2)))))
-
-(deftest 
-  extend-selection-prev-is-pure
-  (testing "extend-selection-prev action is pure"
-    (let [state (sample-db)
-          payload {:block-id "b" :direction :backward}
-          result1 (nexus/extend-selection-prev state payload)
-          result2 (nexus/extend-selection-prev state payload)]
-      (is (= result1 result2)))))
-
-(deftest 
-  extend-selection-next-is-pure
-  (testing "extend-selection-next action is pure"
-    (let [state (sample-db)
-          payload {:block-id "b" :direction :forward}
-          result1 (nexus/extend-selection-next state payload)
-          result2 (nexus/extend-selection-next state payload)]
-      (is (= result1 result2)))))
-
-(deftest 
-  smart-split-is-pure
-  (testing "smart-split action is pure"
-    (let [state (sample-db)
-          payload {:block-id "b" :cursor-pos 5}
-          result1 (nexus/smart-split state payload)
-          result2 (nexus/smart-split state payload)]
-      (is (= result1 result2)))))
-
-(deftest escape-edit-is-pure
-  (testing "escape-edit action is pure"
-    (let [state (sample-db)
-          payload {:block-id "b"}
-          result1 (nexus/escape-edit state payload)
-          result2 (nexus/escape-edit state payload)]
-      (is (= result1 result2)))))
+;; REMOVED: 6 purity tests (navigate-up-is-pure, navigate-down-is-pure,
+;; extend-selection-prev-is-pure, extend-selection-next-is-pure,
+;; smart-split-is-pure, escape-edit-is-pure)
+;;
+;; These tests were tautological - they verified f(x) == f(x), which is
+;; guaranteed by definition for pure functions in Clojure. They caught zero
+;; real bugs and added noise to the test suite.
+;;
+;; If purity testing is ever needed, use a single property-based test:
+;; (defspec all-actions-are-pure 100
+;;   (prop/for-all [action gen-action, payload gen-payload]
+;;     (= (action state payload) (action state payload))))
 
 ;; ── Action Structure Tests ────────────────────────────────────────────────────
 

@@ -110,7 +110,9 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     expect(cursorPos).toBe(0);
   });
 
-  // NOTE: Skipped - flaky test, multi-line cursor position inconsistent
+  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
+  // Issue: Multi-line cursor position inconsistent (contenteditable line breaks)
+  // Fix strategy: Investigate cursor memory interaction with BR elements
   test.skip('Enter on selected block with multi-line text enters at END', async ({ page }) => {
     const blockId = await getFirstBlockId(page);
 
