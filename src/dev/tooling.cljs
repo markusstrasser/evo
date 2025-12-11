@@ -10,6 +10,37 @@
 (def ^:const max-entries 200)
 (defonce !log (atom []))
 
+;; ─── Clipboard Operation Tracking ───────────────────────────────────────────
+;; Browser clipboard is opaque - track operations app-side for debugging
+
+(defonce !clipboard-log (atom []))
+(def ^:const max-clipboard-entries 50)
+
+(defn record-clipboard-op!
+  "Record a clipboard operation (copy, cut, paste) for debugging.
+   Called from executor when clipboard-text is written."
+  [op-type text block-ids]
+  (swap! !clipboard-log
+         (fn [entries]
+           (->> (conj entries {:type op-type
+                               :text (if (> (count text) 200)
+                                       (str (subs text 0 200) "...")
+                                       text)
+                               :text-length (count text)
+                               :block-ids block-ids
+                               :timestamp (js/Date.now)})
+                (take-last max-clipboard-entries)
+                vec))))
+
+(defn last-clipboard-op []
+  (last @!clipboard-log))
+
+(defn get-clipboard-log []
+  @!clipboard-log)
+
+(defn clear-clipboard-log! []
+  (reset! !clipboard-log []))
+
 (defn- summarize-db [db]
   (let [nodes (:nodes db)
         pages (keep (fn [[id {:keys [type]}]]
@@ -99,7 +130,7 @@
 
 (defn extract-hiccup-tree [db page-id]
   (let [root (or page-id :doc)
-    children (get-in db [:children-by-parent root] [])]
+        children (get-in db [:children-by-parent root] [])]
     (map #(block->snapshot db %) children)))
 
 (defn format-hiccup-diff [before after]

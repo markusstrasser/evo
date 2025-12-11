@@ -18,10 +18,11 @@
             [dataspex.core :as dataspex]
             [shell.nexus :as nexus]
             [shell.executor :as executor]
-
             [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
+            [dev.tooling :as tooling]
+            [debug-api]
             ;; Load all plugins to register intents
             [plugins.selection]
             [plugins.editing]
@@ -892,8 +893,14 @@
   (add-watch vs/!view-state :render (fn [_ _ _ _] (request-render!)))
   (add-watch !storage-status :render (fn [_ _ _ _] (request-render!)))
 
-  ;; Initialize Dataspex for DB inspection
+;; Initialize Dataspex for state inspection
   (dataspex/inspect "App DB" !db {:track-changes? true})
+  (dataspex/inspect "View State" vs/!view-state {:track-changes? true})
+  (dataspex/inspect "Dispatch Log" tooling/!log {:track-changes? true})
+  (dataspex/inspect "Clipboard Log" tooling/!clipboard-log {:track-changes? true})
+
+  ;; Install queryable DEBUG API for AI tools and E2E tests
+  (debug-api/install! !db)
 
   ;; Apply text selection effects from formatting operations
   ;; Watch session for pending-selection instead of DB
