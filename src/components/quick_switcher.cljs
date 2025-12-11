@@ -1,6 +1,12 @@
 (ns components.quick-switcher
   "Quick Switcher (Cmd+K) - Logseq-style global page search overlay.
    
+   Uses native HTML <dialog> element for:
+   - Automatic focus trapping (accessibility)
+   - Native ::backdrop styling
+   - Light-dismiss with closedby='any' (Chrome 134+)
+   - Proper Escape key handling
+   
    Features:
    - Full-screen modal overlay
    - Fuzzy search across all pages
@@ -57,11 +63,7 @@
                               (= (nth text-lower text-idx)
                                  (nth query-lower query-idx)))]
             (recur (conj result (if matches?
-                                  [:mark {:style {:background "#fef08a"
-                                                  :color "inherit"
-                                                  :padding "0 1px"
-                                                  :border-radius "2px"}}
-                                   (str text-char)]
+                                  [:mark (str text-char)]
                                   (str text-char)))
                    (inc text-idx)
                    (if matches? (inc query-idx) query-idx))))))))
@@ -72,21 +74,16 @@
   "Single search result item."
   [{:keys [page-title selected? on-click]}]
   [:div.quick-switcher-item
-   {:style {:padding "10px 16px"
-            :cursor "pointer"
-            :display "flex"
-            :align-items "center"
-            :gap "10px"
-            :background (if selected? "#e0e7ff" "transparent")
-            :border-radius "6px"
-            :margin "2px 0"}
-    :on {:click on-click
-         :mouseenter (fn [_] nil)}} ; Could highlight on hover
-   [:span {:style {:font-size "16px"}} "📄"]
-   [:span {:style {:font-size "14px"}} page-title]])
+   {:class (when selected? "selected")
+    :replicant/on-render (when selected?
+                           (fn [{:replicant/keys [node]}]
+                             (.scrollIntoView node #js {:block "nearest"})))
+    :on {:click on-click}}
+   [:span.quick-switcher-icon "📄"]
+   [:span.quick-switcher-title page-title]])
 
 (defn QuickSwitcher
-  "Quick Switcher overlay component.
+  "Quick Switcher overlay component using native <dialog>.
    
    Props:
    - db: Application database
@@ -98,62 +95,43 @@
         selected-result (when (and (pos? result-count)
                                    (< selected-idx result-count))
                           (nth results selected-idx))]
-    [:div.quick-switcher-overlay
-     {:style {:position "fixed"
-              :top 0
-              :left 0
-              :right 0
-              :bottom 0
-              :background "rgba(0, 0, 0, 0.5)"
-              :display "flex"
-              :align-items "flex-start"
-              :justify-content "center"
-              :padding-top "15vh"
-              :z-index 1000}
-      :on {:click (fn [e]
-                    ;; Close when clicking backdrop (not the modal)
-                    (when (= (.-target e) (.-currentTarget e))
-                      (vs/quick-switcher-close!)))}}
+    [:dialog.quick-switcher
+     {;; Light-dismiss: click outside or Esc closes (Chrome 134+)
+      ;; Falls back to manual Esc handling for older browsers
+      :closedby "any"
+      :replicant/on-mount
+      (fn [{:replicant/keys [node]}]
+        ;; Show as modal (adds ::backdrop, traps focus)
+        (.showModal node)
+        ;; Focus the input after dialog opens
+        (when-let [input (.querySelector node ".quick-switcher-input")]
+          (.focus input)))
+      ;; Handle close event (works for both closedby and manual close)
+      :on {:close (fn [_e]
+                    (vs/quick-switcher-close!))
+           ;; Backdrop click fallback for browsers without closedby
+           :click (fn [e]
+                    (let [dialog (.-currentTarget e)
+                          rect (.getBoundingClientRect dialog)]
+                      ;; Click was outside dialog content (on backdrop)
+                      (when (or (< (.-clientX e) (.-left rect))
+                                (> (.-clientX e) (.-right rect))
+                                (< (.-clientY e) (.-top rect))
+                                (> (.-clientY e) (.-bottom rect)))
+                        (.close dialog))))}}
 
-     [:div.quick-switcher-modal
-      {:style {:background "white"
-               :border-radius "12px"
-               :box-shadow "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
-               :width "100%"
-               :max-width "560px"
-               :max-height "70vh"
-               :display "flex"
-               :flex-direction "column"
-               :overflow "hidden"}}
-
+     [:div.quick-switcher-content
       ;; Search input
       [:div.quick-switcher-input-wrapper
-       {:style {:padding "16px"
-                :border-bottom "1px solid #e5e7eb"}}
        [:input.quick-switcher-input
         {:type "text"
          :placeholder "Search pages..."
          :value (or query "")
-         :style {:width "100%"
-                 :font-size "16px"
-                 :padding "12px 16px"
-                 :border "2px solid #e5e7eb"
-                 :border-radius "8px"
-                 :outline "none"
-                 :transition "border-color 0.15s"}
-         :replicant/on-mount
-         (fn [{:replicant/keys [node]}]
-           ;; Focus input when modal opens
-           (.focus node))
          :on {:input (fn [e]
                        (vs/quick-switcher-set-query! (.. e -target -value)))
               :keydown (fn [e]
                          (let [key-code (.-key e)]
                            (case key-code
-                             "Escape"
-                             (do (.preventDefault e)
-                                 (vs/quick-switcher-close!))
-
                              "ArrowDown"
                              (do (.preventDefault e)
                                  (vs/quick-switcher-navigate! :down result-count))
@@ -169,19 +147,21 @@
                                    (on-intent {:type :switch-page
                                                :page-id (:page-id selected-result)})))
 
+                             ;; Escape handled by dialog closedby="any"
+                             ;; but add fallback for older browsers
+                             "Escape"
+                             (do (.preventDefault e)
+                                 (-> e .-target .-closest
+                                     (.call (.-target e) "dialog")
+                                     (.close)))
+
                              ;; Default - let it through
                              nil)))}}]]
 
       ;; Results list
       [:div.quick-switcher-results
-       {:style {:padding "8px"
-                :overflow-y "auto"
-                :flex "1"}}
-
        (if (empty? results)
-         [:div {:style {:padding "20px"
-                        :text-align "center"
-                        :color "#9ca3af"}}
+         [:div.quick-switcher-empty
           (if (str/blank? query)
             "Type to search pages"
             "No matching pages")]
@@ -197,4 +177,3 @@
                                 (on-intent {:type :switch-page
                                             :page-id page-id}))}))
                 results)))]]]))
-
