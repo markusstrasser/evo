@@ -96,6 +96,8 @@
             op-type (cond
                       (#{:copy-block :copy-selected} intent-type) :copy
                       (#{:cut-block :cut-selected} intent-type) :cut
+                      (#{:kill-to-end :kill-to-beginning
+                         :kill-word-forward :kill-word-backward} intent-type) :kill
                       :else :unknown)]
         (dev/record-clipboard-op! op-type clipboard-text block-ids)))
 
