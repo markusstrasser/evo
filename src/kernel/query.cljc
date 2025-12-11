@@ -296,6 +296,8 @@
    - db: Database
    - session: Session state map (required for tests)"
   [db session]
+  {:pre [(map? db) (map? session)
+         (contains? db :nodes) (contains? db :children-by-parent)]}
   (let [root (active-outline-root session)
         folded-blocks (folded-set session)
 
@@ -327,6 +329,7 @@
    
    Returns nil if at last visible block."
   [db session current-id]
+  {:pre [(map? db) (map? session) (or (string? current-id) (keyword? current-id))]}
   (nav/next-visible-block db session current-id))
 
 (defn prev-block-dom-order
@@ -338,6 +341,7 @@
    
    Returns nil if at first visible block."
   [db session current-id]
+  {:pre [(map? db) (map? session) (or (string? current-id) (keyword? current-id))]}
   (nav/prev-visible-block db session current-id))
 
 (defn doc-range
@@ -373,6 +377,7 @@
    - a: First block ID
    - b: Second block ID"
   [db session a b]
+  {:pre [(map? db) (map? session)]}
   (let [visible (visible-blocks-in-dom-order db session)
         a-idx (.indexOf visible a)
         b-idx (.indexOf visible b)]
