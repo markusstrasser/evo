@@ -98,37 +98,8 @@ test.describe('Text Editing', () => {
     expect(textCount).toBe(1);
   });
 
-  test.skip('REGRESSION: mock-text element positioned correctly', async ({ page }) => {
-    // NOTE: Skipped - tests internal implementation detail (mock-text positioning)
-    // The mock-text element is used internally for cursor calculations
-    await page.click('[contenteditable="true"]');
-    await page.keyboard.type('Testing mock-text position');
-
-    // Get positions
-    const positions = await page.evaluate(() => {
-      const block = document.querySelector('[contenteditable="true"]');
-      const mock = document.getElementById('mock-text');
-
-      if (!block || !mock) return null;
-
-      const blockRect = block.getBoundingClientRect();
-      const mockRect = mock.getBoundingClientRect();
-
-      return {
-        block: { top: blockRect.top, left: blockRect.left, width: blockRect.width },
-        mock: { top: mockRect.top, left: mockRect.left, width: mockRect.width }
-      };
-    });
-
-    // Skip test if mock-text doesn't exist (might not be implemented yet)
-    if (!positions) {
-      test.skip();
-      return;
-    }
-
-    // Mock should match block position
-    expect(positions.mock.top).toBe(positions.block.top);
-    expect(positions.mock.left).toBe(positions.block.left);
-    expect(positions.mock.width).toBe(positions.block.width);
-  });
+  // REMOVED: 'REGRESSION: mock-text element positioned correctly'
+  // Reason: Tests internal implementation detail (mock-text positioning).
+  // The mock-text element is an internal mechanism for cursor calculations,
+  // not user-facing behavior. Visual testing or unit tests are more appropriate.
 });

@@ -46,9 +46,9 @@ test.describe('Text Selection Utilities', () => {
     }
   });
 
-  // NOTE: Skipped - flaky due to timing issues with contenteditable and app keyboard handling.
-  // Characters get dropped during rapid typing (e.g., "Hello" → "Hlo w").
-  // This tests low-level browser behavior, not app functionality.
+  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
+  // Issue: Characters dropped during rapid typing (e.g., "Hello" → "Hlo w")
+  // Fix strategy: Use slower typing with delay: 50 or use dispatchIntent for text entry
   test.skip('handles text selection correctly', async ({ page }) => {
     // Enter edit mode and type text
     const block = page.locator('[data-block-id]').first();
@@ -78,7 +78,9 @@ test.describe('Text Selection Utilities', () => {
     expect(selectedText).toBe('Hello');
   });
 
-  // NOTE: Skipped - flaky due to Enter creating new block, cursor ends up in different element
+  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
+  // Issue: Enter creates new block, cursor lands in different element
+  // Fix strategy: After Enter, query for new block's contenteditable and check cursor there
   test.skip('cursor positioning works with Enter key (BR elements)', async ({ page }) => {
     const block = page.locator('[data-block-id]').first();
     await block.click();
@@ -103,11 +105,9 @@ test.describe('Text Selection Utilities', () => {
     expect(cursorPos).toBe(6); // "Line 2" = 6 characters
   });
 
-  // NOTE: Skipped - flaky due to Playwright keyboard event timing issues with contenteditable.
-  // Characters get dropped during rapid typing in "start typing to edit" mode.
-  // The "start typing to edit" feature requires clicking the block (not contenteditable),
-  // and the first keypress enters edit mode. Subsequent rapid keystrokes may be lost.
-  // This tests low-level browser cursor behavior, not app functionality.
+  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
+  // Issue: First keypress enters edit mode, subsequent keystrokes may be lost
+  // Fix strategy: Use enterEditModeAndClick helper before typing, add explicit edit mode entry
   test.skip('arrow keys maintain cursor position correctly', async ({ page }) => {
     const block = page.locator('[data-block-id]').first();
     await block.click();
@@ -145,24 +145,9 @@ test.describe('Text Selection Utilities', () => {
     expect(cursorPos).toBe(5);
   });
 
-  // NOTE: Skipped - flaky, tests internal DOM text extraction utility.
-  // Not user-facing behavior, covered by unit tests.
-  test.skip('text extraction handles complex DOM', async ({ page }) => {
-    const block = page.locator('[data-block-id]').first();
-    await block.click();
-
-    // Type text with special characters
-    await page.keyboard.type('Test with spaces   and tabs');
-    await page.waitForTimeout(100);
-
-    // Get text content using textContent (simpler, more reliable)
-    const extractedText = await page.evaluate(() => {
-      const elem = document.querySelector('[contenteditable="true"]');
-      return elem ? elem.textContent : null;
-    });
-
-    expect(extractedText).toBe('Test with spaces   and tabs');
-  });
+  // REMOVED: 'text extraction handles complex DOM'
+  // Reason: Tests internal DOM text extraction utility (element->text).
+  // Not user-facing behavior - covered by unit tests in kernel.
 
   test('position tracking during rapid typing', async ({ page }) => {
     const block = page.locator('[data-block-id]').first();
@@ -232,8 +217,9 @@ test.describe('Text Selection Utilities', () => {
     expect(cursorPos).toBe(0);
   });
 
-  // NOTE: Skipped - flaky timeout waiting for contenteditable:focus.
-  // Paste behavior is already covered by editing tests.
+  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
+  // Issue: Timeout waiting for contenteditable:focus after paste
+  // Fix strategy: Use waitForEditing helper from index.js instead of raw selector
   test.skip('handles paste with position tracking', async ({ page }) => {
     const block = page.locator('[data-block-id]').first();
     await block.click();
@@ -280,58 +266,11 @@ test.describe('Text Selection Integration with Block Component', () => {
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
-  // NOTE: Skipped - flaky, characters dropped during typing ("First block" → "Fck").
-  // Cross-block navigation is covered by navigation.spec.js.
-  test.skip('cursor positioning after navigation', async ({ page }) => {
-    // Enter edit mode on first block
-    const firstBlock = page.locator('[data-block-id]').first();
-    await firstBlock.click();
-    await page.keyboard.type('First block');
+  // REMOVED: 'cursor positioning after navigation'
+  // Reason: Duplicate coverage - cross-block navigation is tested in navigation.spec.js.
+  // Was flaky due to characters dropped during typing.
 
-    // Create second block
-    await pressKeyOnContentEditable(page, 'Enter');
-    await page.keyboard.type('Second block');
-
-    // Navigate up
-    await pressKeyOnContentEditable(page, 'ArrowUp');
-    await page.waitForTimeout(100);
-
-    // Should be at end of first block
-    const content = await page.evaluate(() => {
-      const elem = document.querySelector('[contenteditable="true"]');
-      return elem ? elem.textContent : '';
-    });
-    expect(content).toBe('First block');
-  });
-
-  // NOTE: Skipped - flaky, characters dropped during typing.
-  // Cursor maintenance is covered by editing-parity.spec.js.
-  test.skip('maintains cursor during block operations', async ({ page }) => {
-    const block = page.locator('[data-block-id]').first();
-    await block.click();
-    await page.keyboard.type('Test content');
-
-    // Move cursor to position 4 via browser API (Home key not supported)
-    await page.evaluate(() => {
-      const elem = document.activeElement;
-      if (elem && elem.firstChild) {
-        const range = document.createRange();
-        range.setStart(elem.firstChild, 4); // After "Test"
-        range.collapse(true);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-    });
-
-    // Type character at position 4
-    await page.keyboard.type('X');
-
-    const content = await page.evaluate(() => {
-      const elem = document.querySelector('[contenteditable="true"]');
-      return elem ? elem.textContent : '';
-    });
-
-    expect(content).toBe('TestX content');
-  });
+  // REMOVED: 'maintains cursor during block operations'
+  // Reason: Duplicate coverage - cursor maintenance is tested in editing-parity.spec.js.
+  // Was flaky due to characters dropped during typing.
 });
