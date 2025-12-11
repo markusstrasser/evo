@@ -525,3 +525,10 @@
                                     [{:op :update-node :id block-id :props {:text before}}
                                      {:op :create-node :id new-id :type :block :props {:text after}}
                                      {:op :place :id new-id :under parent :at {:after block-id}}])))))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

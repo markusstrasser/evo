@@ -177,3 +177,10 @@
   ;; Note: Folding and zoom are now controlled via shell.view-state atom, not DB operations.
   ;; Use (session/swap-session! assoc-in [:ui :folded] #{"b1"}) to fold blocks.
   )
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
