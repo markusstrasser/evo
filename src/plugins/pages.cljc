@@ -176,10 +176,12 @@
 
 (intent/register-intent! :create-page
                          {:doc "Create a new page with given title"
+                          :fr/ids #{:fr.pages/switch-page}
                           :handler handle-create-page})
 
 (intent/register-intent! :delete-page
                          {:doc "Delete a page and all its contents"
+                          :fr/ids #{:fr.struct/delete-block}
                           :handler handle-delete-page})
 
 (intent/register-intent! :follow-link-under-cursor

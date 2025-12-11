@@ -244,6 +244,8 @@
 
          trigger-length: Length of trigger chars (2 for [[, 1 for /)"
 
+                          :fr/ids #{:fr.ui/slash-palette}
+
                           :spec [:map
                                  [:type [:= :autocomplete/trigger]]
                                  [:source [:enum :page-ref :block-ref :command :tag]]
@@ -275,6 +277,8 @@
 
          Called on each keystroke while autocomplete is active."
 
+                          :fr/ids #{:fr.ui/slash-filter}
+
                           :spec [:map
                                  [:type [:= :autocomplete/update]]
                                  [:query :string]]
@@ -297,6 +301,8 @@
 
          For commands: Uses trigger-length (1 for /) and item's backward-pos if set.
          Exits edit mode to force DOM sync, sets cursor-position for re-entry."
+
+                          :fr/ids #{:fr.ui/slash-select}
 
                           :spec [:map
                                  [:type [:= :autocomplete/select]]]
@@ -341,6 +347,8 @@
 (intent/register-intent! :autocomplete/dismiss
                          {:doc "Dismiss autocomplete without selecting."
 
+                          :fr/ids #{:fr.ui/slash-close}
+
                           :spec [:map
                                  [:type [:= :autocomplete/dismiss]]]
 
@@ -353,6 +361,8 @@
                          {:doc "Navigate selection in autocomplete list.
 
          direction: :up or :down"
+
+                          :fr/ids #{:fr.ui/slash-navigate}
 
                           :spec [:map
                                  [:type [:= :autocomplete/navigate]]
@@ -384,6 +394,8 @@
                          {:doc "Create a new page and optionally navigate to it.
 
          Creates a page node under :doc with the given title."
+
+                          :fr/ids #{:fr.pages/switch-page}
 
                           :spec [:map
                                  [:type [:= :page/create]]
@@ -421,6 +433,8 @@
 
          If page exists, sets it as current page.
          If page doesn't exist, creates it first then navigates."
+
+                          :fr/ids #{:fr.pages/switch-page}
 
                           :spec [:map
                                  [:type [:= :navigate-to-page]]

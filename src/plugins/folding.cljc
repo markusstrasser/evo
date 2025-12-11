@@ -230,6 +230,7 @@
 
 (intent/register-intent! :toggle-quick-switcher
                          {:doc "Toggle quick switcher (page search) visibility. Bound to Cmd+K."
+                          :fr/ids #{:fr.ui/quick-switcher}
                           :spec [:map [:type [:= :toggle-quick-switcher]]]
                           :handler (fn [_db session _intent]
                                      (let [visible? (some? (get-in session [:ui :quick-switcher]))]

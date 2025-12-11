@@ -11,6 +11,7 @@
             [components.page-ref :as page-ref]
             [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
+            [utils.dom :as dom]
             [shell.view-state :as vs]
             [clojure.string :as str]))
 
@@ -206,16 +207,14 @@
 (defn- collapse-selection-start!
   "Collapse text selection to start, preventing default event."
   [e]
-  (when-let [sel (.getSelection js/window)]
-    (.preventDefault e)
-    (.collapseToStart sel)))
+  (.preventDefault e)
+  (dom/collapse-to-start!))
 
 (defn- collapse-selection-end!
   "Collapse text selection to end, preventing default event."
   [e]
-  (when-let [sel (.getSelection js/window)]
-    (.preventDefault e)
-    (.collapseToEnd sel)))
+  (.preventDefault e)
+  (dom/collapse-to-end!))
 
 (defn- shift-click-select-range!
   "Handle Shift+Click to select visible range from anchor to clicked block.
@@ -868,11 +867,8 @@
   [e db block-id on-intent]
   ;; Check autocomplete first - it intercepts arrow keys, Enter, Escape, Tab
   (when-not (handle-autocomplete-keydown e on-intent)
-    (let [key (.-key e)
-          shift? (.-shiftKey e)
-          mod? (or (.-metaKey e) (.-ctrlKey e))
-          alt? (.-altKey e)
-          ctrl? (.-ctrlKey e)
+    (let [{:keys [shift? mod? alt? ctrl?]} (dom/event-modifiers e)
+          key (.-key e)
           target (.-target e)]
 
       (cond
