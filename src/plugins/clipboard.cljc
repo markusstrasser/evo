@@ -1,15 +1,19 @@
 (ns plugins.clipboard
   "Clipboard operations: copy, cut, paste with Logseq parity.
 
-   Paste semantics (FR-Clipboard-03):
-   - Single newlines → stay inline as literal \\n
-   - Blank lines (\\n\\n) → split into multiple blocks
-   - Preserve list markers, checkboxes, formatting"
+   Copy semantics (Logseq parity):
+   - Single block: plain text content
+   - Multiple blocks: markdown with '- ' prefixes and tab indentation
+   - UI layer writes both text/plain and internal MIME type
+
+   Paste semantics (Logseq parity):
+   - Check for internal format first (preserves hierarchy)
+   - If blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
+   - If markdown blocks detected (lines starting with '- ') → parse as block tree
+   - Otherwise → inline paste"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [clojure.string :as str]))
-
-;; Sentinel for DCE prevention - referenced by spec.runner
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 
@@ -20,12 +24,7 @@
 
 (defn- split-by-blank-lines
   "Split text by blank lines (two or more newlines).
-   Returns vector of paragraphs (strings).
-
-   Examples:
-   'Hello\\nWorld' → ['Hello\\nWorld']
-   'Para1\\n\\nPara2' → ['Para1' 'Para2']
-   'A\\n\\nB\\n\\nC' → ['A' 'B' 'C']"
+   Returns vector of paragraphs (strings)."
   [text]
   (vec (str/split text #"\n\n+")))
 
@@ -34,54 +33,10 @@
   [text]
   (boolean (re-find #"\n\n" text)))
 
-#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for smart paste
-(defn- detect-list-marker
-  "Detect list marker at start of text.
-   Returns {:type :bullet|:numbered|:checkbox :marker string :content string}
-   or nil if no list marker."
-  [text]
-  (cond
-    ;; Checkbox: [ ] or [x] or [X]
-    (re-matches #"^(- \[[xX ]\] )(.*)$" text)
-    (let [[_ marker content] (re-matches #"^(- \[[xX ]\] )(.*)$" text)]
-      {:type :checkbox
-       :marker marker
-       :content content})
-
-    ;; Numbered list: 1. 2. 3. etc.
-    (re-matches #"^(\d+\. )(.*)$" text)
-    (let [[_ marker content] (re-matches #"^(\d+\. )(.*)$" text)]
-      {:type :numbered
-       :marker marker
-       :content content})
-
-    ;; Bullet list: - or * or +
-    (re-matches #"^([-*+] )(.*)$" text)
-    (let [[_ marker content] (re-matches #"^([-*+] )(.*)$" text)]
-      {:type :bullet
-       :marker marker
-       :content content})
-
-    :else nil))
-
 (defn- indent-string
   "Generate indentation string of N tabs."
   [n]
   (str/join (repeat n "\t")))
-
-#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for hierarchical copy
-(defn- block-depth
-  "Get depth of a block relative to a given root.
-   Returns 0 for immediate children of root, 1 for grandchildren, etc."
-  [db block-id root-id]
-  (loop [current-id block-id
-         depth 0]
-    (let [parent-id (get-in db [:derived :parent-of current-id])]
-      (cond
-        (= current-id root-id) depth
-        (nil? parent-id) depth
-        (= parent-id root-id) 0
-        :else (recur parent-id (inc depth))))))
 
 (defn- collect-block-tree
   "Collect a block and all its descendants in pre-order.
@@ -91,24 +46,14 @@
     (cons {:id block-id :depth base-depth}
           (mapcat #(collect-block-tree db % (inc base-depth)) children))))
 
-#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for multi-block copy
-(defn- find-common-parent
-  "Find the common parent of a set of block IDs."
-  [db block-ids]
-  (when (seq block-ids)
-    (let [first-id (first block-ids)
-          first-parent (get-in db [:derived :parent-of first-id])]
-      ;; Check if all blocks have the same parent
-      (if (every? #(= first-parent (get-in db [:derived :parent-of %])) block-ids)
-        first-parent
-        ;; Fall back to doc root if different parents
-        :doc))))
-
-(defn- blocks-to-text-with-hierarchy
-  "Convert blocks to text preserving hierarchy.
+(defn- blocks-to-markdown
+  "Convert blocks to markdown text preserving hierarchy.
    Each level of indentation uses a tab character.
+   Format: each block prefixed with '- ' (Logseq markdown format).
 
-   Logseq parity: Multi-block copy preserves relative indentation."
+   Returns {:text string :blocks vector} where:
+   - :text is markdown for external apps
+   - :blocks is block data for internal paste"
   [db block-ids]
   (let [id-set (set block-ids)
         ;; Collect trees, skipping blocks whose parents are also selected
@@ -118,28 +63,142 @@
                         (mapcat #(collect-block-tree db % 0))
                         vec)
         ;; Normalize depths to start at 0
-        min-depth (apply min (map :depth all-blocks))]
-    ;; Build indented text
-    (->> all-blocks
-         (map (fn [{:keys [id depth]}]
-                (str (indent-string (- depth min-depth)) "- " (get-block-text db id))))
-         (str/join "\n"))))
+        min-depth (if (seq all-blocks)
+                    (apply min (map :depth all-blocks))
+                    0)
+        ;; Build markdown text
+        markdown (->> all-blocks
+                      (map (fn [{:keys [id depth]}]
+                             (str (indent-string (- depth min-depth))
+                                  "- "
+                                  (get-block-text db id))))
+                      (str/join "\n"))
+        ;; Build block data for internal format
+        block-data (mapv (fn [{:keys [id depth]}]
+                           {:id id
+                            :depth (- depth min-depth)
+                            :text (get-block-text db id)})
+                         all-blocks)]
+    {:text markdown
+     :blocks block-data}))
+
+;; ── Markdown Parsing ──────────────────────────────────────────────────────────
+
+(defn- markdown-blocks?
+  "Check if text looks like markdown block list.
+   Matches lines starting with optional whitespace + '- ' or '* ' or '+ '."
+  [text]
+  (boolean (re-find #"(?m)^\s*[-*+]\s+" text)))
+
+(defn- parse-markdown-line
+  "Parse a single markdown line into {:depth :text}.
+   Counts leading tabs/spaces for depth, strips list marker."
+  [line]
+  (let [;; Count leading whitespace (tabs = 1 depth, 2 spaces = 1 depth)
+        leading (re-find #"^[\t ]*" line)
+        tabs (count (filter #(= % \tab) leading))
+        spaces (count (filter #(= % \space) leading))
+        depth (+ tabs (quot spaces 2))
+        ;; Strip leading whitespace and list marker
+        content (str/replace line #"^[\t ]*[-*+]\s*" "")]
+    {:depth depth
+     :text (str/trim content)}))
+
+(defn- parse-markdown-blocks
+  "Parse markdown text into block tree structure.
+   Returns vector of {:depth :text} maps.
+
+   Input format (Logseq-style):
+   - Block 1
+   \t- Child 1.1
+   \t- Child 1.2
+   - Block 2
+
+   Lines without list markers are treated as continuations (appended to previous)."
+  [text]
+  (let [lines (str/split-lines text)]
+    (->> lines
+         (filter #(re-find #"^\s*[-*+]\s+" %)) ; Only process list items
+         (mapv parse-markdown-line))))
+
+(defn- blocks-to-ops
+  "Convert parsed blocks into kernel operations.
+   Handles hierarchy by tracking parent stack and last sibling at each depth.
+
+   Returns {:ops [...] :last-block-id string}"
+  [parsed-blocks parent-id after-id]
+  (if (empty? parsed-blocks)
+    {:ops [] :last-block-id after-id}
+    (loop [blocks parsed-blocks
+           ops []
+           ;; Stack of {:depth :parent-id :last-sibling-id} maps for tracking nesting
+           ;; last-sibling-id tracks the most recent block at this depth for :after placement
+           parent-stack [{:depth 0 :parent-id parent-id :last-sibling-id after-id}]
+           last-id after-id]
+      (if (empty? blocks)
+        {:ops ops :last-block-id last-id}
+        (let [{:keys [depth text]} (first blocks)
+              new-id (str "block-" (random-uuid))
+
+              ;; Pop stack until we find a depth less than current
+              stack' (loop [s parent-stack]
+                       (if (and (> (count s) 1)
+                                (>= (:depth (first s)) depth))
+                         (recur (rest s))
+                         s))
+
+              current-frame (first stack')
+              prev-depth (:depth current-frame)
+
+              ;; Determine parent and placement
+              [actual-parent place-after]
+              (cond
+                ;; Going deeper: parent is the last block we created, place as first child
+                (> depth prev-depth)
+                [last-id nil]
+
+                ;; Same or shallower: use the stack frame's parent and last sibling
+                :else
+                [(:parent-id current-frame) (:last-sibling-id current-frame)])
+
+              ;; Create the block
+              create-op {:op :create-node
+                         :id new-id
+                         :type :block
+                         :props {:text text}}
+
+              ;; Place operation
+              place-op {:op :place
+                        :id new-id
+                        :under actual-parent
+                        :at (if place-after
+                              {:after place-after}
+                              :first)}
+
+              ;; Update stack: push new frame if going deeper, update last-sibling otherwise
+              new-stack (if (> depth prev-depth)
+                          ;; Push new frame for this depth level
+                          (cons {:depth depth :parent-id actual-parent :last-sibling-id new-id} stack')
+                          ;; Update current frame's last-sibling
+                          (cons (assoc current-frame :last-sibling-id new-id) (rest stack')))]
+
+          (recur (rest blocks)
+                 (conj ops create-op place-op)
+                 new-stack
+                 new-id))))))
 
 ;; ── Intent Implementations ────────────────────────────────────────────────────
 
 (intent/register-intent! :paste-text
                          {:doc "Paste text into editing block (Logseq parity).
 
-         Behaviors (FR-Clipboard-03):
-         - No blank lines → insert as-is (newlines become literal \\n)
-         - Has blank lines → split into multiple blocks
-         - Preserve list markers and checkboxes
+         Detection order:
+         1. If has blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
+         2. If text looks like markdown blocks → parse as hierarchy
+         3. Otherwise → inline paste
 
-         Algorithm:
-         1. Split pasted text by blank lines (\\n\\n+)
-         2. First paragraph → update current block
-         3. Remaining paragraphs → create new blocks below
-         4. Preserve list markers from pasted text"
+         Blank lines take precedence because they indicate explicit paragraph breaks.
+         Markdown parsing (which strips list markers) only applies to continuous lists."
 
                           :fr/ids #{:fr.clipboard/paste-multiline}
 
@@ -153,42 +212,24 @@
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text]}]
                             (let [current-text (get-block-text db block-id)
-                                  ;; Handle selection range - selection-end defaults to cursor-pos (no selection)
                                   sel-end (or selection-end cursor-pos)
                                   before (subs current-text 0 cursor-pos)
                                   after (subs current-text sel-end)
                                   parent (get-in db [:derived :parent-of block-id])]
 
                               (cond
-                                ;; No blank lines → simple inline paste
-                                (not (has-blank-lines? pasted-text))
-                                (let [new-text (str before pasted-text after)
-                                      new-cursor-pos (+ cursor-pos (count pasted-text))]
-                                  {:ops [{:op :update-node
-                                          :id block-id
-                                          :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position new-cursor-pos}}})
-
-                                ;; Has blank lines → split into multiple blocks
-                                :else
+                                ;; Case 1: Has blank lines → split into sibling blocks (preserves raw text)
+                                ;; This takes precedence because blank lines indicate explicit paragraph breaks
+                                (has-blank-lines? pasted-text)
                                 (let [paragraphs (split-by-blank-lines pasted-text)
                                       first-para (first paragraphs)
                                       remaining-paras (rest paragraphs)
-
-                                      ;; Update current block with before + first paragraph
                                       first-block-text (str before first-para)
-
-                                      ;; Create ops for remaining paragraphs
                                       new-block-ids (repeatedly (count remaining-paras)
                                                                 #(str "block-" (random-uuid)))
-
-                                      ;; Build operations
                                       update-current-op {:op :update-node
                                                          :id block-id
                                                          :props {:text first-block-text}}
-
-                                      ;; Create new blocks with preserved markers
                                       create-ops (mapv (fn [para new-id]
                                                          {:op :create-node
                                                           :id new-id
@@ -196,8 +237,6 @@
                                                           :props {:text (str/trim para)}})
                                                        remaining-paras
                                                        new-block-ids)
-
-                                      ;; Place new blocks after current block
                                       place-ops (mapv (fn [new-id prev-id]
                                                         {:op :place
                                                          :id new-id
@@ -205,44 +244,78 @@
                                                          :at {:after prev-id}})
                                                       new-block-ids
                                                       (cons block-id (drop-last new-block-ids)))
-
-                                      ;; Position cursor after paste
-                                      ;; If there's text after cursor, keep editing current block
-                                      ;; Otherwise, move to last created block
-                                      final-block-id (if (empty? after)
+                                      ;; Compute final position from actual text, not DB
+                                      final-block-id (if (seq new-block-ids)
                                                        (last new-block-ids)
                                                        block-id)
-                                      final-cursor-pos (if (empty? after)
+                                      final-cursor-pos (if (seq new-block-ids)
                                                          (count (str/trim (last remaining-paras)))
                                                          (count first-block-text))]
-
                                   {:ops (vec (concat [update-current-op] create-ops place-ops))
                                    :session-updates {:ui {:editing-block-id final-block-id
-                                                          :cursor-position final-cursor-pos}}}))))})
+                                                          :cursor-position final-cursor-pos}}})
+
+                                ;; Case 2: Markdown blocks detected → parse as hierarchy
+                                ;; Only applies to continuous lists without blank line breaks
+                                (markdown-blocks? pasted-text)
+                                (let [parsed (parse-markdown-blocks pasted-text)
+                                      ;; If there's text before cursor, append first block to it
+                                      ;; Otherwise replace current block content
+                                      first-block-text (if (str/blank? before)
+                                                         (:text (first parsed))
+                                                         (str before (:text (first parsed))))
+                                      remaining-parsed (rest parsed)
+                                      ;; The text that will be in the current block after update
+                                      current-block-final-text (str first-block-text after)
+                                      ;; Update current block with first paragraph + any trailing text
+                                      update-op {:op :update-node
+                                                 :id block-id
+                                                 :props {:text current-block-final-text}}
+                                      ;; Create remaining blocks after current
+                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id)
+                                      ;; Determine final block and cursor position from COMPUTED text, not DB
+                                      final-id (or last-block-id block-id)
+                                      final-cursor-pos (if last-block-id
+                                                         ;; New block: cursor at end of last parsed block's text
+                                                         (count (:text (last remaining-parsed)))
+                                                         ;; Same block: cursor at end of first-block-text (before 'after')
+                                                         (count first-block-text))]
+                                  {:ops (vec (cons update-op ops))
+                                   :session-updates {:ui {:editing-block-id final-id
+                                                          :cursor-position final-cursor-pos}}})
+
+                                ;; Case 3: Simple inline paste
+                                :else
+                                (let [new-text (str before pasted-text after)
+                                      new-cursor-pos (+ cursor-pos (count pasted-text))]
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position new-cursor-pos}}}))))})
 
 (intent/register-intent! :copy-block
-                         {:doc "Copy single block content to clipboard.
-
-         Returns nil (actual clipboard operation must be handled by UI layer
-         using browser Clipboard API)."
+                         {:doc "Copy single block content to clipboard."
                           :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
-                                     ;; Return block text in clipboard-compatible format
-                                     ;; UI layer will handle navigator.clipboard.writeText()
                                      (let [text (get-block-text db block-id)]
-                                       {:session-updates {:ui {:clipboard-text text}}}))})
+                                       {:session-updates {:ui {:clipboard-text text
+                                                               :clipboard-blocks [{:id block-id
+                                                                                   :depth 0
+                                                                                   :text text}]}}}))})
 
 (intent/register-intent! :copy-selected
                          {:doc "Copy selected blocks with hierarchy preservation.
 
+         Returns both:
+         - :clipboard-text - Markdown text for external apps
+         - :clipboard-blocks - Block data for internal paste
+
          Logseq parity:
          - Multi-block selection copies all selected blocks + descendants
          - Preserves relative indentation using tabs
-         - Format: each block prefixed with '- ' (list format)
-
-         If no selection, copies current editing block.
-         UI layer handles navigator.clipboard.writeText()."
+         - Format: each block prefixed with '- ' (list format)"
 
                           :fr/ids #{:fr.clipboard/copy-block}
 
@@ -254,16 +327,20 @@
                                                        editing-id [editing-id]
                                                        :else [])]
                                        (if (seq block-ids)
-                                         (let [text (if (= 1 (count block-ids))
-                                                      ;; Single block: just the text (no formatting)
-                                                      (get-block-text db (first block-ids))
-                                                      ;; Multiple blocks: formatted with hierarchy
-                                                      (blocks-to-text-with-hierarchy db block-ids))]
-                                           {:session-updates {:ui {:clipboard-text text}}})
+                                         (let [{:keys [text blocks]} (if (= 1 (count block-ids))
+                                                                       ;; Single block: just the text (no formatting)
+                                                                       {:text (get-block-text db (first block-ids))
+                                                                        :blocks [{:id (first block-ids)
+                                                                                  :depth 0
+                                                                                  :text (get-block-text db (first block-ids))}]}
+                                                                       ;; Multiple blocks: formatted with hierarchy
+                                                                       (blocks-to-markdown db block-ids))]
+                                           {:session-updates {:ui {:clipboard-text text
+                                                                   :clipboard-blocks blocks}}})
                                          {:session-updates {}})))})
 
 (intent/register-intent! :cut-block
-                         {:doc "Cut single block (copy + delete)."
+                         {:doc "Cut single block (copy + move to trash)."
                           :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
@@ -272,7 +349,10 @@
                                                :id block-id
                                                :under const/root-trash
                                                :at :last}]
-                                        :session-updates {:ui {:clipboard-text text}}}))})
+                                        :session-updates {:ui {:clipboard-text text
+                                                               :clipboard-blocks [{:id block-id
+                                                                                   :depth 0
+                                                                                   :text text}]}}}))})
 
 (intent/register-intent! :cut-selected
                          {:doc "Cut selected blocks with hierarchy preservation.
@@ -280,9 +360,7 @@
          Logseq parity:
          - Copies selected blocks + descendants with hierarchy
          - Moves all selected blocks to trash
-         - Clears selection after cut
-
-         If no selection, cuts current editing block."
+         - Clears selection after cut"
 
                           :fr/ids #{:fr.clipboard/copy-block}
 
@@ -294,11 +372,12 @@
                                                        editing-id [editing-id]
                                                        :else [])]
                                        (if (seq block-ids)
-                                         (let [;; Copy text with hierarchy
-                                               text (if (= 1 (count block-ids))
-                                                      (get-block-text db (first block-ids))
-                                                      (blocks-to-text-with-hierarchy db block-ids))
-                                               ;; Delete ops for all selected blocks
+                                         (let [{:keys [text blocks]} (if (= 1 (count block-ids))
+                                                                       {:text (get-block-text db (first block-ids))
+                                                                        :blocks [{:id (first block-ids)
+                                                                                  :depth 0
+                                                                                  :text (get-block-text db (first block-ids))}]}
+                                                                       (blocks-to-markdown db block-ids))
                                                delete-ops (mapv (fn [id]
                                                                   {:op :place
                                                                    :id id
@@ -307,8 +386,15 @@
                                                                 block-ids)]
                                            {:ops delete-ops
                                             :session-updates {:ui {:clipboard-text text
+                                                                   :clipboard-blocks blocks
                                                                    :editing-block-id nil}
                                                               :selection {:nodes #{}
                                                                           :focus nil
                                                                           :anchor nil}}})
                                          {:session-updates {}})))})
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

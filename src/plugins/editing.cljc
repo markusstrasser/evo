@@ -391,3 +391,10 @@
                                            #?(:cljs (js/console.log "Killed:" (subs block-text prev-pos cursor-pos)))
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                             :session-updates {:ui {:cursor-position prev-pos}}}))))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

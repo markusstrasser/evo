@@ -236,3 +236,10 @@
                                        {:session-updates {:ui {:quick-switcher (when-not visible?
                                                                                  {:query ""
                                                                                   :selected-idx 0})}}}))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

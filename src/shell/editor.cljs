@@ -263,6 +263,30 @@
              (not (.-altKey e)))
         nil ;; Let event bubble to Block component
 
+      ;; CLIPBOARD: Cmd+V paste in non-editing mode (async clipboard read)
+      ;; When a block is focused but not being edited, paste replaces block content
+      ;; or creates new blocks from clipboard markdown
+        (and mod?
+             (= key "v")
+             (not shift?)
+             focus-id
+             (not editing?))
+        (do
+          (.preventDefault e)
+          ;; Async clipboard read - dispatch intent when data arrives
+          (-> (js/navigator.clipboard.readText)
+              (.then (fn [text]
+                       (when (and text (pos? (count text)))
+                         ;; Enter edit mode and paste at cursor 0
+                         ;; This triggers markdown parsing via :paste-text intent
+                         (handle-intent {:type :paste-text
+                                         :block-id focus-id
+                                         :cursor-pos 0
+                                         :selection-end (count (get-in db [:nodes focus-id :props :text] ""))
+                                         :pasted-text text}))))
+              (.catch (fn [err]
+                        (js/console.error "Clipboard read failed:" err)))))
+
       ;; LOGSEQ_SPEC §7.2: Cmd+A cycle in editing mode
       ;; First press → browser select-all (let event through)
       ;; Second press (all text selected) → exit edit, select block

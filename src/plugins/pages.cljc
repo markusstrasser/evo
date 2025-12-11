@@ -8,6 +8,7 @@
   (:require [clojure.string :as str]
             [kernel.intent :as intent]
             [kernel.query :as q]
+            [kernel.constants :as const]
             [plugins.context :as ctx]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -164,23 +165,23 @@
           (mapcat #(collect-descendants db %) children))))
 
 (defn- handle-delete-page
-  "Delete a page and all its contents.
+  "Delete a page and all its contents by moving to trash.
    If deleting the current page, switches to another page."
   [db session {:keys [page-id]}]
   (when page-id
     (let [current-page-id (current-page session)
           pages (all-pages db)
-          ;; Get all child blocks to delete
+          ;; Get all child blocks to trash
           descendants (collect-descendants db page-id)
           ;; Figure out which page to switch to if deleting current
           other-pages (remove #{page-id} pages)
           next-page (first other-pages)
           deleting-current? (= page-id current-page-id)]
       {:ops (into
-             ;; Delete all descendants first (bottom-up would be safer but bulk delete works)
-             (mapv (fn [id] {:op :delete :id id}) descendants)
-             ;; Then delete the page itself
-             [{:op :delete :id page-id}])
+             ;; Move all descendants to trash first
+             (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last}) descendants)
+             ;; Then move the page itself to trash
+             [{:op :place :id page-id :under const/root-trash :at :last}])
        ;; If we deleted the current page, switch to another
        :session-updates (when deleting-current?
                           {:ui {:current-page next-page}})})))
@@ -226,3 +227,10 @@
                               (case (:type context)
                                 :page-ref (navigate-or-create-page db (:page-name context))
                                 nil)))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
