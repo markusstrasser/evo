@@ -137,6 +137,30 @@ as a parameter, leading to `null` returns instead of errors.
 
 ---
 
+## Dataspex State Inspection
+
+### track-changes? Causes Memory Leaks
+
+❌ **Wrong:**
+```clojure
+;; This accumulates unbounded change history!
+(dataspex/inspect "App DB" !db {:track-changes? true})
+```
+
+✅ **Correct:**
+```clojure
+;; No options = no change tracking = no leak
+(dataspex/inspect "App DB" !db)
+```
+
+**Symptoms:** App slows to halt after heavy clipboard/editing use. Memory grows unboundedly.
+
+**Why:** `{:track-changes? true}` records every state change forever. With high-frequency operations (typing, paste, undo/redo), this accumulates rapidly.
+
+**Fix:** Remove `:track-changes?` option. If you need change tracking, implement bounded history yourself.
+
+---
+
 ## Tool Usage
 
 ### Always Read Before Edit

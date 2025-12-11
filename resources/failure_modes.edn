@@ -358,4 +358,36 @@
    :related [:replicant-lifecycle-inversion]
    :verified true
    :discovery-date "2025-12-04"
-   :example-fix "src/shell/blocks_ui.cljs - session before db reset"}}}
+   :example-fix "src/shell/blocks_ui.cljs - session before db reset"}
+
+  :paste-depth-gaps
+  {:name "Paste Creates Wrong Hierarchy Due to Depth Gaps"
+   :severity :high
+   :symptoms
+   ["Pasted siblings become parent-child"
+    "Block indentation wrong after paste"
+    "Depth 0 → Depth 2 without Depth 1 in between"
+    "4 spaces parsed as depth 2, skipping depth 1"]
+   :root-causes
+   ["parse-markdown-line counts raw whitespace: tabs + (spaces / 2)"
+    "4 spaces = depth 2, but user expects depth 1 (one level)"
+    "blocks-to-ops trusts parsed depths literally"
+    "No normalization of depth gaps"]
+   :detection
+   ["Paste '- a\\n    - b' and check if b is child or grandchild"
+    "REPL: (#'clip/parse-markdown-blocks text) shows depth gaps"
+    "Parsed depths: [{:depth 0} {:depth 2}] instead of [{:depth 0} {:depth 1}]"]
+   :fixes
+   ["Normalize depths after parsing - close gaps"
+    "Map raw depths to sequential 0,1,2,3..."
+    "Or change parse to treat any whitespace as +1 depth"]
+   :tests
+   ["Paste with 2-space indent → depth 1"
+    "Paste with 4-space indent → depth 1 (not 2)"
+    "Siblings at same raw depth stay siblings"]
+   :prevention
+   "Test paste with various whitespace: tabs, 2-space, 4-space"
+   :related []
+   :verified false
+   :discovery-date "2025-12-11"
+   :example-input "- def\\n    - ghj → should be parent-child, not grandparent-grandchild"}}}
