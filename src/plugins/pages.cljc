@@ -1,53 +1,22 @@
 (ns plugins.pages
   "Page management plugin for multi-page support.
 
-   Provides:
-   - Intent handlers for switching pages
-   - Query helpers for current page
-   - Page creation and navigation"
+   Provides intent handlers for:
+   - Switching pages
+   - Page creation and navigation
+   - Deleting pages
+   - Following links
+
+   Query helpers (all-pages, page-title, find-page-by-name) moved to kernel.query."
   (:require [clojure.string :as str]
             [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
-            [plugins.context :as ctx]))
+            [utils.text-context :as ctx]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
-;; ── Query Helpers ─────────────────────────────────────────────────────────────
-
-(defn current-page
-  "Get ID of the currently active page from session/ui state."
-  [session]
-  (get-in session [:ui :current-page]))
-
-(defn all-pages
-  "Get list of all page IDs (direct children of :doc root)."
-  [db]
-  (q/children db :doc))
-
-(defn page-title
-  "Get title of a page by ID."
-  [db page-id]
-  (get-in db [:nodes page-id :props :title] "Untitled"))
-
-(defn find-page-by-name
-  "Find page ID by title (case-insensitive).
-
-   Returns nil if page not found."
-  [db page-name]
-  (when page-name
-    (let [normalized-name (-> page-name
-                              str/trim
-                              str/lower-case)
-          pages (all-pages db)]
-      (->> pages
-           (filter (fn [page-id]
-                     (let [title (page-title db page-id)]
-                       (= normalized-name
-                          (-> title
-                              str/trim
-                              str/lower-case)))))
-           first))))
+;; ── Internal Helpers ──────────────────────────────────────────────────────────
 
 (defn- extract-page-refs
   "Extract all [[page]] references from text.
@@ -60,7 +29,9 @@
            set))))
 
 (defn find-backlinks
-  "Find all blocks that reference a given page.
+  "DEPRECATED: Use plugins.backlinks-index/get-backlinks for O(1) lookup.
+   
+   Find all blocks that reference a given page (O(n) scan).
    
    Returns a list of maps:
    {:block-id \"...\"
@@ -112,7 +83,7 @@
                                       {:block-id block-id
                                        :block-text text
                                        :page-id source-page-id
-                                       :page-title (page-title db source-page-id)})))))))]
+                                       :page-title (q/page-title db source-page-id)})))))))]
       ;; Filter out blocks from the current page (don't show self-references)
       (remove (fn [backlink]
                 (= (str/lower-case (or (:page-title backlink) ""))
@@ -133,7 +104,7 @@
    
    Returns intent result with :ops (for new page) and :session-updates."
   [db page-name]
-  (if-let [page-id (find-page-by-name db page-name)]
+  (if-let [page-id (q/find-page-by-name db page-name)]
     ;; Page exists - just navigate
     {:session-updates {:ui {:current-page page-id}}}
     ;; Page doesn't exist - create it and navigate
@@ -169,8 +140,8 @@
    If deleting the current page, switches to another page."
   [db session {:keys [page-id]}]
   (when page-id
-    (let [current-page-id (current-page session)
-          pages (all-pages db)
+    (let [current-page-id (q/current-page session)
+          pages (q/all-pages db)
           ;; Get all child blocks to trash
           descendants (collect-descendants db page-id)
           ;; Figure out which page to switch to if deleting current
@@ -227,7 +198,6 @@
                               (case (:type context)
                                 :page-ref (navigate-or-create-page db (:page-name context))
                                 nil)))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

@@ -33,7 +33,8 @@
             [plugins.text-formatting :as p-text-formatting]
             [plugins.autocomplete :as p-autocomplete]
             ;; Derived index plugins (register with plugins.registry)
-            [plugins.visible-order :as p-visible-order]))
+            [plugins.visible-order :as p-visible-order]
+            [plugins.backlinks-index :as p-backlinks-index]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Plugin Loading (prevents DCE - dead code elimination)
@@ -54,7 +55,8 @@
        p-pages/loaded?
        p-text-formatting/loaded?
        p-autocomplete/loaded?
-       p-visible-order/loaded?))
+       p-visible-order/loaded?
+       p-backlinks-index/loaded?))
 
 ;; Runtime check - ensures DCE doesn't eliminate the sentinel check
 (assert plugins-loaded? "All plugins must be loaded for spec runner")

@@ -1,9 +1,9 @@
-(ns plugins.context-test
+(ns utils.text-context-test
   "Unit tests for context detection.
 
    Tests all context detection functions according to TEXT_EDITING_TESTING_STRATEGY.md"
   (:require [clojure.test :refer [deftest testing is]]
-            [plugins.context :as ctx]))
+            [utils.text-context :as ctx]))
 
 ;; ── Markup Detection Tests ────────────────────────────────────────────────────
 
@@ -245,7 +245,7 @@
 
   (testing "Complex mixed content - bold wins"
     (let [text "**bold with [[ref]]**"
-          result (ctx/context-at-cursor text 15)]  ; Inside [[ref]] but also inside **
+          result (ctx/context-at-cursor text 15)] ; Inside [[ref]] but also inside **
       (is (= :markup (:type result)))))
 
   (testing "Complex mixed content - ref when outside bold"
@@ -264,13 +264,13 @@
 
   (testing "Nested markup (inner wins)"
     (let [text "__outer **inner** outer__"
-          result (ctx/context-at-cursor text 12)]  ; Inside **inner**
+          result (ctx/context-at-cursor text 12)] ; Inside **inner**
       (is (= :markup (:type result)))
       (is (= "**" (:marker result)))))
 
   (testing "Adjacent markup regions"
     (let [text "**first****second**"]
-      (is (= 0 (:start (ctx/context-at-cursor text 2))))   ; In first
+      (is (= 0 (:start (ctx/context-at-cursor text 2)))) ; In first
       (is (= 8 (:start (ctx/context-at-cursor text 10)))))) ; In second (cursor after ****)
 
   (testing "Markup spanning multiple lines"
