@@ -436,6 +436,24 @@
   (js/console.log "View state:")
   (js/console.log (clj->js @!view-state)))
 
+;; ── Clipboard State ──────────────────────────────────────────────────────────
+
+(defn clipboard-blocks
+  "Get internal clipboard blocks (preserves hierarchy from copy/cut).
+   Returns vector of {:depth :text} maps, or nil if not set."
+  []
+  (get-in @!view-state [:ui :clipboard-blocks]))
+
+(defn clipboard-text
+  "Get clipboard text (markdown format for external paste)."
+  []
+  (get-in @!view-state [:ui :clipboard-text]))
+
+(defn clear-clipboard!
+  "Clear clipboard state."
+  []
+  (swap-view-state! update :ui dissoc :clipboard-blocks :clipboard-text))
+
 (defn clear-view-state!
   "Clear all view state (for testing/debugging)."
   []
