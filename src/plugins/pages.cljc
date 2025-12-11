@@ -11,7 +11,6 @@
             [plugins.context :as ctx]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Query Helpers ─────────────────────────────────────────────────────────────
 

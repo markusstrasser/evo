@@ -17,7 +17,6 @@
             [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention
-(def loaded? true)
 
 ;; ── Multimethod Protocol ──────────────────────────────────────────────────────
 ;; Extend these to add new autocomplete sources (block-refs, commands, tags, etc.)

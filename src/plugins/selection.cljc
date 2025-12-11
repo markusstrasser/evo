@@ -19,7 +19,6 @@
             [kernel.navigation :as nav]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Pure Selection Property Calculators ──────────────────────────────────────
 
