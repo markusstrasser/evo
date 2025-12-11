@@ -894,10 +894,11 @@
   (add-watch !storage-status :render (fn [_ _ _ _] (request-render!)))
 
 ;; Initialize Dataspex for state inspection
-  (dataspex/inspect "App DB" !db {:track-changes? true})
-  (dataspex/inspect "View State" vs/!view-state {:track-changes? true})
-  (dataspex/inspect "Dispatch Log" tooling/!log {:track-changes? true})
-  (dataspex/inspect "Clipboard Log" tooling/!clipboard-log {:track-changes? true})
+  ;; NOTE: track-changes disabled to prevent memory accumulation during heavy use
+  (dataspex/inspect "App DB" !db)
+  (dataspex/inspect "View State" vs/!view-state)
+  (dataspex/inspect "Dispatch Log" tooling/!log)
+  (dataspex/inspect "Clipboard Log" tooling/!clipboard-log)
 
   ;; Install queryable DEBUG API for AI tools and E2E tests
   (debug-api/install! !db)
