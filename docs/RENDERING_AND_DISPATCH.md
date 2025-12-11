@@ -303,6 +303,18 @@ Component Re-renders         <-- Replicant diffs & patches DOM
 
 **Why:** Component describes the event, plugin decides what ops to apply.
 
+### Pattern: Nexus Guards the Plugin Surface
+
+- Treat Nexus actions as the only bridge from DOM context → kernel intents.
+- Actions collect DOM-only facts (cursor offsets, selection ranges, caret rows) and emit pure intent maps.
+- Plugins never touch the DOM—if an intent needs new context, introduce a Nexus action/placeholder instead of threading DOM refs through handlers.
+- When designing new features, ask “does this require DOM data?” → if yes, add a Nexus action; if no, go straight to an intent.
+
+**Benefits:**
+- Keeps plugins pure and REPL-friendly.
+- Makes DOM contracts explicit (documented via `nexus.registry` placeholders).
+- Enables third-party or automated plugin authors to reason about inputs without needing DOM APIs.
+
 ### Pattern: Lifecycle Hooks for DOM Interaction
 
 We use `:replicant/on-render` for **ephemeral DOM state only**:

@@ -17,7 +17,7 @@
 ;; This is necessary because other tests (registry_test) may clear the registry.
 (use-fixtures :each
   (fn [f]
-    (registry/register! :visible-order vo/compute-visible-order)
+    (registry/register-derived! :visible-order vo/compute-visible-order)
     (f)))
 
 (defn apply-ops
