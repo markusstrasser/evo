@@ -89,7 +89,15 @@
 
     ;; CLIPBOARD: Write to system clipboard if copy/cut operation set clipboard-text
     (when-let [clipboard-text (get-in session-updates [:ui :clipboard-text])]
-      (write-to-clipboard! clipboard-text))
+      (write-to-clipboard! clipboard-text)
+      ;; Record for debug API - extract block IDs from clipboard-blocks if available
+      (let [clipboard-blocks (get-in session-updates [:ui :clipboard-blocks])
+            block-ids (mapv :id clipboard-blocks)
+            op-type (cond
+                      (#{:copy-block :copy-selected} intent-type) :copy
+                      (#{:cut-block :cut-selected} intent-type) :cut
+                      :else :unknown)]
+        (dev/record-clipboard-op! op-type clipboard-text block-ids)))
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
