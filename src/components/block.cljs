@@ -1122,6 +1122,8 @@
            ;; Paste: Multi-paragraph splitting (Logseq parity)
            ;; CRITICAL: For simple inline paste, update DOM/buffer/cursor directly.
            ;; For multi-block paste (markdown/blank lines), let the intent handle it.
+           ;; INTERNAL FORMAT: When pasting from our own copy/cut, use clipboard-blocks
+           ;; which preserves exact hierarchy (siblings stay siblings).
            :paste (fn [e]
                     (.preventDefault e)
                     (let [target (.-target e)
@@ -1132,10 +1134,16 @@
                           focus-offset (.-focusOffset selection)
                           selection-start (min anchor-offset focus-offset)
                           selection-end (max anchor-offset focus-offset)
+                          ;; Check if this paste matches our internal clipboard
+                          ;; (same text means it came from our copy/cut)
+                          internal-text (vs/clipboard-text)
+                          internal-blocks (vs/clipboard-blocks)
+                          use-internal? (and (seq internal-blocks)
+                                             (= pasted-text internal-text))
                           ;; Detect multi-block paste (markdown or blank lines)
                           is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
                           has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
-                          is-multi-block? (or is-markdown? has-blank-lines?)
+                          is-multi-block? (or use-internal? is-markdown? has-blank-lines?)
                           current-text (extract-text-with-newlines target)]
 
                       (if is-multi-block?
@@ -1147,11 +1155,13 @@
                                       :block-id block-id
                                       :text current-text})
                           ;; 2. Dispatch paste - handler updates editing-block-id & cursor
-                          (on-intent {:type :paste-text
-                                      :block-id block-id
-                                      :cursor-pos selection-start
-                                      :selection-end selection-end
-                                      :pasted-text pasted-text}))
+                          ;; Include internal clipboard-blocks if available (preserves structure)
+                          (on-intent (cond-> {:type :paste-text
+                                              :block-id block-id
+                                              :cursor-pos selection-start
+                                              :selection-end selection-end
+                                              :pasted-text pasted-text}
+                                       use-internal? (assoc :clipboard-blocks internal-blocks))))
 
                         ;; Simple inline paste: Update DOM/buffer directly for responsiveness
                         (let [before (subs current-text 0 selection-start)
