@@ -159,6 +159,38 @@ as a parameter, leading to `null` returns instead of errors.
 
 **Fix:** Remove `:track-changes?` option. If you need change tracking, implement bounded history yourself.
 
+### Dispatch Log Stores Full DB Snapshots
+
+❌ **Wrong:**
+```clojure
+;; Every log entry stores full before/after DB = 400 DB copies for 200 entries!
+(let [entry {:intent intent
+             :db-before db-before    ; Full DB snapshot
+             :db-after db-after      ; Full DB snapshot
+             :summary ...}]
+  (swap! !log conj entry))
+```
+
+✅ **Correct:**
+```clojure
+;; Store full DB separately (only last one needed for devtools DOM diff)
+(reset! !last-db-snapshot {:db-before db-before :db-after db-after})
+;; Log entry contains only summaries
+(let [entry {:intent intent
+             :summary {:before (summarize-db db-before)
+                       :after (summarize-db db-after)}}]
+  (swap! !log conj entry))
+```
+
+**Symptoms:** App becomes jaggy during copy/paste. Frames drop during any high-frequency intent operations.
+
+**Why:** With 200 log entries and each containing 2 full DB snapshots, memory grows to O(200 * 2 * DB_SIZE). Dataspex inspecting this log re-serializes all of it on every intent dispatch.
+
+**Fix:**
+1. Store full DB snapshots separately in `!last-db-snapshot` (only the most recent, for devtools)
+2. Log entries contain only lightweight summaries
+3. Remove Dataspex inspection of logs (access via REPL: `tooling/get-log`)
+
 ---
 
 ## Tool Usage

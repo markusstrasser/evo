@@ -151,22 +151,24 @@
 (defn DOMDiffPanel
   "Panel showing hiccup/DOM differences."
   [{:keys [db]}]
-  (let [log (devtools/get-log)
-        last-entry (last log)]
+  ;; Use last-db-snapshot for full DB data (only stored once, not in log)
+  ;; Log entries only contain summaries for performance
+  (let [snapshot (devtools/last-db-snapshot)
+        {:keys [db-before db-after]} snapshot]
     [:div.dom-diff-panel
      {:style panel-style}
      [:div {:style panel-header-style}
       [:h3 {:style panel-title-style}
        "🔍 DOM State Viewer"]
-      (when last-entry
+      (when snapshot
         [:button
          {:on {:click (fn [_]
                         (let [current-page (vs/current-page)
                               hiccup-before (devtools/extract-hiccup-tree
-                                             (:db-before last-entry)
+                                             db-before
                                              current-page)
                               hiccup-after (devtools/extract-hiccup-tree
-                                            (:db-after last-entry)
+                                            db-after
                                             current-page)
                               diff-text (devtools/format-hiccup-diff hiccup-before hiccup-after)]
                           (devtools/copy-to-clipboard! diff-text)
@@ -174,10 +176,10 @@
           :style (button-style "#3b82f6")}
          "📋 Copy Last Diff"])]
 
-     (if last-entry
+     (if snapshot
        (let [_current-page (vs/current-page) ; TODO: use for page-specific diff view
-             state-before (devtools/format-state-snapshot (:db-before last-entry))
-             state-after (devtools/format-state-snapshot (:db-after last-entry))
+             state-before (devtools/format-state-snapshot db-before)
+             state-after (devtools/format-state-snapshot db-after)
              scrollable-code-style (assoc code-block-style
                                           :line-height "1.6"
                                           :max-height "300px"
