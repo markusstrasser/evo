@@ -13,6 +13,7 @@
    - Otherwise → inline paste"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
+            [kernel.navigation :as nav]
             [clojure.string :as str]))
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
@@ -360,7 +361,8 @@
          Logseq parity:
          - Copies selected blocks + descendants with hierarchy
          - Moves all selected blocks to trash
-         - Clears selection after cut"
+         - Clears selection after cut
+         - Focus moves to previous block in DOM order (cursor at end)"
 
                           :fr/ids #{:fr.clipboard/copy-block}
 
@@ -378,6 +380,13 @@
                                                                                   :depth 0
                                                                                   :text (get-block-text db (first block-ids))}]}
                                                                        (blocks-to-markdown db block-ids))
+                                               ;; Find the topmost block (earliest in DOM order)
+                                               first-block-id (->> block-ids
+                                                                   (sort-by #(get-in db [:derived :pre %] 0))
+                                                                   first)
+                                               ;; Get previous block in visible order (Logseq parity)
+                                               prev-block-id (nav/prev-visible-block db first-block-id)
+                                               ;; Move all selected blocks to trash
                                                delete-ops (mapv (fn [id]
                                                                   {:op :place
                                                                    :id id
@@ -388,9 +397,15 @@
                                             :session-updates {:ui {:clipboard-text text
                                                                    :clipboard-blocks blocks
                                                                    :editing-block-id nil}
-                                                              :selection {:nodes #{}
-                                                                          :focus nil
-                                                                          :anchor nil}}})
+                                                              :selection (if prev-block-id
+                                                                           ;; Select previous block (Logseq parity)
+                                                                           {:nodes #{prev-block-id}
+                                                                            :focus prev-block-id
+                                                                            :anchor prev-block-id}
+                                                                           ;; No previous block - clear selection
+                                                                           {:nodes #{}
+                                                                            :focus nil
+                                                                            :anchor nil})}})
                                          {:session-updates {}})))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
