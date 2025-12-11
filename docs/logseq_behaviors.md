@@ -40,6 +40,16 @@ Ground truth lives in `docs/LOGSEQ_SPEC.md`; use `docs/LOGSEQ_PARITY_EVO.md` for
 
 Edge cases validated: empty/single/long text blocks, Unicode + RTL, caret position 0/end, folded parents, zoomed outlines, and selection direction flips.
 
+### Clipboard Behaviors
+| Feature | Logseq | Evo | Status | Scenario ID |
+|---------|--------|-----|--------|-------------|
+| **Cmd+C (selection)** | Copy with markdown hierarchy | ✅ Same | ✅ | CLIP-COPY-SEL-01 |
+| **Cmd+X (selection)** | Cut + focus prev block | ✅ Same | ✅ | CLIP-CUT-SEL-01 |
+| **Cmd+V (inline)** | Paste at cursor | ✅ Same | ✅ | CLIP-PASTE-INLINE-01 |
+| **Cmd+V (blank lines)** | Split into sibling blocks | ✅ Same | ✅ | CLIP-PASTE-BLANKS-01 |
+| **Cmd+V (markdown)** | Parse hierarchy | ✅ Same | ✅ | CLIP-PASTE-MD-01 |
+| **Cut focus behavior** | Previous block in DOM order | ✅ Same | ✅ | CLIP-CUT-FOCUS-01 |
+
 ## Implementation Artifacts
 - **Key files**: `src/components/block.cljs`, `src/plugins/selection.cljc`, Playwright suites under `test/e2e/`.
 - **Testing**: 23 Playwright specs (`npm run e2e -- foundational-editing-parity`) + headless CLJC tests (see `docs/TESTING.md`).
