@@ -52,3 +52,10 @@
                                                                {:block-id block-id
                                                                 :start selection-start
                                                                 :end selection-end}}}}))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

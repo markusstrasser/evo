@@ -266,3 +266,10 @@
                                   {:session-updates
                                    {:ui {:editing-block-id target-id
                                          :cursor-position actual-pos}}}))))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

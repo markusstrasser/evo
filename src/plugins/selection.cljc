@@ -397,3 +397,10 @@
                                          :else
                                          (when-let [first-block (get-first-last-visible-block db session :next)]
                                            {:session-updates {:selection (calc-select-props first-block)}}))))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

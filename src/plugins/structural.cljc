@@ -871,3 +871,10 @@
                           :handler (fn [db session {:keys [_block-id]}]
               ;; Use existing move-selected-down logic (uses selection, not block-id)
                                      (move-selected-down-ops db session))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
