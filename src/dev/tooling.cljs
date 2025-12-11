@@ -10,6 +10,10 @@
 (def ^:const max-entries 200)
 (defonce !log (atom []))
 
+;; Store only the LAST full DB snapshot (for DOM diff in devtools)
+;; All other entries only keep summaries to avoid O(n*DB_SIZE) memory growth
+(defonce ^:private !last-db-snapshot (atom nil))
+
 ;; ─── Clipboard Operation Tracking ───────────────────────────────────────────
 ;; Browser clipboard is opaque - track operations app-side for debugging
 
@@ -61,21 +65,33 @@
        vec))
 
 (defn log-dispatch!
-  "Record an intent dispatch with before/after DB snapshots.
+  "Record an intent dispatch with summaries only (not full DB).
+
+   PERFORMANCE: Full DB snapshots are stored separately in !last-db-snapshot
+   for devtools DOM diff. Log entries only contain lightweight summaries.
+   This prevents O(max-entries * DB_SIZE) memory growth.
+
    Returns nil so callers can thread through swap!/effect code."
   ([intent db-before db-after]
    (log-dispatch! intent db-before db-after nil))
   ([intent db-before db-after hotkey]
+   ;; Store full DB snapshots separately (only the last one for devtools)
+   (reset! !last-db-snapshot {:db-before db-before :db-after db-after})
+   ;; Log entry contains only summaries, not full DB
    (let [entry {:intent intent
                 :hotkey hotkey
                 :timestamp (js/Date.now)
-                :db-before db-before
-                :db-after db-after
                 :summary {:before (summarize-db db-before)
                           :after (summarize-db db-after)}}]
      (swap! !log (fn [entries]
                    (clip-log (conj entries entry))))
      nil)))
+
+(defn last-db-snapshot
+  "Get the most recent DB before/after snapshots for devtools DOM diff.
+   Returns {:db-before db :db-after db} or nil if no dispatches yet."
+  []
+  @!last-db-snapshot)
 
 (defn format-intent [intent]
   (cond

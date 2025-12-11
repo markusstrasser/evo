@@ -895,10 +895,11 @@
 
 ;; Initialize Dataspex for state inspection
   ;; NOTE: track-changes disabled to prevent memory accumulation during heavy use
+  ;; Only inspect DB and view-state (primary debugging targets)
+  ;; Logs are available via tooling/get-log and tooling/get-clipboard-log from REPL
+  ;; but not in Dataspex to avoid per-intent overhead
   (dataspex/inspect "App DB" !db)
   (dataspex/inspect "View State" vs/!view-state)
-  (dataspex/inspect "Dispatch Log" tooling/!log)
-  (dataspex/inspect "Clipboard Log" tooling/!clipboard-log)
 
   ;; Install queryable DEBUG API for AI tools and E2E tests
   (debug-api/install! !db)

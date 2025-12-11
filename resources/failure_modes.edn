@@ -390,4 +390,37 @@
    :related []
    :verified false
    :discovery-date "2025-12-11"
-   :example-input "- def\\n    - ghj → should be parent-child, not grandparent-grandchild"}}}
+   :example-input "- def\\n    - ghj → should be parent-child, not grandparent-grandchild"}
+
+  :dispatch-log-memory-leak
+  {:name "Dispatch Log Causes Frame Drops During Paste"
+   :severity :high
+   :symptoms
+   ["App becomes jaggy during copy/paste"
+    "Frames drop during high-frequency operations"
+    "Browser tab memory grows unboundedly"
+    "Devtools become sluggish after many edits"]
+   :root-causes
+   ["log-dispatch! stored FULL db-before and db-after with every entry"
+    "200 log entries × 2 DB snapshots = 400 full DB copies in memory"
+    "Dataspex inspecting !log re-serializes everything on each intent"
+    "Every paste/edit intent triggers O(log_size × DB_size) work"]
+   :detection
+   ["Chrome DevTools → Memory tab → heap snapshot during paste"
+    "Performance tab shows long scripting during paste"
+    "REPL: (count (tooling/get-log)) shows 200 entries"]
+   :fixes
+   ["Store full DB separately in !last-db-snapshot (only most recent)"
+    "Log entries contain only summaries, not full DB"
+    "Remove Dataspex inspection of !log (access via REPL instead)"
+    "Access logs from REPL: (tooling/get-log), (tooling/get-clipboard-log)"]
+   :tests
+   ["Paste 50+ lines, observe no frame drops"
+    "Memory stays bounded after heavy editing"
+    "Devtools DOM diff still works (uses last-db-snapshot)"]
+   :prevention
+   "Never store full state snapshots in rolling logs. Store references or summaries only."
+   :related [:track-changes-memory-leak]
+   :verified true
+   :discovery-date "2025-12-11"
+   :example-fix "src/dev/tooling.cljs - use !last-db-snapshot instead of log entries"}}}
