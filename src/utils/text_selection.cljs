@@ -22,6 +22,13 @@
     (.empty selection)
     (.addRange selection range)))
 
+(defn selection-present?
+  "Check if there is a non-collapsed text selection in the window.
+   Returns true if user has selected text, false otherwise."
+  []
+  (when-let [range (get-current-range)]
+    (not (.-collapsed range))))
+
 ;; ── Text Content Extraction ─────────────────────────────────────────────────
 
 (defn element->text
