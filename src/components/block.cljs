@@ -134,19 +134,62 @@
    
    Handles edge cases:
    - Empty nodes (creates text node if needed)
+   - Multi-node structures (BR elements from newlines)
    - Out-of-bounds positions (clamps to valid range)"
   [node pos]
   (when node
     ;; Ensure text node exists (empty blocks have no children after innerHTML=\"\")
     (when (zero? (.-length (.-childNodes node)))
       (.appendChild node (.createTextNode js/document "")))
-    (let [text-node (.-firstChild node)
-          text-length (count (.-textContent node))
+    (let [text-length (count (.-textContent node))
           safe-pos (-> pos (max 0) (min text-length))
           range (.createRange js/document)
           sel (.getSelection js/window)]
-      (.setStart range text-node safe-pos)
-      (.setEnd range text-node safe-pos)
+      ;; Walk through child nodes to find the right text node and offset
+      ;; This handles BR elements from newlines (each BR adds 1 to logical position)
+      (loop [children (array-seq (.-childNodes node))
+             remaining-pos safe-pos]
+        (if-let [child (first children)]
+          (let [node-type (.-nodeType child)]
+            (cond
+              ;; Text node (nodeType 3)
+              (= node-type 3)
+              (let [child-length (.-length child)]
+                (if (<= remaining-pos child-length)
+                  ;; Found the right text node
+                  (do
+                    (.setStart range child remaining-pos)
+                    (.setEnd range child remaining-pos))
+                  ;; Move to next node
+                  (recur (rest children) (- remaining-pos child-length))))
+
+              ;; BR element counts as 1 character (newline)
+              (and (= node-type 1) (= (.-tagName child) "BR"))
+              (if (zero? remaining-pos)
+                ;; Cursor right before BR - put at end of previous text or start
+                (let [prev (.-previousSibling child)]
+                  (if (and prev (= (.-nodeType prev) 3))
+                    (do
+                      (.setStart range prev (.-length prev))
+                      (.setEnd range prev (.-length prev)))
+                    (do
+                      (.setStart range node 0)
+                      (.setEnd range node 0))))
+                ;; Account for BR and continue
+                (recur (rest children) (dec remaining-pos)))
+
+              ;; Other element - skip
+              :else
+              (recur (rest children) remaining-pos)))
+          ;; No more children - put cursor at end
+          (let [last-child (.-lastChild node)]
+            (if (and last-child (= (.-nodeType last-child) 3))
+              (do
+                (.setStart range last-child (.-length last-child))
+                (.setEnd range last-child (.-length last-child)))
+              (do
+                (.setStart range node (.-length (.-childNodes node)))
+                (.setEnd range node (.-length (.-childNodes node))))))))
       (.removeAllRanges sel)
       (.addRange sel range))))
 
@@ -1078,10 +1121,8 @@
                       (handle-keydown e db block-id on-intent))
 
            ;; Paste: Multi-paragraph splitting (Logseq parity)
-           ;; CRITICAL: We must update both:
-           ;; 1. The DOM (contenteditable owns its text in edit mode)
-           ;; 2. The DB (via intent for undo/redo and multi-block paste)
-           ;; 3. The buffer (keeps DOM and buffer in sync)
+           ;; CRITICAL: For simple inline paste, update DOM/buffer/cursor directly.
+           ;; For multi-block paste (markdown/blank lines), let the intent handle it.
            :paste (fn [e]
                     (.preventDefault e)
                     (let [target (.-target e)
@@ -1089,32 +1130,50 @@
                           pasted-text (.getData clipboard-data "text/plain")
                           selection (.getSelection js/window)
                           ;; Handle selection range (not just cursor position)
-                          ;; anchorOffset = start of selection, focusOffset = end
-                          ;; When selecting backwards, anchor > focus, so use min/max
                           anchor-offset (.-anchorOffset selection)
                           focus-offset (.-focusOffset selection)
                           selection-start (min anchor-offset focus-offset)
                           selection-end (max anchor-offset focus-offset)
-                          ;; Get current text from contenteditable
-                          current-text (extract-text-with-newlines target)
-                          ;; Replace selected range with pasted text
-                          before (subs current-text 0 selection-start)
-                          after (subs current-text selection-end)
-                          ;; Build new text (selected text is replaced)
-                          new-text (str before pasted-text after)
-                          new-cursor-pos (+ selection-start (count pasted-text))]
-                      ;; 1. Update DOM directly (uncontrolled architecture)
-                      (set! (.-innerHTML target) (text->html new-text))
-                      ;; 2. Update buffer to stay in sync
-                      (vs/buffer-set! block-id new-text)
-                      ;; 3. Position cursor after pasted text
-                      (set-cursor! target new-cursor-pos)
-                      ;; 4. Dispatch intent for DB update (handles multi-block paste, undo/redo)
-                      (on-intent {:type :paste-text
-                                  :block-id block-id
-                                  :cursor-pos selection-start
-                                  :selection-end selection-end
-                                  :pasted-text pasted-text})))}}]))
+                          ;; Detect if this is multi-block paste (markdown or blank lines)
+                          ;; These cases create new blocks, so we let the intent handle everything
+                          is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
+                          has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
+                          is-multi-block? (or is-markdown? has-blank-lines?)]
+
+                      (if is-multi-block?
+                        ;; Multi-block paste: Exit edit mode and let intent handle everything
+                        ;; Intent will create proper block structure and set focus
+                        (do
+                          ;; Set flag to prevent blur from committing stale DOM text
+                          ;; (auto-clears after 200ms)
+                          (vs/keep-edit-on-blur!)
+                          ;; Exit edit mode first
+                          (on-intent {:type :exit-edit})
+                          ;; Then dispatch paste intent with full context
+                          (on-intent {:type :paste-text
+                                      :block-id block-id
+                                      :cursor-pos selection-start
+                                      :selection-end selection-end
+                                      :pasted-text pasted-text}))
+
+                        ;; Simple inline paste: Update DOM/buffer directly for responsiveness
+                        (let [current-text (extract-text-with-newlines target)
+                              before (subs current-text 0 selection-start)
+                              after (subs current-text selection-end)
+                              new-text (str before pasted-text after)
+                              new-cursor-pos (+ selection-start (count pasted-text))]
+                          ;; 1. Update DOM directly (uncontrolled architecture)
+                          (set! (.-innerHTML target) (text->html new-text))
+                          ;; 2. Update buffer to stay in sync
+                          (vs/buffer-set! block-id new-text)
+                          ;; 3. Position cursor after pasted text
+                          (set-cursor! target new-cursor-pos)
+                          ;; 4. Dispatch intent for DB update
+                          (on-intent {:type :paste-text
+                                      :block-id block-id
+                                      :cursor-pos selection-start
+                                      :selection-end selection-end
+                                      :pasted-text pasted-text})))))}}]))
 
 (defn- extract-tweet-id
   "Extract tweet ID from X/Twitter URL."
@@ -1258,8 +1317,8 @@
                                            :else
                                            (on-intent {:type :selection :mode :replace :ids block-id})))}}]
         (into [container-tag
-           (merge {:replicant/key view-key} click-handler)]
-          (render-text-with-page-refs db content on-intent))))))
+               (merge {:replicant/key view-key} click-handler)]
+              (render-text-with-page-refs db content on-intent))))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
