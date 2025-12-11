@@ -4,7 +4,10 @@
 ;; This keymap mirrors Logseq's macOS shortcuts for basic editing/navigation
 
 (def data
-  {:non-editing [;; Navigation
+  {:non-editing [;; Clipboard
+                 [{:key "c" :mod true} :copy-selected]
+                 [{:key "x" :mod true} :cut-selected]
+                 ;; Navigation
                  [{:key "Escape"} {:type :selection :mode :clear}]
                  [{:key "ArrowDown"} {:type :selection :mode :next}]
                  [{:key "ArrowUp"} {:type :selection :mode :prev}]

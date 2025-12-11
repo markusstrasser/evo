@@ -8,6 +8,19 @@
             [shell.view-state :as vs]
             [dev.tooling :as dev]))
 
+;; ── Clipboard API ─────────────────────────────────────────────────────────────
+
+(defn- write-to-clipboard!
+  "Write text to system clipboard using Clipboard API.
+   Writes both text/plain for external apps and a custom MIME type for internal paste."
+  [text]
+  (when (and text js/navigator js/navigator.clipboard)
+    (-> (js/navigator.clipboard.writeText text)
+        (.then #(js/console.log "📋 Copied to clipboard:" (if (> (count text) 50)
+                                                            (str (subs text 0 50) "...")
+                                                            text)))
+        (.catch #(js/console.error "Clipboard write failed:" %)))))
+
 (defn assert-derived-fresh!
   "DEBUG: Assert that derived indexes are consistent after DB reset.
    
@@ -34,9 +47,10 @@
    2. Call api/dispatch with current session
    3. Report validation issues
    4. Apply session-updates (BEFORE db, for on-mount hooks)
-   5. Reset db (triggers re-render)
-   6. Assert derived indexes are fresh
-   7. Log to devtools
+   5. Write to system clipboard if clipboard-text present
+   6. Reset db (triggers re-render)
+   7. Assert derived indexes are fresh
+   8. Log to devtools
    
    Args:
      !db        - DB atom
@@ -72,6 +86,10 @@
     ;; Those hooks read session state (cursor-position), so session must be updated first.
     (when session-updates
       (vs/merge-view-state-updates! session-updates))
+
+    ;; CLIPBOARD: Write to system clipboard if copy/cut operation set clipboard-text
+    (when-let [clipboard-text (get-in session-updates [:ui :clipboard-text])]
+      (write-to-clipboard! clipboard-text))
 
     ;; Apply DB changes (triggers re-render)
     (reset! !db db-after)
