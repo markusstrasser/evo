@@ -234,16 +234,16 @@
          with cursor at end. Falls back to next block if no previous."
                           :fr/ids #{:fr.struct/delete-block}
                           :spec [:map [:type [:= :delete]] [:id :string]]
-                          :handler (fn [db _session {:keys [id]}]
+                          :handler (fn [db session {:keys [id]}]
                                      (let [;; Find focus target BEFORE deletion
-                                           prev-block (q/prev-block-dom-order db id)
+                                           prev-block (q/prev-block-dom-order db session id)
                                            next-block (when-not prev-block
-                                                        (q/next-block-dom-order db id))
+                                                        (q/next-block-dom-order db session id))
                                            new-focus (or prev-block next-block)
                                            ;; Get text length for cursor positioning at end
                                            prev-text-len (when prev-block
                                                            (count (get-in db [:nodes prev-block :props :text] "")))]
-                                       {:ops (delete-ops db nil id)
+                                       {:ops (delete-ops db session id)
                                         :session-updates
                                         (if new-focus
                                           {:selection {:nodes #{new-focus}
@@ -603,9 +603,9 @@
                                            last-target (last targets)
                                            ;; Prefer previous block, fall back to next
                                            prev-block (when first-target
-                                                        (q/prev-block-dom-order db first-target))
+                                                        (q/prev-block-dom-order db session first-target))
                                            next-block (when (and (not prev-block) last-target)
-                                                        (q/next-block-dom-order db last-target))
+                                                        (q/next-block-dom-order db session last-target))
                                            ;; But next-block might BE one of the targets, find one that isn't
                                            target-set (set targets)
                                            safe-next (when next-block
@@ -613,7 +613,7 @@
                                                          (cond
                                                            (nil? candidate) nil
                                                            (not (contains? target-set candidate)) candidate
-                                                           :else (recur (q/next-block-dom-order db candidate)))))
+                                                           :else (recur (q/next-block-dom-order db session candidate)))))
                                            new-focus (or prev-block safe-next)]
                                        {:ops (vec (mapcat #(delete-ops db session %) targets))
                                         :session-updates {:selection {:nodes (if new-focus #{new-focus} #{})
@@ -871,7 +871,6 @@
                           :handler (fn [db session {:keys [_block-id]}]
               ;; Use existing move-selected-down logic (uses selection, not block-id)
                                      (move-selected-down-ops db session))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

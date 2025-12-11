@@ -31,7 +31,6 @@
             [plugins.folding]
             [plugins.context-editing]
             [plugins.text-formatting]
-            [plugins.visible-order]
             [plugins.autocomplete]
             ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
             [plugins.pages]

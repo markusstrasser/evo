@@ -23,9 +23,10 @@
                {:op :create-node :id "b2" :type :block :props {:text "Child 2"}}
                {:op :place :id "b2" :under :doc :at :last}
                {:op :create-node :id "b3" :type :block :props {:text "Child 3"}}
-               {:op :place :id "b3" :under :doc :at :last}])]
+               {:op :place :id "b3" :under :doc :at :last}])
+          session nil]
 
-      (is (= ["b1" "b2" "b3"] (nav/visible-siblings db "b2"))))))
+      (is (= ["b1" "b2" "b3"] (nav/visible-siblings db session "b2"))))))
 
 (deftest sibling-navigation-test
   (testing "Navigate between visible siblings"
@@ -35,17 +36,18 @@
                {:op :create-node :id "b2" :type :block :props {:text "Middle"}}
                {:op :place :id "b2" :under :doc :at :last}
                {:op :create-node :id "b3" :type :block :props {:text "Last"}}
-               {:op :place :id "b3" :under :doc :at :last}])]
+               {:op :place :id "b3" :under :doc :at :last}])
+          session nil]
 
       (testing "prev-visible-sibling"
-        (is (nil? (nav/prev-visible-sibling db "b1")))
-        (is (= "b1" (nav/prev-visible-sibling db "b2")))
-        (is (= "b2" (nav/prev-visible-sibling db "b3"))))
+        (is (nil? (nav/prev-visible-sibling db session "b1")))
+        (is (= "b1" (nav/prev-visible-sibling db session "b2")))
+        (is (= "b2" (nav/prev-visible-sibling db session "b3"))))
 
       (testing "next-visible-sibling"
-        (is (= "b2" (nav/next-visible-sibling db "b1")))
-        (is (= "b3" (nav/next-visible-sibling db "b2")))
-        (is (nil? (nav/next-visible-sibling db "b3")))))))
+        (is (= "b2" (nav/next-visible-sibling db session "b1")))
+        (is (= "b3" (nav/next-visible-sibling db session "b2")))
+        (is (nil? (nav/next-visible-sibling db session "b3")))))))
 
 (deftest child-navigation-test
   (testing "Navigate to first/last visible children"
@@ -57,12 +59,13 @@
                {:op :create-node :id "c2" :type :block :props {:text "Child 2"}}
                {:op :place :id "c2" :under "parent" :at :last}
                {:op :create-node :id "c3" :type :block :props {:text "Child 3"}}
-               {:op :place :id "c3" :under "parent" :at :last}])]
+               {:op :place :id "c3" :under "parent" :at :last}])
+          session nil]
 
-      (is (= "c1" (nav/first-visible-child db "parent")))
-      (is (= "c3" (nav/last-visible-child db "parent")))
-      (is (true? (nav/has-visible-children? db "parent")))
-      (is (false? (nav/has-visible-children? db "c1"))))))
+      (is (= "c1" (nav/first-visible-child db session "parent")))
+      (is (= "c3" (nav/last-visible-child db session "parent")))
+      (is (true? (nav/has-visible-children? db session "parent")))
+      (is (false? (nav/has-visible-children? db session "c1"))))))
 
 (deftest block-navigation-test
   (testing "Navigate between visible blocks in document order"
@@ -74,19 +77,20 @@
                {:op :create-node :id "b1.2" :type :block :props {:text "Child 1.2"}}
                {:op :place :id "b1.2" :under "b1" :at :last}
                {:op :create-node :id "b2" :type :block :props {:text "Sibling"}}
-               {:op :place :id "b2" :under :doc :at :last}])]
+               {:op :place :id "b2" :under :doc :at :last}])
+          session nil]
 
       (testing "next-visible-block goes depth-first"
-        (is (= "b1.1" (nav/next-visible-block db "b1")))
-        (is (= "b1.2" (nav/next-visible-block db "b1.1")))
-        (is (= "b2" (nav/next-visible-block db "b1.2")))
-        (is (nil? (nav/next-visible-block db "b2"))))
+        (is (= "b1.1" (nav/next-visible-block db session "b1")))
+        (is (= "b1.2" (nav/next-visible-block db session "b1.1")))
+        (is (= "b2" (nav/next-visible-block db session "b1.2")))
+        (is (nil? (nav/next-visible-block db session "b2"))))
 
       (testing "prev-visible-block goes reverse depth-first"
-        (is (= "b1.2" (nav/prev-visible-block db "b2")))
-        (is (= "b1.1" (nav/prev-visible-block db "b1.2")))
-        (is (= "b1" (nav/prev-visible-block db "b1.1")))
-        (is (nil? (nav/prev-visible-block db "b1")))))))
+        (is (= "b1.2" (nav/prev-visible-block db session "b2")))
+        (is (= "b1.1" (nav/prev-visible-block db session "b1.2")))
+        (is (= "b1" (nav/prev-visible-block db session "b1.1")))
+        (is (nil? (nav/prev-visible-block db session "b1")))))))
 
 ;; NOTE: This test is SKIPPED because fold state is now in session,
 ;; not DB. The visible-order plugin cannot access session state
@@ -139,7 +143,7 @@
                {:op :place :id "b2.1" :under "b2" :at :last}
                {:op :create-node :id "b3" :type :block :props {:text "Last"}}
                {:op :place :id "b3" :under :doc :at :last}])
-          session nil]  ; No zoom, use default
+          session nil]
 
       (is (= "b1" (nav/first-visible-block db session)))
       (is (= "b3" (nav/last-visible-block db session)))
@@ -155,15 +159,15 @@
           session nil]
 
       ;; Pattern: Assert properties without exact values
-      (is (match? string? (nav/next-visible-sibling db "b1")))
-      (is (match? nil? (nav/prev-visible-sibling db "b1")))
+      (is (match? string? (nav/next-visible-sibling db session "b1")))
+      (is (match? nil? (nav/prev-visible-sibling db session "b1")))
 
       ;; Pattern: Use predicates for complex checks
       (is (match? (m/pred #(> % 0)) (nav/visible-block-count db session)))
 
       ;; Pattern: Assert collection contains items
       (is (match? (m/in-any-order ["b1" "b2"])
-                  (nav/visible-siblings db "b1"))))))
+                  (nav/visible-siblings db session "b1"))))))
 
 (comment
   ;; Run tests in REPL
@@ -172,5 +176,4 @@
 
   ;; Run specific test
   (block-navigation-test)
-  (folded-navigation-test)
-  )
+  (folded-navigation-test))

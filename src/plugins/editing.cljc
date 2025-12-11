@@ -61,10 +61,9 @@
                                  [:direction [:enum :next :prev]]]
                           :handler (fn [db session {:keys [direction]}]
                                      (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
-                                       (let [nav-fn (case direction
-                                                      :next q/next-block-dom-order
-                                                      :prev q/prev-block-dom-order)
-                                             next-block (nav-fn db editing-block-id)
+                                       (let [next-block (case direction
+                                                          :next (q/next-block-dom-order db session editing-block-id)
+                                                          :prev (q/prev-block-dom-order db session editing-block-id))
                                              ;; If next-block exists, select both current and next
                                              ;; If no next-block (boundary), just select current
                                              extended-selection (if next-block
@@ -177,10 +176,10 @@
                                  [:type [:= :merge-with-prev]]
                                  [:block-id :string]
                                  [:text {:optional true} :string]]
-                          :handler (fn [db _session {:keys [block-id text]}]
+                          :handler (fn [db session {:keys [block-id text]}]
                                      ;; Use DOM order (not sibling order) so merge works when
                                      ;; current block is a child of the previous block
-                                     (let [prev-id (q/prev-block-dom-order db block-id)
+                                     (let [prev-id (q/prev-block-dom-order db session block-id)
                                            prev-text (get-block-text db prev-id)
                                            ;; Use passed text (from DOM) if available, fall back to DB
                                            curr-text (or text (get-block-text db block-id))
@@ -391,7 +390,6 @@
                                            #?(:cljs (js/console.log "Killed:" (subs block-text prev-pos cursor-pos)))
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                             :session-updates {:ui {:cursor-position prev-pos}}}))))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

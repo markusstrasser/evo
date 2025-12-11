@@ -16,31 +16,8 @@
   [db block-id]
   (get-in db [:nodes block-id :props :text] ""))
 
-#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for zoom navigation
-(defn- visible-in-context?
-  "Check if a block is visible given fold and zoom context.
-
-   A block is visible if:
-   - None of its ancestors are folded
-   - It's within the current zoom context (if zoomed)"
-  [db block-id]
-  (let [zoom-root (q/zoom-root db)
-        ;; Check if block is within zoom context
-        in-zoom? (or (nil? zoom-root)
-                     (= block-id zoom-root)
-                    ;; Check if zoom-root is an ancestor of block-id
-                     (loop [current (get-in db [:derived :parent-of block-id])]
-                       (cond
-                         (nil? current) false
-                         (= current zoom-root) true
-                         :else (recur (get-in db [:derived :parent-of current])))))
-        ;; Check if any ancestor is folded
-        no-folded-ancestors? (loop [current (get-in db [:derived :parent-of block-id])]
-                               (cond
-                                 (nil? current) true
-                                 (q/folded? db current) false
-                                 :else (recur (get-in db [:derived :parent-of current]))))]
-    (and in-zoom? no-folded-ancestors?)))
+;; NOTE: visible-in-context? removed - was dead code with bugs
+;; Visibility now computed in kernel/navigation.cljc with proper (db, session)
 
 (defn- same-page?
   "Check if two blocks are on the same page.
@@ -64,7 +41,7 @@
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
    Also respects page scope - won't navigate out of current page."
   [db session block-id]
-  (let [target (nav/prev-visible-block db block-id)]
+  (let [target (nav/prev-visible-block db session block-id)]
     ;; Only return target if it's on the same page (or no page scoping)
     (when (and target (same-page? db session block-id target))
       target)))
@@ -75,7 +52,7 @@
    LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
    Also respects page scope - won't navigate out of current page."
   [db session block-id]
-  (let [target (nav/next-visible-block db block-id)]
+  (let [target (nav/next-visible-block db session block-id)]
     ;; Only return target if it's on the same page (or no page scoping)
     (when (and target (same-page? db session block-id target))
       target)))
@@ -254,10 +231,10 @@
                                  [:current-block-id :string]
                                  [:cursor-position [:or :int [:enum :max]]]]
                           :handler
-                          (fn [db _session {:keys [direction current-block-id cursor-position]}]
+                          (fn [db session {:keys [direction current-block-id cursor-position]}]
                             (let [target-id (case direction
-                                              :up (q/prev-block-dom-order db current-block-id)
-                                              :down (q/next-block-dom-order db current-block-id))]
+                                              :up (q/prev-block-dom-order db session current-block-id)
+                                              :down (q/next-block-dom-order db session current-block-id))]
                               (when target-id
                                 (let [target-text (get-block-text db target-id)
                                       actual-pos (if (= cursor-position :max)
@@ -266,7 +243,6 @@
                                   {:session-updates
                                    {:ui {:editing-block-id target-id
                                          :cursor-position actual-pos}}}))))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

@@ -60,15 +60,7 @@
   [current-state]
   {:nodes #{} :focus (:focus current-state) :anchor nil})
 
-(defn- get-dom-nav-fn
-  "Return the DOM order navigation function for the given direction.
-
-   CRITICAL: Uses DOM order (pre-order traversal), NOT sibling order.
-   This ensures selection includes children, not just siblings."
-  [direction]
-  (case direction
-    :next q/next-block-dom-order
-    :prev q/prev-block-dom-order))
+;; NOTE: get-dom-nav-fn removed - now inline calls with session param
 
 (defn- same-page?
   "Check if two blocks are on the same page.
@@ -107,15 +99,16 @@
    Continues navigation until finding a :block type node or reaching boundary.
    Respects page boundaries - won't navigate out of current page (Logseq parity)."
   [db session current-id direction]
-  (let [nav-fn (get-dom-nav-fn direction)]
-    (loop [current current-id]
-      (when-let [next-id (nav-fn db current)]
-        (if (and (is-selectable-block? db next-id)
-                 (same-page? db session current-id next-id))
-          next-id
-          ;; Keep searching only if still on same page
-          (when (same-page? db session current-id next-id)
-            (recur next-id)))))))
+  (loop [current current-id]
+    (when-let [next-id (case direction
+                         :next (q/next-block-dom-order db session current)
+                         :prev (q/prev-block-dom-order db session current))]
+      (if (and (is-selectable-block? db next-id)
+               (same-page? db session current-id next-id))
+        next-id
+        ;; Keep searching only if still on same page
+        (when (same-page? db session current-id next-id)
+          (recur next-id))))))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
@@ -182,10 +175,9 @@
         (if (> (count current-nodes) 1)
           ;; Remove the current focus, move focus toward anchor
           (let [new-nodes (disj current-nodes current-focus)
-                new-focus ((get-dom-nav-fn (case current-direction
-                                             :next :prev
-                                             :prev :next))
-                           db current-focus)]
+                new-focus (case current-direction
+                            :next (q/prev-block-dom-order db session current-focus)
+                            :prev (q/next-block-dom-order db session current-focus))]
             {:nodes new-nodes
              :focus (or new-focus current-anchor)
              :anchor current-anchor
@@ -397,7 +389,6 @@
                                          :else
                                          (when-let [first-block (get-first-last-visible-block db session :next)]
                                            {:session-updates {:selection (calc-select-props first-block)}}))))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

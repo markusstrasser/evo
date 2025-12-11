@@ -326,8 +326,8 @@
    fold state, zoom, and current page boundaries.
    
    Returns nil if at last visible block."
-  [db current-id]
-  (nav/next-visible-block db current-id))
+  [db session current-id]
+  (nav/next-visible-block db session current-id))
 
 (defn prev-block-dom-order
   "Get the previous block in DOM/visual order (pre-order traversal).
@@ -337,8 +337,8 @@
    fold state, zoom, and current page boundaries.
    
    Returns nil if at first visible block."
-  [db current-id]
-  (nav/prev-visible-block db current-id))
+  [db session current-id]
+  (nav/prev-visible-block db session current-id))
 
 (defn doc-range
   "Return set of node IDs between a and b (inclusive) in document order.
