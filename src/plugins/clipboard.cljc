@@ -105,9 +105,29 @@
     {:depth depth
      :text (str/trim content)}))
 
+(defn- normalize-depths
+  "Normalize parsed block depths to be sequential (0, 1, 2...).
+   Closes gaps like [0, 2, 4] → [0, 1, 2].
+   
+   This handles cases where whitespace parsing produces non-sequential depths:
+   - 4 spaces parsed as depth 2 (instead of depth 1)
+   - Mixed tabs/spaces creating gaps"
+  [parsed-blocks]
+  (if (empty? parsed-blocks)
+    parsed-blocks
+    (let [;; Get unique depths in sorted order
+          unique-depths (->> parsed-blocks
+                             (map :depth)
+                             distinct
+                             sort
+                             vec)
+          ;; Map each raw depth to its normalized index
+          depth-mapping (zipmap unique-depths (range))]
+      (mapv #(update % :depth depth-mapping) parsed-blocks))))
+
 (defn- parse-markdown-blocks
   "Parse markdown text into block tree structure.
-   Returns vector of {:depth :text} maps.
+   Returns vector of {:depth :text} maps with normalized sequential depths.
 
    Input format (Logseq-style):
    - Block 1
@@ -115,74 +135,94 @@
    \t- Child 1.2
    - Block 2
 
-   Lines without list markers are treated as continuations (appended to previous)."
+   Lines without list markers are treated as continuations (appended to previous).
+   Depths are normalized to close gaps (e.g., [0, 2, 4] → [0, 1, 2])."
   [text]
   (let [lines (str/split-lines text)]
     (->> lines
          (filter #(re-find #"^\s*[-*+]\s+" %)) ; Only process list items
-         (mapv parse-markdown-line))))
+         (mapv parse-markdown-line)
+         normalize-depths)))
 
 (defn- blocks-to-ops
   "Convert parsed blocks into kernel operations.
    
    Uses a map to track the last block at each depth level.
    When placing a block at depth N:
-   - Parent is the last block at depth N-1
+   - Parent is the last block at depth N-1 (or parent-id if N=0)
    - Place after the last sibling at depth N (if any under same parent)
 
+   Optional first-block-depth: when the first parsed block was placed into an 
+   existing block (the editing block), pass its depth here so children can 
+   find their parent. The after-id block will be registered at this depth.
+
    Returns {:ops [...] :last-block-id string}"
-  [parsed-blocks parent-id after-id]
-  (if (empty? parsed-blocks)
-    {:ops [] :last-block-id after-id}
-    (loop [blocks parsed-blocks
-           ops []
-           ;; Map from depth -> {:id block-id :parent parent-id}
-           ;; Depth -1 is the paste insertion point
-           depth-map {-1 {:id after-id :parent parent-id}}
-           last-id after-id]
-      (if (empty? blocks)
-        {:ops ops :last-block-id last-id}
-        (let [{:keys [depth text]} (first blocks)
-              new-id (str "block-" (random-uuid))
+  ([parsed-blocks parent-id after-id]
+   (blocks-to-ops parsed-blocks parent-id after-id nil))
+  ([parsed-blocks parent-id after-id first-block-depth]
+   (if (empty? parsed-blocks)
+     {:ops [] :last-block-id after-id}
+     (loop [blocks parsed-blocks
+            ops []
+            ;; Map from depth -> {:id block-id :parent parent-id}
+            ;; If first-block-depth provided, after-id is registered at that depth
+            depth-map (cond-> {}
+                        first-block-depth (assoc first-block-depth {:id after-id :parent parent-id}))
+            last-id after-id]
+       (if (empty? blocks)
+         {:ops ops :last-block-id last-id}
+         (let [{:keys [depth text]} (first blocks)
+               new-id (str "block-" (random-uuid))
 
-              ;; Find parent: last block at depth - 1
-              parent-depth (dec depth)
-              parent-entry (get depth-map parent-depth)
-              actual-parent (if parent-entry
-                              (:id parent-entry)
-                              ;; Fallback: use last-id if no parent at expected depth
-                              last-id)
+               ;; Find parent: 
+               ;; - For depth 0: always use parent-id (they're top-level in paste context)
+               ;; - For depth > 0: use the block at depth-1, or fallback to parent-id
+               parent-depth (dec depth)
+               actual-parent (if (neg? parent-depth)
+                               parent-id
+                               (if-let [parent-entry (get depth-map parent-depth)]
+                                 (:id parent-entry)
+                                 parent-id))
 
-              ;; Find sibling: last block at same depth WITH same parent
-              sibling-entry (get depth-map depth)
-              place-after (when (and sibling-entry
-                                     (= (:parent sibling-entry) actual-parent))
-                            (:id sibling-entry))
+               ;; Find sibling: last block at same depth WITH same parent
+               sibling-entry (get depth-map depth)
+               place-after (cond
+                             ;; Same depth AND same parent = sibling
+                             (and sibling-entry (= (:parent sibling-entry) actual-parent))
+                             (:id sibling-entry)
 
-              create-op {:op :create-node
+                             ;; Depth 0 with no sibling in depth-map, but we have after-id
+                             ;; This handles the case where first block went to editing block
+                             (and (zero? depth) (= first-block-depth 0))
+                             after-id
+
+                             ;; No sibling found
+                             :else nil)
+
+               create-op {:op :create-node
+                          :id new-id
+                          :type :block
+                          :props {:text text}}
+
+               place-op {:op :place
                          :id new-id
-                         :type :block
-                         :props {:text text}}
+                         :under actual-parent
+                         :at (if place-after
+                               {:after place-after}
+                               :first)}
 
-              place-op {:op :place
-                        :id new-id
-                        :under actual-parent
-                        :at (if place-after
-                              {:after place-after}
-                              :first)}
+               ;; Update depth map: record this block at its depth
+               ;; Also clear deeper depths (they're no longer valid siblings)
+               new-depth-map (-> depth-map
+                                 (assoc depth {:id new-id :parent actual-parent})
+                                 ;; Clear entries deeper than current
+                                 (as-> m (reduce dissoc m
+                                                 (filter #(> % depth) (keys m)))))]
 
-              ;; Update depth map: record this block at its depth
-              ;; Also clear deeper depths (they're no longer valid siblings)
-              new-depth-map (-> depth-map
-                                (assoc depth {:id new-id :parent actual-parent})
-                                ;; Clear entries deeper than current
-                                (as-> m (reduce dissoc m
-                                                (filter #(> % depth) (keys m)))))]
-
-          (recur (rest blocks)
-                 (conj ops create-op place-op)
-                 new-depth-map
-                 new-id))))))
+           (recur (rest blocks)
+                  (conj ops create-op place-op)
+                  new-depth-map
+                  new-id)))))))
 
 ;; ── Intent Implementations ────────────────────────────────────────────────────
 
@@ -190,12 +230,13 @@
                          {:doc "Paste text into editing block (Logseq parity).
 
          Detection order:
+         0. If clipboard-blocks provided → use internal format (preserves exact hierarchy)
          1. If has blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
          2. If text looks like markdown blocks → parse as hierarchy
          3. Otherwise → inline paste
 
-         Blank lines take precedence because they indicate explicit paragraph breaks.
-         Markdown parsing (which strips list markers) only applies to continuous lists."
+         Internal format takes precedence because it preserves the exact structure
+         from copy/cut operations within the app."
 
                           :fr/ids #{:fr.clipboard/paste-multiline}
 
@@ -204,10 +245,11 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]
                                  [:selection-end {:optional true} :int]
-                                 [:pasted-text :string]]
+                                 [:pasted-text :string]
+                                 [:clipboard-blocks {:optional true} [:vector :map]]]
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text]}]
+                          (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text clipboard-blocks]}]
                             (let [current-text (get-block-text db block-id)
                                   sel-end (or selection-end cursor-pos)
                                   before (subs current-text 0 cursor-pos)
@@ -215,6 +257,27 @@
                                   parent (get-in db [:derived :parent-of block-id])]
 
                               (cond
+                                ;; Case 0: Internal clipboard-blocks format → use directly (preserves structure)
+                                ;; This is the highest priority because it preserves the exact hierarchy from copy
+                                (seq clipboard-blocks)
+                                (let [;; First block's text goes into current block
+                                      first-block (first clipboard-blocks)
+                                      first-block-text (str before (:text first-block) after)
+                                      remaining-blocks (rest clipboard-blocks)
+                                      update-op {:op :update-node
+                                                 :id block-id
+                                                 :props {:text first-block-text}}
+                                      ;; Convert remaining blocks to ops using their preserved depths
+                                      ;; Pass first block's depth so children can find their parent
+                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-blocks parent block-id (:depth first-block))
+                                      final-id (or last-block-id block-id)
+                                      final-cursor-pos (if last-block-id
+                                                         (count (:text (last remaining-blocks)))
+                                                         (+ cursor-pos (count (:text (first clipboard-blocks)))))]
+                                  {:ops (vec (cons update-op ops))
+                                   :session-updates {:ui {:editing-block-id final-id
+                                                          :cursor-position final-cursor-pos}}})
+
                                 ;; Case 1: Has blank lines → split into sibling blocks (preserves raw text)
                                 ;; This takes precedence because blank lines indicate explicit paragraph breaks
                                 (has-blank-lines? pasted-text)
@@ -256,11 +319,12 @@
                                 ;; Only applies to continuous lists without blank line breaks
                                 (markdown-blocks? pasted-text)
                                 (let [parsed (parse-markdown-blocks pasted-text)
+                                      first-parsed (first parsed)
                                       ;; If there's text before cursor, append first block to it
                                       ;; Otherwise replace current block content
                                       first-block-text (if (str/blank? before)
-                                                         (:text (first parsed))
-                                                         (str before (:text (first parsed))))
+                                                         (:text first-parsed)
+                                                         (str before (:text first-parsed)))
                                       remaining-parsed (rest parsed)
                                       ;; The text that will be in the current block after update
                                       current-block-final-text (str first-block-text after)
@@ -269,7 +333,8 @@
                                                  :id block-id
                                                  :props {:text current-block-final-text}}
                                       ;; Create remaining blocks after current
-                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id)
+                                      ;; Pass first block's depth so children can find their parent
+                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id (:depth first-parsed))
                                       ;; Determine final block and cursor position from COMPUTED text, not DB
                                       final-id (or last-block-id block-id)
                                       final-cursor-pos (if last-block-id
