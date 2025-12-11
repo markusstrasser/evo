@@ -8,8 +8,8 @@
 
    Paste semantics (Logseq parity):
    - Check for internal format first (preserves hierarchy)
+   - If blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
    - If markdown blocks detected (lines starting with '- ') → parse as block tree
-   - If blank lines (\\n\\n) → split into sibling blocks
    - Otherwise → inline paste"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
@@ -193,14 +193,12 @@
                          {:doc "Paste text into editing block (Logseq parity).
 
          Detection order:
-         1. If text looks like markdown blocks → parse as hierarchy
-         2. If has blank lines (\\n\\n) → split into sibling blocks
+         1. If has blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
+         2. If text looks like markdown blocks → parse as hierarchy
          3. Otherwise → inline paste
 
-         Markdown parsing handles:
-         - Tab indentation for nesting
-         - List markers (-, *, +)
-         - Preserves text content after marker"
+         Blank lines take precedence because they indicate explicit paragraph breaks.
+         Markdown parsing (which strips list markers) only applies to continuous lists."
 
                           :fr/ids #{:fr.clipboard/paste-multiline}
 
@@ -220,35 +218,8 @@
                                   parent (get-in db [:derived :parent-of block-id])]
 
                               (cond
-                                ;; Case 1: Markdown blocks detected → parse as hierarchy
-                                (markdown-blocks? pasted-text)
-                                (let [parsed (parse-markdown-blocks pasted-text)
-                                      ;; If there's text before cursor, append first block to it
-                                      ;; Otherwise replace current block content
-                                      first-block-text (if (str/blank? before)
-                                                         (:text (first parsed))
-                                                         (str before (:text (first parsed))))
-                                      remaining-parsed (rest parsed)
-                                      ;; The text that will be in the current block after update
-                                      current-block-final-text (str first-block-text after)
-                                      ;; Update current block with first paragraph + any trailing text
-                                      update-op {:op :update-node
-                                                 :id block-id
-                                                 :props {:text current-block-final-text}}
-                                      ;; Create remaining blocks after current
-                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id)
-                                      ;; Determine final block and cursor position from COMPUTED text, not DB
-                                      final-id (or last-block-id block-id)
-                                      final-cursor-pos (if last-block-id
-                                                         ;; New block: cursor at end of last parsed block's text
-                                                         (count (:text (last remaining-parsed)))
-                                                         ;; Same block: cursor at end of first-block-text (before 'after')
-                                                         (count first-block-text))]
-                                  {:ops (vec (cons update-op ops))
-                                   :session-updates {:ui {:editing-block-id final-id
-                                                          :cursor-position final-cursor-pos}}})
-
-                                ;; Case 2: Has blank lines → split into sibling blocks
+                                ;; Case 1: Has blank lines → split into sibling blocks (preserves raw text)
+                                ;; This takes precedence because blank lines indicate explicit paragraph breaks
                                 (has-blank-lines? pasted-text)
                                 (let [paragraphs (split-by-blank-lines pasted-text)
                                       first-para (first paragraphs)
@@ -282,6 +253,35 @@
                                                          (count first-block-text))]
                                   {:ops (vec (concat [update-current-op] create-ops place-ops))
                                    :session-updates {:ui {:editing-block-id final-block-id
+                                                          :cursor-position final-cursor-pos}}})
+
+                                ;; Case 2: Markdown blocks detected → parse as hierarchy
+                                ;; Only applies to continuous lists without blank line breaks
+                                (markdown-blocks? pasted-text)
+                                (let [parsed (parse-markdown-blocks pasted-text)
+                                      ;; If there's text before cursor, append first block to it
+                                      ;; Otherwise replace current block content
+                                      first-block-text (if (str/blank? before)
+                                                         (:text (first parsed))
+                                                         (str before (:text (first parsed))))
+                                      remaining-parsed (rest parsed)
+                                      ;; The text that will be in the current block after update
+                                      current-block-final-text (str first-block-text after)
+                                      ;; Update current block with first paragraph + any trailing text
+                                      update-op {:op :update-node
+                                                 :id block-id
+                                                 :props {:text current-block-final-text}}
+                                      ;; Create remaining blocks after current
+                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id)
+                                      ;; Determine final block and cursor position from COMPUTED text, not DB
+                                      final-id (or last-block-id block-id)
+                                      final-cursor-pos (if last-block-id
+                                                         ;; New block: cursor at end of last parsed block's text
+                                                         (count (:text (last remaining-parsed)))
+                                                         ;; Same block: cursor at end of first-block-text (before 'after')
+                                                         (count first-block-text))]
+                                  {:ops (vec (cons update-op ops))
+                                   :session-updates {:ui {:editing-block-id final-id
                                                           :cursor-position final-cursor-pos}}})
 
                                 ;; Case 3: Simple inline paste
@@ -392,3 +392,9 @@
                                                                           :focus nil
                                                                           :anchor nil}}})
                                          {:session-updates {}})))})
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
