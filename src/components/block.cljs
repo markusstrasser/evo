@@ -1060,7 +1060,7 @@
         ;; 1. The element was already mounted (on-render fires BEFORE on-mount in Replicant!)
         ;; 2. This block is the current editing block
         ;; For NEW elements, on-mount handles cursor positioning.
-        (let [mounted? (.-mounted (.-dataset node))]
+        (let [mounted? (.-mounted ^js (.-dataset node))]
           (when (and mounted? (= block-id (vs/editing-block-id)))
             (when-let [pending-cursor (vs/cursor-position)]
               (let [text-content (.-textContent node)
@@ -1199,7 +1199,7 @@
                  (if (.-ok resp)
                    (.json resp)
                    (throw (js/Error. "Failed to fetch tweet")))))
-        (.then (fn [data]
+        (.then (fn [^js data]
                  (swap! !tweet-cache assoc url
                         {:author-name (.-author_name data)
                          :author-url (.-author_url data)
