@@ -114,8 +114,12 @@
              {:op :place :id new-page-id :under :doc :at :last}
              {:op :create-node :id first-block-id :type :block :props {:text ""}}
              {:op :place :id first-block-id :under new-page-id :at :last}]
+       ;; BUGFIX: nodes must include focus block, otherwise state machine sees :idle
+       ;; and blocks :enter-edit intent
        :session-updates {:ui {:current-page new-page-id}
-                         :selection {:nodes #{} :focus first-block-id :anchor nil}}})))
+                         :selection {:nodes #{first-block-id}
+                                     :focus first-block-id
+                                     :anchor first-block-id}}})))
 
 (defn- handle-navigate-to-page
   "Navigate to page by name (from page ref click).
