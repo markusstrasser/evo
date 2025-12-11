@@ -10,7 +10,6 @@
             [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 

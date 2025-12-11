@@ -14,7 +14,6 @@
             [kernel.constants :as const]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 

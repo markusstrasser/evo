@@ -30,7 +30,6 @@
             [kernel.db :as db]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Intent compilers ──────────────────────────────────────────────────────────
 

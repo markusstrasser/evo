@@ -4,7 +4,6 @@
   (:require [kernel.intent :as intent]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 (defn- toggle-text-range
   "Pure function: wraps or unwraps a substring with markers.

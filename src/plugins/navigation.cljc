@@ -10,7 +10,6 @@
                :cljs [clojure.string :as str])))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 (defn- get-block-text
   "Get text content of a block."
