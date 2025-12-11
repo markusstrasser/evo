@@ -1,6 +1,6 @@
 (ns components.sidebar
   "Sidebar component for page navigation."
-  (:require [plugins.pages :as pages]
+  (:require [kernel.query :as q]
             [shell.view-state :as vs]))
 
 (defn Sidebar
@@ -13,7 +13,7 @@
    - on-clear-folder: callback to disconnect from folder
    - storage-status: {:folder-name string :loading? bool}"
   [{:keys [db on-intent on-pick-folder on-clear-folder storage-status]}]
-  (let [all-pages (pages/all-pages db)
+  (let [all-pages (q/all-pages db)
         current-page-id (vs/current-page)
         folder-name (:folder-name storage-status)
         loading? (:loading? storage-status)]
@@ -100,7 +100,7 @@
       (if (seq all-pages)
         (for [page-id all-pages]
           (let [is-current? (= page-id current-page-id)
-                title (pages/page-title db page-id)]
+                title (q/page-title db page-id)]
             [:div.sidebar-item
              {:key page-id
               :class (when is-current? "active")

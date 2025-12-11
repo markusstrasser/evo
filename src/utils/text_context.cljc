@@ -1,4 +1,4 @@
-(ns plugins.context
+(ns utils.text-context
   "Context detection for cursor position in text.
 
    Detects what the cursor is inside (markup, refs, code blocks, etc.)
@@ -12,14 +12,14 @@
 
 (def context-types
   "All possible context types the cursor can be in."
-  #{:markup           ; **bold**, __italic__, ~~strike~~, ^^highlight^^
-    :code-block       ; ```lang\n...\n```
-    :admonition       ; #+BEGIN_NOTE ... #+END
-    :page-ref         ; [[page name]]
-    :property-drawer  ; :PROPERTIES:\n:key: value\n:END:
-    :list-item        ; - item, * item, 1. item
-    :checkbox         ; - [ ] task, - [x] done
-    :none})           ; Plain text
+  #{:markup ; **bold**, __italic__, ~~strike~~, ^^highlight^^
+    :code-block ; ```lang\n...\n```
+    :admonition ; #+BEGIN_NOTE ... #+END
+    :page-ref ; [[page name]]
+    :property-drawer ; :PROPERTIES:\n:key: value\n:END:
+    :list-item ; - item, * item, 1. item
+    :checkbox ; - [ ] task, - [x] done
+    :none}) ; Plain text
 
 ;; ── Pattern Matchers ──────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@
                                   line-end (+ pos line-len)]
                               (if (<= pos cursor-pos line-end)
                                 idx
-                                (recur (inc idx) (inc line-end))))))  ; +1 for \n
+                                (recur (inc idx) (inc line-end)))))) ; +1 for \n
 
         ;; Search backwards for opening ```
         open-idx (when cursor-line-idx
@@ -169,7 +169,7 @@
 
     (when (and open-idx close-idx)
       (let [open-line (nth lines open-idx)
-            lang (str/trim (subs open-line 3))  ; Extract language after ```
+            lang (str/trim (subs open-line 3)) ; Extract language after ```
             ;; Calculate positions
             start-pos (loop [idx 0 pos 0]
                         (if (= idx open-idx)
@@ -177,7 +177,7 @@
                           (recur (inc idx) (+ pos (count (nth lines idx)) 1))))
             end-pos (loop [idx 0 pos 0]
                       (if (= idx (inc close-idx))
-                        (dec pos)  ; Don't include final newline
+                        (dec pos) ; Don't include final newline
                         (recur (inc idx) (+ pos (count (nth lines idx)) 1))))]
         {:type :code-block
          :lang (if (str/blank? lang) nil lang)
@@ -261,7 +261,7 @@
      {:type :markup :marker \"**\" :start 5 :end 15 ...}
      or {:type :none}"
   [text cursor-pos]
-  (or (detect-code-block-at-cursor text cursor-pos)     ; Highest priority
+  (or (detect-code-block-at-cursor text cursor-pos) ; Highest priority
       (detect-markup-at-cursor text cursor-pos)
       (detect-page-ref-at-cursor text cursor-pos)
       (detect-list-item-at-cursor text cursor-pos)

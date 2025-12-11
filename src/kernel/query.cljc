@@ -7,8 +7,10 @@
    Split by domain:
    - Selection: queries on session/selection node (undoable)
    - Edit/Cursor: queries on :ui map (ephemeral, not in history)
-   - Tree: queries on :derived indexes and :children-by-parent"
-  (:require [kernel.navigation :as nav]))
+   - Tree: queries on :derived indexes and :children-by-parent
+   - Pages: queries for page operations"
+  (:require [kernel.navigation :as nav]
+            [clojure.string :as str]))
 
 ;; ── Selection Queries (Session-based after Phases 4-5) ────────────────────────
 ;; These functions now query session state instead of DB.
@@ -378,3 +380,34 @@
       (let [[start end] (if (<= a-idx b-idx) [a-idx b-idx] [b-idx a-idx])]
         (set (subvec visible start (inc end))))
       #{})))
+
+;; ── Page Queries ──────────────────────────────────────────────────────────────
+
+(defn all-pages
+  "Get list of all page IDs (direct children of :doc root)."
+  [db]
+  (children db :doc))
+
+(defn page-title
+  "Get title of a page by ID."
+  [db page-id]
+  (get-in db [:nodes page-id :props :title] "Untitled"))
+
+(defn find-page-by-name
+  "Find page ID by title (case-insensitive).
+
+   Returns nil if page not found."
+  [db page-name]
+  (when page-name
+    (let [normalized-name (-> page-name
+                              str/trim
+                              str/lower-case)
+          pages (all-pages db)]
+      (->> pages
+           (filter (fn [page-id]
+                     (let [title (page-title db page-id)]
+                       (= normalized-name
+                          (-> title
+                              str/trim
+                              str/lower-case)))))
+           first))))

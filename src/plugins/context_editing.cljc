@@ -12,7 +12,7 @@
    components/block.cljs handle-enter BEFORE dispatching intents."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
-            [plugins.context :as ctx]
+            [utils.text-context :as ctx]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
@@ -314,7 +314,7 @@
                                            {:op :create-node :id new-id :type :block :props {:text new-text}}
                                            {:op :place :id new-id :under parent :at {:after block-id}}]
                                      :session-updates {:ui {:editing-block-id new-id
-                                                           :cursor-position (count prefix)}}}))
+                                                            :cursor-position (count prefix)}}}))
 
          ;; Checkbox - continue pattern
          ;; LOGSEQ PARITY: Cursor moves to new block after "[ ] " prefix
@@ -325,7 +325,7 @@
                                            {:op :create-node :id new-id :type :block :props {:text new-text}}
                                            {:op :place :id new-id :under parent :at {:after block-id}}]
                                      :session-updates {:ui {:editing-block-id new-id
-                                                           :cursor-position 4}}}))
+                                                            :cursor-position 4}}}))
 
          ;; Default split - handle cursor position
                                 :else
@@ -337,7 +337,7 @@
                                     {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
                                            {:op :place :id new-id :under parent :at {:before block-id}}]
                                      :session-updates {:ui {:editing-block-id block-id
-                                                           :cursor-position 0}}}
+                                                            :cursor-position 0}}}
 
                                     ;; LOGSEQ PARITY: Cursor at end → create empty block BELOW
                                     ;; Cursor moves to new block
@@ -345,7 +345,7 @@
                                     {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
                                            {:op :place :id new-id :under parent :at {:after block-id}}]
                                      :session-updates {:ui {:editing-block-id new-id
-                                                           :cursor-position 0}}}
+                                                            :cursor-position 0}}}
 
                                     ;; Normal split: trim leading whitespace, cursor on new block
                                     :else
@@ -353,7 +353,7 @@
                                            {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
                                            {:op :place :id new-id :under parent :at {:after block-id}}]
                                      :session-updates {:ui {:editing-block-id new-id
-                                                           :cursor-position 0}}})))))})
+                                                            :cursor-position 0}}})))))})
 
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
 
@@ -525,7 +525,6 @@
                                     [{:op :update-node :id block-id :props {:text before}}
                                      {:op :create-node :id new-id :type :block :props {:text after}}
                                      {:op :place :id new-id :under parent :at {:after block-id}}])))))})
-
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

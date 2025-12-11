@@ -8,7 +8,7 @@
    - Click to navigate to page"
   (:require [clojure.string :as str]
             [shell.view-state :as vs]
-            [plugins.pages :as pages]
+            [kernel.query :as q]
             [utils.fuzzy-search :as fuzzy]))
 
 ;; ── Search Logic ──────────────────────────────────────────────────────────────
@@ -17,19 +17,19 @@
   "Search pages by title using fuzzy matching.
    Returns list of {:page-id, :page-title, :score}"
   [db query]
-  (let [all-page-ids (pages/all-pages db)]
+  (let [all-page-ids (q/all-pages db)]
     (if (str/blank? query)
       ;; No query - return all pages sorted alphabetically
       (->> all-page-ids
            (map (fn [page-id]
                   {:page-id page-id
-                   :page-title (pages/page-title db page-id)
+                   :page-title (q/page-title db page-id)
                    :score 0}))
            (sort-by :page-title))
       ;; Fuzzy search
       (->> all-page-ids
            (map (fn [page-id]
-                  (let [title (pages/page-title db page-id)
+                  (let [title (q/page-title db page-id)
                         score (fuzzy/match-score title query)]
                     {:page-id page-id
                      :page-title title

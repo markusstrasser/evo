@@ -3,7 +3,7 @@
    
    Logseq calls this 'Linked References' - shows all blocks containing
    [[Current Page]] references, grouped by source page."
-  (:require [plugins.pages :as pages]
+  (:require [plugins.backlinks-index :as backlinks]
             [clojure.string :as str]
             [components.page-ref :as page-ref]))
 
@@ -109,7 +109,7 @@
    - page-title: Title of the current page
    - on-intent: Intent dispatch callback"
   [{:keys [db page-title on-intent]}]
-  (let [backlinks (pages/find-backlinks db page-title)
+  (let [backlinks (backlinks/get-backlinks db page-title)
         grouped (group-by-page backlinks)
         backlink-count (count backlinks)]
     [:div.backlinks-panel

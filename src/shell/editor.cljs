@@ -34,7 +34,8 @@
             [plugins.visible-order]
             [plugins.autocomplete]
             ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
-            [plugins.pages :as pages]
+            [plugins.pages]
+            [plugins.backlinks-index]
             [keymap.core :as keymap]
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
@@ -91,7 +92,7 @@
                                    (tx/interpret ops)
                                    :db
                                    (H/record)))
-                   (let [first-page (first (pages/all-pages @!db))]
+                   (let [first-page (first (q/all-pages @!db))]
                      (when first-page
                        (vs/set-current-page! first-page))))
                  ;; Empty folder - start with empty DB (no demo data)
@@ -627,7 +628,7 @@
         storage-status @!storage-status
         checking? (:checking? storage-status)
         current-page-id (vs/current-page)
-        page-title (when current-page-id (pages/page-title db current-page-id))
+        page-title (when current-page-id (q/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
         quick-switcher-visible? (vs/quick-switcher-visible?)]

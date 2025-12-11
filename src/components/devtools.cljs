@@ -3,7 +3,7 @@
   (:require [dev.tooling :as devtools]
             [kernel.query :as q]
             [kernel.history :as H]
-            [plugins.pages :as pages]
+            [shell.view-state :as vs]
             [clojure.string :as str]))
 
 ;; ── Style helpers ─────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@
   [{:keys [db]}]
   (let [log (devtools/get-log)
         log-text (devtools/format-full-log)
-        current-page-id (pages/current-page db)]
+        current-page-id (vs/current-page)]
     [:div.ops-log-panel
      {:style panel-style}
      [:div {:style panel-header-style}
@@ -161,7 +161,7 @@
       (when last-entry
         [:button
          {:on {:click (fn [_]
-                        (let [current-page (pages/current-page db)
+                        (let [current-page (vs/current-page)
                               hiccup-before (devtools/extract-hiccup-tree
                                              (:db-before last-entry)
                                              current-page)
@@ -175,7 +175,7 @@
          "📋 Copy Last Diff"])]
 
      (if last-entry
-       (let [_current-page (pages/current-page db) ; TODO: use for page-specific diff view
+       (let [_current-page (vs/current-page) ; TODO: use for page-specific diff view
              state-before (devtools/format-state-snapshot (:db-before last-entry))
              state-after (devtools/format-state-snapshot (:db-after last-entry))
              scrollable-code-style (assoc code-block-style
