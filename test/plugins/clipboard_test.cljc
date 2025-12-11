@@ -51,7 +51,7 @@
           session (empty-session)
           {:keys [db session]} (run-intent db session {:type :paste-text
                                                        :block-id "a"
-                                                       :cursor-pos 6  ; After "Before"
+                                                       :cursor-pos 6 ; After "Before"
                                                        :pasted-text "Line 1\nLine 2"})]
       ;; Should stay as single block with literal newlines
       (is (= 1 (count (q/children db :doc))))
@@ -67,7 +67,7 @@
           session (empty-session)
           {:keys [db]} (run-intent db session {:type :paste-text
                                                :block-id "a"
-                                               :cursor-pos 5  ; At end of "First"
+                                               :cursor-pos 5 ; At end of "First"
                                                :pasted-text "\n\nSecond\n\nThird"})]
       ;; Should create 3 blocks total (original + 2 new)
       (is (= 3 (count (q/children db :doc))))
@@ -105,7 +105,7 @@
           session (empty-session)
           {:keys [db]} (run-intent db session {:type :paste-text
                                                :block-id "a"
-                                               :cursor-pos 5  ; Between "Start" and "End"
+                                               :cursor-pos 5 ; Between "Start" and "End"
                                                :pasted-text "Middle\n\nAnother"})]
       ;; Should create 2 blocks
       (is (= 2 (count (q/children db :doc))))
@@ -128,3 +128,59 @@
                                                :pasted-text ""})]
       ;; Text should be unchanged
       (is (= "Original" (get-in db [:nodes "a" :props :text]))))))
+
+;; ── Depth Normalization Tests ────────────────────────────────────────────────
+
+(deftest paste-markdown-depth-normalization-test
+  (testing "Space-indented markdown normalizes depth gaps"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text ""}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; 4 spaces = raw depth 2, but should normalize to depth 1
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 0
+                                               :pasted-text "- parent\n    - child"})]
+      ;; Should create parent with child underneath (not grandchild)
+      (is (= 1 (count (q/children db :doc))) "One root block under doc")
+      (let [root-id (first (q/children db :doc))
+            children-of-root (q/children db root-id)]
+        (is (= "parent" (get-in db [:nodes root-id :props :text])))
+        (is (= 1 (count children-of-root)) "One child under parent")
+        (is (= "child" (get-in db [:nodes (first children-of-root) :props :text])))))))
+
+(deftest paste-markdown-siblings-normalized-test
+  (testing "Siblings at same raw depth stay siblings after normalization"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text ""}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; Both children at 4 spaces = raw depth 2, should normalize to siblings at depth 1
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 0
+                                               :pasted-text "- parent\n    - child1\n    - child2"})]
+      (let [root-id (first (q/children db :doc))
+            children-of-root (q/children db root-id)]
+        (is (= 2 (count children-of-root)) "Two siblings under parent")
+        (is (= "child1" (get-in db [:nodes (first children-of-root) :props :text])))
+        (is (= "child2" (get-in db [:nodes (second children-of-root) :props :text])))))))
+
+(deftest paste-markdown-deep-hierarchy-normalized-test
+  (testing "Deep hierarchy with gaps normalizes to sequential depths"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text ""}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; 8 spaces = raw depth 4, should normalize to depth 2
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 0
+                                               :pasted-text "- root\n    - mid\n        - deep"})]
+      (let [root-id (first (q/children db :doc))
+            mid-id (first (q/children db root-id))
+            deep-id (first (q/children db mid-id))]
+        (is (= "root" (get-in db [:nodes root-id :props :text])))
+        (is (= "mid" (get-in db [:nodes mid-id :props :text])))
+        (is (= "deep" (get-in db [:nodes deep-id :props :text])))))))
