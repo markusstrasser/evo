@@ -1,31 +1,29 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   EVO - Modern Vanilla CSS (2025)
+   EVO - Editorial Design System (2025)
    
-   Features used:
-   - CSS Nesting (native)
-   - Container Queries
-   - :has() selector
-   - CSS Custom Properties
-   - Modern viewport units (dvh)
-   - color-mix() with oklch
-   - @layer for cascade control
-   - Native <dialog> element
-   - Popover API
-   - text-box (progressive enhancement)
+   Aesthetic: Refined editorial — exceptional typography meets functional density
+   Inspired by: iA Writer, Linear, Stripe's documentation
    
-   Design: Snappy, no animations - professional feel
+   Technical features:
+   - CSS Nesting, Container Queries, :has(), oklch colors
+   - Native <dialog>, Popover API, text-box
+   - Light/dark mode via color-scheme + prefers-color-scheme
+   - No animations — snappy, professional
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Typography: Geometric sans */
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+/* Typography: Geist (Vercel) - distinctive, geometric, excellent for UI */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+
+/* Fallback if Geist isn't available - use system fonts that are distinctive */
+/* @import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap"); */
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CASCADE LAYERS - Control specificity without !important
+   CASCADE LAYERS
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer reset, base, components, utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RESET LAYER - Modern CSS reset
+   RESET LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer reset {
   *, *::before, *::after {
@@ -40,6 +38,7 @@
     text-size-adjust: 100%;
     tab-size: 4;
     -webkit-tap-highlight-color: transparent;
+    hanging-punctuation: first last;
   }
 
   body {
@@ -59,6 +58,7 @@
   h1, h2, h3, h4, h5, h6 {
     font-size: inherit;
     font-weight: inherit;
+    text-wrap: balance;
   }
 
   a {
@@ -67,12 +67,12 @@
   }
 
   b, strong {
-    font-weight: bolder;
+    font-weight: 600;
   }
 
   code, kbd, samp, pre {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 1em;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
   }
 
   small {
@@ -138,41 +138,60 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   BASE LAYER - Design tokens & global styles
+   BASE LAYER - Design Tokens
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
   :root {
-    /* Typography */
-    --font-sans: "Manrope", system-ui, -apple-system, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    /* ─── Typography ─────────────────────────────────────────────────────── */
+    --font-sans: "Geist", "SF Pro Display", -apple-system, system-ui, sans-serif;
+    --font-mono: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    
+    /* Refined type scale */
+    --text-xs: 0.75rem;    /* 12px */
+    --text-sm: 0.8125rem;  /* 13px */
+    --text-base: 0.9375rem; /* 15px - optimal reading */
+    --text-lg: 1.125rem;   /* 18px */
+    --text-xl: 1.375rem;   /* 22px */
+    --text-2xl: 1.75rem;   /* 28px */
+    --text-3xl: 2.25rem;   /* 36px */
 
-    /* Light palette - using oklch for perceptual uniformity */
-    --color-bg: oklch(100% 0 0);
-    --color-surface: oklch(98% 0 0);
-    --color-border: oklch(92% 0 0);
-    --color-border-strong: oklch(86% 0 0);
+    /* ─── Light Mode Colors ──────────────────────────────────────────────── */
+    /* Warm paper tones instead of pure white */
+    --color-bg: oklch(99% 0.002 80);
+    --color-surface: oklch(97.5% 0.003 80);
+    --color-surface-raised: oklch(100% 0 0);
+    
+    /* Warm gray borders */
+    --color-border: oklch(92% 0.004 80);
+    --color-border-strong: oklch(85% 0.006 80);
 
-    /* Text hierarchy */
-    --color-text: oklch(15% 0 0);
-    --color-text-muted: oklch(50% 0 0);
-    --color-text-faint: oklch(55% 0 0); /* WCAG AA compliant */
+    /* Ink-like text hierarchy */
+    --color-text: oklch(18% 0.01 80);
+    --color-text-secondary: oklch(40% 0.01 80);
+    --color-text-tertiary: oklch(55% 0.008 80);
 
-    /* Accent - Teal in oklch (WCAG AA compliant) */
-    --color-accent: oklch(45% 0.12 180);
-    --color-accent-hover: oklch(40% 0.14 180);
-    --color-accent-subtle: oklch(97% 0.02 180);
+    /* Accent: Warm amber/copper - distinctive, not generic blue/teal */
+    --color-accent: oklch(55% 0.16 55);
+    --color-accent-hover: oklch(48% 0.18 55);
+    --color-accent-subtle: oklch(96% 0.03 55);
+    --color-accent-text: oklch(45% 0.14 55);
 
-    /* Selection states */
-    --color-selected-bg: oklch(97% 0.02 240);
-    --color-selected-border: oklch(75% 0.1 240);
-    --color-focused-bg: oklch(94% 0.04 240);
-    --color-focused-border: oklch(60% 0.15 240);
+    /* Selection: Soft lavender */
+    --color-selected-bg: oklch(95% 0.03 280);
+    --color-selected-border: oklch(80% 0.08 280);
+    
+    /* Focus: Amber ring */
+    --color-focus-ring: oklch(70% 0.15 55);
+    --color-focused-bg: oklch(97% 0.02 55);
 
     /* Semantic */
     --color-danger: oklch(55% 0.2 25);
-    --color-success: oklch(55% 0.15 145);
+    --color-danger-subtle: oklch(96% 0.04 25);
+    --color-success: oklch(50% 0.14 145);
 
-    /* Spacing scale */
+    /* ─── Spacing ────────────────────────────────────────────────────────── */
+    --space-px: 1px;
+    --space-0: 0;
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
@@ -180,26 +199,78 @@
     --space-5: 20px;
     --space-6: 24px;
     --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
 
-    /* Radius */
-    --radius-sm: 3px;
-    --radius-md: 4px;
-    --radius-lg: 6px;
+    /* ─── Radius ─────────────────────────────────────────────────────────── */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+
+    /* ─── Shadows (subtle, warm) ─────────────────────────────────────────── */
+    --shadow-sm: 0 1px 2px oklch(20% 0.02 80 / 8%);
+    --shadow-md: 0 2px 8px oklch(20% 0.02 80 / 10%), 0 1px 2px oklch(20% 0.02 80 / 6%);
+    --shadow-lg: 0 8px 24px oklch(20% 0.02 80 / 12%), 0 2px 6px oklch(20% 0.02 80 / 8%);
+    --shadow-dialog: 0 16px 48px oklch(20% 0.02 80 / 20%), 0 4px 12px oklch(20% 0.02 80 / 10%);
+  }
+
+  /* ─── Dark Mode ────────────────────────────────────────────────────────── */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* Deep charcoal, not pure black */
+      --color-bg: oklch(14% 0.01 280);
+      --color-surface: oklch(18% 0.01 280);
+      --color-surface-raised: oklch(22% 0.012 280);
+      
+      /* Subtle borders */
+      --color-border: oklch(26% 0.01 280);
+      --color-border-strong: oklch(32% 0.012 280);
+
+      /* Softer white text */
+      --color-text: oklch(92% 0.01 80);
+      --color-text-secondary: oklch(70% 0.01 80);
+      --color-text-tertiary: oklch(55% 0.008 80);
+
+      /* Warmer amber accent in dark mode */
+      --color-accent: oklch(70% 0.16 55);
+      --color-accent-hover: oklch(75% 0.18 55);
+      --color-accent-subtle: oklch(25% 0.06 55);
+      --color-accent-text: oklch(75% 0.14 55);
+
+      /* Selection */
+      --color-selected-bg: oklch(25% 0.04 280);
+      --color-selected-border: oklch(45% 0.08 280);
+      
+      /* Focus */
+      --color-focus-ring: oklch(65% 0.15 55);
+      --color-focused-bg: oklch(22% 0.03 55);
+
+      /* Semantic */
+      --color-danger-subtle: oklch(25% 0.06 25);
+
+      /* Shadows (more prominent in dark) */
+      --shadow-sm: 0 1px 3px oklch(0% 0 0 / 30%);
+      --shadow-md: 0 3px 10px oklch(0% 0 0 / 35%), 0 1px 3px oklch(0% 0 0 / 25%);
+      --shadow-lg: 0 10px 30px oklch(0% 0 0 / 40%), 0 3px 8px oklch(0% 0 0 / 30%);
+      --shadow-dialog: 0 20px 60px oklch(0% 0 0 / 50%), 0 6px 16px oklch(0% 0 0 / 35%);
+    }
   }
 
   html {
-    color-scheme: light;
+    color-scheme: light dark;
   }
 
   body {
     font-family: var(--font-sans);
-    font-size: 0.9375rem; /* 15px */
-    line-height: 1.5;
+    font-size: var(--text-base);
+    line-height: 1.6;
     color: var(--color-text);
     background: var(--color-bg);
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "ss02", "cv01"; /* Geist stylistic sets */
   }
 
   ::selection {
@@ -207,38 +278,60 @@
     color: white;
   }
 
-  /* Placeholder styling with color-mix */
   ::placeholder {
-    color: color-mix(in oklch, currentColor 50%, transparent);
+    color: var(--color-text-tertiary);
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
   }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   COMPONENTS LAYER - All UI components with CSS nesting
+   COMPONENTS LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Typography - with text-box for perfect vertical alignment
+     Typography
      ───────────────────────────────────────────────────────────────────────── */
   h1, h2, h3 {
     font-family: var(--font-sans);
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
     color: var(--color-text);
   }
 
-  h1 { font-size: 1.5rem; font-weight: 700; }
-  h2 { font-size: 1.125rem; }
-  h3 { font-size: 1rem; }
+  h1 { 
+    font-size: var(--text-2xl); 
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  h2 { font-size: var(--text-lg); }
+  h3 { font-size: var(--text-base); }
 
   p {
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
   code {
@@ -247,6 +340,7 @@
     background: var(--color-surface);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
+    color: var(--color-accent-text);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -259,21 +353,21 @@
 
   .main-content {
     flex: 1;
-    padding: var(--space-8) 40px;
-    max-width: 640px;
+    padding: var(--space-10) var(--space-8);
+    max-width: 680px;
     margin: 0 auto;
     container-type: inline-size;
     container-name: main;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Sidebar - with container query support
+     Sidebar
      ───────────────────────────────────────────────────────────────────────── */
   .sidebar {
-    width: 200px;
-    background: var(--color-bg);
+    width: 220px;
+    background: var(--color-surface);
     border-right: 1px solid var(--color-border);
-    padding: var(--space-5) var(--space-3);
+    padding: var(--space-4);
     position: fixed;
     top: 0;
     left: 0;
@@ -283,55 +377,66 @@
     container-name: sidebar;
 
     & h3 {
-      font-size: 11px;
+      font-size: var(--text-xs);
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--color-text-faint);
-      padding: 0 10px;
-      margin-bottom: var(--space-2);
+      letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+      padding: var(--space-2) var(--space-3);
+      margin-bottom: var(--space-1);
     }
+  }
+
+  .sidebar-storage {
+    padding: var(--space-3) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    margin-bottom: var(--space-3) !important;
   }
 
   .sidebar-item {
     display: flex;
     align-items: center;
-    padding: 6px 10px;
-    font-size: 14px;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     border-radius: var(--radius-md);
     cursor: pointer;
 
     &:hover {
-      background: var(--color-surface);
+      background: var(--color-surface-raised);
       color: var(--color-text);
 
       .sidebar-delete {
-        opacity: 0.6;
+        opacity: 0.5;
       }
     }
 
     &.active {
       background: var(--color-accent-subtle);
-      color: var(--color-accent);
+      color: var(--color-accent-text);
+      font-weight: 600;
     }
 
     .sidebar-delete {
       opacity: 0;
+      margin-left: auto;
+      padding: 2px 6px;
+      font-size: var(--text-xs);
+      border-radius: var(--radius-sm);
 
       &:hover {
         opacity: 1 !important;
-        color: var(--color-danger, #dc2626);
+        background: var(--color-danger-subtle);
+        color: var(--color-danger);
       }
     }
   }
 
-  /* Container query: tighter sidebar on narrow screens */
   @container sidebar (max-width: 180px) {
     .sidebar-item {
-      font-size: 12px;
-      padding: 4px 8px;
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-2);
     }
   }
 
@@ -345,35 +450,30 @@
     container-name: outline;
 
     &--empty {
-      padding: var(--space-8) var(--space-4);
+      padding: var(--space-12) var(--space-6);
       text-align: center;
-      color: var(--color-text-faint);
+      color: var(--color-text-tertiary);
       border: 1px dashed var(--color-border);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-lg);
       cursor: text;
 
       &:hover {
-        border-color: var(--color-text-faint);
+        border-color: var(--color-text-tertiary);
+        background: var(--color-surface);
       }
-    }
-
-    /* :has() - Style outline when it contains selected blocks */
-    &:has(.block.selected) {
-      /* Could add subtle container styling when blocks are selected */
     }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Blocks - Core editing component with full nesting
+     Blocks - The star of the show
      ───────────────────────────────────────────────────────────────────────── */
   .block {
     position: relative;
-    padding: var(--space-1) 0 var(--space-1) var(--space-5);
-    margin: 1px 0;
+    padding: 3px 0 3px var(--space-6);
+    margin: 2px 0;
     border-radius: var(--radius-sm);
-    border-left: 3px solid transparent;
+    border-left: 2px solid transparent;
 
-    /* State classes with nesting */
     &.selected {
       background: var(--color-selected-bg);
       border-left-color: var(--color-accent);
@@ -385,7 +485,7 @@
     }
 
     &.editing {
-      background: var(--color-bg);
+      background: var(--color-surface-raised);
       border-left-color: var(--color-border-strong);
     }
 
@@ -393,7 +493,7 @@
       opacity: 0.5;
     }
 
-    /* Bullet styling based on block state - using :has() */
+    /* Bullet accent when focused/selected */
     &.focused:not(.editing),
     &.selected:not(.editing) {
       & .block-bullet::before {
@@ -414,10 +514,10 @@
   .block-content {
     font-family: var(--font-sans);
     font-size: inherit;
-    line-height: inherit;
+    line-height: 1.65;
     color: var(--color-text);
     outline: none;
-    min-height: 1.5em;
+    min-height: 1.65em;
     display: block;
     width: 100%;
     caret-color: var(--color-accent);
@@ -428,91 +528,94 @@
     }
 
     &:empty::before {
-      content: "\00a0"; /* non-breaking space for clickable area */
+      content: "\00a0";
       color: transparent;
     }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Block Quotes - Markdown "> " prefix renders as blockquote
+     Block Quotes
      ───────────────────────────────────────────────────────────────────────── */
   blockquote.block-content {
-    padding: var(--space-2) var(--space-3);
-    border-left: 4px solid var(--color-accent);
-    background: color-mix(in oklch, var(--color-accent) 8%, var(--color-bg));
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: var(--space-3) var(--space-4);
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-accent-subtle);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
     font-style: italic;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Headings - Markdown "# " prefixes render as h1-h6
+     Headings in blocks
      ───────────────────────────────────────────────────────────────────────── */
   h1.block-content {
-    font-size: 1.75rem;
+    font-size: var(--text-2xl);
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.3;
+    letter-spacing: -0.03em;
     margin-bottom: var(--space-1);
     color: var(--color-text);
   }
 
   h2.block-content {
-    font-size: 1.5rem;
+    font-size: var(--text-xl);
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
     margin-bottom: var(--space-1);
     color: var(--color-text);
   }
 
   h3.block-content {
-    font-size: 1.25rem;
+    font-size: var(--text-lg);
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.4;
+    letter-spacing: -0.015em;
     color: var(--color-text);
   }
 
   h4.block-content {
-    font-size: 1.125rem;
+    font-size: var(--text-base);
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.5;
     color: var(--color-text);
   }
 
   h5.block-content {
-    font-size: 1rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     line-height: 1.5;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
 
   h6.block-content {
-    font-size: 0.875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     line-height: 1.5;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
+    letter-spacing: 0.08em;
+    color: var(--color-text-tertiary);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Tweet Embed - Compact preview card for {{tweet URL}}
+     Tweet Embed
      ───────────────────────────────────────────────────────────────────────── */
   .tweet-embed {
     display: inline-flex;
     flex-direction: column;
     gap: var(--space-1);
-    padding: var(--space-2) var(--space-3);
-    background: color-mix(in oklch, var(--color-text) 5%, var(--color-bg));
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
     text-decoration: none;
     color: inherit;
-    max-width: 320px;
+    max-width: 340px;
 
     &:hover {
       border-color: var(--color-accent);
-      background: color-mix(in oklch, var(--color-accent) 8%, var(--color-bg));
+      background: var(--color-accent-subtle);
     }
   }
 
@@ -524,7 +627,7 @@
 
   .tweet-icon {
     font-weight: 700;
-    font-size: 1rem;
+    font-size: var(--text-base);
   }
 
   .tweet-author {
@@ -533,29 +636,29 @@
   }
 
   .tweet-embed-body {
-    color: var(--color-text-muted);
-    font-size: 0.8125rem;
-    line-height: 1.4;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
   }
 
   .tweet-embed-footer {
-    font-size: 0.75rem;
-    color: var(--color-accent);
+    font-size: var(--text-xs);
+    color: var(--color-accent-text);
     margin-top: var(--space-1);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Video Embed - Preview for {{video URL}}
+     Video Embed
      ───────────────────────────────────────────────────────────────────────── */
   .video-embed {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    background: color-mix(in oklch, var(--color-text-muted) 10%, var(--color-bg));
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
   }
 
   .video-embed-header {
@@ -565,13 +668,13 @@
   }
 
   .video-icon {
-    font-size: 1rem;
+    font-size: var(--text-base);
   }
 
   .video-link {
-    color: var(--color-accent);
+    color: var(--color-accent-text);
     text-decoration: none;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -584,59 +687,58 @@
 
   .block-children {
     margin-left: 0;
-    padding-left: 6px;
-    border-left: 2px solid var(--color-border);
+    padding-left: 8px;
+    border-left: 1px solid var(--color-border);
   }
 
-  /* Container query: tighter nesting on narrow containers */
   @container outline (max-width: 400px) {
     .block-children {
-      padding-left: 4px;
+      padding-left: 6px;
     }
     
     .block {
-      padding-left: var(--space-4);
+      padding-left: var(--space-5);
     }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Block bullets
+     Block bullets - Refined, minimal
      ───────────────────────────────────────────────────────────────────────── */
   .block-bullet {
     position: absolute;
-    left: 4px;
-    top: 0.65em;
-    width: 12px;
-    height: 12px;
+    left: 6px;
+    top: 0.7em;
+    width: 14px;
+    height: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     user-select: none;
 
-    &:hover {
-      color: var(--color-text-muted);
+    &:hover::before {
+      transform: scale(1.3);
     }
 
     &::before {
       content: "";
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
       border-radius: 50%;
-      background: var(--color-text-muted);
+      background: var(--color-text-tertiary);
     }
 
     &.bullet-collapsed::before {
-      width: 10px;
-      height: 10px;
-      background: var(--color-text);
+      width: 8px;
+      height: 8px;
+      background: var(--color-text-secondary);
     }
 
     &.bullet-expanded::before {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       background: transparent;
-      border: 2px solid var(--color-text-muted);
+      border: 1.5px solid var(--color-text-tertiary);
     }
   }
 
@@ -644,42 +746,43 @@
      Page & Block refs
      ───────────────────────────────────────────────────────────────────────── */
   .page-ref {
-    color: var(--color-accent);
+    color: var(--color-accent-text);
     font-weight: 500;
     cursor: pointer;
 
     &:hover {
       text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
     }
   }
 
   .block-ref {
     background: var(--color-accent-subtle);
-    color: var(--color-accent);
-    padding: 1px 4px;
-    border-radius: 2px;
+    color: var(--color-accent-text);
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
     font-size: 0.95em;
     cursor: pointer;
 
     &-missing {
-      background: oklch(97% 0.03 25);
+      background: var(--color-danger-subtle);
       color: var(--color-danger);
     }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Buttons - with text-box for perfect vertical centering
+     Buttons
      ───────────────────────────────────────────────────────────────────────── */
   button {
     font-family: var(--font-sans);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 6px 12px;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-bg);
+    background: var(--color-surface-raised);
     color: var(--color-text);
-    /* Progressive enhancement: perfect text centering */
     text-box: trim-both cap alphabetic;
 
     &:hover:not(:disabled) {
@@ -704,17 +807,18 @@
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Keyboard shortcuts (kbd)
+     Keyboard shortcuts
      ───────────────────────────────────────────────────────────────────────── */
   kbd {
-    font-family: var(--font-sans);
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
     font-weight: 500;
-    padding: 2px 5px;
+    padding: 2px 6px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
+    box-shadow: var(--shadow-sm);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -722,16 +826,17 @@
      ───────────────────────────────────────────────────────────────────────── */
   input, textarea, select {
     font-family: var(--font-sans);
-    font-size: 14px;
-    padding: var(--space-2) 10px;
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-bg);
+    background: var(--color-surface-raised);
     color: var(--color-text);
 
     &:focus {
       outline: none;
       border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-subtle);
     }
   }
 
@@ -739,101 +844,101 @@
      Hotkeys reference
      ───────────────────────────────────────────────────────────────────────── */
   .hotkeys-reference {
-    margin-top: 40px;
-    padding-top: var(--space-5);
+    margin-top: var(--space-10);
+    padding-top: var(--space-6);
     border-top: 1px solid var(--color-border);
 
     & h4 {
-      font-size: 11px;
+      font-size: var(--text-xs);
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--color-text-faint);
-      margin-bottom: var(--space-3);
+      letter-spacing: 0.1em;
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-4);
     }
   }
 
   .hotkeys-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--space-2);
   }
 
   .hotkey-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-1) 0;
-    font-size: 13px;
-    color: var(--color-text-muted);
+    padding: var(--space-2) 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
      Devtools panel
      ───────────────────────────────────────────────────────────────────────── */
   .devtools-panel {
-    margin-top: var(--space-8);
+    margin-top: var(--space-10);
     padding: var(--space-4);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Drop indicators (drag & drop)
+     Drop indicators
      ───────────────────────────────────────────────────────────────────────── */
   .drop-indicator {
     position: absolute;
-    left: 20px;
+    left: var(--space-6);
     right: 0;
     height: 2px;
     background: var(--color-accent);
     pointer-events: none;
+    border-radius: 1px;
 
     &--above { top: 0; }
     &--below { bottom: 0; }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Autocomplete popup - Popover API, instant display
+     Autocomplete popup
      ───────────────────────────────────────────────────────────────────────── */
   .autocomplete-popup {
     margin: 0;
     padding: 0;
     border: none;
-    background: var(--color-bg);
+    background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    box-shadow: 
-      0 4px 16px color-mix(in oklch, var(--color-text) 12%, transparent),
-      0 1px 4px color-mix(in oklch, var(--color-text) 8%, transparent);
-    min-width: 200px;
-    max-width: 320px;
-    max-height: 300px;
+    box-shadow: var(--shadow-lg);
+    min-width: 220px;
+    max-width: 340px;
+    max-height: 320px;
     overflow: visible;
   }
 
   .autocomplete-items {
     overflow-y: auto;
-    max-height: 300px;
-    padding: var(--space-1) 0;
+    max-height: 320px;
+    padding: var(--space-1);
   }
 
   .autocomplete-item {
     padding: var(--space-2) var(--space-3);
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--color-text);
     cursor: pointer;
+    border-radius: var(--radius-md);
 
     &:hover {
       background: var(--color-surface);
     }
 
     &.selected {
-      background: var(--color-focused-bg);
-      color: var(--color-accent);
+      background: var(--color-accent-subtle);
+      color: var(--color-accent-text);
     }
 
     & mark {
@@ -845,20 +950,20 @@
     &.create-new {
       border-top: 1px solid var(--color-border);
       margin-top: var(--space-1);
-      padding-top: 10px;
-      color: var(--color-text-muted);
+      padding-top: var(--space-3);
+      color: var(--color-text-secondary);
 
       &.selected {
-        background: var(--color-focused-bg);
-        color: var(--color-accent);
+        background: var(--color-accent-subtle);
+        color: var(--color-accent-text);
       }
     }
   }
 
   .autocomplete-empty {
-    padding: var(--space-3) var(--space-4);
-    font-size: 13px;
-    color: var(--color-text-muted);
+    padding: var(--space-4) var(--space-5);
+    font-size: var(--text-sm);
+    color: var(--color-text-tertiary);
     text-align: center;
   }
 
@@ -870,7 +975,7 @@
 
   .create-icon {
     font-weight: bold;
-    font-size: 16px;
+    font-size: var(--text-base);
     color: var(--color-accent);
   }
 
@@ -883,7 +988,7 @@
   }
 
   .command-icon {
-    font-size: 16px;
+    font-size: var(--text-base);
     width: 24px;
     text-align: center;
     flex-shrink: 0;
@@ -892,8 +997,8 @@
   .command-content {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    min-width: 0; /* Enable text truncation */
+    gap: 1px;
+    min-width: 0;
   }
 
   .command-name {
@@ -902,8 +1007,8 @@
   }
 
   .command-description {
-    font-size: 12px;
-    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -911,16 +1016,15 @@
 
   .autocomplete-item.command-item.selected {
     .command-name {
-      color: var(--color-accent);
+      color: var(--color-accent-text);
     }
     .command-description {
-      color: var(--color-text);
+      color: var(--color-text-secondary);
     }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Quick Switcher - Native <dialog> element
-     Uses closedby="any" for light-dismiss (click outside, Esc)
+     Quick Switcher - Native <dialog>
      ───────────────────────────────────────────────────────────────────────── */
   dialog.quick-switcher {
     max-width: 560px;
@@ -929,12 +1033,20 @@
     margin-top: 15vh;
     padding: 0;
     border: none;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 25px 50px -12px oklch(0% 0 0 / 25%);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-dialog);
     overflow: hidden;
+    background: var(--color-surface-raised);
 
     &::backdrop {
       background: oklch(0% 0 0 / 50%);
+      backdrop-filter: blur(4px);
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    dialog.quick-switcher::backdrop {
+      background: oklch(0% 0 0 / 70%);
     }
   }
 
@@ -951,13 +1063,15 @@
 
   .quick-switcher-input {
     width: 100%;
-    font-size: 16px;
+    font-size: var(--text-base);
     padding: var(--space-3) var(--space-4);
     border: 2px solid var(--color-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg);
 
     &:focus {
       border-color: var(--color-accent);
+      box-shadow: 0 0 0 4px var(--color-accent-subtle);
     }
   }
 
@@ -968,16 +1082,16 @@
   }
 
   .quick-switcher-empty {
-    padding: var(--space-5);
+    padding: var(--space-6);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--color-text-tertiary);
   }
 
   .quick-switcher-item {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
     cursor: pointer;
 
@@ -986,17 +1100,17 @@
     }
 
     &.selected {
-      background: var(--color-focused-bg);
+      background: var(--color-accent-subtle);
     }
   }
 
   .quick-switcher-icon {
-    font-size: 16px;
+    font-size: var(--text-base);
     flex-shrink: 0;
   }
 
   .quick-switcher-title {
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--color-text);
 
     & mark {
@@ -1008,7 +1122,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UTILITIES LAYER - Helper classes
+   UTILITIES LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
   .sr-only {
@@ -1023,7 +1137,6 @@
     border: 0;
   }
 
-  /* For elements that should be non-interactive during certain states */
   [inert] {
     pointer-events: none;
     user-select: none;
