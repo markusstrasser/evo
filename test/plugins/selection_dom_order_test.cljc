@@ -4,21 +4,15 @@
    CRITICAL: Selection must use DOM/visual order (pre-order traversal),
    NOT sibling order. This ensures Shift+Down from parent selects first child."
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
-  (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require #?(:clj [clojure.test :refer [deftest is testing use-fixtures]]
                :cljs [cljs.test :refer [deftest is testing use-fixtures]])
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]
-            [plugins.visible-order :as vo]
-            [plugins.registry :as registry]))
+            [kernel.query :as q]))
 
-;; Ensure the visible-order plugin is registered before each test.
-;; This is necessary because other tests (registry_test) may clear the registry.
-(use-fixtures :each
-  (fn [f]
-    (registry/register-derived! :visible-order vo/compute-visible-order)
-    (f)))
+;; NOTE: visible-order plugin removed - navigation now uses (db, session) directly
+;; No fixture needed - tests exercise selection which calls kernel/navigation internally
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -60,23 +54,23 @@
   []
   (let [db0 (db/empty-db)
         {:keys [db issues]} (tx/interpret db0
-                              [{:op :create-node :id "doc1" :type :doc :props {}}
-                               {:op :place :id "doc1" :under :doc :at :last}
+                                          [{:op :create-node :id "doc1" :type :doc :props {}}
+                                           {:op :place :id "doc1" :under :doc :at :last}
                                ;; Create parent blocks
-                               {:op :create-node :id "a" :type :block :props {:text "A"}}
-                               {:op :place :id "a" :under "doc1" :at :last}
-                               {:op :create-node :id "b" :type :block :props {:text "B"}}
-                               {:op :place :id "b" :under "doc1" :at :last}
-                               {:op :create-node :id "c" :type :block :props {:text "C"}}
-                               {:op :place :id "c" :under "doc1" :at :last}
+                                           {:op :create-node :id "a" :type :block :props {:text "A"}}
+                                           {:op :place :id "a" :under "doc1" :at :last}
+                                           {:op :create-node :id "b" :type :block :props {:text "B"}}
+                                           {:op :place :id "b" :under "doc1" :at :last}
+                                           {:op :create-node :id "c" :type :block :props {:text "C"}}
+                                           {:op :place :id "c" :under "doc1" :at :last}
                                ;; Create children of a
-                               {:op :create-node :id "a1" :type :block :props {:text "A1"}}
-                               {:op :place :id "a1" :under "a" :at :last}
-                               {:op :create-node :id "a2" :type :block :props {:text "A2"}}
-                               {:op :place :id "a2" :under "a" :at :last}
+                                           {:op :create-node :id "a1" :type :block :props {:text "A1"}}
+                                           {:op :place :id "a1" :under "a" :at :last}
+                                           {:op :create-node :id "a2" :type :block :props {:text "A2"}}
+                                           {:op :place :id "a2" :under "a" :at :last}
                                ;; Create child of b
-                               {:op :create-node :id "b1" :type :block :props {:text "B1"}}
-                               {:op :place :id "b1" :under "b" :at :last}])]
+                                           {:op :create-node :id "b1" :type :block :props {:text "B1"}}
+                                           {:op :place :id "b1" :under "b" :at :last}])]
     (assert (empty? issues) (str "Nested fixture setup failed: " (pr-str issues)))
     db))
 
@@ -138,24 +132,24 @@
       ;; DOM order: a, a1, a2, b, b1, c
       ;; Navigate from 'a' through entire tree
       (is (= "a1" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "a"})
-                                                    {:type :selection :mode :next})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "a"})
+                                                   {:type :selection :mode :next})))
           "Next from 'a' should be 'a1' (child)")
       (is (= "a2" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "a1"})
-                                                    {:type :selection :mode :next})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "a1"})
+                                                   {:type :selection :mode :next})))
           "Next from 'a1' should be 'a2' (sibling)")
       (is (= "b" (q/focus (apply-selection-intent db
-                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "a2"})
-                                                   {:type :selection :mode :next})))
+                                                  (apply-selection-intent db session {:type :selection :mode :replace :ids "a2"})
+                                                  {:type :selection :mode :next})))
           "Next from 'a2' should be 'b' (parent's next sibling)")
       (is (= "b1" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "b"})
-                                                    {:type :selection :mode :next})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "b"})
+                                                   {:type :selection :mode :next})))
           "Next from 'b' should be 'b1' (child)")
       (is (= "c" (q/focus (apply-selection-intent db
-                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "b1"})
-                                                   {:type :selection :mode :next})))
+                                                  (apply-selection-intent db session {:type :selection :mode :replace :ids "b1"})
+                                                  {:type :selection :mode :next})))
           "Next from 'b1' should be 'c' (parent's next sibling)"))))
 
 (deftest reverse-dom-traversal
@@ -165,24 +159,24 @@
       ;; DOM order: a, a1, a2, b, b1, c
       ;; Navigate backward from 'c'
       (is (= "b1" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "c"})
-                                                    {:type :selection :mode :prev})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "c"})
+                                                   {:type :selection :mode :prev})))
           "Prev from 'c' should be 'b1' (parent's last child)")
       (is (= "b" (q/focus (apply-selection-intent db
-                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "b1"})
-                                                   {:type :selection :mode :prev})))
+                                                  (apply-selection-intent db session {:type :selection :mode :replace :ids "b1"})
+                                                  {:type :selection :mode :prev})))
           "Prev from 'b1' should be 'b' (parent)")
       (is (= "a2" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "b"})
-                                                    {:type :selection :mode :prev})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "b"})
+                                                   {:type :selection :mode :prev})))
           "Prev from 'b' should be 'a2' (prev sibling's last child)")
       (is (= "a1" (q/focus (apply-selection-intent db
-                                                    (apply-selection-intent db session {:type :selection :mode :replace :ids "a2"})
-                                                    {:type :selection :mode :prev})))
+                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "a2"})
+                                                   {:type :selection :mode :prev})))
           "Prev from 'a2' should be 'a1' (sibling)")
       (is (= "a" (q/focus (apply-selection-intent db
-                                                   (apply-selection-intent db session {:type :selection :mode :replace :ids "a1"})
-                                                   {:type :selection :mode :prev})))
+                                                  (apply-selection-intent db session {:type :selection :mode :replace :ids "a1"})
+                                                  {:type :selection :mode :prev})))
           "Prev from 'a1' should be 'a' (parent)"))))
 
 (deftest user-scenario-grandchild-up-3x-down-2x

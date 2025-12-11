@@ -385,7 +385,7 @@
                                                                    (sort-by #(get-in db [:derived :pre %] 0))
                                                                    first)
                                                ;; Get previous block in visible order (Logseq parity)
-                                               prev-block-id (nav/prev-visible-block db first-block-id)
+                                               prev-block-id (nav/prev-visible-block db session first-block-id)
                                                ;; Move all selected blocks to trash
                                                delete-ops (mapv (fn [id]
                                                                   {:op :place
