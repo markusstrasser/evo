@@ -29,7 +29,6 @@
   (:require [plugins.registry :as registry]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-(def loaded? true)
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
@@ -158,7 +157,7 @@
 
 ;; ── Plugin Registration ───────────────────────────────────────────────────────
 
-(registry/register! :visible-order compute-visible-order)
+(registry/register-derived! :visible-order compute-visible-order)
 
 (comment
   ;; Example usage in REPL

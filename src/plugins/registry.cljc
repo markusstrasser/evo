@@ -34,6 +34,14 @@
   (swap! *plugins assoc k f)
   nil)
 
+(defn register-derived!
+  "Alias for register! that clarifies intent for derived index plugins.
+
+   Useful when scanning call-sites: `register-derived!` communicates that the
+   plugin only contributes to db[:derived] and never mutates canonical data."
+  [k f]
+  (register! k f))
+
 (defn unregister!
   "Remove a plugin from the registry.
 
