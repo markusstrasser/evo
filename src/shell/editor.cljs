@@ -18,7 +18,7 @@
             [dataspex.core :as dataspex]
             [shell.nexus :as nexus]
             [shell.executor :as executor]
-            [shell.demo-data :as demo-data]
+
             [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
@@ -66,15 +66,15 @@
 ;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
   (atom
-   (if (test-mode?)
-     (-> (db/empty-db) (H/record))
-     (-> (db/empty-db)
-         (tx/interpret demo-data/ops)
-         :db
-         (H/record)))))
+   ;; Always start with empty DB - demo data loaded only if no folder configured
+   (-> (db/empty-db) (H/record))))
 
 ;; Storage status atom for UI feedback
-(defonce !storage-status (atom {:folder-name nil :loading? false}))
+(defonce !storage-status
+  (atom {:folder-name nil
+         :loading? false
+         ;; Start in checking state - true until we know if folder exists
+         :checking? true}))
 
 (defn load-from-folder!
   "Load pages from the currently selected folder into DB.
@@ -101,10 +101,11 @@
                    (vs/set-current-page! nil)))
                (swap! !storage-status assoc
                       :loading? false
+                      :checking? false
                       :folder-name (storage/get-folder-name))))
       (.catch (fn [err]
                 (js/console.error "Failed to load from folder:" err)
-                (swap! !storage-status assoc :loading? false)))))
+                (swap! !storage-status assoc :loading? false :checking? false)))))
 
 (defn pick-folder!
   "Show folder picker dialog and load pages from selected folder."
@@ -115,24 +116,27 @@
                  (load-from-folder!))))))
 
 (defn clear-folder!
-  "Disconnect from the current folder and reload demo data."
+  "Disconnect from the current folder and reset to empty state."
   []
   (storage/clear-folder!)
   (swap! !storage-status assoc :folder-name nil)
-  ;; Reload demo data
-  (reset! !db (-> (db/empty-db)
-                  (tx/interpret demo-data/ops)
-                  :db
-                  (H/record)))
-  (vs/set-current-page! "projects"))
+  ;; Reset to empty DB (no demo data - user must pick folder or start fresh)
+  (reset! !db (-> (db/empty-db) (H/record)))
+  (vs/set-current-page! nil))
 
 ;; Try to restore previously selected folder on startup
 (defonce _restore-folder
   (when-not (test-mode?)
     (-> (storage/restore-folder!)
         (.then (fn [restored?]
-                 (when restored?
-                   (load-from-folder!)))))))
+                 (if restored?
+                   ;; Folder found - load-from-folder! will clear :checking? when done
+                   (load-from-folder!)
+                   ;; No folder configured - clear checking state, stay empty
+                   (swap! !storage-status assoc :checking? false))))
+        (.catch (fn [_err]
+                  ;; Error checking - clear state, stay empty
+                  (swap! !storage-status assoc :checking? false))))))
 
 ;; Auto-save to folder on DB changes (debounced)
 (defonce ^:private save-timeout (atom nil))
@@ -620,6 +624,8 @@
   "Main app - pure composition, no business logic."
   []
   (let [db @!db
+        storage-status @!storage-status
+        checking? (:checking? storage-status)
         current-page-id (vs/current-page)
         page-title (when current-page-id (pages/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
@@ -630,66 +636,68 @@
               :min-height "100vh"}}
 
      ;; Sidebar for page navigation (toggleable via Cmd+B)
+     ;; Always show sidebar - it has the folder picker
      (when sidebar-visible?
        (sidebar/Sidebar {:db db
                          :on-intent handle-intent
                          :on-pick-folder pick-folder!
                          :on-clear-folder clear-folder!
-                         :storage-status @!storage-status}))
+                         :storage-status storage-status}))
 
-     ;; Main content area
-     [:div.main-content
-      {:style {:flex "1"
-               :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
-               :font-family "system-ui, -apple-system, sans-serif"
-               :padding "20px"
-               :max-width "800px"}
-       ;; Background click to clear selection (Logseq parity)
-       ;; Blocks call stopPropagation, so this only fires for empty background clicks
-       :on {:click (fn [_e]
-                     ;; Only clear if not editing and clicking empty background
-                     (when-not (vs/editing-block-id)
-                       (handle-intent {:type :selection :mode :clear})))}}
+     ;; Main content area - only render after storage check completes
+     (when-not checking?
+       [:div.main-content
+        {:style {:flex "1"
+                 :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
+                 :font-family "system-ui, -apple-system, sans-serif"
+                 :padding "20px"
+                 :max-width "800px"}
+         ;; Background click to clear selection (Logseq parity)
+         ;; Blocks call stopPropagation, so this only fires for empty background clicks
+         :on {:click (fn [_e]
+                       ;; Only clear if not editing and clicking empty background
+                       (when-not (vs/editing-block-id)
+                         (handle-intent {:type :selection :mode :clear})))}}
 
-      ;; Mock-text for cursor detection
-      (MockText)
+        ;; Mock-text for cursor detection
+        (MockText)
 
-      [:h2 "Blocks UI - Multi-Page Demo"]
-      [:p {:style {:color "#666"}}
-       "Features: Page refs " [:code "[[Page]]"]]
+        [:h2 "Blocks UI - Multi-Page Demo"]
+        [:p {:style {:color "#666"}}
+         "Features: Page refs " [:code "[[Page]]"]]
 
-      ;; Current page title and outline
-      (if current-page-id
-        [:div
-         [:h3 {:style {:margin-top "20px"
-                       :margin-bottom "10px"
-                       :color "rgb(29, 78, 216)"}}
-          "📄 " page-title]
+        ;; Current page title and outline
+        (if current-page-id
+          [:div
+           [:h3 {:style {:margin-top "20px"
+                         :margin-bottom "10px"
+                         :color "rgb(29, 78, 216)"}}
+            "📄 " page-title]
 
-         ;; Main outline for current page only
-         (Outline {:db db
-                   :root-id current-page-id
-                   :on-intent handle-intent})
+           ;; Main outline for current page only
+           (Outline {:db db
+                     :root-id current-page-id
+                     :on-intent handle-intent})
 
-         ;; Backlinks panel - shows "Linked References" from other pages
-         (backlinks/BacklinksPanel {:db db
-                                    :page-title page-title
-                                    :on-intent handle-intent})]
+           ;; Backlinks panel - shows "Linked References" from other pages
+           (backlinks/BacklinksPanel {:db db
+                                      :page-title page-title
+                                      :on-intent handle-intent})]
 
-        ;; No page selected
-        [:div {:style {:padding "40px"
-                       :text-align "center"
-                       :color "rgb(156, 163, 175)"}}
-         [:p "Select a page from the sidebar to begin"]])
+          ;; No page selected
+          [:div {:style {:padding "40px"
+                         :text-align "center"
+                         :color "rgb(156, 163, 175)"}}
+           [:p "Select a page from the sidebar to begin"]])
 
-      ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
-      ;; Auto-show when ?devtools query param present
-      (when (devtools-enabled?)
-        (devtools/DevToolsPanel {:db db}))
+        ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
+        ;; Auto-show when ?devtools query param present
+        (when (devtools-enabled?)
+          (devtools/DevToolsPanel {:db db}))
 
-      ;; Hotkeys reference (toggleable via Cmd+?)
-      (when hotkeys-visible?
-        (HotkeysReference))]
+        ;; Hotkeys reference (toggleable via Cmd+?)
+        (when hotkeys-visible?
+          (HotkeysReference))])
 
      ;; Quick Switcher overlay (Cmd+K) - rendered outside main content for proper modal behavior
      (when quick-switcher-visible?
@@ -743,11 +751,9 @@
     ;; Log uncited intents once (grouped) instead of on each registration
     (intent/log-uncited-intents!))
 
-  ;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
-  (if (test-mode?)
-    (reset-to-empty-db!)
-    ;; Normal mode: auto-select first page (Projects) for demo data
-    (vs/set-current-page! "projects"))
+;; Reset to empty DB for E2E tests (handles hot-reload where defonce doesn't re-run)
+  (when (test-mode?)
+    (reset-to-empty-db!))
 
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
@@ -854,10 +860,7 @@
   ;; Initialize Nexus action pipeline
   (nexus/init!)
 
-  ;; Set initial current page to first page (for navigation scope)
-  (when-not (test-mode?)
-    (when-let [first-page (first (q/children @!db :doc))]
-      (vs/set-current-page! first-page)))
+;; Note: Current page is set by load-from-folder! after storage check completes
 
   ;; Enable lifecycle hooks + Nexus dispatch
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
