@@ -33,9 +33,17 @@
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
 (defn- get-block-text
-  "Get text content of a block."
-  [db block-id]
-  (get-in db [:nodes block-id :props :text] ""))
+  "Get text content of a block.
+   
+   Prefers :pending-buffer text when the intent contains uncommitted buffer text
+   for this block (fixes Enter key losing typed text before DB commit)."
+  [db block-id intent]
+  (let [{:keys [pending-buffer]} intent
+        buffer-block-id (:block-id pending-buffer)
+        buffer-text (:text pending-buffer)]
+    (if (and buffer-text (= buffer-block-id block-id))
+      buffer-text
+      (get-in db [:nodes block-id :props :text] ""))))
 
 (defn- list-marker?
   "Check if text is only a list marker (empty list item)."
@@ -91,8 +99,8 @@
                           :fr/ids #{:fr.edit/paired-char-insertion}
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos input-char] :as _intent}]
-                            (let [text (get-block-text db block-id)
+                          (fn [db _session {:keys [block-id cursor-pos input-char] :as intent}]
+                            (let [text (get-block-text db block-id intent)
                                   next-char (when (< cursor-pos (count text))
                                               (str (nth text cursor-pos)))
                                   closing-char (get pairs input-char)]
@@ -142,9 +150,9 @@
                           :fr/ids #{:fr.edit/paired-char-insertion}
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos]}]
+                          (fn [db _session {:keys [block-id cursor-pos] :as intent}]
                             (when (pos? cursor-pos)
-                              (let [text (get-block-text db block-id)
+                              (let [text (get-block-text db block-id intent)
              ;; Check for matching pairs - try multi-char first, then single-char
              ;; Sort pairs by length descending so we check multi-char pairs first
                                     pair-match (some (fn [[opening closing]]
@@ -189,10 +197,10 @@
                           :spec [:map [:type [:= :merge-with-next]] [:block-id :string]]
                           :fr/ids #{:fr.edit/delete-forward}
                           :allowed-states #{:editing}
-                          :handler (fn [db _session {:keys [block-id]}]
+                          :handler (fn [db _session {:keys [block-id] :as intent}]
                                      (let [next-id (get-in db [:derived :next-id-of block-id])
-                                           curr-text (get-block-text db block-id)
-                                           next-text (get-block-text db next-id)
+                                           curr-text (get-block-text db block-id intent)
+                                           next-text (get-block-text db next-id nil)
                                            merged-text (str curr-text next-text)
                                            next-children (get-in db [:children-by-parent next-id] [])]
                                        (when next-id
@@ -212,8 +220,8 @@
                          {:doc "Remove list marker from empty list item (becomes plain block)."
                           :spec [:map [:type [:= :unformat-empty-list]] [:block-id :string]]
                           :fr/ids #{:fr.smart/list-unformat}
-                          :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (get-block-text db block-id)]
+                          :handler (fn [db _session {:keys [block-id] :as intent}]
+                                     (let [text (get-block-text db block-id intent)]
                                        (when (list-marker? text)
                                          [{:op :update-node :id block-id :props {:text ""}}])))})
 
@@ -225,8 +233,8 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]]
                           :fr/ids #{:fr.smart/auto-increment}
-                          :handler (fn [db _session {:keys [block-id cursor-pos]}]
-                                     (let [text (get-block-text db block-id)
+                          :handler (fn [db _session {:keys [block-id cursor-pos] :as intent}]
+                                     (let [text (get-block-text db block-id intent)
                                            before (subs text 0 cursor-pos)
                                            after (subs text cursor-pos)
                                            parent (get-in db [:derived :parent-of block-id])
@@ -251,8 +259,8 @@
                          {:doc "Toggle checkbox state in block text ([ ] <-> [x])."
                           :spec [:map [:type [:= :toggle-checkbox]] [:block-id :string]]
                           :fr/ids #{:fr.smart/checkbox-toggle}
-                          :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (get-block-text db block-id)
+                          :handler (fn [db _session {:keys [block-id] :as intent}]
+                                     (let [text (get-block-text db block-id intent)
                                            new-text (toggle-checkbox-text text)]
                                        (when (not= text new-text)
                                          [{:op :update-node :id block-id :props {:text new-text}}])))})
@@ -276,8 +284,8 @@
                           :fr/ids #{:fr.edit/smart-split}
                           :allowed-states #{:editing}
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos]}]
-                            (let [text (get-block-text db block-id)
+                          (fn [db _session {:keys [block-id cursor-pos] :as intent}]
+                            (let [text (get-block-text db block-id intent)
                                   before (subs text 0 cursor-pos)
                                   after (subs text cursor-pos)
                                   parent (get-in db [:derived :parent-of block-id])
@@ -383,8 +391,8 @@
                                  [:cursor-pos :int]]
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos]}]
-                            (let [text (get-block-text db block-id)
+                          (fn [db _session {:keys [block-id cursor-pos] :as intent}]
+                            (let [text (get-block-text db block-id intent)
                                   context (ctx/context-at-cursor text cursor-pos)
                                   parent (get-in db [:derived :parent-of block-id])]
 
