@@ -116,14 +116,14 @@
 
    Args:
      db: Database with derived indexes
-     page-title: Title of the page (case-insensitive)
+     target-title: Title of the page (case-insensitive)
 
    Returns:
      Vector of {:block-id :block-text :page-id :page-title} maps,
      or empty vector if no backlinks."
-  [db page-title]
-  (when page-title
-    (let [page-lower (str/lower-case page-title)]
+  [db target-title]
+  (when target-title
+    (let [page-lower (str/lower-case target-title)]
       (get-in db [:derived :backlinks-by-page page-lower] []))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
