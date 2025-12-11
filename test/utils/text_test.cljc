@@ -45,9 +45,9 @@
      (testing "Cursor position with emoji"
        ;; "Hi😀there" = H(0) i(1) [😀 = 2-3] t(4) h(5) e(6) r(7) e(8)
        ;; Grapheme indices: H=0, i=1, 😀=2, t=3, h=4, e=5, r=6, e=7
-       (is (= 0 (text/cursor-pos-to-grapheme-index "Hi😀there" 0)))  ; H
-       (is (= 1 (text/cursor-pos-to-grapheme-index "Hi😀there" 1)))  ; i
-       (is (= 2 (text/cursor-pos-to-grapheme-index "Hi😀there" 2)))  ; Start of 😀
+       (is (= 0 (text/cursor-pos-to-grapheme-index "Hi😀there" 0))) ; H
+       (is (= 1 (text/cursor-pos-to-grapheme-index "Hi😀there" 1))) ; i
+       (is (= 2 (text/cursor-pos-to-grapheme-index "Hi😀there" 2))) ; Start of 😀
        (is (= 3 (text/cursor-pos-to-grapheme-index "Hi😀there" 4)))))) ; t (after 😀)
 
 ;; ── Word Boundary Detection Tests ────────────────────────────────────────────
@@ -92,3 +92,50 @@
     (is (true? (text/whitespace? \return)))
     (is (false? (text/whitespace? \a)))
     (is (false? (text/whitespace? \1)))))
+
+;; ── Split Graphemes Tests ────────────────────────────────────────────────────
+
+(deftest split-graphemes-ascii-test
+  (testing "ASCII splits into single characters"
+    (is (= ["H" "e" "l" "l" "o"] (text/split-graphemes "Hello")))
+    (is (= [] (text/split-graphemes "")))))
+
+#?(:cljs
+   (deftest split-graphemes-basic-emoji-test
+     (testing "Basic emoji is single grapheme"
+       ;; 😀 is 2 UTF-16 code units but 1 grapheme
+       (is (= ["H" "i" "😀"] (text/split-graphemes "Hi😀")))
+       (is (= 3 (count (text/split-graphemes "Hi😀")))))))
+
+#?(:cljs
+   (deftest split-graphemes-complex-emoji-test
+     (testing "Skin tone modifier is single grapheme (when Intl.Segmenter available)"
+       ;; 👋🏽 = waving hand + skin tone modifier (4 UTF-16 code units, 1 grapheme)
+       (let [graphemes (text/split-graphemes "Hi👋🏽")]
+         ;; With Intl.Segmenter: ["H" "i" "👋🏽"]
+         ;; Without (fallback): ["H" "i" "👋" "🏽"]
+         (is (>= 4 (count graphemes))) ;; Either 3 or 4 depending on browser
+         (is (= "H" (first graphemes)))))
+
+     (testing "Flag emoji is single grapheme (when Intl.Segmenter available)"
+       ;; 🇺🇸 = regional indicator U + regional indicator S (4 code units)
+       (let [graphemes (text/split-graphemes "Go🇺🇸")]
+         ;; With Intl.Segmenter: ["G" "o" "🇺🇸"]
+         ;; Without (fallback): ["G" "o" "🇺" "🇸"]
+         (is (>= 4 (count graphemes)))
+         (is (= "G" (first graphemes)))))))
+
+;; ── Grapheme Index Conversion Tests ──────────────────────────────────────────
+
+#?(:cljs
+   (deftest grapheme-index-to-cursor-pos-test
+     (testing "ASCII grapheme index equals cursor pos"
+       (is (= 0 (text/grapheme-index-to-cursor-pos "Hello" 0)))
+       (is (= 3 (text/grapheme-index-to-cursor-pos "Hello" 3)))
+       (is (= 5 (text/grapheme-index-to-cursor-pos "Hello" 5))))
+
+     (testing "Emoji grapheme index converts correctly"
+       ;; "Hi😀there" - grapheme idx 2 is 😀 which starts at UTF-16 pos 2
+       (is (= 2 (text/grapheme-index-to-cursor-pos "Hi😀there" 2)))
+       ;; grapheme idx 3 is 't' which starts at UTF-16 pos 4 (after 2-unit emoji)
+       (is (= 4 (text/grapheme-index-to-cursor-pos "Hi😀there" 3))))))

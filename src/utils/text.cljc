@@ -1,93 +1,139 @@
 (ns utils.text
-  "Text manipulation utilities with multi-byte character support.
+  "Text manipulation utilities with Unicode grapheme cluster support.
 
-   NOTE: This is a simplified implementation. For full emoji/grapheme cluster support,
-   install grapheme-splitter library: npm install grapheme-splitter")
+   Uses Intl.Segmenter (native browser API) for proper grapheme segmentation.
+   Handles complex emoji sequences like ZWJ families, skin tones, and flags.
+   Falls back to surrogate pair detection for older browsers.
+
+   Browser support for Intl.Segmenter:
+   - Chrome 87+, Edge 87+, Safari 14.1+, Firefox 125+")
 
 ;; ── Grapheme Cluster Handling ────────────────────────────────────────────────
 
-(defn grapheme-length-at
-  "Get length of grapheme cluster at position (handles basic emoji, CJK).
+;; ── Intl.Segmenter Support ───────────────────────────────────────────────────
 
-   Simplified implementation without grapheme-splitter library.
-   Handles basic emoji (surrogate pairs) but not complex clusters.
+#?(:cljs
+   (def ^:private segmenter-supported?
+     "Check if Intl.Segmenter is available (modern browsers)."
+     (and (exists? js/Intl)
+          (exists? js/Intl.Segmenter))))
 
-   Example:
-     text: 'Hello😀World'
-     pos: 5
-     => 2  (emoji takes 2 UTF-16 code units)
+#?(:cljs
+   (def ^:private grapheme-segmenter
+     "Lazy-initialized grapheme segmenter instance."
+     (when segmenter-supported?
+       (js/Intl.Segmenter. "en" #js {:granularity "grapheme"}))))
 
-   Returns: Integer (1 for ASCII, 2 for basic emoji/CJK)
+(defn split-graphemes
+  "Split string into grapheme clusters (visual characters).
 
-   TODO: Use grapheme-splitter library for full Unicode correctness:
-         npm install grapheme-splitter
-         Then use GraphemeSplitter.splitGraphemes()"
-  [text pos]
-  #?(:cljs
-     ;; Simple surrogate pair detection
-     (let [char-code (.charCodeAt text pos)]
-       (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
-         2  ; High surrogate - emoji/CJK likely 2 code units
-         1))
-     :clj
-     ;; On JVM, use Character.charCount
-     (if (< pos (count text))
-       (let [code-point (.codePointAt text (int pos))]
-         (Character/charCount code-point))
-       1)))
+   Uses Intl.Segmenter when available for proper Unicode support.
+   Handles complex sequences:
+   - ZWJ families: 👨‍👩‍👧 (1 grapheme, 8 code units)
+   - Skin tones: 👋🏽 (1 grapheme, 4 code units)
+   - Flags: 🇺🇸 (1 grapheme, 4 code units)
 
-(defn count-graphemes
-  "Count grapheme clusters in string (not UTF-16 code units).
-
-   Simplified implementation - counts surrogate pairs as 1 grapheme.
+   Falls back to surrogate pair detection on older browsers.
 
    Example:
-     text: 'Hi😀'
-     => 3  (not 4)
-
-   TODO: Use grapheme-splitter for full correctness"
+     (split-graphemes \"Hi👋🏽\") => [\"H\" \"i\" \"👋🏽\"]"
   [text]
   #?(:cljs
-     ;; Simple counting - treat surrogate pairs as 1
-     (loop [i 0
-            grapheme-count 0]
-       (if (>= i (.-length text))
-         grapheme-count
-         (let [char-code (.charCodeAt text i)]
-           (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
-             (recur (+ i 2) (inc grapheme-count))  ; Skip surrogate pair
-             (recur (inc i) (inc grapheme-count))))))
+     (if (and segmenter-supported? grapheme-segmenter)
+       ;; Use Intl.Segmenter for proper grapheme clusters
+       ;; .segment() returns a Segments iterable - use Array.from()
+       (let [segments (.segment grapheme-segmenter text)
+             arr (js/Array.from segments)]
+         (vec (map #(.-segment %) arr)))
+       ;; Fallback: simple surrogate pair detection
+       (loop [i 0
+              result []]
+         (if (>= i (.-length text))
+           result
+           (let [char-code (.charCodeAt text i)]
+             (if (and (>= char-code 0xD800) (<= char-code 0xDBFF)
+                      (< (inc i) (.-length text)))
+               ;; High surrogate - take 2 code units
+               (recur (+ i 2) (conj result (.substring text i (+ i 2))))
+               ;; Regular char
+               (recur (inc i) (conj result (.substring text i (inc i)))))))))
      :clj
-     (.codePointCount text 0 (count text))))
+     ;; JVM: Use codepoints for basic support
+     (let [codepoints (.codePoints text)]
+       (vec (map #(String. (Character/toChars %))
+                 (iterator-seq (.iterator codepoints)))))))
+
+(defn grapheme-index-to-cursor-pos
+  "Convert grapheme index to UTF-16 cursor position.
+
+   Inverse of cursor-pos-to-grapheme-index.
+   Useful for placing cursor after N visual characters.
+
+   Example:
+     text: \"Hi👋🏽there\"
+     grapheme-idx: 3  => 6 (after 👋🏽, which is 4 code units)"
+  [text grapheme-idx]
+  (let [graphemes (split-graphemes text)
+        clamped-idx (min grapheme-idx (count graphemes))]
+    (reduce + 0 (map count (take clamped-idx graphemes)))))
+
+;; ── Legacy Grapheme Helpers ──────────────────────────────────────────────────
+;; These provide backwards compatibility with simpler surrogate-pair detection.
+;; Prefer split-graphemes for new code.
+
+(defn grapheme-length-at
+  "Get UTF-16 length of grapheme cluster at cursor position.
+
+   Uses Intl.Segmenter when available for proper Unicode support.
+   Essential for cursor movement to skip entire visual characters.
+
+   Example:
+     text: \"Hi👋🏽World\"
+     pos: 2  => 4  (👋🏽 is 4 UTF-16 code units)
+
+   Returns: Integer (UTF-16 code units for grapheme at pos)"
+  [text pos]
+  (let [graphemes (split-graphemes text)]
+    ;; Find which grapheme contains this position
+    (loop [g-idx 0
+           utf16-pos 0]
+      (if (>= g-idx (count graphemes))
+        1 ;; Past end, return 1
+        (let [g (nth graphemes g-idx)
+              g-len (count g)]
+          (if (and (>= pos utf16-pos) (< pos (+ utf16-pos g-len)))
+            g-len ;; Found the grapheme containing pos
+            (recur (inc g-idx) (+ utf16-pos g-len))))))))
+
+(defn count-graphemes
+  "Count grapheme clusters in string (visual characters, not code units).
+
+   Uses Intl.Segmenter when available for proper Unicode support.
+   Falls back to surrogate pair counting on older browsers.
+
+   Example:
+     (count-graphemes \"Hi👋🏽\") => 3  (H, i, 👋🏽)"
+  [text]
+  (count (split-graphemes text)))
 
 (defn cursor-pos-to-grapheme-index
   "Convert UTF-16 cursor position to grapheme index.
 
-   Useful for cursor positioning that respects emoji.
+   Uses Intl.Segmenter when available for proper Unicode support.
+   Useful for cursor positioning that respects complex emoji.
 
-   Simplified implementation using surrogate pair detection.
-
-   TODO: Use grapheme-splitter for full correctness"
+   Example:
+     text: \"Hi👋🏽there\"
+     cursor-pos: 6  => 3  (after 👋🏽)"
   [text cursor-pos]
-  #?(:cljs
-     (loop [i 0
-            grapheme-idx 0]
-       (if (>= i cursor-pos)
-         grapheme-idx
-         (let [char-code (.charCodeAt text i)]
-           (if (and (>= char-code 0xD800) (<= char-code 0xDBFF))
-             (recur (+ i 2) (inc grapheme-idx))  ; Surrogate pair
-             (recur (inc i) (inc grapheme-idx))))))
-     :clj
-     (loop [idx 0
-            utf16-pos 0]
-       (if (>= utf16-pos cursor-pos)
-         idx
-         (if (< utf16-pos (count text))
-           (let [code-point (.codePointAt text (int utf16-pos))
-                 char-count (Character/charCount code-point)]
-             (recur (inc idx) (+ utf16-pos char-count)))
-           idx)))))
+  (let [graphemes (split-graphemes text)]
+    (loop [g-idx 0
+           utf16-pos 0]
+      (cond
+        (>= utf16-pos cursor-pos) g-idx
+        (>= g-idx (count graphemes)) g-idx
+        :else (recur (inc g-idx)
+                     (+ utf16-pos (count (nth graphemes g-idx))))))))
 
 ;; ── Word Boundary Detection ──────────────────────────────────────────────────
 
@@ -116,16 +162,16 @@
   (let [len (count text)
         ;; Skip current word (non-whitespace chars)
         skip-current (loop [p pos]
-                      (if (and (< p len)
-                              (not (whitespace? (nth text p))))
-                        (recur (inc p))
-                        p))
+                       (if (and (< p len)
+                                (not (whitespace? (nth text p))))
+                         (recur (inc p))
+                         p))
         ;; Skip whitespace
         skip-spaces (loop [p skip-current]
-                     (if (and (< p len)
-                             (whitespace? (nth text p)))
-                       (recur (inc p))
-                       p))]
+                      (if (and (< p len)
+                               (whitespace? (nth text p)))
+                        (recur (inc p))
+                        p))]
     skip-spaces))
 
 (defn find-word-end
@@ -171,20 +217,20 @@
   (when (pos? pos)
     (let [;; Move back one if at space
           start-pos (if (and (< pos (count text))
-                            (pos? pos)
-                            (whitespace? (nth text (dec pos))))
-                     (dec pos)
-                     pos)
+                             (pos? pos)
+                             (whitespace? (nth text (dec pos))))
+                      (dec pos)
+                      pos)
           ;; Skip spaces backward
           skip-spaces (loop [p (dec start-pos)]
-                       (if (and (>= p 0)
-                               (whitespace? (nth text p)))
-                         (recur (dec p))
-                         p))
+                        (if (and (>= p 0)
+                                 (whitespace? (nth text p)))
+                          (recur (dec p))
+                          p))
           ;; Skip word backward
           skip-word (loop [p skip-spaces]
-                     (if (and (>= p 0)
-                             (not (whitespace? (nth text p))))
-                       (recur (dec p))
-                       p))]
+                      (if (and (>= p 0)
+                               (not (whitespace? (nth text p))))
+                        (recur (dec p))
+                        p))]
       (max 0 (inc skip-word)))))
