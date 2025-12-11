@@ -227,3 +227,10 @@
                               (case (:type context)
                                 :page-ref (navigate-or-create-page db (:page-name context))
                                 nil)))})
+
+
+;; ══════════════════════════════════════════════════════════════════════════════
+;; DCE Sentinel - prevents dead code elimination in test builds
+;; ══════════════════════════════════════════════════════════════════════════════
+
+(def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
