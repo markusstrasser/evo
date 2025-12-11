@@ -124,7 +124,11 @@
 
 (defn- blocks-to-ops
   "Convert parsed blocks into kernel operations.
-   Handles hierarchy by tracking parent stack and last sibling at each depth.
+   
+   Uses a map to track the last block at each depth level.
+   When placing a block at depth N:
+   - Parent is the last block at depth N-1
+   - Place after the last sibling at depth N (if any under same parent)
 
    Returns {:ops [...] :last-block-id string}"
   [parsed-blocks parent-id after-id]
@@ -132,43 +136,34 @@
     {:ops [] :last-block-id after-id}
     (loop [blocks parsed-blocks
            ops []
-           ;; Stack of {:depth :parent-id :last-sibling-id} maps for tracking nesting
-           ;; last-sibling-id tracks the most recent block at this depth for :after placement
-           parent-stack [{:depth 0 :parent-id parent-id :last-sibling-id after-id}]
+           ;; Map from depth -> {:id block-id :parent parent-id}
+           ;; Depth -1 is the paste insertion point
+           depth-map {-1 {:id after-id :parent parent-id}}
            last-id after-id]
       (if (empty? blocks)
         {:ops ops :last-block-id last-id}
         (let [{:keys [depth text]} (first blocks)
               new-id (str "block-" (random-uuid))
 
-              ;; Pop stack until we find a depth less than current
-              stack' (loop [s parent-stack]
-                       (if (and (> (count s) 1)
-                                (>= (:depth (first s)) depth))
-                         (recur (rest s))
-                         s))
+              ;; Find parent: last block at depth - 1
+              parent-depth (dec depth)
+              parent-entry (get depth-map parent-depth)
+              actual-parent (if parent-entry
+                              (:id parent-entry)
+                              ;; Fallback: use last-id if no parent at expected depth
+                              last-id)
 
-              current-frame (first stack')
-              prev-depth (:depth current-frame)
+              ;; Find sibling: last block at same depth WITH same parent
+              sibling-entry (get depth-map depth)
+              place-after (when (and sibling-entry
+                                     (= (:parent sibling-entry) actual-parent))
+                            (:id sibling-entry))
 
-              ;; Determine parent and placement
-              [actual-parent place-after]
-              (cond
-                ;; Going deeper: parent is the last block we created, place as first child
-                (> depth prev-depth)
-                [last-id nil]
-
-                ;; Same or shallower: use the stack frame's parent and last sibling
-                :else
-                [(:parent-id current-frame) (:last-sibling-id current-frame)])
-
-              ;; Create the block
               create-op {:op :create-node
                          :id new-id
                          :type :block
                          :props {:text text}}
 
-              ;; Place operation
               place-op {:op :place
                         :id new-id
                         :under actual-parent
@@ -176,16 +171,17 @@
                               {:after place-after}
                               :first)}
 
-              ;; Update stack: push new frame if going deeper, update last-sibling otherwise
-              new-stack (if (> depth prev-depth)
-                          ;; Push new frame for this depth level
-                          (cons {:depth depth :parent-id actual-parent :last-sibling-id new-id} stack')
-                          ;; Update current frame's last-sibling
-                          (cons (assoc current-frame :last-sibling-id new-id) (rest stack')))]
+              ;; Update depth map: record this block at its depth
+              ;; Also clear deeper depths (they're no longer valid siblings)
+              new-depth-map (-> depth-map
+                                (assoc depth {:id new-id :parent actual-parent})
+                                ;; Clear entries deeper than current
+                                (as-> m (reduce dissoc m
+                                                (filter #(> % depth) (keys m)))))]
 
           (recur (rest blocks)
                  (conj ops create-op place-op)
-                 new-stack
+                 new-depth-map
                  new-id))))))
 
 ;; ── Intent Implementations ────────────────────────────────────────────────────
