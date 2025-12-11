@@ -8,6 +8,7 @@
   (:require [replicant.dom :as d]
             [kernel.query :as q]
             [parser.page-refs :as page-refs]
+            [parser.block-format :as block-format]
             [components.page-ref :as page-ref]
             [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
@@ -40,62 +41,6 @@
       (str/replace #">" "&gt;")
       (str/replace #"\n" "<br>")))
 
-;; ── Block Format Detection ────────────────────────────────────────────────────
-;; Detect markdown-style formatting from text prefix.
-;; In view mode, renders with semantic HTML; in edit mode, shows raw markdown.
-
-(defn- parse-block-format
-  "Parse text to detect formatting prefix (quote, heading, embed, or plain).
-
-   Returns {:format :quote/:heading/:tweet/:video/:plain
-            :level n  (1-6 for headings, nil for others)
-            :content \"text after prefix\"
-            :url \"embed URL\" (for tweet/video)}
-
-   Prefix rules:
-   - Quote: starts with '> ' (space required)
-   - Heading: starts with 1-6 '#' followed by space
-   - Tweet: {{tweet URL}}
-   - Video: {{video URL}}
-   - Plain: everything else"
-  [text]
-  (cond
-    ;; Tweet embed: {{tweet URL}}
-    (re-find #"^\{\{tweet\s+(.*?)\}\}$" (or text ""))
-    (let [[_ url] (re-find #"^\{\{tweet\s+(.*?)\}\}$" text)]
-      {:format :tweet
-       :level nil
-       :url (str/trim url)
-       :content text})
-
-    ;; Video embed: {{video URL}}
-    (re-find #"^\{\{video\s+(.*?)\}\}$" (or text ""))
-    (let [[_ url] (re-find #"^\{\{video\s+(.*?)\}\}$" text)]
-      {:format :video
-       :level nil
-       :url (str/trim url)
-       :content text})
-
-    ;; Quote: > followed by space
-    (str/starts-with? (or text "") "> ")
-    {:format :quote
-     :level nil
-     :content (subs text 2)}
-
-    ;; Heading: match #+ followed by space
-    (re-find #"^(#{1,6}) " (or text ""))
-    (let [[match hashes] (re-find #"^(#{1,6}) " text)
-          heading-level (count hashes)]
-      {:format :heading
-       :level heading-level
-       :content (subs text (count match))})
-
-    ;; Plain text
-    :else
-    {:format :plain
-     :level nil
-     :content text}))
-
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 
 (defn- detect-cursor-row-position
@@ -123,12 +68,6 @@
 
           {:first-row? first-row?
            :last-row? last-row?})))))
-
-(defn- has-text-selection?
-  "Check if user has selected text within contenteditable."
-  []
-  (when-let [range (text-sel/get-current-range)]
-    (not (.-collapsed range))))
 
 (defn- set-cursor!
   "Set cursor in a contenteditable node at position `pos`.
@@ -368,7 +307,7 @@
           [:last-row? collapse-selection-end! :editing/navigate-down :last])]
     (cond
       ;; Has text selection - collapse appropriately
-      (has-text-selection?)
+      (text-sel/selection-present?)
       (collapse-fn e)
 
       ;; At boundary row - navigate to adjacent block with cursor memory
@@ -454,7 +393,7 @@
                         (and range-text (zero? (count range-text)))))]
     (cond
       ;; Has selection - collapse to start
-      (has-text-selection?)
+      (text-sel/selection-present?)
       (collapse-selection-start! e)
 
       ;; At start - navigate to previous block
@@ -482,7 +421,7 @@
         at-end? (= (.-anchorOffset selection) (count text-content))]
     (cond
       ;; Has selection - collapse to end
-      (has-text-selection?)
+      (text-sel/selection-present?)
       (collapse-selection-end! e)
 
       ;; At end - navigate to next block
@@ -1292,7 +1231,7 @@
    In edit mode (edit-content), the raw markdown is shown."
   [{:keys [block-id text is-focused on-intent db]}]
   (let [view-key (str block-id "-view")
-        {:keys [format level content url]} (parse-block-format text)]
+        {:keys [format level content url]} (block-format/parse text)]
 
     ;; Special handling for embeds - they render their own container
     (case format
