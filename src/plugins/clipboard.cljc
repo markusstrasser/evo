@@ -328,14 +328,9 @@
                                                        editing-id [editing-id]
                                                        :else [])]
                                        (if (seq block-ids)
-                                         (let [{:keys [text blocks]} (if (= 1 (count block-ids))
-                                                                       ;; Single block: just the text (no formatting)
-                                                                       {:text (get-block-text db (first block-ids))
-                                                                        :blocks [{:id (first block-ids)
-                                                                                  :depth 0
-                                                                                  :text (get-block-text db (first block-ids))}]}
-                                                                       ;; Multiple blocks: formatted with hierarchy
-                                                                       (blocks-to-markdown db block-ids))]
+                                         ;; Always use blocks-to-markdown to include children
+                                         ;; Single leaf blocks will still produce simple text
+                                         (let [{:keys [text blocks]} (blocks-to-markdown db block-ids)]
                                            {:session-updates {:ui {:clipboard-text text
                                                                    :clipboard-blocks blocks}}})
                                          {:session-updates {}})))})
@@ -360,7 +355,7 @@
 
          Logseq parity:
          - Copies selected blocks + descendants with hierarchy
-         - Moves all selected blocks to trash
+         - Moves root selected blocks to trash (children follow automatically)
          - Clears selection after cut
          - Focus moves to previous block in DOM order (cursor at end)"
 
@@ -374,25 +369,25 @@
                                                        editing-id [editing-id]
                                                        :else [])]
                                        (if (seq block-ids)
-                                         (let [{:keys [text blocks]} (if (= 1 (count block-ids))
-                                                                       {:text (get-block-text db (first block-ids))
-                                                                        :blocks [{:id (first block-ids)
-                                                                                  :depth 0
-                                                                                  :text (get-block-text db (first block-ids))}]}
-                                                                       (blocks-to-markdown db block-ids))
+                                         ;; Always use blocks-to-markdown to include children
+                                         (let [{:keys [text blocks]} (blocks-to-markdown db block-ids)
                                                ;; Find the topmost block (earliest in DOM order)
                                                first-block-id (->> block-ids
                                                                    (sort-by #(get-in db [:derived :pre %] 0))
                                                                    first)
                                                ;; Get previous block in visible order (Logseq parity)
                                                prev-block-id (nav/prev-visible-block db session first-block-id)
-                                               ;; Move all selected blocks to trash
+                                               ;; Only delete root blocks (those whose parents aren't selected)
+                                               ;; Children will move to trash along with their parents
+                                               id-set (set block-ids)
+                                               root-ids (remove #(contains? id-set (get-in db [:derived :parent-of %]))
+                                                                block-ids)
                                                delete-ops (mapv (fn [id]
                                                                   {:op :place
                                                                    :id id
                                                                    :under const/root-trash
                                                                    :at :last})
-                                                                block-ids)]
+                                                                root-ids)]
                                            {:ops delete-ops
                                             :session-updates {:ui {:clipboard-text text
                                                                    :clipboard-blocks blocks
