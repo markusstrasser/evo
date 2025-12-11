@@ -1098,23 +1098,22 @@
            ;; Blur handler: Commit to canonical DB
            :blur (fn [e]
                    (let [target (.-target e)
-                         ;; Use extract-text-with-newlines to preserve BR as \n (from Shift+Enter)
                          final-text (extract-text-with-newlines target)
                          suppress? (vs/keep-edit-on-blur?)
                          same-block? (= (vs/editing-block-id) block-id)]
                      ;; Dismiss autocomplete if active
                      (when (vs/autocomplete-active?)
                        (on-intent {:type :autocomplete/dismiss}))
-                     ;; Commit to canonical DB
-                     (on-intent {:type :update-content
-                                 :block-id block-id
-                                 :text final-text})
-                     ;; Only exit edit mode if:
-                     ;; 1. We're still editing THIS block
-                     ;; 2. Not in a structural operation (indent/outdent/move)
-                     ;; The suppress flag prevents blur from exiting during re-render
-                     (when (and same-block? (not suppress?))
-                       (on-intent {:type :exit-edit}))))
+                     ;; CRITICAL: Only commit text if we're still editing THIS block.
+                     ;; If editing moved to a different block (e.g., after paste),
+                     ;; the handler already updated this block - don't overwrite with stale DOM text.
+                     (when same-block?
+                       (on-intent {:type :update-content
+                                   :block-id block-id
+                                   :text final-text})
+                       ;; Exit edit mode unless in a structural operation (indent/outdent/move)
+                       (when (not suppress?)
+                         (on-intent {:type :exit-edit})))))
 
            ;; Keydown: Keyboard shortcuts
            :keydown (fn [e]
@@ -1129,27 +1128,25 @@
                           clipboard-data (.-clipboardData e)
                           pasted-text (.getData clipboard-data "text/plain")
                           selection (.getSelection js/window)
-                          ;; Handle selection range (not just cursor position)
                           anchor-offset (.-anchorOffset selection)
                           focus-offset (.-focusOffset selection)
                           selection-start (min anchor-offset focus-offset)
                           selection-end (max anchor-offset focus-offset)
-                          ;; Detect if this is multi-block paste (markdown or blank lines)
-                          ;; These cases create new blocks, so we let the intent handle everything
+                          ;; Detect multi-block paste (markdown or blank lines)
                           is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
                           has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
-                          is-multi-block? (or is-markdown? has-blank-lines?)]
+                          is-multi-block? (or is-markdown? has-blank-lines?)
+                          current-text (extract-text-with-newlines target)]
 
                       (if is-multi-block?
-                        ;; Multi-block paste: Exit edit mode and let intent handle everything
-                        ;; Intent will create proper block structure and set focus
+                        ;; Multi-block paste: Commit DOM text first, then dispatch intent
+                        ;; CRITICAL: :paste-text requires :editing state - do NOT exit first!
                         (do
-                          ;; Set flag to prevent blur from committing stale DOM text
-                          ;; (auto-clears after 200ms)
-                          (vs/keep-edit-on-blur!)
-                          ;; Exit edit mode first
-                          (on-intent {:type :exit-edit})
-                          ;; Then dispatch paste intent with full context
+                          ;; 1. Sync DOM → DB before paste (uncontrolled mode)
+                          (on-intent {:type :update-content
+                                      :block-id block-id
+                                      :text current-text})
+                          ;; 2. Dispatch paste - handler updates editing-block-id & cursor
                           (on-intent {:type :paste-text
                                       :block-id block-id
                                       :cursor-pos selection-start
@@ -1157,18 +1154,17 @@
                                       :pasted-text pasted-text}))
 
                         ;; Simple inline paste: Update DOM/buffer directly for responsiveness
-                        (let [current-text (extract-text-with-newlines target)
-                              before (subs current-text 0 selection-start)
+                        (let [before (subs current-text 0 selection-start)
                               after (subs current-text selection-end)
                               new-text (str before pasted-text after)
                               new-cursor-pos (+ selection-start (count pasted-text))]
-                          ;; 1. Update DOM directly (uncontrolled architecture)
+                          ;; 1. Update DOM directly
                           (set! (.-innerHTML target) (text->html new-text))
-                          ;; 2. Update buffer to stay in sync
+                          ;; 2. Update buffer
                           (vs/buffer-set! block-id new-text)
-                          ;; 3. Position cursor after pasted text
+                          ;; 3. Position cursor
                           (set-cursor! target new-cursor-pos)
-                          ;; 4. Dispatch intent for DB update
+                          ;; 4. Update DB
                           (on-intent {:type :paste-text
                                       :block-id block-id
                                       :cursor-pos selection-start
