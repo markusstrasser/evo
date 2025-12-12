@@ -224,7 +224,7 @@ See `src/scripts/script.cljc` for implementation, `test/scripts/` for examples.
 ### Replicant (View Layer)
 
 - Treat components as **pure render functions**. All persistent state/governance lives in the kernel.
-- Event handlers are simple functions that dispatch Nexus actions. Never call `handle-intent` (or mutate DB) directly from a component.
+- Event handlers are simple functions that dispatch intents via `on-intent`. Never mutate DB directly from a component.
 - Lifecycle hooks (`:replicant/on-mount`, `:replicant/on-render`, `:replicant/on-unmount`) are the only place you may touch the DOM (focus, selection, mock text). Guard cursor placement with the `__lastAppliedCursorPos` pattern described in `docs/RENDERING_AND_DISPATCH.md`.
 - `set-dispatch!` must stay wired so lifecycle hooks fire; leave it alone unless you know what you're doing.
 
@@ -239,12 +239,12 @@ See `src/scripts/script.cljc` for implementation, `test/scripts/` for examples.
 
 Without proper `:replicant/key`, Replicant may reuse DOM elements when switching between modes (e.g., edit ↔ view), causing `:on-mount` to not fire. See `docs/CODING_GOTCHAS.md` for details.
 
-**Nexus workflow:**
+**Intent dispatch workflow:**
 1. Component receives a DOM event → computes context (cursor offsets, row info).
-2. Component calls `(nexus/dispatch! [:editing/navigate-up payload])`.
-3. Nexus handler translates the action into an intent and routes it through the kernel.
+2. Component calls `(on-intent {:type :navigate-with-cursor-memory :direction :up ...})`.
+3. `handle-intent` routes directly through the kernel via `executor/apply-intent!`.
 
-This guarantees one dispatch per event and keeps DOM-only facts close to the component. See `docs/RENDERING_AND_DISPATCH.md` + `docs/logseq_behaviors.md` before touching keyboard logic.
+All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` + `docs/logseq_behaviors.md` before touching keyboard logic.
 
 ## Common Gotchas
 
