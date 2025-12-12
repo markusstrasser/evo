@@ -173,6 +173,25 @@ Drag handle on blocks enables mouse reordering.
 
 Dropping between pages with different formats (Markdown vs Org) shows warning and aborts.
 
+### 5.4 Image/Asset Drop & Paste
+
+**Logseq behavior**:
+- **Drag/drop images**: Files dropped onto blocks are saved to `assets/` folder
+- **Paste images**: Cmd+V with images in clipboard saves and inserts link
+- **Multiple images**: Each image creates a **separate block** (not inline)
+- **Sequential upload**: Logseq processes images one at a time (FIXME in source notes this limitation)
+- **Deduplication**: Checksum-based; warns if asset already exists
+- **Max file size**: 100 MB per asset
+- **Markdown format**: `![alt](../assets/filename.png)`
+
+**Evo divergence**:
+- **Inline multiple images**: Evo inserts multiple images **in the same block** as space-separated markdown: `![img1](path1) ![img2](path2)`
+- **Concurrent upload**: Evo uploads all images in parallel via Promise.all
+- No deduplication (yet)
+- Same markdown format
+
+**Source**: `frontend/handler/editor.cljs:1536-1580` (asset block creation), `frontend/handler/assets.cljs` (size limits)
+
 ---
 
 ## 6. Move Dialog (Cmd+Shift+M)
