@@ -170,28 +170,17 @@
   #{:indent-selected :outdent-selected :move-selected-up :move-selected-down :delete-selected})
 
 (defn handle-intent
-  "Single intent dispatcher - handles both intent maps and Nexus action vectors.
+  "Single intent dispatcher - accepts {:type ...} intent maps only.
 
    This is the ONLY place intents are dispatched.
-   Components call (on-intent {:type ...}) for intents or (on-intent [[:action/name ...]]) for Nexus actions."
-  [intent-or-actions]
-  (cond
-    ;; Nexus action vector: dispatch through Nexus
-    (vector? intent-or-actions)
-    (nexus/dispatch! !db {} intent-or-actions)
-
-    ;; Intent map: dispatch directly through kernel
-    (map? intent-or-actions)
-    (do
-      ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
-      (when (contains? structural-intents (:type intent-or-actions))
-        (vs/keep-edit-on-blur!))
-      ;; Use shared runtime for the actual dispatch
-      (executor/apply-intent! !db intent-or-actions "DIRECT"))
-
-    ;; Keyword: wrap in :type map
-    :else
-    (handle-intent {:type intent-or-actions})))
+   Components call (on-intent {:type ...}) for all intents."
+  [intent]
+  (let [intent-map (if (keyword? intent) {:type intent} intent)]
+    ;; Suppress blur-exit during structural ops to prevent focus loss during re-render
+    (when (contains? structural-intents (:type intent-map))
+      (vs/keep-edit-on-blur!))
+    ;; Use shared runtime for the actual dispatch
+    (executor/apply-intent! !db intent-map "DIRECT")))
 
 ;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
 
