@@ -1,0 +1,79 @@
+(ns utils.journal
+  "Daily journal utilities.
+
+   Provides date formatting for journal page titles matching Logseq defaults.
+
+   Format: 'MMM do, yyyy' (e.g., 'Dec 11th, 2025')
+
+   See docs/DAILY_JOURNAL_SPEC.md for full specification.")
+
+;; ── Date Formatting ──────────────────────────────────────────────────────────
+
+(defn- ordinal-suffix
+  "Get ordinal suffix for day number.
+   1, 21, 31 → 'st'
+   2, 22 → 'nd'
+   3, 23 → 'rd'
+   Everything else → 'th'"
+  [day]
+  (cond
+    (contains? #{11 12 13} day) "th" ; Special case: 11th, 12th, 13th
+    (= 1 (mod day 10)) "st"
+    (= 2 (mod day 10)) "nd"
+    (= 3 (mod day 10)) "rd"
+    :else "th"))
+
+(defn- format-month
+  "Format month as 3-letter abbreviation (Jan, Feb, Mar, etc.)"
+  [date]
+  (.toLocaleString date "en-US" #js {:month "short"}))
+
+(defn journal-title
+  "Get journal page title for a date.
+
+   Format: 'MMM do, yyyy' (matches Logseq default)
+   Example: 'Dec 11th, 2025'
+
+   With no args, returns today's journal title."
+  ([]
+   (journal-title (js/Date.)))
+  ([date]
+   (let [month (format-month date)
+         day (.getDate date)
+         suffix (ordinal-suffix day)
+         year (.getFullYear date)]
+     (str month " " day suffix ", " year))))
+
+(defn today-title
+  "Get today's journal page title."
+  []
+  (journal-title))
+
+(defn yesterday-title
+  "Get yesterday's journal page title."
+  []
+  (let [date (js/Date.)
+        _ (.setDate date (dec (.getDate date)))]
+    (journal-title date)))
+
+(defn tomorrow-title
+  "Get tomorrow's journal page title."
+  []
+  (let [date (js/Date.)
+        _ (.setDate date (inc (.getDate date)))]
+    (journal-title date)))
+
+;; ── Journal Detection ────────────────────────────────────────────────────────
+
+(def ^:private month-pattern
+  "Regex pattern for month abbreviations."
+  "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)")
+
+(def ^:private journal-regex
+  "Regex to match journal page titles."
+  (re-pattern (str "^" month-pattern " \\d{1,2}(?:st|nd|rd|th), \\d{4}$")))
+
+(defn journal-page?
+  "Check if a page title matches the journal date format."
+  [title]
+  (boolean (and title (re-matches journal-regex title))))
