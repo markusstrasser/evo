@@ -207,4 +207,22 @@
 ;; DCE Sentinel - prevents dead code elimination in test builds
 ;; ══════════════════════════════════════════════════════════════════════════════
 
+(intent/register-intent! :go-to-journal
+                         {:doc "Navigate to daily journal page, creating if needed.
+
+         This is the core daily journal functionality:
+         - If journal page exists → navigate to it
+         - If not → create it with empty block and navigate
+
+         The journal-title parameter should be in Logseq format:
+         'MMM do, yyyy' (e.g., 'Dec 11th, 2025')
+
+         See docs/DAILY_JOURNAL_SPEC.md for format details."
+                          :spec [:map
+                                 [:type [:= :go-to-journal]]
+                                 [:journal-title :string]]
+                          :handler
+                          (fn [db _session {:keys [journal-title]}]
+                            (navigate-or-create-page db journal-title))})
+
 (def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
