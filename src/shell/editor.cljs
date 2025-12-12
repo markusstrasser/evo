@@ -41,7 +41,8 @@
             [kernel.state-machine :as sm]
             [kernel.intent :as intent]
             [components.spec-viewer :as spec-viewer]
-            [components.quick-switcher :as quick-switcher]))
+            [components.quick-switcher :as quick-switcher]
+            [utils.journal :as journal]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,8 @@
 
 (defn load-from-folder!
   "Load pages from the currently selected folder into DB.
-   If folder is empty, starts with empty DB (no demo data)."
+   If folder is empty, starts with empty DB.
+   Always navigates to today's daily journal (creating if needed)."
   []
   (swap! !storage-status assoc :loading? true)
   (-> (storage/load-all-pages)
@@ -91,15 +93,17 @@
                    (reset! !db (-> (db/empty-db)
                                    (tx/interpret ops)
                                    :db
-                                   (H/record)))
-                   (let [first-page (first (q/all-pages @!db))]
-                     (when first-page
-                       (vs/set-current-page! first-page))))
-                 ;; Empty folder - start with empty DB (no demo data)
+                                   (H/record))))
+                 ;; Empty folder - start with empty DB
                  (do
                    (js/console.log "📂 Empty folder, starting fresh")
-                   (reset! !db (-> (db/empty-db) (H/record)))
-                   (vs/set-current-page! nil)))
+                   (reset! !db (-> (db/empty-db) (H/record)))))
+               ;; Always navigate to today's journal (creates if needed)
+               (js/console.log "📅 Opening today's journal:" (journal/today-title))
+               (executor/apply-intent! !db
+                                       {:type :go-to-journal
+                                        :journal-title (journal/today-title)}
+                                       "STARTUP")
                (swap! !storage-status assoc
                       :loading? false
                       :checking? false
