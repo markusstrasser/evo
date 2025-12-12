@@ -139,6 +139,49 @@
       (.removeAllRanges sel)
       (.addRange sel range))))
 
+(defn- apply-edit!
+  "Apply text edit to DOM, buffer, and position cursor atomically.
+
+   Use for autocomplete insertions, paste, image upload - any edit
+   that needs DOM + buffer + cursor in sync.
+
+   Args:
+   - node: contenteditable DOM element
+   - block-id: block being edited
+   - text: new text content
+   - cursor-pos: cursor position after edit
+   - html?: if true, use innerHTML (for text with newlines needing <br>)"
+  ([node block-id text cursor-pos]
+   (apply-edit! node block-id text cursor-pos false))
+  ([node block-id text cursor-pos html?]
+   (if html?
+     (set! (.-innerHTML node) (text->html text))
+     (set! (.-textContent node) text))
+   (vs/buffer-set! block-id text)
+   (set-cursor! node cursor-pos)))
+
+(defn- commit-edit!
+  "Commit current edit state to DB.
+
+   Buffer-first pattern: prefers buffer text (more reliable in tests),
+   falls back to DOM. Guards against stale commits when block changed.
+
+   Returns: final text (for operations needing it), or nil if skipped."
+  [block-id target on-intent]
+  (let [buffer-text (vs/buffer-text block-id)
+        dom-text (when target (extract-text-with-newlines target))
+        final-text (or buffer-text dom-text)
+        same-block? (= (vs/editing-block-id) block-id)]
+    ;; Dismiss autocomplete if active
+    (when (vs/autocomplete-active?)
+      (on-intent {:type :autocomplete/dismiss}))
+    ;; Only commit if still editing this block
+    (when (and final-text same-block?)
+      (on-intent {:type :update-content
+                  :block-id block-id
+                  :text final-text})
+      final-text)))
+
 (defn- insert-linebreak!
   "Insert a line break at cursor and sync to buffer.
    
@@ -319,10 +362,10 @@
   [direction e _db block-id on-intent]
   (let [target (.-target e)
         cursor-pos (detect-cursor-row-position target)
-        [boundary-key collapse-fn intent-key cursor-row]
+        [boundary-key collapse-fn]
         (if (= direction :up)
-          [:first-row? collapse-selection-start! :editing/navigate-up :first]
-          [:last-row? collapse-selection-end! :editing/navigate-down :last])]
+          [:first-row? collapse-selection-start!]
+          [:last-row? collapse-selection-end!])]
     (cond
       ;; Has text selection - collapse appropriately
       (text-sel/selection-present?)
@@ -334,10 +377,11 @@
           (let [text-content (.-textContent target)
                 selection (.getSelection js/window)
                 cursor-offset (.-anchorOffset selection)]
-            (on-intent [[intent-key {:block-id block-id
-                                     :current-text text-content
-                                     :current-cursor-pos cursor-offset
-                                     :cursor-row cursor-row}]])))
+            (on-intent {:type :navigate-with-cursor-memory
+                        :current-block-id block-id
+                        :current-text text-content
+                        :current-cursor-pos cursor-offset
+                        :direction direction})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
@@ -469,25 +513,16 @@
       ;; Auto-outdent: move block to be sibling of parent
       ;; Use :outdent-selected which preserves editing state
       (on-intent {:type :outdent-selected})
-      ;; Normal: create new block via smart-split
-      (on-intent [[:editing/smart-split {:block-id block-id
-                                         :cursor-pos cursor-pos}]]))))
+      ;; Normal: create new block via context-aware-enter
+      (on-intent {:type :context-aware-enter
+                  :block-id block-id
+                  :cursor-pos cursor-pos}))))
 
 (defn handle-escape [e _db block-id on-intent]
   (.preventDefault e)
   (.stopPropagation e) ; Prevent global keydown from also handling Escape
-  ;; First, commit any unsaved content (blur might not fire reliably when unmounting)
-  ;; Read from buffer (more reliable than DOM textContent with Playwright)
-  ;; Fallback to DOM with extract-text-with-newlines to preserve BR as \n
-  (let [buffer-text (vs/buffer-text block-id)
-        dom-text (extract-text-with-newlines (.-target e))
-        final-text (or buffer-text dom-text)]
-    (when final-text
-      (on-intent {:type :update-content
-                  :block-id block-id
-                  :text final-text})))
-  ;; Then exit edit mode via Nexus action
-  (on-intent [[:editing/escape {:block-id block-id}]]))
+  (commit-edit! block-id (.-target e) on-intent)
+  (on-intent {:type :exit-edit-and-select :block-id block-id}))
 
 (defn handle-backspace [e _db block-id on-intent]
   (let [target (.-target e)
@@ -646,9 +681,7 @@
                       new-cursor start-pos]
                   (.preventDefault e)
                   (.stopPropagation e)
-                  (set! (.-textContent target) new-text)
-                  (vs/buffer-set! block-id new-text)
-                  (set-cursor! target new-cursor)
+                  (apply-edit! target block-id new-text new-cursor)
                   (on-intent {:type :autocomplete/dismiss})
                   true)
                 ;; Page-ref mode: delete both [[ and ]]
@@ -659,9 +692,7 @@
                       new-cursor start-pos]
                   (.preventDefault e)
                   (.stopPropagation e)
-                  (set! (.-textContent target) new-text)
-                  (vs/buffer-set! block-id new-text)
-                  (set-cursor! target new-cursor)
+                  (apply-edit! target block-id new-text new-cursor)
                   (on-intent {:type :autocomplete/dismiss})
                   true))
               ;; Not at trigger - let backspace through
@@ -692,9 +723,7 @@
                                           (subs text (min end-pos (count text))))
                             ;; New cursor: after insert, minus backward-pos
                             new-cursor (- (+ start-pos (count insert-str)) item-backward)]
-                        (set! (.-textContent target) new-text)
-                        (vs/buffer-set! block-id new-text)
-                        (set-cursor! target new-cursor)
+                        (apply-edit! target block-id new-text new-cursor)
                         (on-intent {:type :autocomplete/dismiss})
                         (on-intent {:type :update-content
                                     :block-id block-id
@@ -710,9 +739,7 @@
                                           (subs text (min end-pos (count text))))
                             new-cursor (+ start-pos (count insert-str))
                             is-create-new? (= (:type item) :create-new)]
-                        (set! (.-textContent target) new-text)
-                        (vs/buffer-set! block-id new-text)
-                        (set-cursor! target new-cursor)
+                        (apply-edit! target block-id new-text new-cursor)
                         (on-intent {:type :autocomplete/dismiss})
                         (when is-create-new?
                           (on-intent {:type :page/create
@@ -1032,9 +1059,7 @@
                            ;; Update DOM if we have a target (paste mode)
                            (when target
                              (js/console.log "📷 Updating DOM (paste mode)")
-                             (set! (.-textContent target) new-text)
-                             (vs/buffer-set! block-id new-text)
-                             (set-cursor! target new-cursor-pos))
+                             (apply-edit! target block-id new-text new-cursor-pos))
                            ;; Always update DB via intent
                            (js/console.log "📷 Firing intent :update-content")
                            (on-intent {:type :update-content
@@ -1143,23 +1168,9 @@
 
            ;; Blur handler: Commit to canonical DB
            :blur (fn [e]
-                   (let [target (.-target e)
-                         final-text (extract-text-with-newlines target)
-                         suppress? (vs/keep-edit-on-blur?)
-                         same-block? (= (vs/editing-block-id) block-id)]
-                     ;; Dismiss autocomplete if active
-                     (when (vs/autocomplete-active?)
-                       (on-intent {:type :autocomplete/dismiss}))
-                     ;; CRITICAL: Only commit text if we're still editing THIS block.
-                     ;; If editing moved to a different block (e.g., after paste),
-                     ;; the handler already updated this block - don't overwrite with stale DOM text.
-                     (when same-block?
-                       (on-intent {:type :update-content
-                                   :block-id block-id
-                                   :text final-text})
-                       ;; Exit edit mode unless in a structural operation (indent/outdent/move)
-                       (when (not suppress?)
-                         (on-intent {:type :exit-edit})))))
+                   (commit-edit! block-id (.-target e) on-intent)
+                   (when-not (vs/keep-edit-on-blur?)
+                     (on-intent {:type :exit-edit})))
 
            ;; Keydown: Keyboard shortcuts
            :keydown (fn [e]
@@ -1222,13 +1233,9 @@
                                   after (subs current-text selection-end)
                                   new-text (str before pasted-text after)
                                   new-cursor-pos (+ selection-start (count pasted-text))]
-                          ;; 1. Update DOM directly
-                              (set! (.-innerHTML target) (text->html new-text))
-                          ;; 2. Update buffer
-                              (vs/buffer-set! block-id new-text)
-                          ;; 3. Position cursor
-                              (set-cursor! target new-cursor-pos)
-                          ;; 4. Update DB
+                              ;; Apply edit with html? = true (handles newlines as <br>)
+                              (apply-edit! target block-id new-text new-cursor-pos true)
+                              ;; Update DB
                               (on-intent {:type :paste-text
                                           :block-id block-id
                                           :cursor-pos selection-start
