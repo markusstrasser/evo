@@ -132,17 +132,23 @@
 ;; ── File System Access API ───────────────────────────────────────────────────
 
 (defn pick-folder!
-  "Show folder picker and store the directory handle."
+  "Show folder picker and store the directory handle.
+   Returns nil with console warning on unsupported browsers (Safari/Firefox)."
   []
-  (-> (.showDirectoryPicker js/window #js {:mode "readwrite"})
-      (.then (fn [handle]
-               (reset! !dir-handle handle)
-               (save-handle-to-idb handle)
-               (js/console.log "📁 Folder selected:" (.-name handle))
-               handle))
-      (.catch (fn [err]
-                (js/console.warn "Folder selection cancelled:" err)
-                nil))))
+  (if-not (exists? js/window.showDirectoryPicker)
+    (do
+      (js/console.warn "⚠️ File System Access API not supported in this browser. Use Chrome, Edge, or Brave.")
+      (js/alert "Folder access requires Chrome, Edge, or Brave browser.\n\nSafari and Firefox don't support the File System Access API.")
+      nil)
+    (-> (.showDirectoryPicker js/window #js {:mode "readwrite"})
+        (.then (fn [handle]
+                 (reset! !dir-handle handle)
+                 (save-handle-to-idb handle)
+                 (js/console.log "📁 Folder selected:" (.-name handle))
+                 handle))
+        (.catch (fn [err]
+                  (js/console.warn "Folder selection cancelled:" err)
+                  nil)))))
 
 (defn has-folder?
   "Check if a folder is currently selected."
@@ -179,7 +185,7 @@
         (.then (fn [file]
                  (.text file)))
         (.catch (fn [_err]
-                  nil)))))  ; File doesn't exist
+                  nil))))) ; File doesn't exist
 
 (defn- list-md-files
   "List all .md files in the selected directory."
@@ -252,27 +258,30 @@
 
 (defn restore-folder!
   "Try to restore the previously selected folder from IndexedDB.
-   Returns Promise<boolean> indicating if folder was restored."
+   Returns Promise<boolean> indicating if folder was restored.
+   Returns false immediately on unsupported browsers."
   []
-  (-> (open-idb)
-      (.then (fn [_] (load-handle-from-idb)))
-      (.then (fn [handle]
-               (if handle
-                 ;; Request permission again (required after page reload)
-                 (-> (.requestPermission handle #js {:mode "readwrite"})
-                     (.then (fn [permission]
-                              (if (= permission "granted")
-                                (do
-                                  (reset! !dir-handle handle)
-                                  (js/console.log "📁 Restored folder:" (.-name handle))
-                                  true)
-                                (do
-                                  (js/console.log "📁 Permission denied, need to pick folder again")
-                                  false)))))
-                 (js/Promise.resolve false))))
-      (.catch (fn [err]
-                (js/console.warn "Could not restore folder:" err)
-                false))))
+  (if-not (exists? js/window.showDirectoryPicker)
+    (js/Promise.resolve false)
+    (-> (open-idb)
+        (.then (fn [_] (load-handle-from-idb)))
+        (.then (fn [handle]
+                 (if handle
+                   ;; Request permission again (required after page reload)
+                   (-> (.requestPermission handle #js {:mode "readwrite"})
+                       (.then (fn [permission]
+                                (if (= permission "granted")
+                                  (do
+                                    (reset! !dir-handle handle)
+                                    (js/console.log "📁 Restored folder:" (.-name handle))
+                                    true)
+                                  (do
+                                    (js/console.log "📁 Permission denied, need to pick folder again")
+                                    false)))))
+                   (js/Promise.resolve false))))
+        (.catch (fn [err]
+                  (js/console.warn "Could not restore folder:" err)
+                  false)))))
 
 (defn get-folder-name
   "Get the name of the currently selected folder."
