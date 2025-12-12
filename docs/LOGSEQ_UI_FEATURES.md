@@ -175,22 +175,34 @@ Dropping between pages with different formats (Markdown vs Org) shows warning an
 
 ### 5.4 Image/Asset Drop & Paste
 
-**Logseq behavior**:
-- **Drag/drop images**: Files dropped onto blocks are saved to `assets/` folder
-- **Paste images**: Cmd+V with images in clipboard saves and inserts link
-- **Multiple images**: Each image creates a **separate block** (not inline)
-- **Sequential upload**: Logseq processes images one at a time (FIXME in source notes this limitation)
-- **Deduplication**: Checksum-based; warns if asset already exists
-- **Max file size**: 100 MB per asset
-- **Markdown format**: `![alt](../assets/filename.png)`
+**Logseq behavior** (file-based graphs):
+- **Drop on block (not editing)**: Creates **separate blocks** per image via `api-insert-new-block!`
+- **Paste/drop while editing**: Tries inline insertion but has a `FIXME: only the first asset is handled` bug
+- **Sequential processing**: Uses `recur` pattern to process images one at a time
+- **Deduplication**: Checksum-based via `get-file-checksum`; warns if asset exists
+- **Max file size**: 100 MB (`exceed-limit-size?` in `assets.cljs`)
+- **Markdown format**: `![name](../assets/filename.png)`
+
+**Logseq behavior** (DB-based graphs):
+- **Always separate blocks**: Each image becomes its own block with rich metadata
+- **Asset properties**: `:logseq.property.asset/type`, `:logseq.property.asset/size`, `:logseq.property.asset/checksum`
+- **Parallel save**: Uses `p/all` to save all assets concurrently
+- **Batch insert**: `insert-blocks!` creates all asset blocks atomically
+
+**Key difference: Logseq does NOT support multiple images inline in one block.**
 
 **Evo divergence**:
 - **Inline multiple images**: Evo inserts multiple images **in the same block** as space-separated markdown: `![img1](path1) ![img2](path2)`
 - **Concurrent upload**: Evo uploads all images in parallel via Promise.all
+- **Simpler model**: No separate asset blocks, just inline markdown
 - No deduplication (yet)
-- Same markdown format
+- No file size limit (yet)
 
-**Source**: `frontend/handler/editor.cljs:1536-1580` (asset block creation), `frontend/handler/assets.cljs` (size limits)
+**Source**:
+- `frontend/handler/editor.cljs:1582-1620` (`db-based-save-assets!` - DB graphs)
+- `frontend/handler/file_based/editor.cljs:341-371` (`file-upload-assets!` - file graphs)
+- `frontend/components/block.cljs:3449-3476` (drop handler for non-editing)
+- `frontend/handler/assets.cljs:22-25` (size limit check)
 
 ---
 
