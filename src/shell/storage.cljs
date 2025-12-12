@@ -306,3 +306,72 @@
     (let [tx (.transaction idb-conn #js [store-name] "readwrite")
           store (.objectStore tx store-name)]
       (.delete store "dir-handle"))))
+
+;; ── Asset Storage ────────────────────────────────────────────────────────────
+
+(defn ensure-assets-dir!
+  "Create assets directory if it doesn't exist.
+   Returns Promise<DirectoryHandle> for the assets folder."
+  []
+  (when-let [dir @!dir-handle]
+    (.getDirectoryHandle dir "assets" #js {:create true})))
+
+(defn generate-asset-filename
+  "Generate a unique filename for an asset.
+   Format: {sanitized-name}_{timestamp}_{index}.{ext}
+   
+   Example: screenshot_1734000000000_0.png"
+  [original-name index]
+  (let [;; Extract extension
+        dot-idx (str/last-index-of original-name ".")
+        ext (if dot-idx
+              (subs original-name (inc dot-idx))
+              "bin")
+        ;; Extract and sanitize stem
+        stem (if dot-idx
+               (subs original-name 0 dot-idx)
+               original-name)
+        sanitized-stem (-> stem
+                           (str/replace #"[^a-zA-Z0-9]" "_")
+                           (str/replace #"_+" "_")
+                           (str/replace #"^_|_$" ""))
+        ;; Use "image" if stem is empty
+        final-stem (if (str/blank? sanitized-stem) "image" sanitized-stem)]
+    (str final-stem "_" (.now js/Date) "_" index "." ext)))
+
+(defn write-asset!
+  "Write a binary blob to the assets directory.
+   
+   Args:
+     filename: Name of the file (e.g., 'screenshot_123_0.png')
+     blob: File or Blob object to write
+     
+   Returns Promise<string> with the relative path '../assets/filename'
+   for use in markdown image syntax."
+  [filename blob]
+  (-> (ensure-assets-dir!)
+      (.then (fn [assets-dir]
+               (.getFileHandle assets-dir filename #js {:create true})))
+      (.then (fn [file-handle]
+               (.createWritable file-handle)))
+      (.then (fn [writable]
+               (-> (.write writable blob)
+                   (.then #(.close writable))
+                   (.then #(str "../assets/" filename)))))
+      (.catch (fn [err]
+                (js/console.error "Failed to write asset:" filename err)
+                nil))))
+
+(defn get-asset-url
+  "Get a URL for an asset file that can be used in <img> src.
+   Returns Promise<string> with a blob URL, or nil if file doesn't exist."
+  [filename]
+  (-> (ensure-assets-dir!)
+      (.then (fn [assets-dir]
+               (.getFileHandle assets-dir filename)))
+      (.then (fn [file-handle]
+               (.getFile file-handle)))
+      (.then (fn [file]
+               (js/URL.createObjectURL file)))
+      (.catch (fn [_err]
+                nil))))
