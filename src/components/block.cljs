@@ -1035,16 +1035,17 @@
         (js/console.log "📷 Starting upload, current-text:" current-text)
         (-> (js/Promise.all
              (to-array
-              (map-indexed
-               (fn [idx file]
-                 (let [filename (storage/generate-asset-filename (.-name file) idx)]
-                   (js/console.log "📷 Writing asset:" filename)
-                   (-> (storage/write-asset! filename file)
-                       (.then (fn [path]
-                                (js/console.log "📷 Asset written, path:" path)
-                                (when path
-                                  (str "![" (.-name file) "](" path ")")))))))
-               files)))
+              (map (fn [file]
+                     ;; Use content-hash for deduplication
+                     (-> (storage/generate-asset-filename-with-hash (.-name file) file)
+                         (.then (fn [filename]
+                                  (js/console.log "📷 Writing asset:" filename)
+                                  (-> (storage/write-asset! filename file)
+                                      (.then (fn [path]
+                                               (js/console.log "📷 Asset written, path:" path)
+                                               (when path
+                                                 (str "![" (.-name file) "](" path ")")))))))))
+                   files)))
             (.then (fn [markdown-links]
                      (js/console.log "📷 All assets written, markdown-links:" (pr-str markdown-links))
                      (let [valid-links (filter some? (js->clj markdown-links))
