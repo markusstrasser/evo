@@ -598,6 +598,53 @@
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
+     Inline Images
+     ───────────────────────────────────────────────────────────────────────── */
+  .inline-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+    margin: var(--space-2) 0;
+    display: block;
+
+    /* Subtle shadow for depth */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+    /* Smooth loading transition */
+    opacity: 1;
+    transition: opacity 0.2s ease;
+
+    /* Constrain large images */
+    max-height: 400px;
+    object-fit: contain;
+  }
+
+  /* Loading state - hidden until src is set */
+  .inline-image:not([src]) {
+    opacity: 0;
+    height: 0;
+    margin: 0;
+  }
+
+  /* When used inline with text */
+  .block-content .inline-image {
+    display: inline-block;
+    vertical-align: middle;
+    max-height: 1.5em;
+    margin: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+  }
+
+  /* Standalone image (whole block is just an image) */
+  .block-content:has(> .inline-image:only-child) .inline-image {
+    display: block;
+    max-height: 400px;
+    margin: var(--space-2) 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
      Tweet Embed
      ───────────────────────────────────────────────────────────────────────── */
   .tweet-embed {
