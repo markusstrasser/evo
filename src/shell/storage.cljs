@@ -316,11 +316,28 @@
   (when-let [dir @!dir-handle]
     (.getDirectoryHandle dir "assets" #js {:create true})))
 
+(defn- hash-blob
+  "Compute SHA-256 hash of a blob, returning first 12 hex chars.
+   Uses Web Crypto API (built into browsers)."
+  [blob]
+  (-> (.arrayBuffer blob)
+      (.then (fn [buffer]
+               (js/crypto.subtle.digest "SHA-256" buffer)))
+      (.then (fn [hash-buffer]
+               (let [hash-array (js/Array.from (js/Uint8Array. hash-buffer))
+                     hex-string (.join (.map hash-array
+                                             (fn [b] (.padStart (.toString b 16) 2 "0")))
+                                       "")]
+                 ;; Return first 12 chars - enough for uniqueness
+                 (subs hex-string 0 12))))))
+
 (defn generate-asset-filename
   "Generate a unique filename for an asset.
    Format: {sanitized-name}_{timestamp}_{index}.{ext}
-   
-   Example: screenshot_1734000000000_0.png"
+
+   Example: screenshot_1734000000000_0.png
+
+   Note: This is the fallback. Prefer generate-asset-filename-with-hash for dedup."
   [original-name index]
   (let [;; Extract extension
         dot-idx (str/last-index-of original-name ".")
@@ -339,25 +356,66 @@
         final-stem (if (str/blank? sanitized-stem) "image" sanitized-stem)]
     (str final-stem "_" (.now js/Date) "_" index "." ext)))
 
+(defn generate-asset-filename-with-hash
+  "Generate filename using content hash for deduplication.
+   Format: {sanitized-name}_{hash}.{ext}
+
+   Returns Promise<string>."
+  [original-name blob]
+  (-> (hash-blob blob)
+      (.then (fn [hash]
+               (let [dot-idx (str/last-index-of original-name ".")
+                     ext (if dot-idx
+                           (subs original-name (inc dot-idx))
+                           "bin")
+                     stem (if dot-idx
+                            (subs original-name 0 dot-idx)
+                            original-name)
+                     sanitized-stem (-> stem
+                                        (str/replace #"[^a-zA-Z0-9]" "_")
+                                        (str/replace #"_+" "_")
+                                        (str/replace #"^_|_$" ""))
+                     final-stem (if (str/blank? sanitized-stem) "image" sanitized-stem)]
+                 (str final-stem "_" hash "." ext))))))
+
+(defn- file-exists?
+  "Check if a file exists in the assets directory.
+   Returns Promise<boolean>."
+  [assets-dir filename]
+  (-> (.getFileHandle assets-dir filename #js {:create false})
+      (.then (fn [_] true))
+      (.catch (fn [_] false))))
+
 (defn write-asset!
-  "Write a binary blob to the assets directory.
-   
+  "Write a binary blob to the assets directory with deduplication.
+
+   If a file with the same name already exists, returns the path
+   without rewriting (assumes hash-based filename means same content).
+
    Args:
-     filename: Name of the file (e.g., 'screenshot_123_0.png')
+     filename: Name of the file (e.g., 'image_a1b2c3d4e5f6.png')
      blob: File or Blob object to write
-     
+
    Returns Promise<string> with the relative path '../assets/filename'
    for use in markdown image syntax."
   [filename blob]
   (-> (ensure-assets-dir!)
       (.then (fn [assets-dir]
-               (.getFileHandle assets-dir filename #js {:create true})))
-      (.then (fn [file-handle]
-               (.createWritable file-handle)))
-      (.then (fn [writable]
-               (-> (.write writable blob)
-                   (.then #(.close writable))
-                   (.then #(str "../assets/" filename)))))
+               (-> (file-exists? assets-dir filename)
+                   (.then (fn [exists?]
+                            (if exists?
+                              ;; File exists - dedup: return path without writing
+                              (do
+                                (js/console.log "📷 Dedup: reusing existing asset" filename)
+                                (str "../assets/" filename))
+                              ;; File doesn't exist - write it
+                              (-> (.getFileHandle assets-dir filename #js {:create true})
+                                  (.then (fn [file-handle]
+                                           (.createWritable file-handle)))
+                                  (.then (fn [writable]
+                                           (-> (.write writable blob)
+                                               (.then #(.close writable))
+                                               (.then #(str "../assets/" filename))))))))))))
       (.catch (fn [err]
                 (js/console.error "Failed to write asset:" filename err)
                 nil))))
