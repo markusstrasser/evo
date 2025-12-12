@@ -69,7 +69,7 @@
    :delete #{:editing} ; Backspace/Delete
    :merge-with-prev #{:editing} ; Backspace at start
    :merge-with-next #{:editing} ; Delete at end
-   :update-content #{:editing} ; Typing
+   :update-content nil ;; Any state (typing, image drop/paste)
    :paste-text #{:editing} ; Paste
 
    ;; ─── EDITING OR SELECTION ───
