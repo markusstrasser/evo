@@ -9,12 +9,18 @@
             [kernel.query :as q]
             [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
+            [parser.images :as images]
             [components.page-ref :as page-ref]
+            [components.image :as image]
             [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
             [utils.dom :as dom]
             [shell.view-state :as vs]
+            [shell.storage :as storage]
             [clojure.string :as str]))
+
+;; Forward declarations for functions used in drag/drop before definition
+(declare get-image-files upload-and-insert-images!)
 
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -244,33 +250,45 @@
   nil)
 
 (defn- handle-drop
-  "Execute move on drop."
+  "Execute move on drop, or upload images if files are dropped."
   [e db block-id on-intent]
   (.preventDefault e)
   (.stopPropagation e)
-  ;; Capture state immediately before any async operations
-  (let [dragging (vs/dragging-ids)
-        drop-target (vs/drop-target)
-        zone (:zone drop-target)]
-    ;; Clear drag state first to prevent race conditions
-    (vs/drag-end!)
-    ;; Execute move if valid
-    (when (and (seq dragging)
-               (not (contains? dragging block-id))
-               zone) ; Must have a valid zone
-      (let [parent-id (get-in db [:derived :parent-of block-id])
-            ;; Convert zone to move intent params
-            ;; Note: :above uses {:before} which is supported by kernel.position
-            [target-parent anchor] (case zone
-                                     :above [parent-id {:before block-id}]
-                                     :below [parent-id {:after block-id}]
-                                     :nested [block-id :first]
-                                     ;; Default: place after (shouldn't happen)
-                                     [parent-id {:after block-id}])]
-        (on-intent {:type :move
-                    :selection (vec dragging)
-                    :parent target-parent
-                    :anchor anchor})))))
+  (let [data-transfer (.-dataTransfer e)
+        files (.-files data-transfer)
+        image-files (get-image-files files)]
+    ;; FILE DROP: If dropping image files, upload them and insert markdown
+    (if (seq image-files)
+      (let [text (get-in db [:nodes block-id :props :text] "")]
+        ;; Insert images at end of current block's text
+        ;; Pass text as last arg since target is nil (drop mode)
+        (upload-and-insert-images! image-files nil (count text) block-id on-intent text)
+        ;; Clear any drag state
+        (vs/drag-end!))
+
+      ;; BLOCK MOVE: Existing drag-and-drop block reordering logic
+      (let [dragging (vs/dragging-ids)
+            drop-target (vs/drop-target)
+            zone (:zone drop-target)]
+        ;; Clear drag state first to prevent race conditions
+        (vs/drag-end!)
+        ;; Execute move if valid
+        (when (and (seq dragging)
+                   (not (contains? dragging block-id))
+                   zone) ; Must have a valid zone
+          (let [parent-id (get-in db [:derived :parent-of block-id])
+                ;; Convert zone to move intent params
+                ;; Note: :above uses {:before} which is supported by kernel.position
+                [target-parent anchor] (case zone
+                                         :above [parent-id {:before block-id}]
+                                         :below [parent-id {:after block-id}]
+                                         :nested [block-id :first]
+                                         ;; Default: place after (shouldn't happen)
+                                         [parent-id {:after block-id}])]
+            (on-intent {:type :move
+                        :selection (vec dragging)
+                        :parent target-parent
+                        :anchor anchor})))))))
 
 (defn- handle-drag-end
   "Clean up drag state."
@@ -915,10 +933,29 @@
       (interpose [:br] (map #(if (empty? %) "" %) parts)))
     text))
 
-(defn- render-text-with-page-refs
-  "Render text with [[page-refs]] as clickable PageRef components.
+(defn- render-text-segment-with-images
+  "Render a plain text segment, parsing out any images.
+   Returns vector of hiccup elements."
+  [text on-intent]
+  (if (images/image? text)
+    ;; Has images - parse them out
+    (->> (images/split-with-images text)
+         (mapcat (fn [{:keys [type value alt path]}]
+                   (case type
+                     :text (let [result (text-segment->hiccup value)]
+                             (if (seq? result) result [result]))
+                     :image [(image/Image {:path path
+                                           :alt alt
+                                           :on-intent on-intent})]))))
+    ;; No images - just handle newlines
+    (let [result (text-segment->hiccup text)]
+      (if (seq? result) result [result]))))
 
-   Uses canonical parser from parser.page-refs.
+(defn- render-text-with-page-refs
+  "Render text with [[page-refs]] and ![images] as components.
+
+   Uses canonical parser from parser.page-refs for links.
+   Uses parser.images for image markdown.
    Handles newlines (converts to [:br]).
    Returns hiccup children for a span container."
   [db text on-intent]
@@ -926,11 +963,85 @@
     (->> (page-refs/split-with-refs text)
          (mapcat (fn [{:keys [type value page]}]
                    (case type
-                     :text (let [result (text-segment->hiccup value)]
-                             (if (seq? result) result [result]))
+                     :text (render-text-segment-with-images value on-intent)
                      :page-ref [(page-ref/PageRef {:db db
                                                    :page-name page
                                                    :on-intent on-intent})]))))))
+
+;; ── Image Paste/Drop Handling ────────────────────────────────────────────────
+
+(defn- image-file?
+  "Check if a file is an image type."
+  [file]
+  (when file
+    (str/starts-with? (.-type file) "image/")))
+
+(defn- get-image-files
+  "Extract image files from a FileList."
+  [file-list]
+  (when (and file-list (pos? (.-length file-list)))
+    (->> (range (.-length file-list))
+         (map #(aget file-list %))
+         (filter image-file?))))
+
+(defn- upload-and-insert-images!
+  "Upload image files to assets folder and insert markdown at cursor.
+   
+   Works in two modes:
+   - Paste mode (target exists): Updates DOM directly for responsiveness
+   - Drop mode (target nil, current-text provided): Updates via intent only"
+  [files target cursor-pos block-id on-intent & [current-text-override]]
+  (js/console.log "📷 upload-and-insert-images! called"
+                  (clj->js {:fileCount (count files)
+                            :hasTarget (some? target)
+                            :cursorPos cursor-pos
+                            :blockId block-id
+                            :hasOnIntent (fn? on-intent)}))
+  (when (seq files)
+    (if-not (storage/has-folder?)
+      ;; No folder open - show helpful message
+      (js/alert "Please open a folder first to save images.\n\nClick '📂 Open Folder' in the sidebar.")
+      ;; Folder open - proceed with upload
+      (let [current-text (or current-text-override
+                             (when target (.-textContent target))
+                             "")]
+        (js/console.log "📷 Starting upload, current-text:" current-text)
+        (-> (js/Promise.all
+             (to-array
+              (map-indexed
+               (fn [idx file]
+                 (let [filename (storage/generate-asset-filename (.-name file) idx)]
+                   (js/console.log "📷 Writing asset:" filename)
+                   (-> (storage/write-asset! filename file)
+                       (.then (fn [path]
+                                (js/console.log "📷 Asset written, path:" path)
+                                (when path
+                                  (str "![" (.-name file) "](" path ")")))))))
+               files)))
+            (.then (fn [markdown-links]
+                     (js/console.log "📷 All assets written, markdown-links:" (pr-str markdown-links))
+                     (let [valid-links (filter some? (js->clj markdown-links))
+                           combined-markdown (str/join " " valid-links)]
+                       (js/console.log "📷 Combined markdown:" combined-markdown)
+                       (when (seq valid-links)
+                         (let [before (subs current-text 0 cursor-pos)
+                               after (subs current-text cursor-pos)
+                               new-text (str before combined-markdown after)
+                               new-cursor-pos (+ cursor-pos (count combined-markdown))]
+                           (js/console.log "📷 New text:" new-text)
+                           ;; Update DOM if we have a target (paste mode)
+                           (when target
+                             (js/console.log "📷 Updating DOM (paste mode)")
+                             (set! (.-textContent target) new-text)
+                             (vs/buffer-set! block-id new-text)
+                             (set-cursor! target new-cursor-pos))
+                           ;; Always update DB via intent
+                           (js/console.log "📷 Firing intent :update-content")
+                           (on-intent {:type :update-content
+                                       :block-id block-id
+                                       :text new-text}))))))
+            (.catch (fn [err]
+                      (js/console.error "📷 Failed to upload images:" err))))))))
 
 ;; ── Content Mode Helpers ──────────────────────────────────────────────────────
 
@@ -1063,58 +1174,66 @@
                     (.preventDefault e)
                     (let [target (.-target e)
                           clipboard-data (.-clipboardData e)
-                          pasted-text (.getData clipboard-data "text/plain")
+                          ;; Check for image files FIRST
+                          files (.-files clipboard-data)
+                          image-files (get-image-files files)
                           selection (.getSelection js/window)
                           anchor-offset (.-anchorOffset selection)
                           focus-offset (.-focusOffset selection)
-                          selection-start (min anchor-offset focus-offset)
-                          selection-end (max anchor-offset focus-offset)
-                          ;; Check if this paste matches our internal clipboard
-                          ;; (same text means it came from our copy/cut)
-                          internal-text (vs/clipboard-text)
-                          internal-blocks (vs/clipboard-blocks)
-                          use-internal? (and (seq internal-blocks)
-                                             (= pasted-text internal-text))
-                          ;; Detect multi-block paste (markdown or blank lines)
-                          is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
-                          has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
-                          is-multi-block? (or use-internal? is-markdown? has-blank-lines?)
-                          current-text (extract-text-with-newlines target)]
+                          selection-start (min anchor-offset focus-offset)]
 
-                      (if is-multi-block?
+                      ;; IMAGE PASTE: If clipboard has image files, upload them
+                      (if (seq image-files)
+                        (upload-and-insert-images! image-files target selection-start block-id on-intent)
+
+                        ;; TEXT PASTE: Fall through to existing text handling
+                        (let [pasted-text (.getData clipboard-data "text/plain")
+                              selection-end (max anchor-offset focus-offset)
+                              ;; Check if this paste matches our internal clipboard
+                              internal-text (vs/clipboard-text)
+                              internal-blocks (vs/clipboard-blocks)
+                              use-internal? (and (seq internal-blocks)
+                                                 (= pasted-text internal-text))
+                              ;; Detect multi-block paste (markdown or blank lines)
+                              is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
+                              has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
+                              is-multi-block? (or use-internal? is-markdown? has-blank-lines?)
+                              current-text (extract-text-with-newlines target)]
+
+                          (if is-multi-block?
                         ;; Multi-block paste: Commit DOM text first, then dispatch intent
                         ;; CRITICAL: :paste-text requires :editing state - do NOT exit first!
-                        (do
+                            (do
                           ;; 1. Sync DOM → DB before paste (uncontrolled mode)
-                          (on-intent {:type :update-content
-                                      :block-id block-id
-                                      :text current-text})
+                              (on-intent {:type :update-content
+                                          :block-id block-id
+                                          :text current-text})
                           ;; 2. Dispatch paste - handler updates editing-block-id & cursor
                           ;; Include internal clipboard-blocks if available (preserves structure)
-                          (on-intent (cond-> {:type :paste-text
-                                              :block-id block-id
-                                              :cursor-pos selection-start
-                                              :selection-end selection-end
-                                              :pasted-text pasted-text}
-                                       use-internal? (assoc :clipboard-blocks internal-blocks))))
+                              (on-intent (cond-> {:type :paste-text
+                                                  :block-id block-id
+                                                  :cursor-pos selection-start
+                                                  :selection-end selection-end
+                                                  :pasted-text pasted-text}
+                                           use-internal? (assoc :clipboard-blocks internal-blocks))))
 
                         ;; Simple inline paste: Update DOM/buffer directly for responsiveness
-                        (let [before (subs current-text 0 selection-start)
-                              after (subs current-text selection-end)
-                              new-text (str before pasted-text after)
-                              new-cursor-pos (+ selection-start (count pasted-text))]
+                            (let [before (subs current-text 0 selection-start)
+                                  after (subs current-text selection-end)
+                                  new-text (str before pasted-text after)
+                                  new-cursor-pos (+ selection-start (count pasted-text))]
                           ;; 1. Update DOM directly
-                          (set! (.-innerHTML target) (text->html new-text))
+                              (set! (.-innerHTML target) (text->html new-text))
                           ;; 2. Update buffer
-                          (vs/buffer-set! block-id new-text)
+                              (vs/buffer-set! block-id new-text)
                           ;; 3. Position cursor
-                          (set-cursor! target new-cursor-pos)
+                              (set-cursor! target new-cursor-pos)
                           ;; 4. Update DB
-                          (on-intent {:type :paste-text
-                                      :block-id block-id
-                                      :cursor-pos selection-start
-                                      :selection-end selection-end
-                                      :pasted-text pasted-text})))))}}]))
+                              (on-intent {:type :paste-text
+                                          :block-id block-id
+                                          :cursor-pos selection-start
+                                          :selection-end selection-end
+                                          :pasted-text pasted-text})))))))}}]))
 
 (defn- extract-tweet-id
   "Extract tweet ID from X/Twitter URL."

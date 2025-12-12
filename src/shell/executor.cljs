@@ -57,6 +57,13 @@
      intent-map - The intent to dispatch
      label      - Debug label for assert (e.g. \"NEXUS\" or \"DIRECT\")"
   [!db intent-map label]
+  ;; Debug logging for image upload tracing
+  (when (= (:type intent-map) :update-content)
+    (js/console.log "📷 apply-intent! received :update-content"
+                    (clj->js {:blockId (:block-id intent-map)
+                              :textLength (count (:text intent-map))
+                              :textPreview (subs (:text intent-map) 0 (min 100 (count (:text intent-map))))})))
+
   ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
     (vs/set-cursor-position! cursor-pos))
@@ -76,6 +83,18 @@
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
+
+    ;; Debug: Check if DB actually changed for update-content
+    (when (= intent-type :update-content)
+      (let [block-id (:block-id intent-map)
+            text-before (get-in db-before [:nodes block-id :props :text])
+            text-after (get-in db-after [:nodes block-id :props :text])]
+        (js/console.log "📷 DB update check:"
+                        (clj->js {:blockId block-id
+                                  :textBefore text-before
+                                  :textAfter text-after
+                                  :changed? (not= text-before text-after)
+                                  :issues issues}))))
 
     ;; Report validation issues
     (when (seq issues)
