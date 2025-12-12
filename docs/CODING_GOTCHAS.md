@@ -219,6 +219,41 @@ as a parameter, leading to `null` returns instead of errors.
 
 ## Replicant Components
 
+### Lifecycle Hook `el` Reference Becomes Stale in Async
+
+The `el` DOM reference passed to `:replicant/on-render` and `:replicant/on-mount` is only valid **synchronously**. It becomes stale/invalid after any async operation.
+
+❌ **Wrong:**
+```clojure
+[:img {:replicant/on-render
+       (fn [el _]
+         ;; el is valid here...
+         (fetch-asset-url path
+           (fn [url]
+             ;; ...but stale here! Will throw:
+             ;; "Failed to execute 'contains' on 'Node': parameter 1 is not of type 'Node'"
+             (set! (.-src el) url))))}]
+```
+
+✅ **Correct:**
+```clojure
+[:img {:data-asset-path path  ; Use data attribute for lookup
+       :replicant/on-render
+       (fn [_el _]
+         (fetch-asset-url path
+           (fn [url]
+             ;; Re-query DOM to find current element
+             (when-let [el (js/document.querySelector
+                           (str "img[data-asset-path=\"" path "\"]"))]
+               (set! (.-src el) url)))))}]
+```
+
+**Why:** Replicant may re-render components between the start of an async operation and its completion. The original `el` reference points to a detached/replaced node.
+
+**Fix:** Store identifying info in `data-*` attributes and use `querySelector` in async callbacks.
+
+---
+
 ### Event Handler Syntax
 
 **Always use `:on {:event-name handler}` NOT `:on-event-name handler`**
