@@ -748,7 +748,9 @@
                   (H/record)))
   ;; Reset session and set current page
   (vs/reset-view-state!)
-  (vs/set-current-page! "test-page"))
+  (vs/set-current-page! "test-page")
+  ;; Clear storage checking state (no folder check needed in test mode)
+  (swap! !storage-status assoc :checking? false))
 
 (defn main []
   (when ^boolean goog.DEBUG
