@@ -120,12 +120,13 @@
     (vec step)
 
     (intent? step)
-    ;; Macros run on scratch DB with no session context
-    ;; Session-dependent handlers will receive nil session
-    (:ops (intent/apply-intent db nil step))
+    ;; Macros run on scratch DB with empty session context
+    ;; Session-dependent handlers receive empty map to satisfy preconditions
+    ;; but will see no selection/editing state
+    (:ops (intent/apply-intent db {} step))
 
     (intents? step)
-    (vec (mapcat #(:ops (intent/apply-intent db nil %)) step))
+    (vec (mapcat #(:ops (intent/apply-intent db {} %)) step))
 
     :else
     (throw (ex-info "Unknown step form"
