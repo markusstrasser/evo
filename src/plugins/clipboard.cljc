@@ -14,14 +14,10 @@
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.navigation :as nav]
+            [kernel.query :as q]
             [clojure.string :as str]))
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
-
-(defn- get-block-text
-  "Get text content of a block."
-  [db block-id]
-  (get-in db [:nodes block-id :props :text] ""))
 
 (defn- split-by-blank-lines
   "Split text by blank lines (two or more newlines).
@@ -72,13 +68,13 @@
                       (map (fn [{:keys [id depth]}]
                              (str (indent-string (- depth min-depth))
                                   "- "
-                                  (get-block-text db id))))
+                                  (q/block-text db id))))
                       (str/join "\n"))
         ;; Build block data for internal format
         block-data (mapv (fn [{:keys [id depth]}]
                            {:id id
                             :depth (- depth min-depth)
-                            :text (get-block-text db id)})
+                            :text (q/block-text db id)})
                          all-blocks)]
     {:text markdown
      :blocks block-data}))
@@ -250,7 +246,7 @@
 
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text clipboard-blocks]}]
-                            (let [current-text (get-block-text db block-id)
+                            (let [current-text (q/block-text db block-id)
                                   sel-end (or selection-end cursor-pos)
                                   before (subs current-text 0 cursor-pos)
                                   after (subs current-text sel-end)
@@ -361,7 +357,7 @@
                           :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (get-block-text db block-id)]
+                                     (let [text (q/block-text db block-id)]
                                        {:session-updates {:ui {:clipboard-text text
                                                                :clipboard-blocks [{:id block-id
                                                                                    :depth 0
@@ -401,7 +397,7 @@
                           :fr/ids #{:fr.clipboard/copy-block}
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (get-block-text db block-id)]
+                                     (let [text (q/block-text db block-id)]
                                        {:ops [{:op :place
                                                :id block-id
                                                :under const/root-trash

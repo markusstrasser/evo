@@ -386,7 +386,35 @@
         (set (subvec visible start (inc end))))
       #{})))
 
-;; ── Page Queries ──────────────────────────────────────────────────────────────
+;; ── Block Text & Page Queries ─────────────────────────────────────────────────
+
+(defn block-text
+  "Get text content of a block, or empty string if not found.
+
+   This is the canonical way to read block text across plugins.
+   Note: For editing contexts with uncommitted buffer text,
+   plugins.context-editing uses its own version that checks intent."
+  [db block-id]
+  (get-in db [:nodes block-id :props :text] ""))
+
+(defn same-page?
+  "Check if two blocks are on the same page.
+
+   Returns true if:
+   - No current-page is set (not in page-scoped mode)
+   - Both blocks have the same page ancestor
+   - Either block has no page ancestor (doc root level)
+
+   Used by navigation and selection plugins to respect page boundaries."
+  [db session block-a block-b]
+  (let [current-page (current-page session)]
+    (or
+     ;; Not page-scoped mode - allow all navigation
+     (nil? current-page)
+     ;; Check if both blocks belong to the same page
+     (let [page-a (page-of db block-a)
+           page-b (page-of db block-b)]
+       (= page-a page-b)))))
 
 (defn all-pages
   "Get list of all page IDs (direct children of :doc root)."

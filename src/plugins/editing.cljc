@@ -11,13 +11,6 @@
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
-;; ── Private Helpers ───────────────────────────────────────────────────────────
-
-(defn- get-block-text
-  "Get text content of a block (internal helper)."
-  [db block-id]
-  (get-in db [:nodes block-id :props :text] ""))
-
 ;; ── Intent Implementations (Session State Changes) ───────────────────────────
 
 (intent/register-intent! :enter-edit
@@ -110,7 +103,7 @@
                                  [:char :string]]
                           :handler (fn [db _session {:keys [block-id] :as intent}]
                                      (let [input-char (:char intent)
-                                           current-text (get-block-text db block-id)
+                                           current-text (q/block-text db block-id)
                                            new-text (str current-text input-char)
                                            new-cursor-pos (count new-text)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
@@ -151,7 +144,7 @@
                           :fr/ids #{:fr.edit/newline-no-split}
                           :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
-                                     (let [text (get-block-text db block-id)
+                                     (let [text (q/block-text db block-id)
                                            before (subs text 0 cursor-pos)
                                            after (str/triml (subs text cursor-pos))
                                            new-text (str before "\n" after)]
@@ -183,9 +176,9 @@
                                            target-id (or prev-sibling
                                                          (when (and parent (not (keyword? parent)))
                                                            parent))
-                                           target-text (get-block-text db target-id)
+                                           target-text (q/block-text db target-id)
                                            ;; Use passed text (from DOM) if available, fall back to DB
-                                           curr-text (or text (get-block-text db block-id))
+                                           curr-text (or text (q/block-text db block-id))
                                            merged-text (str target-text curr-text)
                                            ;; LOGSEQ PARITY: Cursor at join point
                                            cursor-at #?(:cljs (.-length target-text)
@@ -211,7 +204,7 @@
                           :fr/ids #{:fr.edit/smart-split}
                           :spec [:map [:type [:= :split-at-cursor]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
-                                     (let [text (get-block-text db block-id)
+                                     (let [text (q/block-text db block-id)
                                            before (subs text 0 cursor-pos)
                                            after (subs text cursor-pos)
                                            parent (get-in db [:derived :parent-of block-id])
@@ -242,7 +235,7 @@
                                  [:cursor-pos :int]
                                  [:has-selection? :boolean]]
                           :handler (fn [db _session {:keys [block-id cursor-pos has-selection?]}]
-                                     (let [text (get-block-text db block-id)
+                                     (let [text (q/block-text db block-id)
                                            at-end? (= cursor-pos (count text))]
                                        (cond
                                          ;; Has selection - component handles this
@@ -255,7 +248,7 @@
                                                next-sibling (get-in db [:derived :next-id-of block-id])
                                                target-id (or first-child next-sibling)]
                                            (when target-id
-                                             (let [target-text (get-block-text db target-id)
+                                             (let [target-text (q/block-text db target-id)
                                                    merged-text (str text target-text)
                                                    target-children (get-in db [:children-by-parent target-id] [])]
                                                {:ops (vec (concat
@@ -288,7 +281,7 @@
                                  [:type [:= :move-cursor-forward-word]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position])
                                            ;; Use find-word-end to stop at word boundary, not skip whitespace
                                            next-pos (text/find-word-end block-text (or cursor-pos 0))]
@@ -301,7 +294,7 @@
                                  [:type [:= :move-cursor-backward-word]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position])
                                            prev-pos (text/find-prev-word-boundary block-text (or cursor-pos 0))]
                                        (when prev-pos
@@ -330,7 +323,7 @@
                                  [:type [:= :kill-to-beginning]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            killed-text (subs block-text 0 cursor-pos)
                                            new-text (subs block-text cursor-pos)]
@@ -347,7 +340,7 @@
                                  [:type [:= :kill-to-end]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            killed-text (subs block-text cursor-pos)
                                            new-text (subs block-text 0 cursor-pos)]
@@ -364,7 +357,7 @@
                                  [:type [:= :kill-word-forward]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            ;; Use find-word-end to stop at word boundary, preserving trailing space
                                            next-pos (text/find-word-end block-text cursor-pos)
@@ -383,7 +376,7 @@
                                  [:type [:= :kill-word-backward]]
                                  [:block-id :string]]
                           :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (get-block-text db block-id)
+                                     (let [block-text (q/block-text db block-id)
                                            cursor-pos (get-in session [:ui :cursor-position] 0)
                                            prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
                                        (when prev-pos

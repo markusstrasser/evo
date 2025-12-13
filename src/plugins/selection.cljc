@@ -63,22 +63,6 @@
 
 ;; NOTE: get-dom-nav-fn removed - now inline calls with session param
 
-(defn- same-page?
-  "Check if two blocks are on the same page.
-   Returns true if:
-   - No current-page is set (not in page-scoped mode)
-   - Both blocks have the same page ancestor
-   - Either block has no page ancestor (doc root level)"
-  [db session block-a block-b]
-  (let [current-page (q/current-page session)]
-    (or
-     ;; Not page-scoped mode - allow all navigation
-     (nil? current-page)
-     ;; Check if both blocks belong to the same page
-     (let [page-a (q/page-of db block-a)
-           page-b (q/page-of db block-b)]
-       (= page-a page-b)))))
-
 (def ^:private container-types
   "Node types that are containers and should not be included in block selection."
   #{:doc :page})
@@ -105,10 +89,10 @@
                          :next (q/next-block-dom-order db session current)
                          :prev (q/prev-block-dom-order db session current))]
       (if (and (is-selectable-block? db next-id)
-               (same-page? db session current-id next-id))
+               (q/same-page? db session current-id next-id))
         next-id
         ;; Keep searching only if still on same page
-        (when (same-page? db session current-id next-id)
+        (when (q/same-page? db session current-id next-id)
           (recur next-id))))))
 
 (defn- get-first-last-visible-block
