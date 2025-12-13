@@ -53,6 +53,20 @@ transformations between different levels of semantic abstraction.
 The MLIR framing (Intent → Core Algebra → View Diff): “Core Algebra” compiles
 cleanly from higher intents without touching the kernel.
 
+## Design Divergences from Logseq
+
+See `docs/LOGSEQ_PARITY_EVO.md` for technical specifics. High-level rationale:
+
+**No `(())` block references or embeds.** Knowledge graphs built on runtime pointer dereferences are fragile. When the referenced block changes, every reference silently changes meaning. When it's deleted, you get dangling refs. This creates invisible coupling that's hard to reason about.
+
+Better: If content needs to exist in two places, it should *explicitly* exist in two places. Tooling can help keep them in sync (diffing, notifications), but the relationship should be visible, not hidden behind a UUID lookup.
+
+**Simple plugin system.** Logseq's plugin system uses global atom mutation + pub/sub + multimethods + LSPluginCore JS sandbox. Complex.
+
+Evo's approach: Plugins are just functions with the same signature as core handlers: `[db intent] -> ops`. Add namespace to manifest, done. No special API, no framework—just Clojure. The constraint is the interface (pure in, data out), not internal complexity.
+
+---
+
 ## Maybe at some point, IDK.
 
 ### Protocols vs Multimethods

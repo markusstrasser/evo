@@ -1,8 +1,59 @@
 # Evo Implementation Gaps & Guardrails
 
-What's NOT yet implemented and implementation rules to follow.
+What's NOT yet implemented, what we deliberately diverge from, and implementation rules to follow.
 
 **Specs**: See `STRUCTURAL_EDITING.md` (core) and `LOGSEQ_UI_FEATURES.md` (Logseq-specific).
+
+---
+
+## Deliberate Divergences from Logseq
+
+Features we intentionally don't implement. See `VISION.md` for philosophy.
+
+### No Block References `(())`
+
+**What Logseq has:**
+- `((uuid))` inline block references
+- `{{embed ((uuid))}}` block embeds
+- `Cmd+C` on caret (no selection) copies `((uuid))`
+- `Cmd+Shift+E` copies as embed
+- `Cmd+Shift+R` replaces ref with content
+- Alt+drag inserts reference instead of moving
+- Paste `((uuid))` in `(())` context strips outer parens
+
+**What Evo does:** None of the above. Block content is copied/moved, never referenced.
+
+**Why:** Block refs create fragile knowledge graphs. Content should be explicit, not pointer-based. If you need the same content in two places, it should exist in two places (with potential sync tooling), not be a runtime dereference. This aligns with the "explicit over implicit" philosophy.
+
+**Clipboard simplifications:**
+- `Cmd+C` with no selection: no-op (nothing to copy)
+- Alt+drag: disabled or same as regular drag
+- No ref detection in paste handlers
+- No graph-mismatch concerns for refs (only for block structure)
+
+### Plugin System (vs Logseq's Hooks)
+
+**What Logseq has:**
+- Global atom + pub/sub + multimethods
+- `state/install-plugin-hook`, `state/pub-event!`
+- LSPluginCore JS sandbox for external plugins
+
+**What Evo does:** Same pattern as core - pure functions.
+
+```clojure
+;; Plugin contract: [db intent] -> ops | nil
+(defn handler [db intent]
+  (when (= (:type intent) :my-thing)
+    [{:op :update :id (:target intent) :props {:done true}}]))
+```
+
+**Registration:** Add namespace to `resources/plugins.edn`
+
+**Why this is simpler:**
+- Same signature as existing `src/plugins/*` handlers
+- No special API to learn - it's just Clojure
+- Pure functions: testable, inspectable, composable
+- Advanced logic? Just write code. Constraint is interface, not internals.
 
 ---
 

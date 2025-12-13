@@ -2,7 +2,7 @@
 
 Canonical, implementation-agnostic description of the Logseq desktop “feel” (macOS build 0.10.x). Every statement below comes from observing and reading upstream Logseq; use it as the ground truth before mapping behavior into another client.
 
-_Last verification:_ 2025‑11‑15 against `~/Projects/best/logseq` (main). Re-run the walkthrough any time upstream changes.
+_Last verification:_ 2025‑12‑12 against `~/Projects/best/logseq` (main). Re-run the walkthrough any time upstream changes.
 
 ---
 
@@ -40,10 +40,11 @@ This spec has been split into focused documents for easier reference:
 | Navigation | `handler/editor.cljs` (`shortcut-up-down`, `select-up-down`, `shortcut-left-right`), `util.cljc`, `util/cursor.cljs` | Grapheme-aware cursor memory, DOM-order traversal. |
 | Structural edits | `modules/outliner/op.cljs`, `handler/block.cljs`, `handler/dnd.cljs` | Create/place/update ops, move/indent/drag semantics. |
 | Folding & zoom | `handler/editor.cljs` (expand/collapse), `state.cljs` (zoom roots) | Cmd+Up/Down/; plus page/zoom boundaries. |
-| Clipboard & paste | `handler/editor.cljs` (copy/cut), `handler/paste.cljs`, `commands.cljs` | Metadata-preserving block copy, segmented paste, macro detection. |
+| Clipboard & paste | `handler/editor.cljs` (copy/cut), `handler/paste.cljs`, `commands.cljs`, `utils.js` (clipboard API) | Metadata-preserving block copy, segmented paste, macro detection, MIME types. |
 | Slash palette & quick switcher | `commands.cljs`, `handler/command_palette.cljs`, `components/search.cljs` | `/` inline menu, Cmd+K/P overlay. |
-| Undo/redo | `handler/history.cljs`, `state.cljs` | Restores text, block structure, caret/selection. |
+| Undo/redo | `handler/history.cljs`, `undo_redo.cljs`, `state.cljs` | Restores text, block structure, caret/selection, UI state. |
 | Pointer + mouse gestures | `components/block.cljs`, `components/dnd.cljs`, `modules/outliner/tree.cljs` | Alt+click folding, Shift+click ranges, drag/drop + Alt reference insert. |
+| Plugin system & hooks | `handler/plugin.cljs`, `state.cljs` (plugin atoms), `logseq/api.cljs` | Hook installation, command registration, renderer hooks, storage. |
 
 ## 3. Behavior Themes
 
@@ -66,10 +67,11 @@ The tables below summarize the interaction promises users rely on.
 - **FR-NavView-01..04** – View-mode selection, Shift+Click, sidebar open.
 - **FR-Edit-01..07** – Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore.
 - **FR-Move-01..03** – Indent/outdent rules, climb/descend, drag/drop parity.
-- **FR-Clipboard-01..03** – Copy/cut/reference variants, paste semantics.
+- **FR-Clipboard-01..06** – Copy/cut/reference variants, paste semantics, MIME types, graph mismatch, code block paste.
 - **FR-Pointer-01..02** – Alt+click folding toggle, hover preview + Cmd+click open.
 - **FR-Slash-01 / FR-QuickSwitch-01** – Slash palette + Cmd+K/P quick switcher.
-- **FR-Undo-01** – Undo/redo restores caret + selection context.
+- **FR-Undo-01..04** – Undo/redo restores caret + selection context, stack architecture, batching rules, edge cases.
+- **FR-Plugin-01..03** – Hook installation, command registration, renderer hooks.
 
 ### 3.3 Acceptance Examples (BDD snippets)
 ```
@@ -152,13 +154,14 @@ Scenario: Zoom boundary
 | FR-NavView-01..04 | Selection-mode arrows, Shift+Click, Shift+Enter sidebar | §3 | `handler/editor.cljs` (`select-up-down`, `shortcut-select-up-down`) |
 | FR-Edit-01..07 | Enter/Shift+Enter, Backspace/Delete, whitespace, caret restore | §4 | `handler/editor.cljs` (`keydown-new-block`, `keydown-backspace-handler`) |
 | FR-Move-01..03 | Indent/outdent rules, climb/descend, drag & Alt-drag | §5 | `outliner/core.cljs`, `handler/editor.cljs/move-up-down`, `handler/dnd.cljs` |
-| FR-Clipboard-01..03 | Copy/cut/reference, paste semantics | §7.6–§7.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs` |
+| FR-Clipboard-01..06 | Copy/cut/reference, paste semantics, MIME types, edge cases | §7.6–§7.7 | `modules/shortcut/config.cljs`, `handler/paste.cljs`, `utils.js` |
 | FR-Pointer-01..02 | Pointer gestures (bullet click collapse, Shift/Cmd multi-select, Alt-drag refs) | §7.3 | `frontend/components/block.cljs`, `frontend/handler/dnd.cljs` |
 | FR-Slash-01 | Slash command palette & inline workflows | §7.4 | `frontend/commands.cljs`, `frontend/handler/editor.cljs` |
 | FR-QuickSwitch-01 | Quick switcher + command palette overlay | §7.5 | `frontend/handler/command_palette.cljs`, `frontend/components/search.cljs`, `modules/shortcut/config.cljs` |
-| FR-Undo-01 | Undo/redo restores caret/selection | §7.8 | `state.cljs`, `history.cljs` |
+| FR-Undo-01..04 | Undo/redo stack, cursor restore, batching, edge cases | §7.8 | `state.cljs`, `handler/history.cljs`, `undo_redo.cljs` |
+| FR-Plugin-01..03 | Plugin hooks, command extension, renderer hooks | §8 | `handler/plugin.cljs`, `state.cljs`, `logseq/api.cljs` |
 
-> **Verification note:** Behaviors confirmed against `~/Projects/best/logseq` (master, 2025‑11‑15). Re-run validation whenever upstream changes.
+> **Verification note:** Behaviors confirmed against `~/Projects/best/logseq` (main, 2025‑12‑12). Re-run validation whenever upstream changes.
 
 **Target application:** Logseq desktop (macOS build 0.10.x).  \n**Purpose:** Canonical record of user-observable behavior—implementation-specific notes live elsewhere.
 
@@ -215,7 +218,68 @@ Logseq keeps ephemeral interaction data inside `frontend.state` (see `state.cljs
 | `session/selection.flags.selected-all?` | `:selection/selected-all?` | Tracks whether `Cmd+Shift+A` already scooped the full visible outline (prevents duplicate work). |
 | `session/ui.inline-action` | `:editor/action` + `:editor/action-data` | Encodes transient overlays such as slash palette input steps, block search, and inline property dialogs. |
 
-`state/set-selection-blocks!` normalizes DOM nodes, reapplies the `.selected` class, updates `:selection/direction`, and publishes `[:editor/load-blocks ids]`. `state/clear-selection!` wipes nodes, direction, anchor, and fires `[:editor/hide-action-bar]`. Pointer gestures (see §7.3) use `state/set-selection-start-block!` to seed anchors so the next Shift+Click can compute ranges via `editor-handler/highlight-selection-area!`, which in turn walks the DOM with `util/get-nodes-between-two-nodes`. Implementations that only store an unordered set of IDs cannot reproduce Logseq’s extend/contract semantics.
+`state/set-selection-blocks!` normalizes DOM nodes, reapplies the `.selected` class, updates `:selection/direction`, and publishes `[:editor/load-blocks ids]`. `state/clear-selection!` wipes nodes, direction, anchor, and fires `[:editor/hide-action-bar]`. Pointer gestures (see §7.3) use `state/set-selection-start-block!` to seed anchors so the next Shift+Click can compute ranges via `editor-handler/highlight-selection-area!`, which in turn walks the DOM with `util/get-nodes-between-two-nodes`. Implementations that only store an unordered set of IDs cannot reproduce Logseq's extend/contract semantics.
+
+### 1.3 Focus Transitions During Structural Operations
+
+When Enter creates a new block, focus must move from the old contenteditable to the newly created block's editor. This creates a race condition: the old block loses focus (triggering blur) before the new block's DOM exists.
+
+**Logseq's Approach: Deferred Focus via `requestAnimationFrame`**
+
+Logseq does **not** suppress blur handlers. Instead, it defers the focus call until after the DOM update:
+
+1. `insert-new-block!` stores an `edit-block-fn` closure in state (`:editor/edit-block-fn`)
+2. The outliner transaction commits, updating the database
+3. After transaction, `modules/outliner/pipeline.cljs` calls `(util/schedule edit-block-f)`
+4. `util/schedule` is `requestAnimationFrame` (~16ms)
+5. The deferred function calls `edit-block!` on the new block
+
+```clojure
+;; From frontend/handler/editor.cljs:insert-new-block!
+(p/do!
+  (state/set-state! :editor/edit-block-fn edit-block-f)  ;; Store focus fn
+  result-promise                                          ;; Wait for transaction
+  (clear-when-saved!))                                    ;; Cleanup
+
+;; From modules/outliner/pipeline.cljs (after tx commit)
+(let [edit-block-f @(:editor/edit-block-fn @state/state)]
+  (state/set-state! :editor/edit-block-fn nil)
+  (when edit-block-f
+    (util/schedule edit-block-f)))  ;; rAF-deferred focus
+```
+
+**Evo's Approach: Blur Suppression Flag**
+
+Evo takes a different approach - suppressing the blur handler during structural operations:
+
+1. Before structural intents (indent, outdent, move, enter), set `keep-edit-on-blur` flag (200ms timeout)
+2. Blur handler checks flag and skips `:exit-edit` if set
+3. Intent creates new block and sets `editing-block-id` to new block
+4. DOM updates, new contenteditable gets focus
+5. Flag expires or is cleared
+
+Both approaches solve the same problem: preventing blur from clearing edit state before the new block can receive focus.
+
+| Aspect | Logseq | Evo |
+|--------|--------|-----|
+| Mechanism | Deferred focus via rAF | Blur suppression flag |
+| Timing | ~16ms (single rAF) | ~32ms (double rAF) |
+| Blur fires | Yes, but edit state already cleared by transaction | No, suppressed |
+| Complexity | Requires state slot + pipeline hook | Requires intent classification |
+
+**Implementation Note for Evo:**
+
+The `structural-intents` set in `shell/editor.cljs` must include all intents that:
+1. Cause DOM re-render (blur fires on old element)
+2. Need to maintain edit mode in a different block
+
+```clojure
+(def structural-intents
+  #{:indent-selected :outdent-selected :move-selected-up :move-selected-down
+    :delete-selected :context-aware-enter})
+```
+
+Missing an intent from this set causes focus loss when that intent fires during edit mode.
 
 ---
 
@@ -364,37 +428,383 @@ Beyond keyboard navigation and structural edits, Logseq users rely on several su
 - `register-global-shortcut-commands` ensures every entry in `modules/shortcut/config.cljs` with a global binding also surfaces inside the palette, so users can discover keyboard shortcuts even if they forget the chord.
 
 ### 7.6 Clipboard permutations
-- `Cmd+C` delegates to `shortcut-copy`: selections call `copy-selection-blocks` (returns Markdown, HTML, and the custom MIME `web application/logseq`), editing with no range calls `copy-current-block-ref` (copies `((uuid))`), and editing with a text range falls back to the browser’s native copy. If the caret lives in a PDF pane, Logseq pulls the highlight text instead.
+- `Cmd+C` delegates to `shortcut-copy`: selections call `copy-selection-blocks` (returns Markdown, HTML, and the custom MIME `web application/logseq`), editing with no range calls `copy-current-block-ref` (copies `((uuid))`), and editing with a text range falls back to the browser's native copy. If the caret lives in a PDF pane, Logseq pulls the highlight text instead.
 - `Cmd+Shift+C` maps to `shortcut-copy-text`, which copies the currently selected blocks but strips Logseq metadata so users can paste into other editors without list markers, then falls back to the browser copy command when not in selection mode.
 - `Cmd+Shift+E` copies the current block as an embed (`{{embed (())}}`) and `Cmd+Shift+R` replaces the block reference under the caret with its resolved content; both functions live in `handler/editor.cljs`.
 - Cut operations set `:editor/block-op-type` to `:cut` so paste handlers know whether to keep UUIDs and how to build revert transactions.
-- Block copy/cut writes Markdown, HTML, and the custom MIME payload to the clipboard. On paste, `get-copied-blocks` refuses to import data when the clipboard’s `:graph` doesn’t match the current repo, mirroring Logseq’s guard rails.
+- Block copy/cut writes Markdown, HTML, and the custom MIME payload to the clipboard. On paste, `get-copied-blocks` refuses to import data when the clipboard's `:graph` doesn't match the current repo, mirroring Logseq's guard rails.
+
+#### 7.6.1 Clipboard MIME Types & Data Format
+Logseq writes three MIME types simultaneously to the clipboard (via Async Clipboard API):
+- `text/plain`: Plain text for external apps
+- `text/html`: HTML representation preserving list structure
+- `web application/logseq`: Custom format containing PR-stringified EDN map:
+  ```clojure
+  {:graph "repo-name"
+   :embed-block? false
+   :blocks [{:block/uuid "..." :block/content "..." ...}]}
+  ```
+
+**Platform limitations:**
+- Android: Clipboard API fallback due to permission errors (uses `navigator.clipboard.writeText` only)
+- Capacitor: Native bridge for mobile platforms
+- Graceful degradation: Falls back to text-only if `ClipboardItem` unsupported
+
+#### 7.6.2 Cut vs Copy Behavior Differences
+| Aspect | Copy | Cut |
+|--------|------|-----|
+| `:editor/block-op-type` | `:copy` | `:cut` |
+| UUID handling on paste | New UUIDs generated | Original UUIDs preserved |
+| Revert transaction | None | Stored in `[:editor/last-replace-ref-content-tx repo]` |
+| Source blocks | Unchanged | Deleted immediately after clipboard write |
+
+**Cut exclusions** (blocks silently skipped):
+- Query blocks (`data-query="true"`)
+- Transclude blocks (`data-transclude="true"`)
+- Property value containers
 
 ### 7.7 Paste semantics
 - `Cmd+Shift+V` routes to `paste-handler/editor-on-paste-raw!`, which deletes the current selection and inserts clipboard text verbatim (no Markdown parsing, no block splitting).
 - Standard paste first checks for the custom MIME payload (`web application/logseq`). If the clipboard graph matches the current repo, Logseq pastes the serialized blocks (keeping UUIDs for cut operations and replaying revert transactions when necessary). Only when that payload is absent does it fall back to HTML/text parsing.
 - `paste-text-or-blocks-aux` detection order: attachments (if files present and the user prefers file pasting), rich text (`html-parser/convert`), macro URLs (`wrap-macro-url` for video/Twitter), block refs (pasting `((uuid))` inside `(( ))` only inserts the ID), and finally plain text.
 - Multi-paragraph pastes are split whenever blank lines appear. `paste-segmented-text` also injects list markers so Markdown/Org bullets continue to render as lists when pasted into Logseq; single newlines stay inside the current block as literal `\n` characters.
-- When the paste payload contains `<whiteboard-tldr>` metadata, the handler extracts the JSON blob and injects the referenced shapes instead of raw text, matching Logseq’s whiteboard copy/paste workflow.
+- When the paste payload contains `<whiteboard-tldr>` metadata, the handler extracts the JSON blob and injects the referenced shapes instead of raw text, matching Logseq's whiteboard copy/paste workflow.
 - Link-aware pasting: if the user selects a `[label](url)` range (Markdown) or `[[page][label]]` (Org), pasting a new URL replaces only the target portion, not the label, by way of `selection-within-link?`.
+
+#### 7.7.1 Paste Edge Cases (Verified Against Upstream)
+
+**Graph mismatch detection:**
+- Blocks only paste if `:graph` field matches current repo
+- Mismatch: Falls back to plain text paste (no cross-graph block references)
+- Embed block validation: Prevents embedding parent blocks as their own properties (shows error notification)
+
+**Paste into code blocks:**
+- `editing-display-type-block?`: Detects Logseq display-type properties
+- `thingatpt/markdown-src-at-point`: Detects markdown fenced code (```)
+- `thingatpt/org-admonition&src-at-point`: Detects org source blocks
+- **Edge case**: Plain text paste only (no block parsing) when cursor inside code block
+- **iOS exception**: Skips special handling (uses native iOS paste behavior)
+
+**Multi-paragraph segmentation rules:**
+- Splits on 2+ consecutive newlines: `#"(?:\r?\n){2,}"`
+- Auto-prefixes each paragraph with bullet if not already formatted:
+  - Markdown: `- ` prefix
+  - Org: `* ` prefix
+- Detection regex: `#"(?m)^\s*(?:[-+*]|#+)\s+"` (Markdown) / `#"(?m)^\s*\*+\s+"` (Org)
+
+**Block ref in parentheses context:**
+- Pasting `((block-ref-uuid))` between parens `(())`
+- Result: Inserts UUID only (strips outer parens to avoid `((((uuid))))`)
+
+**URL auto-wrapping macros:**
+- Twitter/X links: Wrapped as `{{twitter <url>}}`
+- YouTube/video links: Wrapped as `{{video <url>}}`
+- Selected text + URL paste: Converts to `[selected-text](url)`
+
+**Paste position & nesting logic:**
+- **Target resolution**: Defaults to editing block, falls back to parent page
+- **Empty block with children**: Places as previous sibling instead of child
+- **Nested blocks into empty target**: Only pastes if parent has children
+- **Replace-empty-target optimization**: Single-block paste replaces empty target content
+
+**File/image paste:**
+- Checks both HTML and files (prioritizes files if present)
+- Calls `upload-asset!` with block ID and file list
+- Uses block's `:block/format` for proper markup
+
+**DB-based vs file-based graph differences:**
+- DB graphs: Strips `:block/tags`, applies `db-content/replace-tags-with-id-refs`
+- File graphs: Preserves properties as strings
 
 ### 7.8 Undo/redo focus memory
 - Undo and redo reapply not just document content but also the interaction state: if the user was editing block B when the change occurred, undo returns the caret to block B (or reselects it) exactly as Logseq does.
 - `frontend.handler.history/undo!` and `redo!` debounce requests (20 ms), pause history (`:history/paused?`), save the current block, and then either merge the serialized UI state (`ui-state-str`) back into `frontend.state` or restore the caret from the stored `editor-cursors`. Evo must mirror this so routing (page vs block) and selection survive the undo stack.
 
+#### 7.8.1 History Stack Architecture
+Logseq maintains two repo-indexed stacks (via atoms):
+- `*undo-ops`: Operations to undo
+- `*redo-ops`: Operations to redo
+
+**Stack constraints:**
+- Max 100 operations per stack; when exceeded, oldest 50% discarded
+- Each "operation" is a composite vector of multiple items
+
+**Operation types recorded per change:**
+```clojure
+;; Composite undo operation example:
+[
+  [::record-editor-info {:block-uuid "..." :start-pos 10 :end-pos 15 :container-id ...}]
+  [::db-transact {:tx-data [...datoms...] :tx-meta {...} :added-ids #{...} :retracted-ids #{...}}]
+]
+
+;; UI state operation (route changes):
+[[::ui-state "transit-serialized-string"]]
+```
+
+| Type | Content | Purpose |
+|------|---------|---------|
+| `::record-editor-info` | cursor pos, block UUID, container | Restore cursor position |
+| `::db-transact` | tx-data (datoms), metadata, IDs | Apply reversed datoms |
+| `::ui-state` | serialized route + sidebar state | Redirect + restore UI |
+
+#### 7.8.2 Cursor Restoration Logic
+```clojure
+;; For undo: use FIRST cursor in operation
+;; For redo: use LAST cursor (or first if unavailable)
+;; Undo prefers start-pos; redo prefers end-pos
+```
+
+Editor info captured **after** editor mounts (via `did-mount!`), **skipped during active undo/redo** to prevent recursion.
+
+#### 7.8.3 Batching Rules (What Counts as One Undo Step)
+Operations recorded only when ALL conditions met:
+- `client-id` matches local client (no remote ops)
+- Has `outliner-op` in tx-meta
+- Not explicitly disabled (`gen-undo-ops? != false`)
+- Not daily journal creation (`create-today-journal?` absent)
+
+**Structural operation metadata:**
+- Indent/outdent: `{:outliner-op :move-blocks :real-outliner-op :indent-outdent}`
+- Move-blocks: `{:outliner-op :move-blocks}`
+- All attribute changes bundled in single datom set
+
+#### 7.8.4 Undo/Redo Edge Cases
+
+**Undo after page navigation:**
+- Route changes captured separately via `::ui-state`
+- If undo encounters UI state first:
+  1. Triggers route redirect to previous page
+  2. Restores: `sidebar-open?`, `sidebar-collapsed-blocks`, `sidebar/blocks`
+  3. Does NOT restore editor cursor (different page context)
+- Allowed routes: `:home`, `:page`, `:page-block`, `:all-journals`
+
+**Undo with collapsed blocks:**
+- `ui/sidebar-collapsed-blocks` = set of collapsed block IDs
+- Restored as part of `::ui-state` operation (not in DB transaction)
+
+**Block moved with target deleted:**
+- Error: "This block has been moved or its target has been deleted"
+- Recovery: History cleared, user must manually redo operation
+
+**Undo delete when new children added:**
+- Error: "Children still exists"
+- Recovery: Operation skipped, history cleared
+
+**Non-local transactions (RTC/sync):**
+- Extra validation checks for children conflicts
+- Only local client's operations in local undo stack
+
+**Undo disabled contexts:**
+- Inside code blocks (`:editor/code-block-context` set)
+- Current block saved before undo (`editor/save-current-block!`)
+- Editor actions cleared (`state/clear-editor-action!`)
+
+#### 7.8.5 Debouncing & Async Handling
+- **Debounce window**: 20ms (prevents rapid Cmd+Z spam)
+- **Async sequencing**: Previous undo must complete before next starts
+- **History pause**: Set `true` during restore, prevents recording intermediate states
+
+#### 7.8.6 Datom Reversal Logic
+When undoing:
+1. `retracted` datoms become `add` operations (restore deleted data)
+2. `added` datoms become `retract` operations (undo created data)
+3. **Ref validation**: Only restore references if target entity still exists
+4. **Cascade deletes**: Uses `:db/retractEntity` for deleted blocks
+
+For redo: Applies reversed datoms in forward order, re-validates entity existence.
+
 Downstream parity trackers should reference these expectations whenever a client diverges so QA can verify the difference explicitly.
 
 ---
 
-## 8. Summary Checklist (Behavioral)
+## 8. Extensibility & Hooks Architecture
 
+Logseq exposes a comprehensive plugin system for extending behavior. Understanding these patterns is valuable for designing comparable extension points.
+
+### 8.1 Plugin System Overview
+
+**Core entry point**: `frontend/handler/plugin.cljs`
+
+Plugin lifecycle managed via LSPluginCore JavaScript library:
+1. **Registration**: Plugin metadata stored in `:plugin/installed-plugins`
+2. **Lifecycle events**: registered, reloaded, unregistered, disabled, enabled
+3. **Async loading**: Preboot plugins load before UI; async plugins load after
+
+### 8.2 Event-Driven Architecture (Pub/Sub)
+
+```clojure
+;; Publishing events
+(state/pub-event! [:event-key arg1 arg2 ...])
+
+;; Events dispatched via multimethod
+(defmulti handle first)
+(defmethod handle :graph/added [_] ...)
+```
+
+**Key events plugins can observe:**
+- `:graph/added` - Graph loaded
+- `:plugin/hook-db-tx` - Database transaction occurred
+- `:exec-plugin-cmd` - Plugin command execution
+- `:rebuild-slash-commands-list` - Command palette rebuild
+- `:editor/load-blocks` - Blocks loaded for editing
+
+### 8.3 Hook Installation API
+
+```clojure
+;; Install hook
+(state/install-plugin-hook pid hook opts)  ;; opts can be true or custom config
+
+;; Uninstall hook
+(state/uninstall-plugin-hook pid hook-or-all)
+
+;; Hooks stored in: :plugin/installed-hooks -> hook -> {pid opts}
+```
+
+**Hook categories:**
+
+| Category | Example Hooks | Description |
+|----------|---------------|-------------|
+| **App hooks** | `:graph-after-indexed`, `:today-journal-created`, `:theme-changed` | Application lifecycle |
+| **Editor hooks** | `:editor/hook`, `slot:UUID` | Editor-specific events, per-block UI injection |
+| **DB hooks** | `:db/changed`, `block:UUID` | Database changes, block-specific with tx data |
+| **Command hooks** | `:before-command-invoked TYPE`, `:after-command-invoked TYPE` | Pre/post any command |
+
+**Hook invocation flow:**
+```clojure
+(hook-plugin :app "graph-after-indexed" {:graph repo} plugin-id)
+(hook-plugin :editor "slot:uuid" {:block block} plugin-id)
+(hook-plugin :db "block:uuid" {:tx-data datoms :tx-meta meta} plugin-id)
+```
+
+### 8.4 Command Extension Mechanisms
+
+#### Slash Commands (Plugin)
+```clojure
+;; Registration
+(register-plugin-slash-command pid [cmd actions])
+;; Stored in: :plugin/installed-slash-commands[pid][cmd] = actions
+;; Triggers: :rebuild-slash-commands-list event
+```
+
+#### Simple Commands (Palette + Keybinding)
+```clojure
+;; Registration
+(register-plugin-simple-command pid {:keys [type key label desc keybinding]} action)
+;; Modes: :global, :editing, :non-editing
+;; Auto-registers keybindings if provided
+```
+
+**Command execution triggers**: `[:exec-plugin-cmd pid cmd-key args]`
+
+### 8.5 Renderer Hooks
+
+| Renderer Type | Purpose | Registration Key |
+|---------------|---------|------------------|
+| **Fenced code** | Language-specific code block rendering | `register-fenced-code-renderer` |
+| **Block slot** | Per-block UI injection points | `slot:UUID` format |
+| **Route** | Custom route-based rendering | `register-route-renderer` |
+| **Daemon** | Background/persistent components | `register-daemon-renderer` |
+| **Extensions** | Enhance existing extensions | `register-extensions-enhancer` |
+
+### 8.6 Block Change Tracking
+
+```clojure
+(defn hook-plugin-block-changes [{:keys [blocks tx-data tx-meta]}]
+  ;; For each block with installed hook:
+  (let [type (str "block:" (:block/uuid b))]
+    (hook-plugin-db type {:block b :tx-data ... :tx-meta ...})))
+```
+
+Plugins register for specific block UUIDs; hooks fire on any transaction affecting those blocks.
+
+### 8.7 Plugin State Schema
+
+```clojure
+:plugin/installed-plugins         ;; {pid -> metadata}
+:plugin/installed-themes          ;; [{:pid :url :mode ...}]
+:plugin/installed-slash-commands  ;; {pid -> {cmd -> actions}}
+:plugin/installed-ui-items        ;; {pid -> [[type opts pid]]}
+:plugin/installed-hooks           ;; {hook -> {pid -> opts}}
+:plugin/installed-resources       ;; {pid -> {type -> {key -> opts}}}
+:plugin/installed-services        ;; {pid -> {:search {name -> opts}}}
+:plugin/simple-commands           ;; {pid -> [[type cmd action pid]]}
+:plugin/preferences               ;; User preferences JSON
+```
+
+### 8.8 Plugin API Surface (Key Functions)
+
+**Plugin Management:**
+- `install_plugin_hook`, `uninstall_plugin_hook`
+- `should_exec_plugin_hook`
+- `load_plugin_config`, `load_plugin_readme`
+
+**Storage:**
+- `write_dotdir_file`, `read_dotdir_file` (`.logseq/` directory)
+- `write_plugin_storage_file`, `read_plugin_storage_file`
+- `save_user_preferences`, `load_user_preferences`
+
+**Editor APIs** (50+ functions):
+- `get_current_block`, `edit_block`, `insert_block`, `remove_block`
+- `get_current_page`, `create_page`, `delete_page`, `rename_page`
+- Tree operations, selection management
+
+**DB APIs:**
+- `datascript_query`, `custom_query` (DataScript access)
+
+### 8.9 Extension Design Principles (Observed)
+
+1. **Atom-based state**: All plugin state in `state/state` atom
+2. **Async channels**: `core.async` for event batching/processing
+3. **Multimethods**: Extensible event dispatch
+4. **Keyword namespacing**: `:plugin/xxx` keys, `:plugin.pid/xxx` commands
+5. **Registry atoms**: Local tracking for fenced-code, route renderers
+6. **Deferred promises**: `pub-event!` returns deferred for async handling
+7. **Normalized storage**: Plugin data in `.logseq/` directory with JSON files
+
+### 8.10 Extensibility Constraints
+
+- **No protocol-based hooking** in kernel (simple function calls only)
+- **Synchronous hooks** for DB changes (no async DB hooks)
+- **Plugin isolation**: Limited to JS sandbox (LSPluginCore handles)
+- **Hook installation** requires plugin registered in state
+- **Block-specific hooks** identified by UUID strings (hyphens become underscores)
+
+---
+
+## 9. Summary Checklist (Behavioral)
+
+### Core Interaction
 - [ ] Edit ↔ View states never overlap; Escape/background click clears selection instantly.
 - [ ] Cursor memory keeps grapheme column across blocks and honors fold/zoom scope.
 - [ ] Shift+Arrow only exits text selection at visual boundaries, then extends block selection one step at a time.
-- [ ] Structural moves (indent/outdent, Cmd+Shift+Arrow climb/descend, drag/drop with Alt for references) match Logseq’s tree rules.
+- [ ] Structural moves (indent/outdent, Cmd+Shift+Arrow climb/descend, drag/drop with Alt for references) match Logseq's tree rules.
 - [ ] Enter/Shift+Enter, Backspace/Delete, whitespace trimming, and merge semantics behave exactly like Logseq.
 - [ ] Keymap parity: Cmd+A cycle, Cmd+Shift+A select-all-visible, Cmd+O follow link, Slash palette, Cmd+K + Cmd+Shift+P overlays.
-- [ ] Clipboard permutations (copy block, copy plain text, copy reference, paste plain text, multi-paragraph paste) align with Logseq.
 - [ ] Type-to-edit, sidebar open-on-Shift+Enter, bullet-click collapse plus Shift/Meta pointer gestures, hover previews, and quick switcher UX feel identical to Logseq.
+
+### Clipboard (FR-Clipboard-01..06)
+- [ ] Three MIME types written: `text/plain`, `text/html`, `web application/logseq`
+- [ ] Cut preserves UUIDs on paste; copy generates new UUIDs
+- [ ] Graph mismatch detection falls back to plain text paste
+- [ ] Paste into code blocks inserts plain text only (no parsing)
+- [ ] Multi-paragraph paste splits on 2+ consecutive newlines
+- [ ] Block ref in parens context strips outer parens
+- [ ] URL auto-wrapping for Twitter/YouTube links
+- [ ] Link-aware pasting replaces URL portion only when selection within link
+
+### Undo/Redo (FR-Undo-01..04)
+- [ ] History stack max 100 ops; oldest 50% discarded when exceeded
+- [ ] Cursor restored: undo uses first cursor, redo uses last cursor
+- [ ] Batching: single outliner-op = one undo entry
+- [ ] Route changes captured as `::ui-state` operations separately
+- [ ] Undo disabled inside code blocks
+- [ ] Debounce 20ms prevents rapid Cmd+Z spam
+- [ ] Block-moved-or-target-deleted gracefully clears history
+
+### Extensibility (FR-Plugin-01..03)
+- [ ] Hooks installable via `install_plugin_hook` API
+- [ ] Slash commands extendable via `register-plugin-slash-command`
+- [ ] Block change tracking via `block:UUID` hooks
+- [ ] Fenced code renderers registrable per language
 
 This document supersedes all prior Logseq parity specs. Any future deviations must be recorded in `LOGSEQ_PARITY.md`.
