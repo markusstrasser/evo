@@ -55,10 +55,11 @@
 
 (defn- calc-clear-props
   "Pure: calculate props for clearing selection.
-   
-   Preserves focus so typing after Escape still works (Logseq parity)."
+
+   Preserves focus so typing after Escape still works (Logseq parity).
+   Clears anchor and direction since there's no active selection."
   [current-state]
-  {:nodes #{} :focus (:focus current-state) :anchor nil})
+  {:nodes #{} :focus (:focus current-state) :anchor nil :direction nil})
 
 ;; NOTE: get-dom-nav-fn removed - now inline calls with session param
 
