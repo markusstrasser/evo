@@ -348,10 +348,12 @@
             ;; All other intents - go through normal intent dispatch
               :else
               (let [;; Inject focused block-id for fold/zoom intents
+                    ;; Use editing block if no selection focus (supports fold while editing)
+                    effective-block-id (or focus-id editing?)
                     intent-with-focus (if (and (map? intent-type)
                                                (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                               focus-id)
-                                        (assoc intent-type :block-id focus-id)
+                                               effective-block-id)
+                                        (assoc intent-type :block-id effective-block-id)
                                         intent-type)
                   ;; Replace :editing-block-id placeholder with actual editing block ID
                     intent-with-id (if (and (map? intent-with-focus)
