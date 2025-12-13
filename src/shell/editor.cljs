@@ -166,8 +166,18 @@
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 
 (def ^:private structural-intents
-  "Intent types that may cause DOM re-render and blur."
-  #{:indent-selected :outdent-selected :move-selected-up :move-selected-down :delete-selected})
+  "Intent types that may cause DOM re-render and blur.
+   These intents need keep-edit-on-blur! to prevent the blur handler from
+   exiting edit mode when focus shifts during re-render."
+  #{:indent-selected :outdent-selected :move-selected-up :move-selected-down :delete-selected
+    ;; Enter creates new block and moves focus - blur would exit edit mode
+    :context-aware-enter
+    ;; Paste with blank lines creates new blocks and moves focus to last block
+    :paste-text
+    ;; Arrow navigation changes editing-block-id - old block unmounts, blur fires
+    :navigate-with-cursor-memory :navigate-to-adjacent
+    ;; Delete/merge ops change editing-block-id to prev/next/merged block
+    :delete :merge-with-prev :split-at-cursor})
 
 (defn handle-intent
   "Single intent dispatcher - accepts {:type ...} intent maps only.
