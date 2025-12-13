@@ -39,6 +39,12 @@
   [db node-id]
   (get-in db [:derived :parent-of node-id]))
 
+(defn- block?
+  "Check if a node is a block (not a page or other container).
+   Pages are containers for blocks and shouldn't be navigation targets."
+  [db node-id]
+  (= :block (get-in db [:nodes node-id :type])))
+
 (defn- index-in-siblings
   "Get the index of a node within its visible siblings."
   [db session node-id]
@@ -112,13 +118,16 @@
    Navigation order:
    1. Previous sibling's last visible descendant (depth-first)
    2. Previous sibling (if no descendants)
-   3. Parent (if no previous sibling)
-   4. nil (if at document root)
+   3. Parent (if no previous sibling AND parent is a block)
+   4. nil (if at page/document root)
+
+   IMPORTANT: Pages are not valid navigation targets. Only returns
+   parent if it's a block. First block under a page has no prev-block.
 
    Examples:
    - From B2 → B1
-   - From B1.1 → B1
-   - From B1 → (parent or nil)"
+   - From B1.1 → B1 (parent is a block)
+   - From first-block-under-page → nil (parent is page, skip it)"
   [db session node-id]
   (if-let [prev-sib (prev-visible-sibling db session node-id)]
     ;; Go to previous sibling's last descendant
@@ -126,9 +135,11 @@
       (if-let [last-child (last-visible-child db session current)]
         (recur last-child)
         current))
-    ;; No previous sibling, go to parent
+    ;; No previous sibling, go to parent ONLY if it's a block (not page)
     (let [parent (parent-of db node-id)]
-      (when (and parent (not (contains? (set const/roots) parent)))
+      (when (and parent
+                 (not (contains? (set const/roots) parent))
+                 (block? db parent))
         parent))))
 
 (defn next-visible-block
@@ -137,14 +148,18 @@
    Navigation order:
    1. First visible child (if has children and not folded)
    2. Next sibling (if no children or folded)
-   3. Parent's next sibling (if no next sibling)
-   4. Continue up until finding next sibling or reaching root
+   3. Parent's next sibling (if no next sibling AND parent is a block)
+   4. Continue up until finding next sibling or reaching page/root
    5. nil (if no more blocks)
+
+   IMPORTANT: Pages are not valid navigation targets. Walking up stops
+   at pages - we don't navigate to a page's next sibling.
 
    Examples:
    - From B1 → B1.1 (if has children and not folded)
    - From B1.1 → B1.2 (next sibling)
-   - From B1 (no children) → B2"
+   - From B1 (no children) → B2
+   - From last-block-under-page → nil (parent is page, stop there)"
   [db session node-id]
   (or
    ;; Try first visible child (respects folding)
@@ -153,10 +168,12 @@
    ;; Try next sibling
    (next-visible-sibling db session node-id)
 
-   ;; Walk up to find parent's next sibling
+   ;; Walk up to find parent's next sibling (stop at pages)
    (loop [current node-id]
      (let [parent (parent-of db current)]
-       (when (and parent (not (contains? (set const/roots) parent)))
+       (when (and parent
+                  (not (contains? (set const/roots) parent))
+                  (block? db parent))  ;; Only continue if parent is a block
          (or (next-visible-sibling db session parent)
              (recur parent)))))))
 
