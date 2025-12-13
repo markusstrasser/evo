@@ -13,6 +13,7 @@
    - insert-text: Generate text to insert for selected item
    - item-label: Get display label for an item"
   (:require [kernel.intent :as intent]
+            [kernel.query :as q]
             [utils.fuzzy-search :as fuzzy]
             [clojure.string :as str]))
 
@@ -233,9 +234,6 @@
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
-(defn- get-block-text [db block-id]
-  (get-in db [:nodes block-id :props :text] ""))
-
 (intent/register-intent! :autocomplete/trigger
                          {:doc "Trigger autocomplete popup.
 
@@ -315,7 +313,7 @@
                                   ;; Use buffer text (injected by executor) since we're editing
                                   ;; Fall back to DB text if buffer not available
                                   buffer-text (get-in intent [:pending-buffer :text])
-                                  db-text (get-block-text db block-id)
+                                  db-text (q/block-text db block-id)
                                   text (or buffer-text db-text)
                                   ;; Default trigger-length for backward compat
                                   trig-len (or trigger-length 2)]

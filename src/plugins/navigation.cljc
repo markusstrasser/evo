@@ -11,29 +11,8 @@
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
-(defn- get-block-text
-  "Get text content of a block."
-  [db block-id]
-  (get-in db [:nodes block-id :props :text] ""))
-
 ;; NOTE: visible-in-context? removed - was dead code with bugs
 ;; Visibility now computed in kernel/navigation.cljc with proper (db, session)
-
-(defn- same-page?
-  "Check if two blocks are on the same page.
-   Returns true if:
-   - No current-page is set (not in page-scoped mode)
-   - Both blocks have the same page ancestor
-   - Either block has no page ancestor (doc root level)"
-  [db session block-a block-b]
-  (let [current-page (q/current-page session)]
-    (or
-     ;; Not page-scoped mode - allow all navigation
-     (nil? current-page)
-     ;; Check if both blocks belong to the same page
-     (let [page-a (q/page-of db block-a)
-           page-b (q/page-of db block-b)]
-       (= page-a page-b)))))
 
 (defn- get-prev-visible-block
   "Get the previous visible block in DOM order, respecting page boundaries.
@@ -43,7 +22,7 @@
   [db session block-id]
   (let [target (nav/prev-visible-block db session block-id)]
     ;; Only return target if it's on the same page (or no page scoping)
-    (when (and target (same-page? db session block-id target))
+    (when (and target (q/same-page? db session block-id target))
       target)))
 
 (defn- get-next-visible-block
@@ -54,7 +33,7 @@
   [db session block-id]
   (let [target (nav/next-visible-block db session block-id)]
     ;; Only return target if it's on the same page (or no page scoping)
-    (when (and target (same-page? db session block-id target))
+    (when (and target (q/same-page? db session block-id target))
       target)))
 
 (defn- grapheme-count
@@ -203,7 +182,7 @@
                                        :cursor-position (if (= direction :up) 0 (count current-text))}}}
 
                                 ;; Target exists - navigate to it
-                                (let [target-text (get-block-text db target-id)
+                                (let [target-text (q/block-text db target-id)
 
                                       ;; Calculate target cursor position
                                       target-pos (get-target-cursor-pos target-text line-pos direction)
@@ -236,7 +215,7 @@
                                               :up (q/prev-block-dom-order db session current-block-id)
                                               :down (q/next-block-dom-order db session current-block-id))]
                               (when target-id
-                                (let [target-text (get-block-text db target-id)
+                                (let [target-text (q/block-text db target-id)
                                       actual-pos (if (= cursor-position :max)
                                                    (count target-text)
                                                    cursor-position)]
