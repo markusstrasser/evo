@@ -160,14 +160,12 @@
                                                                :cursor-position (inc cursor-pos)}}}))})
 
 (intent/register-intent! :merge-with-prev
-                         {:doc "Merge block with previous block in DOM order, placing cursor at merge point.
+                         {:doc "Merge block with previous sibling (or parent if first child).
 
-         Works for both:
-         - Previous sibling (standard case)
-         - Parent block (when current is first child - Logseq parity)
+         LOGSEQ PARITY: At start of block, merge into previous sibling.
+         If no previous sibling, merge into parent.
+         Re-parents children of deleted block to merge target.
 
-         CRITICAL: Re-parents children of deleted block to prev block.
-         
          :text - Current text from DOM (required for unsaved buffer content)"
 
                           :fr/ids #{:fr.edit/backspace-merge}
@@ -176,30 +174,35 @@
                                  [:type [:= :merge-with-prev]]
                                  [:block-id :string]
                                  [:text {:optional true} :string]]
-                          :handler (fn [db session {:keys [block-id text]}]
-                                     ;; Use DOM order (not sibling order) so merge works when
-                                     ;; current block is a child of the previous block
-                                     (let [prev-id (q/prev-block-dom-order db session block-id)
-                                           prev-text (get-block-text db prev-id)
+                          :handler (fn [db _session {:keys [block-id text]}]
+                                     ;; LOGSEQ PARITY: Merge into previous sibling, or parent if first child
+                                     ;; NOT DOM order (which would go to deeply nested descendants)
+                                     (let [prev-sibling (q/prev-sibling db block-id)
+                                           parent (q/parent-of db block-id)
+                                           ;; Target: previous sibling first, then parent
+                                           target-id (or prev-sibling
+                                                         (when (and parent (not (keyword? parent)))
+                                                           parent))
+                                           target-text (get-block-text db target-id)
                                            ;; Use passed text (from DOM) if available, fall back to DB
                                            curr-text (or text (get-block-text db block-id))
-                                           merged-text (str prev-text curr-text)
-                                           ;; LOGSEQ PARITY: Use string length (UTF-16 code units) for cursor positioning
-                                           cursor-at #?(:cljs (.-length prev-text)
-                                                        :clj (count prev-text))
+                                           merged-text (str target-text curr-text)
+                                           ;; LOGSEQ PARITY: Cursor at join point
+                                           cursor-at #?(:cljs (.-length target-text)
+                                                        :clj (count target-text))
                                            ;; Get children of block being deleted so they can be re-parented
                                            curr-children (get-in db [:children-by-parent block-id] [])]
-                                       (when prev-id
+                                       (when target-id
                                          {:ops (vec (concat
-                                                     ;; Update prev block with merged text
-                                                     [{:op :update-node :id prev-id :props {:text merged-text}}]
-                                                     ;; Re-parent children of deleted block to prev block
+                                                     ;; Update target block with merged text
+                                                     [{:op :update-node :id target-id :props {:text merged-text}}]
+                                                     ;; Re-parent children of deleted block to target
                                                      (mapv (fn [child-id]
-                                                             {:op :place :id child-id :under prev-id :at :last})
+                                                             {:op :place :id child-id :under target-id :at :last})
                                                            curr-children)
                                                      ;; Move current block to trash
                                                      [{:op :place :id block-id :under const/root-trash :at :last}]))
-                                          :session-updates {:ui {:editing-block-id prev-id
+                                          :session-updates {:ui {:editing-block-id target-id
                                                                  :cursor-position cursor-at}}})))})
 
 (intent/register-intent! :split-at-cursor
