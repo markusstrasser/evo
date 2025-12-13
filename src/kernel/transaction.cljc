@@ -127,13 +127,51 @@
     (update op :at pos/canon)
     op))
 
+;; =============================================================================
+;; Timestamp enrichment - auto-add created-at/updated-at
+;; =============================================================================
+
+(defn- now
+  "Current timestamp in milliseconds since epoch."
+  []
+  #?(:clj (System/currentTimeMillis)
+     :cljs (.now js/Date)))
+
+(defn- enrich-create-op
+  "Add created-at and updated-at timestamps to :create-node ops."
+  [{:keys [props] :as op}]
+  (let [ts (now)]
+    (update op :props assoc
+            :created-at ts
+            :updated-at ts)))
+
+(defn- enrich-update-op
+  "Add updated-at timestamp to :update-node ops."
+  [op]
+  (update op :props assoc :updated-at (now)))
+
+(defn- enrich-op
+  "Enrich operation with auto-generated metadata (timestamps)."
+  [op]
+  (case (:op op)
+    :create-node (enrich-create-op op)
+    :update-node (enrich-update-op op)
+    op))
+
+(defn- enrich-ops
+  "Enrich all operations with auto-generated metadata."
+  [ops]
+  (mapv enrich-op ops))
+
 (defn- normalize-ops
   "Normalize operations:
+   - Enrich with timestamps (created-at, updated-at)
    - Canonicalize :at anchors (:at-start → :first, :at-end → :last)
    - Drop no-op place (same parent & index)
    - Merge adjacent update-node on same id"
   [db ops]
   (->> ops
+       enrich-ops
        (map canonicalize-place-anchor)
        (remove-noop-places db)
        merge-adjacent-updates))
