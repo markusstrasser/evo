@@ -69,7 +69,7 @@
 (deftest delete-archives-to-trash
   (testing "Delete intent compiles to :place under :trash"
     (let [db (build-doc)
-          {:keys [ops]} (intent/apply-intent db nil {:type :delete :id "a"})
+          {:keys [ops]} (intent/apply-intent db (empty-session) {:type :delete :id "a"})
           res (tx/interpret db ops)]
       (is (empty? (:issues res))
           "Delete operation should not generate issues")

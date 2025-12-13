@@ -56,20 +56,27 @@
       (is (= db (:db result)))  ; Scratch DB unchanged
       (is (= [] (:trace result))))))
 
+(defn- strip-timestamps
+  "Remove auto-generated timestamps from ops for comparison."
+  [op]
+  (update op :props dissoc :created-at :updated-at))
+
 (deftest test-run-single-step
   (testing "Single step collected in ops"
     (let [db (fix/sample-db-with-roots)
           op {:op :create-node :id "new" :type :block :props {:text "test"}}
           result (script/run db [op])]
 
-      (is (= [op] (:ops result)))
+      ;; Compare ops without auto-added timestamps
+      (is (= [op] (mapv strip-timestamps (:ops result))))
       (is (= 1 (count (:trace result))))
 
       ;; Verify trace entry
       (let [trace-entry (first (:trace result))]
         (is (= op (:step trace-entry)))
         (is (= 0 (:step-index trace-entry)))
-        (is (= [op] (:ops trace-entry)))))))
+        ;; Ops in trace have timestamps, compare without them
+        (is (= [op] (mapv strip-timestamps (:ops trace-entry))))))))
 
 (deftest test-run-multiple-steps
   (testing "Multiple steps accumulated"

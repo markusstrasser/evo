@@ -149,6 +149,8 @@
           {:keys [session]} (run-intent db session
                               {:type :navigate-with-cursor-memory
                                :current-block-id "parent"
+                               :current-text "Parent"
+                               :current-cursor-pos 6
                                :direction :down})]
       ;; Should be editing sibling, not child-1
       (let [editing-id (get-in session [:ui :editing-block-id])]

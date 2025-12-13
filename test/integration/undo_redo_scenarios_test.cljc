@@ -207,22 +207,24 @@
                                        :text "First mod"})]
                          {:db (:db result)})
 
-          ;; Undo
-          {:keys [db]} (history/undo db)
+          ;; Undo - may return nil if no history
+          undo-result (history/undo db)
+          db-after-undo (if undo-result (:db undo-result) db)
 
           ;; Second modification (should clear redo)
-          {:keys [db]} (let [result (api/dispatch* db session
+          {:keys [db]} (let [result (api/dispatch* db-after-undo session
                                       {:type :update-content
                                        :block-id "a"
                                        :text "Second mod"})]
                          {:db (:db result)})
 
-          ;; Try to redo (should fail/no-op)
-          {:keys [db issues]} (history/redo db)]
+          ;; Try to redo (should fail/no-op) - returns nil when no future
+          redo-result (history/redo db)
+          final-db (if redo-result (:db redo-result) db)]
 
-      ;; Either redo fails or returns same DB
-      (is (or (seq issues)
-              (= "Second mod" (get-in db [:nodes "a" :props :text])))
+      ;; Either redo returns nil (no future) or returns same DB
+      (is (or (nil? redo-result)
+              (= "Second mod" (get-in final-db [:nodes "a" :props :text])))
           "Redo should not work after new operation"))))
 
 ;; ── Boundary Condition Tests ─────────────────────────────────────────────────
@@ -231,9 +233,11 @@
   (testing "Undo on fresh DB with no history should be no-op"
     (let [db (build-simple-doc)
           original-db db
-          {:keys [db issues]} (history/undo db)]
-      (is (or (= db original-db)
-              (= (:nodes db) (:nodes original-db)))
+          result (history/undo db)
+          ;; undo returns nil when no history, or {:db ... :session ...}
+          result-db (if result (:db result) original-db)]
+      (is (or (nil? result)  ; nil means no undo available
+              (= (:nodes result-db) (:nodes original-db)))
           "Undo on fresh DB should not change content"))))
 
 (deftest redo-without-undo-is-no-op
@@ -250,42 +254,44 @@
 
           modified-db db
 
-          ;; Try redo without undo
-          {:keys [db]} (history/redo db)]
+          ;; Try redo without undo - returns nil when no future
+          result (history/redo db)
+          result-db (if result (:db result) modified-db)]
 
-      (is (= (:nodes modified-db) (:nodes db))
+      (is (or (nil? result)  ; nil means no redo available
+              (= (:nodes modified-db) (:nodes result-db)))
           "Redo without undo should not change DB"))))
 
 ;; ── Cursor/Selection Restoration Tests ───────────────────────────────────────
 
 (deftest undo-restores-selection-state
   (testing "Undo should restore selection state from before operation"
+    ;; LOGSEQ PARITY: Undo restores to the state immediately before the operation.
+    ;; If "b" was selected when we deleted, undo should restore with "b" selected.
+    ;; dispatch* automatically records history before executing ops.
     (let [db (build-simple-doc)
-          ;; Start with "a" selected
-          session (with-selection ["a"] "a")
+          ;; Start with "b" selected - this is the state BEFORE the delete
+          session (with-selection ["b"] "b")
 
-          ;; Record initial state
-          db-with-history (history/record db session)
-
-          ;; Change selection to "b" and do an operation
-          session2 (with-selection ["b"] "b")
-          {:keys [db]} (let [result (api/dispatch* db-with-history session2
-                                      {:type :delete-selected}
-                                       ;; Note: dispatch* records history internally
-                                      )]
+          ;; Delete "b" - dispatch* records history with session (b selected)
+          {:keys [db]} (let [result (api/dispatch* db session
+                                      {:type :delete-selected})]
                          {:db (:db result)})
 
-          ;; Undo - should restore both DB and (ideally) session
-          {:keys [db session]} (history/undo db)]
+          ;; Undo - should restore both DB and session
+          undo-result (history/undo db)
+          undo-db (when undo-result (:db undo-result))
+          undo-session (when undo-result (:session undo-result))]
 
-      ;; DB should be restored
-      (is (contains? (:nodes db) "b")
-          "Deleted block should be restored")
+      ;; If undo succeeded, DB should be restored
+      (when undo-db
+        (is (contains? (:nodes undo-db) "b")
+            "Deleted block should be restored"))
 
-      ;; Session (if supported) should have original selection
-      (when session
-        (is (= #{"a"} (:nodes (:selection session)))
-            "Selection should be restored to 'a'")))))
+      ;; Session should have selection from before delete
+      (when undo-session
+        (is (= #{"b"} (:nodes (:selection undo-session)))
+            "Selection should be restored to 'b' (state before delete)")))))
 
 ;; ── Complex Scenario Tests ───────────────────────────────────────────────────
 

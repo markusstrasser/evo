@@ -288,10 +288,10 @@
 (deftest navigate-to-adjacent-up-test
   (testing "Navigate up to previous block with max cursor position"
     (let [db (sample-db)
-          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
-                                                                 :direction :up
-                                                                 :current-block-id "b"
-                                                                 :cursor-position :max})]
+          {:keys [session-updates]} (intent/apply-intent db (empty-session) {:type :navigate-to-adjacent
+                                                                              :direction :up
+                                                                              :current-block-id "b"
+                                                                              :cursor-position :max})]
       ;; Should edit previous block
       (is (= "a" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at end of "hello world" (11 chars)
@@ -300,10 +300,10 @@
 (deftest navigate-to-adjacent-down-test
   (testing "Navigate down to next block with cursor position 0"
     (let [db (sample-db)
-          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
-                                                                 :direction :down
-                                                                 :current-block-id "a"
-                                                                 :cursor-position 0})]
+          {:keys [session-updates]} (intent/apply-intent db (empty-session) {:type :navigate-to-adjacent
+                                                                              :direction :down
+                                                                              :current-block-id "a"
+                                                                              :cursor-position 0})]
       ;; Should edit next block
       (is (= "b" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at start
@@ -312,10 +312,10 @@
 (deftest navigate-to-adjacent-numeric-cursor-test
   (testing "Navigate with specific cursor position"
     (let [db (sample-db)
-          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
-                                                                 :direction :down
-                                                                 :current-block-id "a"
-                                                                 :cursor-position 3})]
+          {:keys [session-updates]} (intent/apply-intent db (empty-session) {:type :navigate-to-adjacent
+                                                                              :direction :down
+                                                                              :current-block-id "a"
+                                                                              :cursor-position 3})]
       ;; Should edit next block
       (is (= "b" (get-in session-updates [:ui :editing-block-id])))
       ;; Cursor at position 3
@@ -327,9 +327,9 @@
                  (tx/interpret [{:op :create-node :id "a" :type :block :props {:text "Only"}}
                                 {:op :place :id "a" :under :doc :at :last}])
                  :db)
-          {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
-                                                                 :direction :down
-                                                                 :current-block-id "a"
-                                                                 :cursor-position 0})]
+          {:keys [session-updates]} (intent/apply-intent db (empty-session) {:type :navigate-to-adjacent
+                                                                              :direction :down
+                                                                              :current-block-id "a"
+                                                                              :cursor-position 0})]
       ;; Should return nil session-updates (no target)
       (is (nil? session-updates)))))

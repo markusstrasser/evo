@@ -39,8 +39,7 @@ import {
 
 test.describe('Enter Key - Selected Block Behavior', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    await selectPage(page); // Close overlays
+    await page.goto('/index.html?test=true');
     await waitForBlocks(page);
   });
 
@@ -174,8 +173,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 
 test.describe('Escape Key - Editing Behavior', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    await selectPage(page); // Close overlays
+    await page.goto('/index.html?test=true');
     await waitForBlocks(page);
   });
 
@@ -295,10 +293,130 @@ test.describe('Escape Key - Editing Behavior', () => {
   });
 });
 
+test.describe('Enter Key - Edit Mode Block Creation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/index.html?test=true');
+    await waitForBlocks(page);
+  });
+
+  /**
+   * CRITICAL REGRESSION TEST
+   *
+   * This test guards against the blur race condition that caused focus loss
+   * when pressing Enter to create a new block. The fix was adding
+   * :context-aware-enter to structural-intents in shell/editor.cljs.
+   *
+   * Root cause: When Enter creates a new block, the old contenteditable loses
+   * focus. Without keep-edit-on-blur, the blur handler calls :exit-edit which
+   * overwrites the new editing-block-id from the Enter intent.
+   *
+   * See commit that fixed this for full details.
+   */
+  test('Enter in edit mode creates new block AND keeps focus (blur race guard)', async ({ page }) => {
+    const blockId = await getFirstBlockId(page);
+
+    // Set some text first (empty blocks have different Enter behavior)
+    await updateBlockText(page, blockId, 'Test content');
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
+    const editableInput = page.locator(`[data-block-id="${blockId}"] [contenteditable="true"]`);
+    await expect(editableInput).toBeFocused();
+
+    // Count blocks before
+    const blocksBefore = await page.locator('div.block[data-block-id]').count();
+
+    // Press Enter to create new block (at end of text creates sibling)
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150); // Allow for re-render
+
+    // Verify: New block was created
+    const blocksAfter = await page.locator('div.block[data-block-id]').count();
+    expect(blocksAfter).toBe(blocksBefore + 1);
+
+    // CRITICAL: Verify we're STILL in edit mode (not idle)
+    const isStillEditing = await isEditing(page);
+    expect(isStillEditing).toBe(true);
+
+    // CRITICAL: Verify contenteditable is focused (can type immediately)
+    const activeElement = await page.evaluate(() => ({
+      tagName: document.activeElement?.tagName,
+      isContentEditable: document.activeElement?.contentEditable === 'true'
+    }));
+    expect(activeElement.isContentEditable).toBe(true);
+
+    // Verify: The NEW block is being edited, not the original
+    const newEditingId = await getEditingBlockId(page);
+    expect(newEditingId).not.toBe(blockId);
+  });
+
+  test('Enter in edit mode allows immediate typing in new block', async ({ page }) => {
+    const blockId = await getFirstBlockId(page);
+
+    // Set some text first (empty blocks have different Enter behavior)
+    await updateBlockText(page, blockId, 'Original text');
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
+
+    // Press Enter to create new block
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+
+    // Type immediately (this would fail if focus was lost)
+    await page.keyboard.type('New content');
+
+    // Get the new block's text
+    const newEditingId = await getEditingBlockId(page);
+    const newBlockText = await page.evaluate((id) => {
+      const el = document.querySelector(`[data-block-id="${id}"] [contenteditable="true"]`);
+      return el?.textContent || '';
+    }, newEditingId);
+
+    expect(newBlockText).toBe('New content');
+  });
+
+  test('Multiple Enter presses create multiple blocks without losing focus', async ({ page }) => {
+    const blockId = await getFirstBlockId(page);
+
+    // Set some text first (empty blocks have different Enter behavior)
+    await updateBlockText(page, blockId, 'Starting text');
+
+    // Enter edit mode
+    await enterEditMode(page, blockId);
+
+    const blocksBefore = await page.locator('div.block[data-block-id]').count();
+
+    // Press Enter three times
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+
+    // Verify: Three new blocks created
+    const blocksAfter = await page.locator('div.block[data-block-id]').count();
+    expect(blocksAfter).toBe(blocksBefore + 3);
+
+    // Verify: Still in edit mode
+    expect(await isEditing(page)).toBe(true);
+
+    // Verify: Can still type
+    await page.keyboard.type('After three enters');
+    const currentId = await getEditingBlockId(page);
+    const text = await page.evaluate((id) => {
+      const el = document.querySelector(`[data-block-id="${id}"] [contenteditable="true"]`);
+      return el?.textContent || '';
+    }, currentId);
+
+    expect(text).toBe('After three enters');
+  });
+});
+
 test.describe('Enter and Escape - Integration Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    await selectPage(page); // Close overlays
+    await page.goto('/index.html?test=true');
     await waitForBlocks(page);
   });
 

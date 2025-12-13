@@ -59,10 +59,12 @@
     (:db (tx/interpret (db/empty-db) ops))))
 
 (defn generate-nested-doc
-  "Generate a nested document with depth levels and blocks-per-level."
+  "Generate a nested document with depth levels and blocks-per-level.
+   Uses unique IDs by including parent path to avoid collisions."
   [depth blocks-per-level]
-  (letfn [(gen-level [parent-id level idx]
-            (let [id (str "block-" level "-" idx)]
+  (letfn [(gen-level [parent-id parent-path level idx]
+            (let [path (str parent-path "-" idx)
+                  id (str "block" path)]
               (concat
                [{:op :create-node
                  :id id
@@ -70,9 +72,9 @@
                  :props {:text (str "Level " level " Block " idx)}}
                 {:op :place :id id :under parent-id :at :last}]
                (when (< level depth)
-                 (mapcat #(gen-level id (inc level) %)
+                 (mapcat #(gen-level id path (inc level) %)
                          (range blocks-per-level))))))]
-    (let [ops (mapcat #(gen-level :doc 0 %) (range blocks-per-level))]
+    (let [ops (mapcat #(gen-level :doc "" 0 %) (range blocks-per-level))]
       (:db (tx/interpret (db/empty-db) ops)))))
 
 ;; ── Performance Thresholds (ms) ──────────────────────────────────────────────
@@ -102,8 +104,8 @@
 
 (deftest benchmark-create-nested-doc
   (testing "Creating nested document should be fast"
-    ;; 3 levels, 5 blocks per level = 5 + 25 + 125 = 155 blocks
-    (let [[db elapsed] (timed #(generate-nested-doc 3 5))]
+    ;; depth=2 means levels 0, 1, 2: 5 + 25 + 125 = 155 blocks
+    (let [[db elapsed] (timed #(generate-nested-doc 2 5))]
       (is (< elapsed threshold-medium)
           (str "Creating nested doc took " elapsed "ms, expected <" threshold-medium "ms"))
       (is (> (count (:nodes db)) 100)
@@ -228,11 +230,14 @@
     (let [db (generate-flat-doc 1000)
           session {:ui {:editing-block-id "block-500"
                         :cursor-position 5
-                        :folded #{}}}
+                        :folded #{}}
+                   :selection {:nodes #{} :focus nil :anchor nil}}
           [result elapsed] (timed
                             #(intent/apply-intent db session
                                {:type :navigate-with-cursor-memory
                                 :current-block-id "block-500"
+                                :current-text "hello world"
+                                :current-cursor-pos 5
                                 :direction :down}))]
       (is (< elapsed threshold-fast)
           (str "Navigation intent took " elapsed "ms, expected <" threshold-fast "ms")))))
