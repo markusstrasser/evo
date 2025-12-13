@@ -306,12 +306,20 @@
 (defn keep-edit-on-blur!
   "Set flag to prevent blur from exiting edit mode during structural ops.
 
-   The flag auto-clears after a delay to ensure it doesn't get stuck.
-   200ms covers the re-render + blur cycle with margin for safety."
+   The flag auto-clears after two animation frames to ensure it doesn't get stuck.
+   Double-rAF guarantees we're past the render cycle (~32ms at 60Hz).
+
+   LOGSEQ PARITY: Logseq uses single rAF for deferred focus. We use double-rAF
+   for blur suppression because blur fires synchronously during DOM removal,
+   before the new contenteditable mounts. Two frames ensures:
+   1. First rAF: scheduled before paint
+   2. Second rAF: after paint, new DOM is mounted and focused"
   []
   (swap-view-state! assoc-in [:ui :keep-edit-on-blur] true)
-  ;; Auto-clear after delay - 200ms covers re-render cycle with margin
-  (js/setTimeout #(swap-view-state! assoc-in [:ui :keep-edit-on-blur] false) 200))
+  ;; Double-rAF: first frame schedules, second frame clears after render
+  (js/requestAnimationFrame
+   #(js/requestAnimationFrame
+     (fn [] (swap-view-state! assoc-in [:ui :keep-edit-on-blur] false)))))
 
 ;; ── Autocomplete API ──────────────────────────────────────────────────────────
 ;; Ephemeral state for autocomplete popups (page refs, block refs, commands, etc.)
