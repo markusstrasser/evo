@@ -17,7 +17,9 @@
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.api :as api]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            ;; Required to register merge-with-prev intent
+            [plugins.editing]))
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 
@@ -141,9 +143,8 @@
     (let [db (build-simple-doc)
           session (editing-session "b" 0) ;; Cursor at start of "Second block"
           {:keys [db session]} (run-intent db session
-                                 {:type :merge-backward
-                                  :block-id "b"
-                                  :cursor-pos 0})]
+                                 {:type :merge-with-prev
+                                  :block-id "b"})]
       ;; Blocks should be merged
       (is (= "First blockSecond block" (get-in db [:nodes "a" :props :text])))
       ;; Cursor should be at join point (length of "First block" = 11)
@@ -154,9 +155,8 @@
     (let [db (build-3-level-hierarchy)
           session (editing-session "child-2" 0)
           {:keys [db session]} (run-intent db session
-                                 {:type :merge-backward
-                                  :block-id "child-2"
-                                  :cursor-pos 0})]
+                                 {:type :merge-with-prev
+                                  :block-id "child-2"})]
       ;; child-2 should be merged into child-1
       (is (= "First childSecond child" (get-in db [:nodes "child-1" :props :text])))
       ;; grandchild should still be under child-1
@@ -167,9 +167,8 @@
     (let [db (build-3-level-hierarchy)
           session (editing-session "child-1" 0)
           {:keys [db session]} (run-intent db session
-                                 {:type :merge-backward
-                                  :block-id "child-1"
-                                  :cursor-pos 0})]
+                                 {:type :merge-with-prev
+                                  :block-id "child-1"})]
       ;; child-1 should be merged into parent
       (is (= "ParentFirst child" (get-in db [:nodes "parent" :props :text])))
       ;; Cursor at join point (length of "Parent" = 6)

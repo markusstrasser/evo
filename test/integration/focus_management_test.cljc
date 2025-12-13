@@ -13,7 +13,9 @@
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.api :as api]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            ;; Required to register merge-with-prev, delete-forward intents
+            [plugins.editing]))
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 
@@ -154,9 +156,8 @@
           ;; Editing "b" at start, backspace merges into "a"
           session (editing-session "b" 0)
           {:keys [db session]} (run-intent db session
-                                 {:type :merge-backward
-                                  :block-id "b"
-                                  :cursor-pos 0})]
+                                 {:type :merge-with-prev
+                                  :block-id "b"})]
       ;; Blocks should be merged
       (is (= "FirstSecond" (get-in db [:nodes "a" :props :text])))
       ;; Should be editing "a" at the join point

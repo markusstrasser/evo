@@ -248,7 +248,7 @@
           "Anchor should be on new block"))))
 
 (deftest clear-selection-resets-all-state
-  (testing "Clear selection resets nodes, focus, anchor, and direction"
+  (testing "Clear selection resets nodes, anchor, direction; preserves focus (Logseq parity)"
     (let [db (build-5-block-doc)
           session1 (with-selection ["b" "c"] "c" "b" :forward)
 
@@ -257,8 +257,9 @@
 
       (is (empty? (q/selection session2))
           "Selection should be empty")
-      (is (nil? (get-in session2 [:selection :focus]))
-          "Focus should be nil")
+      ;; Focus is preserved so typing after Escape still works (Logseq parity)
+      (is (= "c" (get-in session2 [:selection :focus]))
+          "Focus should be preserved for Logseq parity")
       (is (nil? (get-in session2 [:selection :anchor]))
           "Anchor should be nil")
       (is (nil? (get-in session2 [:selection :direction]))

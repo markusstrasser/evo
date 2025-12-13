@@ -27,7 +27,21 @@
 
 (defn node-exists? [db id] (contains? (:nodes db) id))
 (defn node-type [db id] (get-in db [:nodes id :type]))
-(defn node-props [db id] (get-in db [:nodes id :props]))
+
+(def ^:private system-keys
+  "Keys auto-added by kernel (timestamps). Strip for cleaner test assertions."
+  #{:created-at :updated-at})
+
+(defn node-props
+  "Get user-defined props, excluding system metadata (timestamps)."
+  [db id]
+  (apply dissoc (get-in db [:nodes id :props]) system-keys))
+
+(defn node-props-all
+  "Get all props including system metadata (timestamps)."
+  [db id]
+  (get-in db [:nodes id :props]))
+
 (defn children-of [db parent] (get (:children-by-parent db) parent []))
 (defn parent-of [db id] (get-in db [:derived :parent-of id]))
 (defn db-valid? [db] (:ok? (db/validate db)))

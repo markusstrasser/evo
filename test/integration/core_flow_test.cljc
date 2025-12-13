@@ -10,6 +10,20 @@
             [kernel.constants :as const]
             [kernel.history :as H]))
 
+(defn empty-session
+  "Create an empty session for testing."
+  []
+  {:cursor {:block-id nil :offset 0}
+   :selection {:nodes #{} :focus nil :anchor nil}
+   :buffer {:block-id nil :text "" :dirty? false}
+   :ui {:folded #{}
+        :zoom-root nil
+        :zoom-stack []
+        :current-page nil
+        :editing-block-id nil
+        :cursor-position nil}
+   :sidebar {:right []}})
+
 (defn demo-db
   "Create a demo database with simple page + blocks structure."
   []
@@ -49,7 +63,10 @@
 (deftest delete-moves-to-trash
   (testing "Delete moves nodes to trash (archive by design)"
     (let [db0 (demo-db)
-          {:keys [db]} (api/dispatch db0 nil {:type :delete :id "b"})]
+          ;; :delete intent requires editing state
+          session (-> (empty-session)
+                      (assoc-in [:ui :editing-block-id] "b"))
+          {:keys [db]} (api/dispatch db0 session {:type :delete :id "b"})]
       (is (some #{"b"} (get-in db [:children-by-parent const/root-trash]))
           "Deleted node should be in :trash")
       (is (not (some #{"b"} (q/children db "page")))
