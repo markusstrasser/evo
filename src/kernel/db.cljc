@@ -7,27 +7,6 @@
   #?(:cljs (:require [goog.string :as gstr]
                      [goog.string.format])))
 
-(defn empty-db
-  "Create an empty database with canonical shape.
-
-   Phases 4 & 5: Session nodes removed - ephemeral state (cursor, selection,
-   fold, zoom, buffer) lives purely in shell.view-state atom.
-
-   DB now contains only the persistent document graph."
-  []
-  {:nodes {}  ; Pure document graph - no session nodes
-   :children-by-parent {}
-   :roots const/roots
-   :derived {:parent-of {}
-             :index-of {}
-             :prev-id-of {}
-             :next-id-of {}
-             :pre {}
-             :post {}
-             :id-by-pre {}
-             :doc/pre {}
-             :doc/id-by-pre {}}})
-
 (defn- compute-parent-of [children-by-parent]
   (into {}
         (for [[parent children] children-by-parent
@@ -121,6 +100,32 @@
                             doc-indexes)
         db-with-core (assoc db :derived core-derived)]
     (assoc db :derived (merge core-derived (plugins/run-all db-with-core)))))
+
+;; =============================================================================
+;; Empty DB Constructor
+;; =============================================================================
+
+(defn- empty-db-skeleton
+  "Create empty DB skeleton without derived indexes.
+   Internal - use empty-db which computes derived."
+  []
+  {:nodes {}
+   :children-by-parent {}
+   :roots const/roots
+   :derived {}})
+
+(defn empty-db
+  "Create an empty database with canonical shape.
+
+   Phases 4 & 5: Session nodes removed - ephemeral state (cursor, selection,
+   fold, zoom, buffer) lives purely in shell.view-state atom.
+
+   DB now contains only the persistent document graph.
+
+   Derived indexes are computed dynamically by derive-indexes, which includes
+   any registered plugins. This ensures empty-db always validates correctly."
+  []
+  (derive-indexes (empty-db-skeleton)))
 
 ;; =============================================================================
 ;; Validation Helpers
