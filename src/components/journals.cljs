@@ -41,17 +41,47 @@
 
       :else nil)))
 
+;; ── Helpers for Content Detection ────────────────────────────────────────────
+
+(defn- has-content?
+  "Check if a journal page has any non-empty blocks (recursively)."
+  [db page-id]
+  (let [children (q/children db page-id)]
+    (some (fn [bid]
+            (let [text (q/block-text db bid)
+                  child-children (q/children db bid)]
+              (or (and text (not (str/blank? text)))
+                  (and (seq child-children) (has-content? db bid)))))
+          children)))
+
 ;; ── Journal Page Renderer ──────────────────────────────────────────────────────
+
+(defn- JournalBlock
+  "Recursively render a block and its children with proper hierarchy.
+   depth controls indentation (0 = top-level)."
+  [db block-id depth]
+  (let [text (q/block-text db block-id)
+        children (q/children db block-id)
+        ;; Skip empty blocks without children
+        has-text? (and text (not (str/blank? text)))
+        has-children? (seq children)]
+    (when (or has-text? has-children?)
+      [:div.journal-block {:style {:margin-left (str (* depth 20) "px")}}
+       (when has-text?
+         [:div.journal-block-content
+          [:span.block-bullet "•"]
+          [:span.block-text text]])
+       (when has-children?
+         (into [:div.journal-block-children]
+               (keep #(JournalBlock db % (inc depth)) children)))])))
 
 (defn- JournalPage
   "Single journal page in the journals list.
    The entire journal item is clickable to navigate to that page."
   [{:keys [db page-id title is-last? on-intent]}]
   (let [children (q/children db page-id)
-        ;; Only show blocks with actual content
-        blocks-with-content (->> children
-                                 (map (fn [bid] {:id bid :text (q/block-text db bid)}))
-                                 (remove #(str/blank? (:text %))))
+        ;; Check if page has any content (recursively)
+        has-any-content? (has-content? db page-id)
         navigate-to-page (fn [e]
                            (.preventDefault e)
                            (vs/set-journals-view! false)
@@ -63,37 +93,60 @@
       :on {:click navigate-to-page}}
      ;; Journal title/date header
      [:h3.journal-title title]
-     ;; Journal blocks - only those with content
-     (if (seq blocks-with-content)
+     ;; Journal blocks with proper hierarchy
+     (if has-any-content?
        [:div.journal-blocks
-        (for [{:keys [id text]} blocks-with-content]
-          ^{:key id}
-          [:div.journal-block
-           [:span.block-bullet "\u2022"]
-           [:span.block-text text]])]
+        (into [:<>] (keep #(JournalBlock db % 0) children))]
        [:div.journal-empty
         [:span.empty-hint "Click to add entries"]])]))
 
 ;; ── Main Journals View ─────────────────────────────────────────────────────────
+
+(defn- today-iso
+  "Get today's date in ISO format (YYYY-MM-DD)."
+  []
+  (let [now (js/Date.)
+        y (.getFullYear now)
+        m (inc (.getMonth now))
+        d (.getDate now)]
+    (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
 
 (defn JournalsView
   "Main journals view showing all journal pages stacked.
 
    Props:
    - db: Database
-   - on-intent: Intent handler for navigation"
+   - on-intent: Intent handler for navigation
+
+   LOGSEQ PARITY:
+   - Today's journal always shows (even if empty), positioned first
+   - Other empty journals are hidden
+   - Journals sorted by date descending (newest first)"
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
-        ;; Get journal pages with titles
+        today (today-iso)
+        ;; Get journal pages with titles and content status
         journal-pages (->> all-pages
                            (map (fn [pid]
-                                  (let [title (q/page-title db pid)]
+                                  (let [title (q/page-title db pid)
+                                        date (parse-journal-date title)]
                                     {:id pid
                                      :title title
-                                     :date (parse-journal-date title)})))
+                                     :date date
+                                     :is-today? (= date today)
+                                     :has-content? (has-content? db pid)})))
                            (filter #(journal-page? (:title %)))
-                           ;; Sort by date descending (newest first)
-                           (sort-by :date #(compare %2 %1)))]
+                           ;; Keep: today OR has content
+                           (filter #(or (:is-today? %) (:has-content? %)))
+                           ;; Sort: today first, then by date descending
+                           (sort (fn [a b]
+                                   (cond
+                                     ;; Today always first
+                                     (:is-today? a) -1
+                                     (:is-today? b) 1
+                                     ;; Then by date descending (newest first)
+                                     :else (compare (:date b) (:date a))))))
+        total (count journal-pages)]
 
     [:div.journals-view
      ;; Header with back button
@@ -102,21 +155,23 @@
        {:on {:click (fn [e]
                       (.preventDefault e)
                       (vs/set-journals-view! false))}}
-       "\u2190 Back"]
+       "← Back"]
       [:h2.journals-title "Journals"]
-      [:span.journals-count (str (count journal-pages) " entries")]]
+      [:span.journals-count (str total " entries")]]
 
-     ;; Journal pages list
+     ;; Journal pages list - use Replicant VECTOR SYNTAX for components
      (if (seq journal-pages)
-       [:div.journals-list
-        (let [total (count journal-pages)]
-          (for [[idx {:keys [id title]}] (map-indexed vector journal-pages)]
-            ^{:key id}
-            (JournalPage {:db db
-                          :page-id id
-                          :title title
-                          :is-last? (= idx (dec total))
-                          :on-intent on-intent})))]
+       (into [:div.journals-list]
+             (map-indexed
+              (fn [idx {:keys [id title]}]
+                ;; REPLICANT: Use vector syntax [Component props], not (Component props)
+                ^{:key id}
+                [JournalPage {:db db
+                              :page-id id
+                              :title title
+                              :is-last? (= idx (dec total))
+                              :on-intent on-intent}])
+              journal-pages))
        [:div.journals-empty
         [:p "No journal pages yet"]
         [:p.hint "Journal pages are date-formatted pages like 'Dec 14th, 2025'"]])]))
