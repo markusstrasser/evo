@@ -100,11 +100,21 @@
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
 
-    ;; CRITICAL: Apply session updates BEFORE DB changes!
-    ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
-    ;; Those hooks read session state (cursor-position), so session must be updated first.
-    (when session-updates
-      (vs/merge-view-state-updates! session-updates))
+    ;; NAVIGATION HISTORY: Capture old page BEFORE applying session updates
+    ;; (so push-history! can seed it into history if needed)
+    (let [old-page (vs/current-page)]
+
+      ;; CRITICAL: Apply session updates BEFORE DB changes!
+      ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.
+      ;; Those hooks read session state (cursor-position), so session must be updated first.
+      (when session-updates
+        (vs/merge-view-state-updates! session-updates))
+
+      ;; NAVIGATION HISTORY: Track page changes for Cmd+[/Cmd+] back/forward
+      ;; Skip for navigate-back/forward (those modify history-index directly)
+      (when-let [new-page (get-in session-updates [:ui :current-page])]
+        (when-not (#{:navigate-back :navigate-forward} intent-type)
+          (vs/push-history! new-page old-page))))
 
     ;; CLIPBOARD: Write to system clipboard if copy/cut operation set clipboard-text
     (when-let [clipboard-text (get-in session-updates [:ui :clipboard-text])]
