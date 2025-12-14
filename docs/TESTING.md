@@ -93,10 +93,10 @@ Test pure functions with direct DB manipulation:
 ```clojure
 (deftest transaction-applies-ops
   (let [db (db/empty-db)
-        ops [{:op :create :id "a" :type :block :props {:text "hi"}}
+        ops [{:op :create-node :id "a" :type :block :props {:text "hi"}}
              {:op :place :id "a" :under :doc :at :last}]
-        result (tx/transact db ops)]
-    (is (= "hi" (get-in result [:nodes "a" :props :text])))))
+        {:keys [db]} (tx/interpret db ops)]
+    (is (= "hi" (get-in db [:nodes "a" :props :text])))))
 ```
 
 ---

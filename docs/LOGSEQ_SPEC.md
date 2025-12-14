@@ -673,6 +673,136 @@ Evo uses a different UX pattern for page deletion:
 
 **Rationale**: The "delete + undo" pattern reduces friction for exploratory workflows while maintaining recoverability. Users who delete by mistake can undo within the toast timeout. This matches modern design patterns (Gmail, Slack, etc.).
 
+### 7.10 Left Sidebar Structure
+
+Logseq's left sidebar (`components/left_sidebar.cljs`) has a specific hierarchy and interaction model.
+
+#### 7.10.1 Sidebar Sections (Top to Bottom)
+
+| Section | Contents | Collapsible | Notes |
+|---------|----------|-------------|-------|
+| **Navigation** | Journals, Flashcards, Graph View, All Pages | No | Filterable via gear icon |
+| **Favorites** | User-pinned pages | Yes | Draggable reordering |
+| **Recent** | Last 15-20 distinct pages | Yes | Auto-populated, excludes hidden |
+
+**Navigation items** (customizable visibility):
+- Journals (calendar icon) - becomes "Home" when journals disabled
+- Flashcards (infinity icon) - shows card count badge
+- Graph View (hierarchy icon)
+- All Pages (files icon)
+- Whiteboards (writing icon) - file-based graphs only
+- Tags/Assets/Tasks (hash icon) - db-based graphs only
+
+#### 7.10.2 Page Item Affordances
+
+Each page item in sidebar has:
+
+```
+┌────────────────────────────────────────┐
+│  📄 Page Title                    •••  │  ← dots menu on hover
+└────────────────────────────────────────┘
+```
+
+**Visual states:**
+- Default: Icon + title
+- Hover: Reveals three-dot menu (`.group-hover:block`)
+- Active/current: Highlighted background
+- Untitled pages: Title at 50% opacity
+
+**Dots menu actions:**
+- ⭐ Add to favorites / Unfavorite
+- 📁 Open in folder (Electron only)
+- 📄 Open with default app (Electron only)
+- 📐 Open in right sidebar
+
+**Right-click context menu:** Same actions as dots menu
+
+**Keyboard/click modifiers:**
+- Click: Navigate to page
+- Shift+Click: Open in right sidebar
+- Cmd/Ctrl+Click: (no special behavior in sidebar)
+
+#### 7.10.3 Sidebar Interactions
+
+- **Collapsible sections**: Chevron toggle, state persisted
+- **Virtualized scrolling**: For performance with many pages
+- **Resizable width**: Drag edge, stored in localStorage
+- **Scroll shadow**: "is-scrolled" class adds top shadow
+- **Touch support**: Swipe gestures on mobile
+
+**Source**: `frontend/components/left_sidebar.cljs:46-538`
+
+### 7.11 Daily Journals
+
+Journals are date-based pages with specific behaviors but fewer constraints than expected.
+
+#### 7.11.1 Journal Creation
+
+- **Auto-created on startup** via `page-handler/create-today-journal!`
+- **Conditions for auto-creation:**
+  - Journals feature enabled (always true for db-based graphs)
+  - App not in loading/importing state
+  - Not in publishing mode
+  - Today's journal doesn't already exist
+- **Tagged** with `:logseq.class/Journal` class (db-based graphs)
+
+#### 7.11.2 Journal Date Format
+
+- **User-configurable** via `state/get-date-formatter`
+- **Default formats supported:**
+  - "MMM do, yyyy" (e.g., "Dec 14th, 2025")
+  - "yyyy-MM-dd" (e.g., "2025-12-14")
+- **Validation**: `valid-journal-title?` ensures format compliance
+- **Parsing**: Uses cljs-time with `safe-journal-title-formatters`
+
+#### 7.11.3 Journal Constraints (or lack thereof)
+
+| Operation | Allowed? | Notes |
+|-----------|----------|-------|
+| **Delete** | ✅ Yes | No special protection |
+| **Rename** | ✅ Yes | No special protection |
+| **Edit content** | ✅ Yes | Same as regular pages |
+| **Add to favorites** | ✅ Yes | Same as regular pages |
+
+**Protected pages** (cannot be deleted):
+- "contents" page (hardcoded special page)
+- Pages with `built-in?` flag (db-based graphs)
+- Pages in publishing mode
+
+**Journals have NO delete protection** - surprising but verified in source.
+
+#### 7.11.4 Journal Navigation
+
+- **All Journals view**: Virtualized list, latest marked with `.journal-last-item`
+- **Prev/Next navigation**: `go-to-prev-journal!` / `go-to-next-journal!`
+- **Date math**: Uses cljs-time to add/subtract days
+
+#### 7.11.5 Journal Visual Treatment
+
+- **Same icon as regular pages** (file icon)
+- **No special badge or indicator** in sidebar
+- **Distinguished by title format only** (date string)
+
+**Source**: `frontend/handler/journal.cljs`, `frontend/components/journal.cljs`
+
+### 7.12 Page Ordering in Lists
+
+#### 7.12.1 Favorites
+- **User-defined order** via drag-and-drop
+- **Persisted** in user config
+- **Draggable** using `on-drag-end` handler
+
+#### 7.12.2 Recent Pages
+- **Most recent first** (reverse chronological)
+- **Limited to 15 distinct pages** (stored)
+- **Display up to 20** in UI
+- **Excludes hidden pages**
+
+#### 7.12.3 All Pages View
+- **Sortable by**: Title (A-Z), Created, Updated
+- **Filterable by**: Search query, tags
+- **Paginated** for large graphs
+
 ---
 
 ## 8. Extensibility & Hooks Architecture

@@ -124,9 +124,9 @@ All state changes flow through a strict pipeline:
 
 ```clojure
 ;; Three-op kernel primitives
-{:op :create   :id "a" :type :block :props {:text "Hello"}}
-{:op :place    :id "a" :under :doc :at :last}
-{:op :update   :id "a" :props {:text "World"}}
+{:op :create-node :id "a" :type :block :props {:text "Hello"}}
+{:op :place       :id "a" :under :doc :at :last}
+{:op :update-node :id "a" :props {:text "World"}}
 ```
 
 ### Canonical DB Shape
@@ -492,9 +492,11 @@ const db = await page.evaluate(() => window.DEBUG.state());
 (require '[fixtures :as fix])
 (def db (fix/sample-db))
 
-;; Test operations
-(require '[kernel.api :as api])
-(api/transact! db [{:op :create :id "a" :type :block :props {:text "test"}}])
+;; Test operations via transaction pipeline
+(require '[kernel.transaction :as tx])
+(tx/interpret db [{:op :create-node :id "a" :type :block :props {:text "test"}}
+                  {:op :place :id "a" :under :doc :at :last}])
+;; => {:db <new-db> :issues [] :trace [...]}
 ```
 
 ## Key Documentation
