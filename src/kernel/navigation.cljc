@@ -9,7 +9,7 @@
 
    DESIGN NOTE: Visibility is computed ad-hoc rather than via derived index
    because fold/zoom state lives in session (ephemeral) and changes don't
-   trigger derive-indexes. This matches the pattern in kernel.query/visible-blocks-in-dom-order."
+   trigger derive-indexes. This matches the pattern in kernel.query/visible-blocks."
   (:require [kernel.constants :as const]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────

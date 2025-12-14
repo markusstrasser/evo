@@ -56,30 +56,38 @@ DB only contains persistent document graph.
    :session-updates {:ui {...}}})      ; Session changes
 ```
 
-### Query Functions Have Different Signatures
+### Query Functions: Naming Convention
 
-❌ **Wrong (passing session when not expected):**
+Query functions follow a naming convention that tells you what parameters they need:
+
+**`visible-*` functions need session** (for fold/zoom/page visibility):
 ```clojure
-;; In an intent handler with db and session params
-(let [next-block (q/next-block-dom-order db session block-id)]  ; WRONG!
-  ...)
+;; These query VISIBLE blocks, respecting fold/zoom/page state
+(q/visible-next-block db session block-id)  ; Next visible block
+(q/visible-prev-block db session block-id)  ; Previous visible block
+(q/visible-blocks db session)               ; All visible blocks in DOM order
+(q/visible-range db session a b)            ; Visible blocks between a and b
 ```
 
-✅ **Correct (check function signature first):**
+**Pure tree queries only need db**:
 ```clojure
-;; q/next-block-dom-order takes [db current-id] - NO session param!
-(let [next-block (q/next-block-dom-order db block-id)]
-  ...)
+;; These query the DB structure, ignoring visibility
+(q/parent-of db id)                         ; Parent in tree
+(q/children db parent-id)                   ; Children in tree
+(q/prev-sibling db id)                      ; Previous sibling
+(q/next-sibling db id)                      ; Next sibling
+(q/block-text db block-id)                  ; Block text content
 ```
 
-**Why:** Not all query functions take a session parameter. Some only need the db:
-- `q/next-block-dom-order [db current-id]` - no session
-- `q/prev-block-dom-order [db current-id]` - no session
-- `q/editing-block-id [session]` - session only, no db
+**Session-only queries**:
+```clojure
+(q/editing-block-id session)                ; Currently editing block
+(q/selection session)                       ; Selected block IDs
+(q/folded? session block-id)                ; Is block folded?
+```
 
-**Fix:** Always check the function signature in `src/kernel/query.cljc` before calling.
-If you pass the wrong number of arguments, ClojureScript will silently use the wrong value
-as a parameter, leading to `null` returns instead of errors.
+**Rule of thumb:** If the function name starts with `visible-`, it needs session.
+Pure tree traversal functions (`parent-of`, `children`, etc.) only need db.
 
 ---
 
@@ -386,6 +394,40 @@ Inconsistency: {:mismatches [{:child "block-xxx" :expected-parent "task-1" :actu
 
 ---
 
+## ClojureScript Truthiness with Zero
+
+### `(or 0 default)` Returns 0, Not Default
+
+❌ **Wrong:**
+```clojure
+;; Zero is truthy in ClojureScript! This returns 0, not 20
+(let [height (.-height rect)
+      line-height (or height 20)]  ; If height is 0, line-height = 0!
+  ...)
+```
+
+✅ **Correct:**
+```clojure
+(let [height (.-height rect)
+      line-height (if (and height (pos? height)) height 20)]
+  ...)
+```
+
+**Why:** In Clojure/ClojureScript, only `nil` and `false` are falsy. `0` is truthy.
+
+**Symptoms:**
+- Navigation sometimes fails (cursor row detection uses line-height)
+- Logic that should fall back to defaults doesn't
+
+**Common contexts:**
+- DOM measurements: `(.-height rect)`, `(.-width rect)`
+- Array lengths: `(.-length items)`
+- Counters: `(count collection)` when checking for "exists with fallback"
+
+**Fix:** Use explicit checks: `(if (and val (pos? val)) val default)`
+
+---
+
 ## Quick Reference
 
 ### Intent Catalog
@@ -536,7 +578,7 @@ Computed by `kernel.db/derive-indexes` after every transaction:
 - **Parent lookup:** `(get-in db [:derived :parent-of id])`
 - **Next sibling:** `(get-in db [:derived :next-id-of id])`
 - **Children:** `(get-in db [:children-by-parent id])` (not derived, direct)
-- **DOM order:** Use `navigation/visible-blocks-in-dom-order`
+- **DOM order:** Use `q/visible-blocks` (requires session for fold/zoom state)
 
 ---
 
@@ -550,8 +592,8 @@ Computed by `kernel.db/derive-indexes` after every transaction:
 
 **Get visible blocks in DOM order:**
 ```clojure
-(require '[kernel.navigation :as nav])
-(nav/visible-blocks-in-dom-order db session)  ; → ["id1" "id2" ...]
+(require '[kernel.query :as q])
+(q/visible-blocks db session)  ; → ["id1" "id2" ...]
 ```
 
 **Check if in edit mode:**

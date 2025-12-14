@@ -134,7 +134,7 @@
     (let [db (generate-flat-doc 1000)
           session {:ui {:folded #{}}
                    :selection {:nodes #{} :focus nil :anchor nil}}
-          [next-id elapsed] (timed #(q/next-block-dom-order db session "block-500"))]
+          [next-id elapsed] (timed #(q/visible-next-block db session "block-500"))]
       (is (< elapsed threshold-fast)
           (str "Next-block query took " elapsed "ms, expected <" threshold-fast "ms"))
       (is (= "block-501" next-id)))))

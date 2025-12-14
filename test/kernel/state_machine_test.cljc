@@ -147,11 +147,10 @@
 (deftest allowed-intents-test
   (testing "Returns correct intent set for idle state"
     (let [allowed (sm/allowed-intents idle-session)]
-      ;; Selection should be allowed
+      ;; Selection should be allowed (no :allowed-states = any state)
       (is (contains? allowed :selection))
-      ;; Undo should be allowed (nil requirement = any state)
-      (is (contains? allowed :undo))
-      ;; Enter-edit should NOT be allowed (requires :selection)
+      ;; Note: :undo is not registered as an intent (handled by history module directly)
+      ;; Enter-edit should NOT be allowed (requires :selection state)
       (is (not (contains? allowed :enter-edit)))))
 
   (testing "Returns correct intent set for editing state"

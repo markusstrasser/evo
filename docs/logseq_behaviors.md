@@ -82,7 +82,7 @@ source_refs:
 #### 2. Intent Contract Sheet
 - **Intent**: `:navigate-to-adjacent`
 - **Triggers**: ArrowLeft (caret position = 0), ArrowRight (caret = block end)
-- **Preconditions**: `:editing? true`; `visible-blocks-in-dom-order` respects fold + zoom scope; active block not root when moving left
+- **Preconditions**: `:editing? true`; `q/visible-blocks` respects fold + zoom scope; active block not root when moving left
 - **Inputs**: `{:block-id :caret-pos :direction :outline-root-id}`
 - **Behavior**:
   1. Calculate DOM-ordered block list filtered to visible outline root.

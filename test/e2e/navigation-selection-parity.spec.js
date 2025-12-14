@@ -78,12 +78,12 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
   test.describe('§4.1: Navigation Scope Isolation', () => {
     // TODO: Implement page scope isolation (§4.1)
-    // visible-blocks-in-dom-order must respect current-page as implicit zoom root
+    // q/visible-blocks must respect current-page as implicit zoom root
     test.skip('arrow navigation stops at current page boundaries', async ({ page }) => {
       // SPEC REQUIREMENT (§4.1): "On the Projects page, Arrow Down from the last block should no-op instead of jumping to Tasks"
       // CURRENT BEHAVIOR: Navigation DOES jump to Tasks page (regression described in spec)
       // EXPECTED: This test should FAIL until §4.1 is implemented
-      // Implementation needed: visible-blocks-in-dom-order must respect current-page as implicit zoom root
+      // Implementation needed: q/visible-blocks must respect current-page as implicit zoom root
 
       // Verify we're on the Projects page
       const currentPage = await page.evaluate(() => {
