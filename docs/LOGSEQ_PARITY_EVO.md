@@ -67,7 +67,56 @@ Features we intentionally don't implement. See `VISION.md` for philosophy.
 
 4. **Selection direction tracking** - `session/selection` stores `:direction`, `:anchor`, `:focus`. Shift+Arrow extends/contracts incrementally.
 
-5. **Visibility filter** - Navigation/selection must respect zoom root and skip folded descendants. Use `visible-blocks-in-dom-order {:root ... :skip-folded? true}`.
+5. **Visibility filter** - Navigation/selection must respect zoom root and skip folded descendants. Use `q/visible-blocks` (requires session for fold/zoom/page state).
+
+---
+
+## Cursor & Focus Behavior Parity (Verified 2025-12-13)
+
+Comprehensive comparison of cursor and focus edge cases between Evo and Logseq.
+
+### ✅ Verified Aligned Behaviors
+
+| Behavior | Both Implementations |
+|----------|---------------------|
+| Left arrow at pos 0 | Navigate to previous block at END |
+| Right arrow at end | Navigate to next block at START |
+| Backspace at pos 0 (content) | Merge with previous sibling/parent, cursor at join |
+| Backspace at pos 0 (empty) | Delete block, navigate to prev |
+| Delete at end | Merge with next block |
+| Enter at pos 0 (content after) | Empty block ABOVE, stay on current |
+| Enter at end | New empty block below |
+| Enter in middle | Split, cursor to new block at 0 |
+| Up/Down with selection | Collapse to start (up) / end (down) |
+| Column memory | Grapheme-aware, clamps to line length |
+| Doc-level backspace | No-op (protected - can't merge into `:doc`) |
+
+### Implementation Differences (Same UX)
+
+| Aspect | Evo | Logseq |
+|--------|-----|--------|
+| **First/last row detection** | Range API `getBoundingClientRect()` + threshold | Mock-text DOM elements with `offsetTop` |
+| **Column restoration** | Grapheme count → character offset | `closer` algorithm finds pixel-nearest character |
+| **Blur suppression** | Double-rAF flag (~32ms) | Single-rAF deferred focus (~16ms) |
+
+### Known Edge Cases
+
+1. **Variable line heights**: Evo's threshold-based row detection (`< 1.5 * lineHeight`) may behave slightly differently with mixed heading/text content.
+
+2. **Proportional fonts**: Logseq's `closer` algorithm finds the visually closest character by pixel position. Evo uses grapheme count which is equivalent for monospace but may differ slightly with proportional fonts.
+
+**Test coverage**: E2E tests in `e2e/cursor-*.spec.js` verify boundary behaviors.
+
+### Logseq Source References
+
+| Behavior | Logseq File | Key Functions |
+|----------|-------------|---------------|
+| Column memory | `util.cljc`, `util/cursor.cljs` | `get-line-pos`, `closer`, `mock-char-pos` |
+| Cross-boundary nav | `handler/editor.cljs:2643` | `move-cross-boundary-up-down` |
+| Row detection | `util/cursor.cljs` | `textarea-cursor-first-row?`, `textarea-cursor-last-row?` |
+| Enter routing | `handler/editor.cljs:504` | `insert-new-block!`, `insert-new-block-before-block-aux!` |
+| Backspace at 0 | `handler/editor.cljs:2865` | `delete-block-when-zero-pos!`, `delete-block-inner!` |
+| Merge logic | `handler/editor.cljs:776` | `move-to-prev-block` |
 
 ---
 

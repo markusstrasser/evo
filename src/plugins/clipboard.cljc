@@ -235,6 +235,7 @@
          from copy/cut operations within the app."
 
                           :fr/ids #{:fr.clipboard/paste-multiline}
+                          :allowed-states #{:editing}
 
                           :spec [:map
                                  [:type [:= :paste-text]]
@@ -355,6 +356,7 @@
 (intent/register-intent! :copy-block
                          {:doc "Copy single block content to clipboard."
                           :fr/ids #{:fr.clipboard/copy-block}
+                          :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (q/block-text db block-id)]
@@ -376,6 +378,7 @@
          - Format: each block prefixed with '- ' (list format)"
 
                           :fr/ids #{:fr.clipboard/copy-block}
+                          :allowed-states #{:editing :selection}
 
                           :handler (fn [db session _intent]
                                      (let [selection (get-in session [:selection :nodes])
@@ -395,6 +398,7 @@
 (intent/register-intent! :cut-block
                          {:doc "Cut single block (copy + move to trash)."
                           :fr/ids #{:fr.clipboard/copy-block}
+                          :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
                                      (let [text (q/block-text db block-id)]
@@ -417,6 +421,7 @@
          - Focus moves to previous block in DOM order (cursor at end)"
 
                           :fr/ids #{:fr.clipboard/copy-block}
+                          :allowed-states #{:editing :selection}
 
                           :handler (fn [db session _intent]
                                      (let [selection (get-in session [:selection :nodes])

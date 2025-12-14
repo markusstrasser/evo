@@ -158,8 +158,9 @@
 (deftest compile-multiple-intents
   (testing "Multiple intents compile into sequential ops"
     (let [db (build-doc)
-          {ops1 :ops} (intent/apply-intent db nil {:type :indent :id "b"})
-          {ops2 :ops} (intent/apply-intent db nil {:type :delete :id "a"})
+          session {:ui {:folded #{}} :selection {:nodes #{} :focus nil :anchor nil}}
+          {ops1 :ops} (intent/apply-intent db session {:type :indent :id "b"})
+          {ops2 :ops} (intent/apply-intent db session {:type :delete :id "a"})
           all-ops (concat ops1 ops2)]
       (is (= 2 (count all-ops))
           "Two intents should produce two ops")

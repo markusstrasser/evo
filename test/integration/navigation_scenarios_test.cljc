@@ -19,10 +19,11 @@
 (deftest scenario-nav-boundary-left-01
   ;; Mirrors Scenario NAV-BOUNDARY-LEFT-01 in docs/specs/logseq_behaviors.md
   (let [db (nav-boundary-left-db)
-        {:keys [session-updates]} (intent/apply-intent db nil {:type :navigate-to-adjacent
-                                                                :direction :up
-                                                                :current-block-id "child"
-                                                                :cursor-position :max})]
+        session {:ui {:folded #{}} :selection {:nodes #{} :focus nil :anchor nil}}
+        {:keys [session-updates]} (intent/apply-intent db session {:type :navigate-to-adjacent
+                                                                    :direction :up
+                                                                    :current-block-id "child"
+                                                                    :cursor-position :max})]
     (testing "Parent becomes editing block at caret end"
       (is (= "parent" (get-in session-updates [:ui :editing-block-id])))
       (is (= (count parent-text) (get-in session-updates [:ui :cursor-position]))

@@ -269,8 +269,12 @@
          (rest) ;; Remove the parent itself
          vec)))
 
-(defn visible-blocks-in-dom-order
+(defn visible-blocks
   "Get all visible blocks in DOM/visual order (pre-order traversal).
+
+   NAMING: Functions prefixed with `visible-` require session state
+   for fold/zoom/page visibility. Pure tree queries (parent-of, children, etc.)
+   only need db.
 
    LOGSEQ PARITY: This matches Logseq's `get-blocks-noncollapse` which returns
    all visible .ls-block elements in the order they appear in the DOM.
@@ -294,7 +298,7 @@
 
    Args:
    - db: Database
-   - session: Session state map (required for tests)"
+   - session: Session state map (required for fold/zoom/page visibility)"
   [db session]
   {:pre [(map? db) (map? session)
          (contains? db :nodes) (contains? db :children-by-parent)]}
@@ -320,25 +324,31 @@
     ;; (zoom root, current page, or doc root)
     (vec (mapcat traverse (get-children root)))))
 
-(defn next-block-dom-order
-  "Get the next block in DOM/visual order (pre-order traversal).
-   
+(defn visible-next-block
+  "Get the next visible block in DOM/visual order (pre-order traversal).
+
+   NAMING: Functions prefixed with `visible-` require session state
+   for fold/zoom/page visibility. Pure tree queries only need db.
+
    LOGSEQ PARITY: This matches Logseq's navigation which uses
    get-next-block-non-collapsed to traverse in DOM order, respecting
    fold state, zoom, and current page boundaries.
-   
+
    Returns nil if at last visible block."
   [db session current-id]
   {:pre [(map? db) (map? session) (or (string? current-id) (keyword? current-id))]}
   (nav/next-visible-block db session current-id))
 
-(defn prev-block-dom-order
-  "Get the previous block in DOM/visual order (pre-order traversal).
-   
+(defn visible-prev-block
+  "Get the previous visible block in DOM/visual order (pre-order traversal).
+
+   NAMING: Functions prefixed with `visible-` require session state
+   for fold/zoom/page visibility. Pure tree queries only need db.
+
    LOGSEQ PARITY: This matches Logseq's navigation which uses
    get-prev-block-non-collapsed to traverse in DOM order, respecting
    fold state, zoom, and current page boundaries.
-   
+
    Returns nil if at first visible block."
   [db session current-id]
   {:pre [(map? db) (map? session) (or (string? current-id) (keyword? current-id))]}
@@ -378,7 +388,7 @@
    - b: Second block ID"
   [db session a b]
   {:pre [(map? db) (map? session)]}
-  (let [visible (visible-blocks-in-dom-order db session)
+  (let [visible (visible-blocks db session)
         a-idx (.indexOf visible a)
         b-idx (.indexOf visible b)]
     (if (and (>= a-idx 0) (>= b-idx 0))
@@ -407,10 +417,10 @@
 
    Used by navigation and selection plugins to respect page boundaries."
   [db session block-a block-b]
-  (let [current-page (current-page session)]
+  (let [active-page (current-page session)]
     (or
      ;; Not page-scoped mode - allow all navigation
-     (nil? current-page)
+     (nil? active-page)
      ;; Check if both blocks belong to the same page
      (let [page-a (page-of db block-a)
            page-b (page-of db block-b)]

@@ -233,12 +233,13 @@
          LOGSEQ PARITY: After deletion, enters edit mode on previous block
          with cursor at end. Falls back to next block if no previous."
                           :fr/ids #{:fr.struct/delete-block}
+                          :allowed-states #{:editing}
                           :spec [:map [:type [:= :delete]] [:id :string]]
                           :handler (fn [db session {:keys [id]}]
                                      (let [;; Find focus target BEFORE deletion
-                                           prev-block (q/prev-block-dom-order db session id)
+                                           prev-block (q/visible-prev-block db session id)
                                            next-block (when-not prev-block
-                                                        (q/next-block-dom-order db session id))
+                                                        (q/visible-next-block db session id))
                                            new-focus (or prev-block next-block)
                                            ;; Get text length for cursor positioning at end
                                            prev-text-len (when prev-block
@@ -603,9 +604,9 @@
                                            last-target (last targets)
                                            ;; Prefer previous block, fall back to next
                                            prev-block (when first-target
-                                                        (q/prev-block-dom-order db session first-target))
+                                                        (q/visible-prev-block db session first-target))
                                            next-block (when (and (not prev-block) last-target)
-                                                        (q/next-block-dom-order db session last-target))
+                                                        (q/visible-next-block db session last-target))
                                            ;; But next-block might BE one of the targets, find one that isn't
                                            target-set (set targets)
                                            safe-next (when next-block
@@ -613,7 +614,7 @@
                                                          (cond
                                                            (nil? candidate) nil
                                                            (not (contains? target-set candidate)) candidate
-                                                           :else (recur (q/next-block-dom-order db session candidate)))))
+                                                           :else (recur (q/visible-next-block db session candidate)))))
                                            new-focus (or prev-block safe-next)]
                                        {:ops (vec (mapcat #(delete-ops db session %) targets))
                                         :session-updates {:selection {:nodes (if new-focus #{new-focus} #{})
@@ -700,6 +701,7 @@
                          {:doc "Move selected nodes up one sibling position."
 
                           :fr/ids #{:fr.struct/climb-descend}
+                          :allowed-states #{:editing :selection}
 
                           :spec [:map [:type [:= :move-selected-up]]]
                           :handler (fn [db session _intent]
@@ -709,6 +711,7 @@
                          {:doc "Move selected nodes down one sibling position."
 
                           :fr/ids #{:fr.struct/climb-descend}
+                          :allowed-states #{:editing :selection}
 
                           :spec [:map [:type [:= :move-selected-down]]]
                           :handler (fn [db session _intent]

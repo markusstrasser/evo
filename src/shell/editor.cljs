@@ -251,7 +251,7 @@
         (and idle?
              shift?
              (contains? #{"ArrowUp" "ArrowDown"} key))
-        (let [visible-blocks (q/visible-blocks-in-dom-order db current-session)
+        (let [visible-blocks (q/visible-blocks db current-session)
               target-id (if (= key "ArrowUp")
                           (last visible-blocks)
                           (first visible-blocks))]
@@ -811,7 +811,7 @@
                                   current-session (vs/get-view-state)
                                   state (sm/current-state current-session)
                                   allowed? (sm/intent-allowed? current-session intent)
-                                  requirements (get sm/intent-state-requirements (:type intent))]
+                                  requirements (sm/get-intent-requirements (:type intent))]
                               #js {:allowed allowed?
                                    :currentState (name state)
                                    :intentType (name (:type intent))

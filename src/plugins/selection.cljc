@@ -86,8 +86,8 @@
   [db session current-id direction]
   (loop [current current-id]
     (when-let [next-id (case direction
-                         :next (q/next-block-dom-order db session current)
-                         :prev (q/prev-block-dom-order db session current))]
+                         :next (q/visible-next-block db session current)
+                         :prev (q/visible-prev-block db session current))]
       (if (and (is-selectable-block? db next-id)
                (q/same-page? db session current-id next-id))
         next-id
@@ -161,8 +161,8 @@
           ;; Remove the current focus, move focus toward anchor
           (let [new-nodes (disj current-nodes current-focus)
                 new-focus (case current-direction
-                            :next (q/prev-block-dom-order db session current-focus)
-                            :prev (q/next-block-dom-order db session current-focus))]
+                            :next (q/visible-prev-block db session current-focus)
+                            :prev (q/visible-next-block db session current-focus))]
             {:nodes new-nodes
              :focus (or new-focus current-anchor)
              :anchor current-anchor

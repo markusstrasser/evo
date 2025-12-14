@@ -64,7 +64,10 @@
               cursor-top (.-top rect)
               elem-top (.-top elem-rect)
               elem-bottom (.-bottom elem-rect)
-              line-height (or (when rect (.-height rect)) 20)
+              ;; CRITICAL: Range height can be 0 for collapsed cursor at certain positions.
+              ;; In ClojureScript, 0 is truthy so (or 0 20) returns 0 - must check explicitly.
+              raw-height (when rect (.-height rect))
+              line-height (if (and raw-height (pos? raw-height)) raw-height 20)
 
               ;; Cursor is on first row if it's within one line-height of element top
               first-row? (< (- cursor-top elem-top) line-height)

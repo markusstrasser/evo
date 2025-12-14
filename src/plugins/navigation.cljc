@@ -156,6 +156,7 @@
          Replaces simple :selection :mode :prev/:next when cursor memory is desired."
 
                           :fr/ids #{:fr.nav/vertical-cursor-memory}
+                          :allowed-states #{:editing}
 
                           :spec [:map
                                  [:type [:= :navigate-with-cursor-memory]]
@@ -204,6 +205,7 @@
          Simpler than :navigate-with-cursor-memory - doesn't preserve column.
          Just enters adjacent block at specified position."
                           :fr/ids #{:fr.nav/horizontal-boundary}
+                          :allowed-states #{:editing}
                           :spec [:map
                                  [:type [:= :navigate-to-adjacent]]
                                  [:direction [:enum :up :down]]
@@ -212,8 +214,8 @@
                           :handler
                           (fn [db session {:keys [direction current-block-id cursor-position]}]
                             (let [target-id (case direction
-                                              :up (q/prev-block-dom-order db session current-block-id)
-                                              :down (q/next-block-dom-order db session current-block-id))]
+                                              :up (q/visible-prev-block db session current-block-id)
+                                              :down (q/visible-next-block db session current-block-id))]
                               (when target-id
                                 (let [target-text (q/block-text db target-id)
                                       actual-pos (if (= cursor-position :max)

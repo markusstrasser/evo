@@ -47,67 +47,24 @@
 
 ;; ── Intent → State Requirements ─────────────────────────────────────────────
 ;;
-;; Maps intent types to the states in which they're allowed.
-;; nil means allowed in any state.
-
-(def intent-state-requirements
-  "Map of intent type → set of allowed states (nil = any state)."
-  {;; ─── IDLE STATE ONLY ───
-   ;; From idle, only these can start interaction
-   ;; (Most intents shouldn't fire from idle - that's the Logseq contract)
-
-   ;; ─── SELECTION STATE ONLY ───
-   :enter-edit #{:selection} ; Enter key on selection
-   :open-in-sidebar #{:selection} ; Shift+Enter on selection
-
-   ;; ─── EDITING STATE ONLY ───
-   :navigate-with-cursor-memory #{:editing} ; Arrow up/down while editing
-   :navigate-to-adjacent #{:editing} ; Arrow left/right at boundary
-   :context-aware-enter #{:editing} ; Enter while editing
-   :smart-split #{:editing} ; Enter (alias)
-   :insert-newline #{:editing} ; Shift+Enter
-   :delete #{:editing} ; Backspace/Delete
-   :merge-with-prev #{:editing} ; Backspace at start
-   :merge-with-next #{:editing} ; Delete at end
-   :update-content nil ;; Any state (typing, image drop/paste)
-   :paste-text #{:editing} ; Paste
-
-   ;; ─── EDITING OR SELECTION ───
-   :exit-edit #{:editing :selection} ; Escape
-   :indent #{:editing :selection}
-   :outdent #{:editing :selection}
-   :move-selected-up #{:editing :selection}
-   :move-selected-down #{:editing :selection}
-   :toggle-subtree #{:editing :selection}
-   :copy-blocks #{:editing :selection}
-   :cut-blocks #{:editing :selection}
-
-   ;; ─── ANY STATE (nil = universal) ───
-   :selection nil ; Can select from any state
-   :select-all-cycle nil ; Cmd+A cycle (any state)
-   :toggle-fold nil ; Can fold from anywhere (bullet click)
-   :zoom-in nil
-   :zoom-out nil
-   :undo nil
-   :redo nil})
+;; State requirements are now ONLY defined via :allowed-states in register-intent!
+;; This is the single source of truth for state constraints.
 
 (defn get-intent-requirements
   "Get state requirements for an intent type.
 
-   Lookup order (decentralized state requirements):
-   1. Check intent registry (:allowed-states from register-intent!)
-   2. Fall back to centralized intent-state-requirements map (for migration)
+   Single source of truth: :allowed-states from register-intent!
 
    Returns:
-   - nil if intent allows any state (universal)
+   - nil if intent allows any state (universal, or not specified)
    - Set of allowed state keywords (e.g., #{:editing :selection})"
   [intent-type]
   (let [registry-states (intent/intent-allowed-states intent-type)]
     (case registry-states
-      ;; Intent not in registry at all - use centralized map
-      :not-registered (get intent-state-requirements intent-type)
-      ;; Intent registered but :allowed-states not specified - use centralized map
-      :not-specified (get intent-state-requirements intent-type)
+      ;; Intent not registered - allow any state (caller can validate separately)
+      :not-registered nil
+      ;; Intent registered but :allowed-states not specified - allow any state
+      :not-specified nil
       ;; Intent has explicit :allowed-states (may be nil for universal or a set)
       registry-states)))
 
@@ -173,9 +130,7 @@
 (defn intent-allowed?
   "Check if an intent is allowed in the current state.
 
-   Lookup order (decentralized state requirements):
-   1. Check intent registry (:allowed-states from register-intent!)
-   2. Fall back to centralized intent-state-requirements map (for migration)
+   Uses :allowed-states from intent registration (single source of truth).
 
    Returns true if:
    - Intent has no state requirements (nil = any state)
@@ -194,13 +149,18 @@
 (defn allowed-intents
   "Get set of intent types allowed in current state.
 
+   Queries all registered intents and filters by :allowed-states.
+
    Example:
      (allowed-intents session)
      ;=> #{:selection :enter-edit ...}"
   [session]
-  (let [state (current-state session)]
+  (let [state (current-state session)
+        all-intents (intent/list-intents)]
     (set
-     (for [[intent-type requirements] intent-state-requirements
+     (for [[intent-type _config] all-intents
+           ;; Use get-intent-requirements to handle :not-specified case
+           :let [requirements (get-intent-requirements intent-type)]
            :when (or (nil? requirements)
                      (contains? requirements state))]
        intent-type))))

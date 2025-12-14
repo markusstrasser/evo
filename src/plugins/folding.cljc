@@ -119,6 +119,7 @@
          If all descendants are collapsed, expand all descendants."
                           :spec [:map [:type [:= :toggle-subtree]] [:block-id :string]]
                           :fr/ids #{:fr.pointer/alt-click-fold}
+                          :allowed-states #{:editing :selection}
                           :handler (fn [db session {:keys [block-id]}]
                                      (when (has-children? db block-id)
                                        (let [descendants (all-descendant-ids db block-id)

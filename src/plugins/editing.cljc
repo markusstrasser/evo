@@ -18,6 +18,7 @@
          Optional :cursor-at can be :start or :end to position cursor.
          Clears selection to maintain edit/view mode mutual exclusivity."
                           :fr/ids #{:fr.selection/edit-view-exclusive}
+                          :allowed-states #{:selection}
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
                           :handler (fn [_db _session {:keys [block-id cursor-at]}]
                                      {:session-updates
@@ -28,6 +29,7 @@
 (intent/register-intent! :exit-edit
                          {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
                           :fr/ids #{:fr.selection/edit-view-exclusive}
+                          :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :exit-edit]]]
                           :handler (fn [_db _session _intent]
                                      {:session-updates {:ui {:editing-block-id nil :cursor-position nil}}})})
@@ -36,6 +38,7 @@
                          {:doc "Exit edit mode and select the block (Logseq parity).
                                 This is the default Escape behavior in Logseq."
                           :fr/ids #{:fr.selection/edit-view-exclusive}
+                          :allowed-states #{:editing}
                           :spec [:map [:type [:= :exit-edit-and-select]]]
                           :handler (fn [_db session _intent]
                                      (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
@@ -49,14 +52,15 @@
                          {:doc "Exit edit mode and extend selection (Shift+Arrow boundary behavior).
                                 Atomically: exit edit, select block, extend in direction."
                           :fr/ids #{:fr.selection/extend-boundary :fr.edit/shift-arrow-text-select}
+                          :allowed-states #{:editing}
                           :spec [:map
                                  [:type [:= :exit-edit-and-extend]]
                                  [:direction [:enum :next :prev]]]
                           :handler (fn [db session {:keys [direction]}]
                                      (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
                                        (let [next-block (case direction
-                                                          :next (q/next-block-dom-order db session editing-block-id)
-                                                          :prev (q/prev-block-dom-order db session editing-block-id))
+                                                          :next (q/visible-next-block db session editing-block-id)
+                                                          :prev (q/visible-prev-block db session editing-block-id))
                                              ;; If next-block exists, select both current and next
                                              ;; If no next-block (boundary), just select current
                                              extended-selection (if next-block
@@ -77,6 +81,7 @@
                          {:doc "Enter edit mode in selected block (Logseq parity).
                                 cursor-at: :start or :end (default :end for Enter/Right, :start for Left)"
                           :fr/ids #{:fr.selection/edit-view-exclusive}
+                          :allowed-states #{:selection}
                           :spec [:map
                                  [:type [:= :enter-edit-selected]]
                                  [:cursor-at {:optional true} [:enum :start :end]]]
@@ -92,11 +97,12 @@
 
 (intent/register-intent! :enter-edit-with-char
                          {:doc "Enter edit mode and append a character (type-to-edit).
-         
-         LOGSEQ PARITY §7.1: When a block is selected (but not editing), 
-         pressing any printable key instantly enters edit mode, appends 
+
+         LOGSEQ PARITY §7.1: When a block is selected (but not editing),
+         pressing any printable key instantly enters edit mode, appends
          that character, and positions the caret after it."
                           :fr/ids #{:fr.state/type-to-edit}
+                          :allowed-states #{:selection}
                           :spec [:map
                                  [:type [:= :enter-edit-with-char]]
                                  [:block-id :string]
@@ -142,6 +148,7 @@
                                 LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text.
                                 Trims leading whitespace from text after cursor for clean line start."
                           :fr/ids #{:fr.edit/newline-no-split}
+                          :allowed-states #{:editing}
                           :spec [:map [:type [:= :insert-newline]] [:block-id :string] [:cursor-pos :int]]
                           :handler (fn [db _session {:keys [block-id cursor-pos]}]
                                      (let [text (q/block-text db block-id)
@@ -162,6 +169,7 @@
          :text - Current text from DOM (required for unsaved buffer content)"
 
                           :fr/ids #{:fr.edit/backspace-merge}
+                          :allowed-states #{:editing}
 
                           :spec [:map
                                  [:type [:= :merge-with-prev]]
