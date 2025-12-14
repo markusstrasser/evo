@@ -43,6 +43,7 @@
             [components.spec-viewer :as spec-viewer]
             [components.quick-switcher :as quick-switcher]
             [components.notification :as notification]
+            [components.journals :as journals]
             [utils.journal :as journal]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
@@ -637,6 +638,7 @@
         page-title (when current-page-id (q/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
+        journals-view? (vs/journals-view?)
         quick-switcher-visible? (vs/quick-switcher-visible?)]
     [:div.app
      {:style {:display "flex"
@@ -673,8 +675,14 @@
         [:p {:style {:color "#666"}}
          "Features: Page refs " [:code "[[Page]]"]]
 
-        ;; Current page title and outline
-        (if current-page-id
+        ;; Main content area - journals view, current page, or empty state
+        (cond
+          ;; Journals view - all journals stacked
+          journals-view?
+          (journals/JournalsView {:db db :on-intent handle-intent})
+
+          ;; Single page view
+          current-page-id
           [:div
            [:h3 {:style {:margin-top "20px"
                          :margin-bottom "10px"
@@ -692,6 +700,7 @@
                                       :on-intent handle-intent})]
 
           ;; No page selected
+          :else
           [:div {:style {:padding "40px"
                          :text-align "center"
                          :color "rgb(156, 163, 175)"}}
@@ -871,6 +880,9 @@
 
   ;; Initialize Nexus action pipeline
   (nexus/init!)
+
+  ;; Load persisted favorites and recents from localStorage
+  (vs/load-persisted-state!)
 
 ;; Note: Current page is set by load-from-folder! after storage check completes
 

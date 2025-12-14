@@ -488,48 +488,143 @@
     opacity: 0.6;
   }
 
-  /* ── Section Header ─────────────────────────────────────────────────────── */
+  /* ── Navigation Section (Logseq-style nav links) ─────────────────────────── */
+  .sidebar-nav {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+
+  .sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  .sidebar-nav-item:hover {
+    background: var(--sidebar-hover);
+  }
+
+  .sidebar-nav-item.active {
+    background: oklch(95% 0.02 250);
+  }
+
+  .nav-label {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sidebar-text);
+  }
+
+  .nav-count {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--sidebar-text-faint);
+    background: var(--sidebar-hover);
+    padding: 1px 6px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+    margin-left: var(--space-2);
+  }
+
+  /* ── Collapsible Section ───────────────────────────────────────────────── */
+  .sidebar-section {
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+
+  .sidebar-section.collapsed .sidebar-section-content {
+    display: none;
+  }
+
   .sidebar-section-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-3) var(--space-2);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s ease;
+  }
+
+  .sidebar-section-header:hover {
+    background: var(--sidebar-hover);
+  }
+
+  .section-chevron {
+    flex-shrink: 0;
+    color: var(--sidebar-text-faint);
+    display: flex;
+    transition: transform 0.15s ease;
+  }
+
+  .section-icon {
+    flex-shrink: 0;
+    color: var(--sidebar-text-muted);
+    display: flex;
+  }
+
+  /* Favorites section gets gold star */
+  .sidebar-section:has(.section-icon svg polygon) .section-icon {
+    color: oklch(75% 0.15 85); /* Warm gold */
   }
 
   .section-title {
-    font-size: 10px;
-    font-weight: 650;
+    flex: 1;
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
+    color: var(--sidebar-text-muted);
+  }
+
+  .section-count {
+    font-size: 10px;
+    font-weight: 500;
     color: var(--sidebar-text-faint);
+    background: var(--sidebar-hover);
+    padding: 1px 6px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
   }
 
   .section-action {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
     border-radius: var(--radius-sm);
-    color: var(--sidebar-text-muted);
-    font-size: 11px;
-    font-weight: 500;
+    color: var(--sidebar-text-faint);
     cursor: pointer;
     transition: all 0.15s ease;
+    opacity: 0;
+  }
+
+  .sidebar-section-header:hover .section-action {
+    opacity: 1;
   }
 
   .section-action:hover {
     background: var(--sidebar-hover);
-    border-color: var(--sidebar-border);
-    color: var(--sidebar-text);
+    color: var(--sidebar-accent);
+  }
+
+  .sidebar-section-content {
+    padding: 0 var(--space-2) var(--space-2);
   }
 
   /* ── Page List ──────────────────────────────────────────────────────────── */
-  .sidebar-page-list {
-    flex: 1;
-    padding: 0 var(--space-2);
-    overflow-y: auto;
+  .page-list {
+    display: flex;
+    flex-direction: column;
   }
 
   .sidebar-page-item {
@@ -537,9 +632,8 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 6px 8px;
-    padding-right: 36px; /* Space for menu */
-    margin-bottom: 1px;
+    padding: 5px 8px;
+    padding-right: 60px; /* Space for actions */
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s ease;
@@ -549,7 +643,7 @@
     background: var(--sidebar-hover);
   }
 
-  .sidebar-page-item:hover .page-menu {
+  .sidebar-page-item:hover .page-actions {
     opacity: 1;
   }
 
@@ -562,15 +656,9 @@
     color: var(--sidebar-text);
   }
 
-  /* Journal pages get subtle accent */
-  .sidebar-page-item.journal .page-icon {
-    color: oklch(65% 0.12 280);
-  }
-
+  /* Page icon hidden - cleaner UI */
   .page-icon {
-    flex-shrink: 0;
-    color: var(--sidebar-text-faint);
-    display: flex;
+    display: none;
   }
 
   .page-title {
@@ -588,50 +676,68 @@
     color: var(--sidebar-text);
   }
 
-  .page-title.untitled {
-    font-style: italic;
-    opacity: 0.6;
-  }
-
-  /* ── Page Menu (hover-reveal) ───────────────────────────────────────────── */
-  .page-menu {
+  /* ── Page Actions (hover-reveal) ─────────────────────────────────────────── */
+  .page-actions {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
     opacity: 0;
     transition: opacity 0.15s ease;
   }
 
-  .page-menu-trigger {
+  .star-button,
+  .delete-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     padding: 0;
-    background: var(--sidebar-bg);
-    border: 1px solid var(--sidebar-border);
+    background: transparent;
+    border: none;
     border-radius: var(--radius-sm);
     color: var(--sidebar-text-faint);
     cursor: pointer;
     transition: all 0.15s ease;
-    box-shadow: 0 1px 3px oklch(0% 0 0 / 0.06);
   }
 
-  .page-menu-trigger:hover {
-    background: oklch(95% 0.04 25);
-    border-color: oklch(85% 0.06 25);
-    color: oklch(50% 0.18 25);
+  .star-button:hover {
+    color: oklch(75% 0.18 85); /* Gold */
+    background: oklch(95% 0.05 85);
+  }
+
+  .star-button.active {
+    color: oklch(70% 0.2 85); /* Filled gold star */
+    opacity: 1;
+  }
+
+  /* Always show active star */
+  .sidebar-page-item .star-button.active {
+    opacity: 1;
+  }
+
+  .delete-button:hover {
+    color: oklch(55% 0.2 25); /* Red */
+    background: oklch(95% 0.05 25);
   }
 
   @media (prefers-color-scheme: dark) {
-    .page-menu-trigger:hover {
-      background: oklch(30% 0.06 25);
-      border-color: oklch(40% 0.08 25);
-      color: oklch(75% 0.15 25);
+    .star-button:hover {
+      background: oklch(30% 0.08 85);
+    }
+
+    .delete-button:hover {
+      background: oklch(30% 0.08 25);
     }
   }
 
   /* ── Empty State ────────────────────────────────────────────────────────── */
   .sidebar-empty {
-    padding: var(--space-6) var(--space-4);
+    padding: var(--space-4) var(--space-3);
     text-align: center;
   }
 
@@ -650,16 +756,16 @@
   /* ── Responsive ─────────────────────────────────────────────────────────── */
   @container sidebar (max-width: 200px) {
     .sidebar-page-item {
-      padding: 5px 6px;
-      padding-right: 30px;
+      padding: 4px 6px;
+      padding-right: 50px;
     }
 
     .page-title {
       font-size: 12px;
     }
 
-    .section-action span {
-      display: none; /* Hide "New" text, keep icon */
+    .section-count {
+      display: none;
     }
   }
 
@@ -1537,6 +1643,182 @@
 
     &:hover {
       opacity: 1;
+    }
+  }
+
+  /* ── Journals View ────────────────────────────────────────────────────────── */
+  .journals-view {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--space-6);
+  }
+
+  .journals-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid oklch(90% 0.01 250);
+  }
+
+  .journals-back {
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    border: 1px solid oklch(85% 0.02 250);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: oklch(95% 0.02 250);
+      color: var(--text-body);
+    }
+  }
+
+  .journals-title {
+    flex: 1;
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-heading);
+    margin: 0;
+  }
+
+  .journals-count {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
+
+  .journals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .journal-item {
+    padding: var(--space-5) var(--space-4);
+    border-bottom: 1px solid oklch(92% 0.01 250);
+    border-radius: var(--radius-lg);
+    margin: 0 calc(-1 * var(--space-4));
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+
+    &:last-child,
+    &.journal-last {
+      border-bottom: none;
+    }
+
+    /* Clickable journal item with hover affordance */
+    &.journal-clickable {
+      cursor: pointer;
+
+      &:hover {
+        background: oklch(97% 0.02 250);
+        box-shadow: 0 2px 8px oklch(0% 0 0 / 0.04);
+
+        .journal-title {
+          color: oklch(35% 0.18 250);
+        }
+      }
+
+      &:active {
+        background: oklch(95% 0.03 250);
+      }
+    }
+  }
+
+  .journal-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: oklch(45% 0.15 250);
+    margin: 0 0 var(--space-3) 0;
+    transition: color 0.15s ease;
+  }
+
+  .journal-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-left: var(--space-2);
+  }
+
+  .journal-block {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    line-height: 1.6;
+  }
+
+  .block-bullet {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .block-text {
+    color: var(--text-body);
+  }
+
+  .empty-block {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .journal-empty {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-style: italic;
+    padding-left: var(--space-4);
+  }
+
+  .journals-empty {
+    text-align: center;
+    padding: var(--space-12) var(--space-6);
+    color: var(--text-muted);
+
+    p {
+      margin: 0;
+    }
+
+    .hint {
+      font-size: var(--text-sm);
+      margin-top: var(--space-2);
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .journals-header {
+      border-bottom-color: oklch(30% 0.02 250);
+    }
+
+    .journals-back {
+      border-color: oklch(35% 0.03 250);
+
+      &:hover {
+        background: oklch(25% 0.03 250);
+      }
+    }
+
+    .journal-item {
+      border-bottom-color: oklch(28% 0.02 250);
+
+      &.journal-clickable:hover {
+        background: oklch(22% 0.02 250);
+        box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2);
+      }
+
+      &.journal-clickable:active {
+        background: oklch(25% 0.03 250);
+      }
+    }
+
+    .journal-title {
+      color: oklch(75% 0.12 250);
+    }
+
+    .journal-item.journal-clickable:hover .journal-title {
+      color: oklch(85% 0.1 250);
     }
   }
 }
