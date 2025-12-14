@@ -123,9 +123,23 @@
                :on {:click (fn [e]
                              (.preventDefault e)
                              (.stopPropagation e)
-                             (when (js/confirm (str "Delete \"" title "\"?"))
+                             ;; Capture descendants BEFORE delete for undo
+                             (let [descendants (q/descendants-of db page-id)
+                                   captured-title title]
+                               ;; Delete immediately
                                (when on-intent
-                                 (on-intent {:type :delete-page :page-id page-id}))))}}
+                                 (on-intent {:type :delete-page :page-id page-id}))
+                               ;; Show toast with Undo option
+                               (vs/show-notification!
+                                (str "Deleted \"" captured-title "\"")
+                                {:type :success
+                                 :action {:label "Undo"
+                                          :on-click (fn []
+                                                      (when on-intent
+                                                        (on-intent {:type :restore-page
+                                                                    :page-id page-id
+                                                                    :descendants descendants
+                                                                    :switch-to? true})))}})))}}
               "\u00D7"]]))
         ;; Empty state
         [:div {:style {:padding "20px"

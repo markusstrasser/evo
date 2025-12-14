@@ -184,6 +184,36 @@
                           :fr/ids #{:fr.struct/delete-block}
                           :handler handle-delete-page})
 
+(defn- handle-restore-page
+  "Restore a page and its descendants from trash.
+
+   Since delete flattens the tree (all descendants become direct trash children),
+   restore rebuilds a flat structure under the page. Deep nesting is lost.
+
+   Args:
+     page-id     - ID of page to restore
+     descendants - Optional list of descendant IDs to restore under the page"
+  [db _session {:keys [page-id descendants switch-to?]}]
+  (when page-id
+    (let [;; Verify page is actually in trash
+          parent (get-in db [:derived :parent-of page-id])]
+      (when (= parent const/root-trash)
+        {:ops (into
+               ;; Move page back to doc
+               [{:op :place :id page-id :under const/root-doc :at :last}]
+               ;; Move descendants back under page (flat - nested structure lost)
+               (when (seq descendants)
+                 (mapv (fn [id] {:op :place :id id :under page-id :at :last})
+                       descendants)))
+         ;; Optionally switch to restored page
+         :session-updates (when switch-to?
+                            {:ui {:current-page page-id}})}))))
+
+(intent/register-intent! :restore-page
+                         {:doc "Restore a page from trash (undo delete)"
+                          :fr/ids #{:fr.struct/delete-block}
+                          :handler handle-restore-page})
+
 (intent/register-intent! :follow-link-under-cursor
                          {:doc "Follow link/reference under cursor (Cmd+O in Logseq).
 

@@ -615,6 +615,64 @@ For redo: Applies reversed datoms in forward order, re-validates entity existenc
 
 Downstream parity trackers should reference these expectations whenever a client diverges so QA can verify the difference explicitly.
 
+### 7.9 Page Management
+
+Logseq treats pages as first-class entities with specific UI patterns for creation, deletion, and renaming.
+
+#### 7.9.1 Page Creation
+- **Via sidebar**: "New page" button prompts for title, creates page with one empty block, navigates to it
+- **Via page reference**: Clicking `[[NonExistent Page]]` auto-creates the page and navigates
+- **Via quick switcher**: Typing a non-matching name and pressing Enter creates + navigates
+- **Validation**: Page titles are trimmed, empty titles rejected
+- **Default content**: New pages always get one empty block (never truly empty)
+
+#### 7.9.2 Page Deletion
+- **Confirmation**: Logseq shows `js/confirm("Are you sure you want to delete this page?")` dialog
+- **Success feedback**: Toast notification "Page X was deleted successfully!" (`:success` type)
+- **Soft delete**: Page and all descendants moved to internal trash (not permanently erased)
+- **Current page handling**: If deleting current page, switches to another page (first available)
+- **Special case**: Deleting the "home" page may enable journals mode (context-dependent)
+
+**Source**: `frontend/handler/page.cljs`, `delete!` function
+
+#### 7.9.3 Page Rename
+- **Inline editing**: Click on page title to enter edit mode
+- **Commit on blur/Enter**: Saves new title
+- **Cancel on Escape**: Reverts to previous title
+- **Validation**: Empty titles rejected, whitespace trimmed
+- **Reference updates**: All `[[OldName]]` references updated to `[[NewName]]` across graph
+
+**Source**: `frontend/components/page.cljs`, title component with editable state
+
+#### 7.9.4 Notification/Toast System
+Logseq uses a toast notification system for feedback:
+
+| Type | Style | Auto-dismiss | Use case |
+|------|-------|--------------|----------|
+| `:success` | Green accent | ~2000ms | Successful operations |
+| `:warning` | Yellow/amber | Stays | Warnings, requires attention |
+| `:error` | Red | Stays | Failures, needs user action |
+| `:info` | Blue | ~2000ms | Informational messages |
+
+**Implementation**: `frontend/handler/notification.cljs`, renders via `frontend/components/notification.cljs`
+
+**Key behaviors:**
+- Positioned at bottom-center of viewport
+- Stacks when multiple notifications active
+- Click-to-dismiss on any notification
+- Auto-dismiss timers configurable per notification
+
+#### 7.9.5 Evo Divergence: Undo Pattern
+Evo uses a different UX pattern for page deletion:
+
+| Aspect | Logseq | Evo |
+|--------|--------|-----|
+| Confirmation | Upfront `js/confirm` dialog | None (delete immediately) |
+| Feedback | Success toast after | Toast with **Undo** button |
+| Recovery | No undo (soft-deleted) | 5-second undo window |
+
+**Rationale**: The "delete + undo" pattern reduces friction for exploratory workflows while maintaining recoverability. Users who delete by mistake can undo within the toast timeout. This matches modern design patterns (Gmail, Slack, etc.).
+
 ---
 
 ## 8. Extensibility & Hooks Architecture

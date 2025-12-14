@@ -50,7 +50,8 @@
         :sidebar-visible? true ; Left sidebar (pages) visibility
         :hotkeys-visible? false ; Hotkeys reference panel visibility
         :autocomplete nil ; Autocomplete popup state (see autocomplete-show!)
-        :quick-switcher nil} ; Quick switcher state {:query "" :selected-idx 0}
+        :quick-switcher nil ; Quick switcher state {:query "" :selected-idx 0}
+        :notification nil} ; Toast notification {:message :type :action :timeout-id}
    :sidebar {:right []}})
 
 (defonce !view-state (atom default-view-state))
@@ -196,7 +197,7 @@
    Used by kernel.api and shell executor for bulk view state updates.
    Uses deep-merge-view-state for proper handling of:
    - Nested maps (recursive merge)
-   - Sets like :selection :nodes (union, not replace)
+   - Sets like :selection :nodes (REPLACE, not union - handler computes final state)
    - Scalars (new value overwrites)"
   [updates]
   (swap-view-state! #(deep-merge-view-state % updates)))
@@ -467,4 +468,60 @@
   []
   (reset-view-state!)
   (js/console.log "View state cleared"))
+
+;; ── Notification/Toast API ──────────────────────────────────────────────────
+;; Toast notifications with optional undo action.
+;;
+;; Structure when active:
+;; {:message "Deleted page"
+;;  :type :success          ; :success, :error, :warning, :info
+;;  :action {:label "Undo"  ; Optional action button
+;;           :on-click fn}
+;;  :timeout-id 123}        ; setTimeout ID for auto-dismiss
+
+(defn notification
+  "Get current notification state, or nil if not showing."
+  []
+  (get-in @!view-state [:ui :notification]))
+
+(defn dismiss-notification!
+  "Dismiss the current notification."
+  []
+  ;; Clear timeout if any
+  (when-let [tid (get-in @!view-state [:ui :notification :timeout-id])]
+    (js/clearTimeout tid))
+  (swap-view-state! assoc-in [:ui :notification] nil))
+
+(defn show-notification!
+  "Show a toast notification.
+
+   Args:
+     message - Text to display
+     opts - Optional map:
+       :type    - :success (default), :error, :warning, :info
+       :action  - {:label \"Undo\" :on-click fn} for action button
+       :timeout - Auto-dismiss ms (default 5000, nil = no auto-dismiss)
+
+   Example:
+     (show-notification! \"Deleted page\" {:type :success
+                                          :action {:label \"Undo\"
+                                                   :on-click #(restore-page! id)}
+                                          :timeout 5000})"
+  ([message] (show-notification! message {}))
+  ([message {:keys [action timeout]
+             :or {timeout 5000}
+             :as opts}]
+   ;; Clear any existing timeout
+   (when-let [existing (notification)]
+     (when-let [tid (:timeout-id existing)]
+       (js/clearTimeout tid)))
+
+   ;; Set up auto-dismiss timeout
+   (let [timeout-id (when timeout
+                      (js/setTimeout dismiss-notification! timeout))
+         notification-data (cond-> {:message message
+                                    :type (or (:type opts) :success)}
+                             action (assoc :action action)
+                             timeout-id (assoc :timeout-id timeout-id))]
+     (swap-view-state! assoc-in [:ui :notification] notification-data))))
 

@@ -42,6 +42,7 @@
             [kernel.intent :as intent]
             [components.spec-viewer :as spec-viewer]
             [components.quick-switcher :as quick-switcher]
+            [components.notification :as notification]
             [utils.journal :as journal]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
@@ -707,7 +708,10 @@
 
      ;; Quick Switcher overlay (Cmd+K) - rendered outside main content for proper modal behavior
      (when quick-switcher-visible?
-       (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent}))]))
+       (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent}))
+
+     ;; Toast notification (uses Popover API for top-layer rendering)
+     (notification/Notification)]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
