@@ -14,6 +14,7 @@
             [components.image :as image]
             [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
+            [utils.cursor-boundaries :as bounds]
             [utils.dom :as dom]
             [shell.view-state :as vs]
             [shell.storage :as storage]
@@ -48,35 +49,8 @@
       (str/replace #"\n" "<br>")))
 
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
-
-(defn- detect-cursor-row-position
-  "Detect if cursor is on first/last row of contenteditable using Range API.
-   Returns {:first-row? bool :last-row? bool}
-
-   With uncontrolled editable architecture, we use DOM Range API directly."
-  [elem]
-  (when elem
-    (let [selection (.getSelection js/window)]
-      (when (and selection (> (.-rangeCount selection) 0))
-        (let [range (.getRangeAt selection 0)
-              rect (.getBoundingClientRect range)
-              elem-rect (.getBoundingClientRect elem)
-              cursor-top (.-top rect)
-              elem-top (.-top elem-rect)
-              elem-bottom (.-bottom elem-rect)
-              ;; CRITICAL: Range height can be 0 for collapsed cursor at certain positions.
-              ;; In ClojureScript, 0 is truthy so (or 0 20) returns 0 - must check explicitly.
-              raw-height (when rect (.-height rect))
-              line-height (if (and raw-height (pos? raw-height)) raw-height 20)
-
-              ;; Cursor is on first row if it's within one line-height of element top
-              first-row? (< (- cursor-top elem-top) line-height)
-
-              ;; Cursor is on last row if it's within one line-height of element bottom
-              last-row? (< (- elem-bottom cursor-top) (* 1.5 line-height))]
-
-          {:first-row? first-row?
-           :last-row? last-row?})))))
+;; MOVED: detect-cursor-row-position → utils/cursor_boundaries.cljs
+;; Now computed ONCE per keydown via bounds/boundary-state
 
 (defn- set-cursor!
   "Set cursor in a contenteditable node at position `pos`.
@@ -359,41 +333,43 @@
 (defn- handle-vertical-arrow
   "Parametric handler for ArrowUp/ArrowDown navigation.
 
+   REFACTORED: Now receives pre-computed boundaries from handle-keydown.
+
    Args:
    - direction: :up or :down
-   - e, _db, block-id, on-intent: standard handler args"
-  [direction e _db block-id on-intent]
-  (let [target (.-target e)
-        cursor-pos (detect-cursor-row-position target)
-        [boundary-key collapse-fn]
+   - e, _db, block-id, on-intent: standard handler args
+   - cursor-bounds: pre-computed boundary state from bounds/boundary-state"
+  [direction e _db block-id on-intent cursor-bounds]
+  (let [[boundary-key collapse-fn]
         (if (= direction :up)
           [:first-row? collapse-selection-start!]
           [:last-row? collapse-selection-end!])]
     (cond
       ;; Has text selection - collapse appropriately
-      (text-sel/selection-present?)
+      (:has-selection? cursor-bounds)
       (collapse-fn e)
 
       ;; At boundary row - navigate to adjacent block with cursor memory
-      (get cursor-pos boundary-key)
+      (get cursor-bounds boundary-key)
       (do (.preventDefault e)
-          (let [text-content (.-textContent target)
-                selection (.getSelection js/window)
-                cursor-offset (.-anchorOffset selection)]
-            (on-intent {:type :navigate-with-cursor-memory
-                        :current-block-id block-id
-                        :current-text text-content
-                        :current-cursor-pos cursor-offset
-                        :direction direction})))
+          (on-intent {:type :navigate-with-cursor-memory
+                      :current-block-id block-id
+                      :current-text (:text-content cursor-bounds)
+                      :current-cursor-pos (:cursor-pos cursor-bounds)
+                      :direction direction}))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
 
-(defn handle-arrow-up [e db block-id on-intent]
-  (handle-vertical-arrow :up e db block-id on-intent))
+(defn handle-arrow-up
+  "Handle ArrowUp: navigate to previous block if at first row."
+  [e db block-id on-intent cursor-bounds]
+  (handle-vertical-arrow :up e db block-id on-intent cursor-bounds))
 
-(defn handle-arrow-down [e db block-id on-intent]
-  (handle-vertical-arrow :down e db block-id on-intent))
+(defn handle-arrow-down
+  "Handle ArrowDown: navigate to next block if at last row."
+  [e db block-id on-intent cursor-bounds]
+  (handle-vertical-arrow :down e db block-id on-intent cursor-bounds))
 
 (defn- handle-shift-vertical-arrow
   "Parametric handler for Shift+ArrowUp/Down while editing: exit edit and extend selection.
@@ -430,75 +406,55 @@
 (defn handle-arrow-left
   "Handle left arrow key.
 
+   REFACTORED: Now receives pre-computed boundaries from handle-keydown.
+   Eliminated ~15 lines of inline at-start? detection.
+
    Behaviors:
    - Has text selection → Collapse to start
    - At start of block → Edit previous block at end
    - Middle of text → Move cursor left (browser default)"
-  [e _db block-id on-intent]
-  (let [target (.-target e)
-        selection (.getSelection js/window)
-        anchor-offset (.-anchorOffset selection)
-        anchor-node (.-anchorNode selection)
-        first-child (.-firstChild target)
-        ;; More robust at-start? check:
-        ;; We're at start if offset is 0 AND we're in the first text position
-        ;; This handles cases where anchorNode might not === firstChild
-        range-text (when (and anchor-node (zero? anchor-offset))
-                     (let [range (.createRange js/document)]
-                       (.setStart range target 0)
-                       (.setEnd range anchor-node anchor-offset)
-                       (.toString range)))
-        at-start? (and (zero? anchor-offset)
-                       (or
-                        ;; Case 1: anchorNode is the contenteditable itself (empty block)
-                        (= anchor-node target)
-                        ;; Case 2: anchorNode is the first child
-                        (= anchor-node first-child)
-                        ;; Case 3: Check by seeing if there's any text content before our position
-                        (and range-text (zero? (count range-text)))))]
-    (cond
-      ;; Has selection - collapse to start
-      (text-sel/selection-present?)
-      (collapse-selection-start! e)
+  [e _db block-id on-intent cursor-bounds]
+  (cond
+    ;; Has selection - collapse to start
+    (:has-selection? cursor-bounds)
+    (collapse-selection-start! e)
 
-      ;; At start - navigate to previous block
-      at-start?
-      (do (.preventDefault e)
-          (on-intent {:type :navigate-to-adjacent
-                      :direction :up
-                      :current-block-id block-id
-                      :cursor-position :max})) ; Enter previous at end
+    ;; At start - navigate to previous block
+    (:at-start? cursor-bounds)
+    (do (.preventDefault e)
+        (on-intent {:type :navigate-to-adjacent
+                    :direction :up
+                    :current-block-id block-id
+                    :cursor-position :max})) ; Enter previous at end
 
-      ;; Middle - let browser handle
-      :else nil)))
+    ;; Middle - let browser handle
+    :else nil))
 
 (defn handle-arrow-right
   "Handle right arrow key.
+
+   REFACTORED: Now receives pre-computed boundaries from handle-keydown.
 
    Behaviors:
    - Has text selection → Collapse to end
    - At end of block → Edit next block at start
    - Middle of text → Move cursor right (browser default)"
-  [e _db block-id on-intent]
-  (let [target (.-target e)
-        text-content (.-textContent target)
-        selection (.getSelection js/window)
-        at-end? (= (.-anchorOffset selection) (count text-content))]
-    (cond
-      ;; Has selection - collapse to end
-      (text-sel/selection-present?)
-      (collapse-selection-end! e)
+  [e _db block-id on-intent cursor-bounds]
+  (cond
+    ;; Has selection - collapse to end
+    (:has-selection? cursor-bounds)
+    (collapse-selection-end! e)
 
-      ;; At end - navigate to next block
-      at-end?
-      (do (.preventDefault e)
-          (on-intent {:type :navigate-to-adjacent
-                      :direction :down
-                      :current-block-id block-id
-                      :cursor-position 0})) ; Enter next at start
+    ;; At end - navigate to next block
+    (:at-end? cursor-bounds)
+    (do (.preventDefault e)
+        (on-intent {:type :navigate-to-adjacent
+                    :direction :down
+                    :current-block-id block-id
+                    :cursor-position 0})) ; Enter next at start
 
-      ;; Middle - let browser handle
-      :else nil)))
+    ;; Middle - let browser handle
+    :else nil))
 
 (defn handle-enter [e db block-id on-intent]
   (.preventDefault e)
@@ -849,109 +805,119 @@
 (defn handle-keydown
   "Handle keyboard events while editing a block.
 
+   REFACTORED ARCHITECTURE:
+   1. Compute cursor boundaries ONCE at entry (bounds/boundary-state)
+   2. IME guard: skip all interception during composition (CJK/emoji safety)
+   3. Pass pre-computed bounds to handlers (no inline DOM reads)
+
    Delegates to editing handlers for navigation, splits, and escapes.
    When autocomplete is active, intercepts navigation keys."
   [e db block-id on-intent]
   ;; Check autocomplete first - it intercepts arrow keys, Enter, Escape, Tab
   (when-not (handle-autocomplete-keydown e on-intent)
-    (let [{:keys [shift? mod? alt? ctrl?]} (dom/event-modifiers e)
-          key (.-key e)
-          target (.-target e)]
+    (let [target (.-target e)
+          ;; CRITICAL: Compute boundaries ONCE per keydown
+          ;; This consolidates ~40 lines of scattered boundary detection
+          cursor-bounds (bounds/boundary-state target e)]
 
-      (cond
-        ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
-        (and (= key "a") ctrl? (not shift?) (not alt?))
-        (do (.preventDefault e)
-            (let [text-content (.-textContent target)
-                  selection (.getSelection js/window)
-                  cursor-pos (.-anchorOffset selection)
-                  line-start (loop [pos (dec cursor-pos)]
-                               (cond
-                                 (< pos 0) 0
-                                 (= (nth text-content pos) \newline) (inc pos)
-                                 :else (recur (dec pos))))]
-              (set-cursor! target line-start)))
+      ;; IME GUARD: Never intercept during composition (CJK, emoji, dictation)
+      ;; This was completely missing before - major bug for international users
+      (when-not (:is-composing? cursor-bounds)
+        (let [{:keys [shift? mod? alt? ctrl?]} (dom/event-modifiers e)
+              key (.-key e)]
 
-        (and (= key "e") ctrl? (not shift?) (not alt?))
-        (do (.preventDefault e)
-            (let [text-content (.-textContent target)
-                  selection (.getSelection js/window)
-                  cursor-pos (.-anchorOffset selection)
-                  text-length (count text-content)
-                  line-end (loop [pos cursor-pos]
-                             (cond
-                               (>= pos text-length) text-length
-                               (= (nth text-content pos) \newline) pos
-                               :else (recur (inc pos))))]
-              (set-cursor! target line-end)))
+          (cond
+            ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
+            (and (= key "a") ctrl? (not shift?) (not alt?))
+            (do (.preventDefault e)
+                (let [text-content (:text-content cursor-bounds)
+                      cursor-pos (:cursor-pos cursor-bounds)
+                      line-start (loop [pos (dec cursor-pos)]
+                                   (cond
+                                     (< pos 0) 0
+                                     (= (nth text-content pos) \newline) (inc pos)
+                                     :else (recur (dec pos))))]
+                  (set-cursor! target line-start)))
 
-        ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
-        (and (= key "a") alt? (not shift?) (not ctrl?))
-        (do (.preventDefault e)
-            (set-cursor! target 0))
+            (and (= key "e") ctrl? (not shift?) (not alt?))
+            (do (.preventDefault e)
+                (let [text-content (:text-content cursor-bounds)
+                      cursor-pos (:cursor-pos cursor-bounds)
+                      text-length (:text-length cursor-bounds)
+                      line-end (loop [pos cursor-pos]
+                                 (cond
+                                   (>= pos text-length) text-length
+                                   (= (nth text-content pos) \newline) pos
+                                   :else (recur (inc pos))))]
+                  (set-cursor! target line-end)))
 
-        (and (= key "e") alt? (not shift?) (not ctrl?))
-        (do (.preventDefault e)
-            (set-cursor! target (count (.-textContent target))))
+            ;; === Emacs Block Navigation (macOS: Alt+A/E) ===
+            (and (= key "a") alt? (not shift?) (not ctrl?))
+            (do (.preventDefault e)
+                (set-cursor! target 0))
 
-        ;; Shift+Arrow - exit edit and extend block selection (Logseq parity)
-        (and (= key "ArrowUp") shift? (not mod?) (not alt?))
-        (handle-shift-arrow-up e db block-id on-intent)
+            (and (= key "e") alt? (not shift?) (not ctrl?))
+            (do (.preventDefault e)
+                (set-cursor! target (:text-length cursor-bounds)))
 
-        (and (= key "ArrowDown") shift? (not mod?) (not alt?))
-        (handle-shift-arrow-down e db block-id on-intent)
+            ;; Shift+Arrow - exit edit and extend block selection (Logseq parity)
+            (and (= key "ArrowUp") shift? (not mod?) (not alt?))
+            (handle-shift-arrow-up e db block-id on-intent)
 
-        ;; Ctrl+P/N - Emacs-style navigation aliases
-        (and (= key "p") ctrl? (not shift?) (not alt?))
-        (handle-arrow-up e db block-id on-intent)
+            (and (= key "ArrowDown") shift? (not mod?) (not alt?))
+            (handle-shift-arrow-down e db block-id on-intent)
 
-        (and (= key "n") ctrl? (not shift?) (not alt?))
-        (handle-arrow-down e db block-id on-intent)
+            ;; Ctrl+P/N - Emacs-style navigation aliases
+            (and (= key "p") ctrl? (not shift?) (not alt?))
+            (handle-arrow-up e db block-id on-intent cursor-bounds)
 
-        ;; Plain arrows - navigate between blocks while editing
-        (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-up e db block-id on-intent)
+            (and (= key "n") ctrl? (not shift?) (not alt?))
+            (handle-arrow-down e db block-id on-intent cursor-bounds)
 
-        (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-down e db block-id on-intent)
+            ;; Plain arrows - navigate between blocks while editing
+            (and (= key "ArrowUp") (not shift?) (not mod?) (not alt?))
+            (handle-arrow-up e db block-id on-intent cursor-bounds)
 
-        (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-left e db block-id on-intent)
+            (and (= key "ArrowDown") (not shift?) (not mod?) (not alt?))
+            (handle-arrow-down e db block-id on-intent cursor-bounds)
 
-        (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
-        (handle-arrow-right e db block-id on-intent)
+            (and (= key "ArrowLeft") (not shift?) (not mod?) (not alt?))
+            (handle-arrow-left e db block-id on-intent cursor-bounds)
 
-        ;; LOGSEQ PARITY: Enter/Shift+Enter behavior depends on doc-mode
-        ;; Normal mode: Enter = new block, Shift+Enter = newline
-        ;; Doc-mode: Enter = newline, Shift+Enter = new block
-        (and (= key "Enter") shift? (not mod?) (not alt?))
-        (if (vs/document-view?)
-          ;; Doc-mode: Shift+Enter creates new block
-          (handle-enter e db block-id on-intent)
-          ;; Normal mode: Shift+Enter inserts literal newline
-          (insert-linebreak! e target block-id))
+            (and (= key "ArrowRight") (not shift?) (not mod?) (not alt?))
+            (handle-arrow-right e db block-id on-intent cursor-bounds)
 
-        ;; Enter - behavior depends on doc-mode
-        (and (= key "Enter") (not shift?) (not mod?) (not alt?))
-        (if (vs/document-view?)
-          ;; Doc-mode: Enter inserts newline
-          (insert-linebreak! e target block-id)
-          ;; Normal mode: Enter creates new block
-          (handle-enter e db block-id on-intent))
+            ;; LOGSEQ PARITY: Enter/Shift+Enter behavior depends on doc-mode
+            ;; Normal mode: Enter = new block, Shift+Enter = newline
+            ;; Doc-mode: Enter = newline, Shift+Enter = new block
+            (and (= key "Enter") shift? (not mod?) (not alt?))
+            (if (vs/document-view?)
+              ;; Doc-mode: Shift+Enter creates new block
+              (handle-enter e db block-id on-intent)
+              ;; Normal mode: Shift+Enter inserts literal newline
+              (insert-linebreak! e target block-id))
 
-        ;; Escape - exit edit mode
-        (= key "Escape")
-        (handle-escape e db block-id on-intent)
+            ;; Enter - behavior depends on doc-mode
+            (and (= key "Enter") (not shift?) (not mod?) (not alt?))
+            (if (vs/document-view?)
+              ;; Doc-mode: Enter inserts newline
+              (insert-linebreak! e target block-id)
+              ;; Normal mode: Enter creates new block
+              (handle-enter e db block-id on-intent))
 
-        ;; Backspace - delete/merge at cursor boundary
-        (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
-        (handle-backspace e db block-id on-intent)
+            ;; Escape - exit edit mode
+            (= key "Escape")
+            (handle-escape e db block-id on-intent)
 
-        ;; Delete at end - merge with next block
-        (and (= key "Delete") (not shift?) (not mod?) (not alt?))
-        (handle-delete e db block-id on-intent)
+            ;; Backspace - delete/merge at cursor boundary
+            (and (= key "Backspace") (not shift?) (not mod?) (not alt?))
+            (handle-backspace e db block-id on-intent)
 
-        :else nil))))
+            ;; Delete at end - merge with next block
+            (and (= key "Delete") (not shift?) (not mod?) (not alt?))
+            (handle-delete e db block-id on-intent)
+
+            :else nil))))))
 
 ;; ── Content Rendering with Page Refs ─────────────────────────────────────────
 
