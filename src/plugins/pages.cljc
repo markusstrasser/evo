@@ -257,4 +257,41 @@
                           (fn [db _session {:keys [journal-title]}]
                             (navigate-or-create-page db journal-title))})
 
+;; ── Navigation History (browser-style back/forward) ─────────────────────────
+
+(intent/register-intent! :navigate-back
+                         {:doc "Navigate back in page history (Cmd+[).
+         Returns to the previous page in navigation history without
+         affecting undo/redo history. Like browser back button."
+                          :spec [:map [:type [:= :navigate-back]]]
+                          :handler
+                          (fn [_db session _intent]
+                            (let [history (get-in session [:ui :history] [])
+                                  history-idx (get-in session [:ui :history-index] -1)]
+                              (when (> history-idx 0)
+                                (let [new-idx (dec history-idx)
+                                      new-page (nth history new-idx)]
+                                  {:session-updates
+                                   {:ui {:current-page new-page
+                                         :history-index new-idx
+                                         :zoom-root nil}}}))))})
+
+(intent/register-intent! :navigate-forward
+                         {:doc "Navigate forward in page history (Cmd+]).
+         Goes to the next page in navigation history (after going back).
+         Like browser forward button."
+                          :spec [:map [:type [:= :navigate-forward]]]
+                          :handler
+                          (fn [_db session _intent]
+                            (let [history (get-in session [:ui :history] [])
+                                  history-idx (get-in session [:ui :history-index] -1)
+                                  max-idx (dec (count history))]
+                              (when (and (>= history-idx 0) (< history-idx max-idx))
+                                (let [new-idx (inc history-idx)
+                                      new-page (nth history new-idx)]
+                                  {:session-updates
+                                   {:ui {:current-page new-page
+                                         :history-index new-idx
+                                         :zoom-root nil}}}))))})
+
 (def loaded? "Sentinel for spec.runner to verify plugin loaded." true)

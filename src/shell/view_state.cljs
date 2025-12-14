@@ -54,7 +54,9 @@
         :quick-switcher nil ; Quick switcher state {:query "" :selected-idx 0}
         :notification nil ; Toast notification {:message :type :action :timeout-id}
         :favorites #{} ; Set of favorited page IDs (star icon in sidebar)
-        :recents []} ; Vector of recently visited page IDs (most recent first)
+        :recents [] ; Vector of recently visited page IDs (most recent first)
+        :history [] ; Navigation history stack (page IDs)
+        :history-index -1} ; Current position in history (-1 = empty)
    :sidebar {:right []}})
 
 (defonce !view-state (atom default-view-state))
@@ -549,6 +551,7 @@
 (def ^:const storage-key-favorites "evo:favorites")
 (def ^:const storage-key-recents "evo:recents")
 (def ^:const max-recents 15)
+(def ^:const max-history 50)
 
 (defn- save-to-storage!
   "Save value to localStorage as JSON."
@@ -653,4 +656,115 @@
   []
   (swap-view-state! assoc-in [:ui :recents] [])
   (persist-recents!))
+
+;; ── Navigation History (browser-style back/forward) ─────────────────────────
+;; Tracks page navigation for Cmd+[ (back) and Cmd+] (forward).
+;;
+;; History structure:
+;; {:history ["page-a" "page-b" "page-c"]  ; Stack of visited pages
+;;  :history-index 2}                       ; Current position (0-indexed)
+;;
+;; Behavior (like browser history):
+;; - Navigating to new page: pushes after current index, truncates forward
+;; - Back: decrements index, switches to that page
+;; - Forward: increments index, switches to that page
+;; - Can't go back past index 0, can't go forward past last item
+
+(defn history
+  "Get current navigation history."
+  []
+  (get-in @!view-state [:ui :history] []))
+
+(defn history-index
+  "Get current position in navigation history (-1 if empty)."
+  []
+  (get-in @!view-state [:ui :history-index] -1))
+
+(defn can-go-back?
+  "Check if we can navigate back in history."
+  []
+  (> (history-index) 0))
+
+(defn can-go-forward?
+  "Check if we can navigate forward in history."
+  []
+  (let [idx (history-index)
+        hist (history)]
+    (and (>= idx 0)
+         (< idx (dec (count hist))))))
+
+(defn history-current-page
+  "Get the page ID at current history position, or nil."
+  []
+  (let [idx (history-index)
+        hist (history)]
+    (when (and (>= idx 0) (< idx (count hist)))
+      (nth hist idx))))
+
+(defn push-history!
+  "Push a page to navigation history. Called when navigating to a new page.
+
+   Truncates any forward history (like browser back/forward).
+   Dedupes consecutive same-page pushes.
+   Caps history at max-history entries.
+
+   Args:
+     new-page-id - The page being navigated TO
+     old-page-id - The page being navigated FROM (for seeding empty history)
+
+   IMPORTANT: old-page-id must be captured BEFORE applying session updates,
+   otherwise it will be the new page already."
+  [new-page-id old-page-id]
+  (when new-page-id
+    (let [current-idx (history-index)
+          current-hist (history)
+          current-page-in-history (when (>= current-idx 0)
+                                    (nth current-hist current-idx nil))]
+      ;; Don't push if it's the same as current page in history
+      (when-not (= new-page-id current-page-in-history)
+        (let [;; If history is empty but we have an old page, seed it first
+              seeded (if (and (empty? current-hist) old-page-id)
+                       [old-page-id]
+                       current-hist)
+              seeded-idx (if (and (empty? current-hist) old-page-id)
+                           0
+                           current-idx)
+              ;; Truncate forward history (keep up to current index + 1)
+              truncated (if (>= seeded-idx 0)
+                          (subvec seeded 0 (inc seeded-idx))
+                          seeded)
+              ;; Add new page (skip if same as last page after seeding)
+              new-hist (if (= new-page-id (last truncated))
+                         truncated
+                         (conj truncated new-page-id))
+              ;; Cap at max-history (drop oldest)
+              capped-hist (if (> (count new-hist) max-history)
+                            (vec (drop (- (count new-hist) max-history) new-hist))
+                            new-hist)
+              ;; Calculate new index
+              new-idx (dec (count capped-hist))]
+          (swap-view-state! assoc-in [:ui :history] capped-hist)
+          (swap-view-state! assoc-in [:ui :history-index] new-idx))))))
+
+(defn navigate-back!
+  "Navigate back in history. Returns the page ID to switch to, or nil if can't go back."
+  []
+  (when (can-go-back?)
+    (let [new-idx (dec (history-index))]
+      (swap-view-state! assoc-in [:ui :history-index] new-idx)
+      (nth (history) new-idx))))
+
+(defn navigate-forward!
+  "Navigate forward in history. Returns the page ID to switch to, or nil if can't go forward."
+  []
+  (when (can-go-forward?)
+    (let [new-idx (inc (history-index))]
+      (swap-view-state! assoc-in [:ui :history-index] new-idx)
+      (nth (history) new-idx))))
+
+(defn clear-history!
+  "Clear navigation history."
+  []
+  (swap-view-state! assoc-in [:ui :history] [])
+  (swap-view-state! assoc-in [:ui :history-index] -1))
 
