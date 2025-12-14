@@ -655,7 +655,7 @@
      (when-not checking?
        [:div.main-content
         {:style {:flex "1"
-                 :margin-left (if sidebar-visible? "220px" "20px") ; Offset for fixed sidebar
+                 :margin-left (if sidebar-visible? "260px" "20px") ; Offset for fixed sidebar (240px + 20px gap)
                  :font-family "system-ui, -apple-system, sans-serif"
                  :padding "20px"
                  :max-width "800px"}

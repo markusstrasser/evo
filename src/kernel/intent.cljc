@@ -2,12 +2,12 @@
   "Intent router - all intents compile to core operations.
 
    Design: Unified Intent-to-Ops Pattern
-   - intent->ops: Compiles all intents (structural + session) to core operations
-   - apply-intent: Returns ops for caller to interpret
-   - Session state (selection, edit, cursor) stored as nodes, changed via ops
+   - intent->ops: Compiles all intents to core operations
+   - apply-intent: Returns ops (and optional session-updates) for caller to interpret
+   - Session state lives in a separate view-state atom, updated via :session-updates
 
    This unifies the event handling pipeline through the 3-op kernel.
-   All state changes go through validate/derive, enabling full undo/redo.
+   All DB state changes go through validate/derive, enabling full undo/redo.
 
    Spec-as-Database Pattern:
    - Intents cite Functional Requirements (FRs) via :fr/ids
@@ -16,10 +16,10 @@
 
    Example usage:
      ;; Structural intent (compiles to ops)
-     (apply-intent db {:type :indent :id \"a\"})
+     (apply-intent db session {:type :indent :id \"a\"})
 
-     ;; Session intent (compiles to ops on session nodes)
-     (apply-intent db {:type :select :ids [\"a\" \"b\"]})"
+     ;; Intent with session updates (selection, edit mode, etc.)
+     (apply-intent db session {:type :select :ids [\"a\" \"b\"]})"
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [malli.core :as m]
