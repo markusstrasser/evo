@@ -18,15 +18,42 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Helper to create journal pages for testing
+ * Helper to create journal pages for testing.
+ * By default, adds content so they appear in journals view
+ * (empty journals are hidden except for today's date).
  */
-async function createJournalPages(page, dates) {
+async function createJournalPages(page, dates, { addContent = true } = {}) {
   for (const date of dates) {
+    // Create the page (this navigates to it and focuses the first block)
     await page.evaluate((title) => {
       window.TEST_HELPERS.dispatchIntent({ type: 'create-page', title });
     }, date);
-    // Small delay between page creations
-    await page.waitForTimeout(50);
+    // Wait for page creation
+    await page.waitForTimeout(100);
+
+    // Add content to the first block so the journal shows in the list
+    if (addContent) {
+      await page.evaluate((date) => {
+        // Get the current session to find the new page
+        const session = window.TEST_HELPERS.getSession();
+        const pageId = session?.ui?.['current-page'];
+        if (pageId) {
+          const db = window.TEST_HELPERS.getDb();
+          // clj->js converts keywords to strings
+          const children = db?.['children-by-parent']?.[pageId] || [];
+          const firstBlockId = children[0];
+          if (firstBlockId) {
+            // Use dispatchIntent for proper DB update
+            window.TEST_HELPERS.dispatchIntent({
+              type: 'update-content',
+              'block-id': firstBlockId,
+              text: `Entry for ${date}`
+            });
+          }
+        }
+      }, date);
+      await page.waitForTimeout(100);
+    }
   }
   // Wait for UI to fully update
   await page.waitForTimeout(200);
@@ -133,7 +160,18 @@ test.describe('Journals View', () => {
     });
 
     test('shows helpful hint for journals without content', async ({ page }) => {
-      await createJournalPages(page, ['Dec 14th, 2025']);
+      // Get today's date in Logseq format to ensure it shows even when empty
+      const today = await page.evaluate(() => {
+        const d = new Date();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = d.getDate();
+        const suffix = [11, 12, 13].includes(day % 100) ? 'th' :
+                       { 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] || 'th';
+        return `${months[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
+      });
+
+      // Create today's journal WITHOUT content (only today shows when empty)
+      await createJournalPages(page, [today], { addContent: false });
       await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
 
       // A journal without content shows "Click to add entries" hint
