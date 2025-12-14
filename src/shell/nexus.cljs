@@ -14,7 +14,8 @@
    Dev observability:
      window.__nexusLog = [{:action ... :intent ... :timestamp ...}]"
   (:require [nexus.registry :as nxr]
-            [shell.executor :as executor]))
+            [shell.executor :as executor]
+            [utils.cursor-boundaries :as bounds]))
 
 ;; ── Effects ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,31 @@
   "Placeholder: Selection direction (:forward/:backward)."
   [{:keys [dispatch-data]}]
   (:direction dispatch-data))
+
+(defn event-cursor-boundaries
+  "Placeholder: Pre-computed cursor boundaries from DOM.
+
+   Returns boundary state map:
+   {:at-start?      bool - cursor at position 0
+    :at-end?        bool - cursor at end of text
+    :first-row?     bool - cursor on first visual row
+    :last-row?      bool - cursor on last visual row
+    :has-selection? bool - text is selected
+    :cursor-pos     int  - current cursor offset
+    :is-composing?  bool - IME composition active
+    :text-content   str  - full text content
+    :text-length    int} - text length
+
+   Computed from DOM element in dispatch-data, or passed directly
+   if already computed by component handler."
+  [{:keys [dispatch-data]}]
+  (or
+   ;; Already computed by component (preferred)
+   (:cursor-bounds dispatch-data)
+   ;; Compute from target element
+   (when-let [e (:dom-event dispatch-data)]
+     (when-let [target (.-target e)]
+       (bounds/boundary-state target e)))))
 
 ;; ── Actions ───────────────────────────────────────────────────────────────────
 
@@ -166,6 +192,7 @@
   (nxr/register-placeholder! :event.target/value event-target-value)
   (nxr/register-placeholder! :event/block-id event-block-id)
   (nxr/register-placeholder! :event/direction event-direction)
+  (nxr/register-placeholder! :event.cursor/boundaries event-cursor-boundaries)
 
   ;; Actions
   (nxr/register-action! :editing/navigate-up navigate-up)

@@ -44,7 +44,8 @@
             [components.quick-switcher :as quick-switcher]
             [components.notification :as notification]
             [components.journals :as journals]
-            [utils.journal :as journal]))
+            [utils.journal :as journal]
+            [utils.cursor-boundaries :as cursor-bounds]))
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
@@ -880,6 +881,10 @@
 
   ;; Initialize Nexus action pipeline
   (nexus/init!)
+
+  ;; Initialize IME composition tracking for CJK/emoji input safety
+  ;; Tracks compositionstart/compositionend at document level
+  (cursor-bounds/setup-composition-tracking!)
 
   ;; Load persisted favorites and recents from localStorage
   (vs/load-persisted-state!)
