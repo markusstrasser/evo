@@ -1,9 +1,13 @@
 (ns components.sidebar
   "Sidebar component for page navigation.
 
-   Design: Editorial refinement - clean hierarchy, subtle depth,
-   sophisticated micro-interactions. Inspired by Logseq's left sidebar
-   but with distinctive character."
+   Design: Logseq-inspired left sidebar with:
+   - Favorites (star icon affordance)
+   - Recent pages (auto-populated on visits)
+   - Journals (date-formatted pages)
+   - All Pages (remaining valid pages)
+
+   Invalid pages (Untitled, blank) are filtered from display."
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
             [clojure.string :as str]))
@@ -18,12 +22,13 @@
     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
         (re-matches #"\d{4}-\d{2}-\d{2}" title))))
 
-(defn- untitled?
-  "Check if page has default untitled name."
+(defn- valid-page?
+  "Check if page has a valid, displayable title.
+   Filters out Untitled and blank pages."
   [title]
-  (or (nil? title)
-      (str/blank? title)
-      (= title "Untitled")))
+  (and (some? title)
+       (not (str/blank? title))
+       (not= title "Untitled")))
 
 ;; ── Icons (inline SVG for crisp rendering) ───────────────────────────────────
 
@@ -50,109 +55,113 @@
       :plus [:svg props
              [:line {:x1 "12" :y1 "5" :x2 "12" :y2 "19"}]
              [:line {:x1 "5" :y1 "12" :x2 "19" :y2 "12"}]]
-      :more [:svg props
-             [:circle {:cx "12" :cy "12" :r "1"}]
-             [:circle {:cx "19" :cy "12" :r "1"}]
-             [:circle {:cx "5" :cy "12" :r "1"}]]
       :trash [:svg props
               [:polyline {:points "3 6 5 6 21 6"}]
               [:path {:d "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"}]]
-      :sidebar [:svg props
-                [:rect {:x "3" :y "3" :width "18" :height "18" :rx "2" :ry "2"}]
-                [:line {:x1 "9" :y1 "3" :x2 "9" :y2 "21"}]]
       :x [:svg props
           [:line {:x1 "18" :y1 "6" :x2 "6" :y2 "18"}]
           [:line {:x1 "6" :y1 "6" :x2 "18" :y2 "18"}]]
+      :star [:svg props
+             [:polygon {:points "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]]
+      :star-filled [:svg (assoc props :fill "currentColor")
+                    [:polygon {:points "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]]
+      :clock [:svg props
+              [:circle {:cx "12" :cy "12" :r "10"}]
+              [:polyline {:points "12 6 12 12 16 14"}]]
+      :chevron-down [:svg props
+                     [:polyline {:points "6 9 12 15 18 9"}]]
+      :chevron-right [:svg props
+                      [:polyline {:points "9 18 15 12 9 6"}]]
       ;; Default fallback
       [:svg props [:circle {:cx "12" :cy "12" :r "4"}]])))
 
-;; ── Page Menu (dropdown on hover) ────────────────────────────────────────────
+;; ── Page Actions ─────────────────────────────────────────────────────────────
 
-(defn- PageMenu
-  "Dropdown menu for page actions. Appears on hover."
-  [{:keys [page-id title db on-intent visible?]}]
-  (when visible?
-    (let [descendants (q/descendants-of db page-id)]
-      [:div.page-menu
-       {:style {:position "absolute"
-                :right "8px"
-                :top "50%"
-                :transform "translateY(-50%)"
-                :z-index 10}}
-       ;; Menu trigger (three dots)
-       [:button.page-menu-trigger
-        {:style {:display "flex"
-                 :align-items "center"
-                 :justify-content "center"
-                 :width "24px"
-                 :height "24px"
-                 :padding "0"
-                 :background "var(--color-surface)"
-                 :border "1px solid var(--color-border)"
-                 :border-radius "var(--radius-sm)"
-                 :cursor "pointer"
-                 :color "var(--color-ink-faint)"
-                 :transition "all 0.15s ease"
-                 :box-shadow "0 1px 2px rgba(0,0,0,0.05)"}
-         :on {:click (fn [e]
-                       (.preventDefault e)
-                       (.stopPropagation e)
-                       ;; Delete with undo toast
-                       (when on-intent
-                         (on-intent {:type :delete-page :page-id page-id}))
-                       (vs/show-notification!
-                        (str "Deleted \"" (or title "Untitled") "\"")
-                        {:type :success
-                         :action {:label "Undo"
-                                  :on-click (fn []
-                                              (when on-intent
-                                                (on-intent {:type :restore-page
-                                                            :page-id page-id
-                                                            :descendants descendants
-                                                            :switch-to? true})))}}))}}
-        (Icon {:name :trash :size 14})]])))
+(defn- StarButton
+  "Star icon button for favoriting a page."
+  [{:keys [page-id is-favorite?]}]
+  [:button.star-button
+   {:class (when is-favorite? "active")
+    :title (if is-favorite? "Remove from favorites" "Add to favorites")
+    :on {:click (fn [e]
+                  (.preventDefault e)
+                  (.stopPropagation e)
+                  (vs/toggle-favorite! page-id))}}
+   (Icon {:name (if is-favorite? :star-filled :star) :size 12})])
+
+(defn- DeleteButton
+  "Delete button for removing a page."
+  [{:keys [page-id title db on-intent]}]
+  (let [descendants (q/descendants-of db page-id)]
+    [:button.delete-button
+     {:title "Delete page"
+      :on {:click (fn [e]
+                    (.preventDefault e)
+                    (.stopPropagation e)
+                    (when on-intent
+                      (on-intent {:type :delete-page :page-id page-id}))
+                    ;; Remove from favorites if favorited
+                    (vs/remove-favorite! page-id)
+                    (vs/show-notification!
+                     (str "Deleted \"" (or title "page") "\"")
+                     {:type :success
+                      :action {:label "Undo"
+                               :on-click (fn []
+                                           (when on-intent
+                                             (on-intent {:type :restore-page
+                                                         :page-id page-id
+                                                         :descendants descendants
+                                                         :switch-to? true})))}}))}}
+     (Icon {:name :trash :size 12})]))
 
 ;; ── Page Item ────────────────────────────────────────────────────────────────
 
 (defn- PageItem
   "Single page item in sidebar list."
-  [{:keys [db page-id title is-current? is-journal? on-intent]}]
-  (let [display-title (if (untitled? title) "Untitled" title)]
-    [:div.sidebar-page-item
-     {:class [(when is-current? "active")
-              (when is-journal? "journal")]
-      :on {:click (fn [e]
-                    (.preventDefault e)
-                    (when on-intent
-                      (on-intent {:type :switch-page :page-id page-id})))}}
-     ;; Icon
-     [:span.page-icon
-      (Icon {:name (if is-journal? :calendar :file) :size 14})]
-     ;; Title
-     [:span.page-title
-      {:class (when (untitled? title) "untitled")}
-      display-title]
-     ;; Menu (shown on hover via CSS)
-     (PageMenu {:page-id page-id
-                :title title
-                :db db
-                :on-intent on-intent
-                :visible? true})]))
+  [{:keys [db page-id title is-current? is-journal? is-favorite? on-intent show-star?]}]
+  [:div.sidebar-page-item
+   {:class [(when is-current? "active")
+            (when is-journal? "journal")]
+    :on {:click (fn [e]
+                  (.preventDefault e)
+                  ;; Track in recents when clicking
+                  (vs/add-to-recents! page-id)
+                  (when on-intent
+                    (on-intent {:type :switch-page :page-id page-id})))}}
+   ;; Title (no icon - cleaner UI)
+   [:span.page-title title]
+   ;; Actions (shown on hover via CSS)
+   [:span.page-actions
+    (when show-star?
+      (StarButton {:page-id page-id :is-favorite? is-favorite?}))
+    (DeleteButton {:page-id page-id :title title :db db :on-intent on-intent})]])
 
-;; ── Section Header ───────────────────────────────────────────────────────────
+;; ── Collapsible Section ──────────────────────────────────────────────────────
 
-(defn- SectionHeader
-  "Section header with optional action button."
-  [{:keys [title action-label on-action]}]
-  [:div.sidebar-section-header
-   [:span.section-title title]
-   (when action-label
-     [:button.section-action
-      {:on {:click (fn [e]
-                     (.preventDefault e)
-                     (when on-action (on-action)))}}
-      (Icon {:name :plus :size 12})
-      [:span action-label]])])
+(defn- CollapsibleSection
+  "Collapsible section with header, count badge, and optional action."
+  [{:keys [title count collapsed? on-toggle on-action action-label children]}]
+  [:div.sidebar-section {:class (when collapsed? "collapsed")}
+   ;; Header (no icons - cleaner UI)
+   [:div.sidebar-section-header
+    {:on {:click (fn [e]
+                   (.preventDefault e)
+                   (when on-toggle (on-toggle)))}}
+    [:span.section-chevron
+     (Icon {:name (if collapsed? :chevron-right :chevron-down) :size 12})]
+    [:span.section-title title]
+    (when (and count (pos? count))
+      [:span.section-count count])
+    (when action-label
+      [:button.section-action
+       {:on {:click (fn [e]
+                      (.preventDefault e)
+                      (.stopPropagation e)
+                      (when on-action (on-action)))}}
+       (Icon {:name :plus :size 12})])]
+   ;; Content (hidden when collapsed)
+   (when-not collapsed?
+     [:div.sidebar-section-content children])])
 
 ;; ── Storage Section ──────────────────────────────────────────────────────────
 
@@ -180,30 +189,73 @@
       (Icon {:name :folder-open :size 16})
       [:span (if loading? "Loading..." "Open Folder")]])])
 
+;; ── Navigation Item ──────────────────────────────────────────────────────────
+
+(defn- NavItem
+  "Single navigation item (like Journals link in Logseq)."
+  [{:keys [icon label on-click]}]
+  [:div.sidebar-nav-item
+   {:on {:click (fn [e]
+                  (.preventDefault e)
+                  (when on-click (on-click)))}}
+   [:span.nav-icon (Icon {:name icon :size 16})]
+   [:span.nav-label label]])
+
 ;; ── Main Sidebar ─────────────────────────────────────────────────────────────
 
 (defn Sidebar
-  "Left sidebar for page navigation.
+  "Left sidebar for page navigation (Logseq-style).
 
-   Features:
-   - Folder connection status
-   - Page list with journal detection
-   - Hover-reveal actions (Logseq-style)
-   - Toast undo for deletions"
+   Structure:
+   - Navigation: Journals link (goes to today's journal)
+   - Favorites: User-starred pages (star icon affordance)
+   - Recents: Auto-populated on page visits (excludes journals)
+   - Pages: All regular pages
+
+   LOGSEQ PARITY:
+   - Journals is a nav link, not a page list
+   - Recents exclude journal pages
+   - Invalid pages (Untitled, blank) are filtered"
   [{:keys [db on-intent on-pick-folder on-clear-folder storage-status]}]
   (let [all-pages (q/all-pages db)
         current-page-id (vs/current-page)
         folder-name (:folder-name storage-status)
         loading? (:loading? storage-status)
+        favorites-set (vs/favorites)
+        recents-list (vs/recents)
+
+        ;; Build page metadata, filtering invalid pages
+        pages-with-meta (->> all-pages
+                             (map (fn [pid]
+                                    (let [title (q/page-title db pid)]
+                                      {:id pid
+                                       :title title
+                                       :journal? (journal-page? title)
+                                       :favorite? (contains? favorites-set pid)
+                                       :valid? (valid-page? title)})))
+                             (filter :valid?))
+
         ;; Separate journals from regular pages
-        pages-with-meta (map (fn [pid]
-                               (let [title (q/page-title db pid)]
-                                 {:id pid
-                                  :title title
-                                  :journal? (journal-page? title)}))
-                             all-pages)
-        journals (filter :journal? pages-with-meta)
-        regular-pages (remove :journal? pages-with-meta)]
+        journal-pages (filter :journal? pages-with-meta)
+        regular-pages (remove :journal? pages-with-meta)
+
+        ;; Group regular pages by type (LOGSEQ: recents exclude journals)
+        favorites (->> regular-pages
+                       (filter :favorite?)
+                       (sort-by :title))
+        recents (->> recents-list
+                     (keep (fn [pid]
+                             (some #(when (= (:id %) pid) %) regular-pages)))
+                     (remove :favorite?) ; Don't duplicate favorites
+                     (take 10))
+        other-pages (->> regular-pages
+                         (remove :favorite?)
+                         (remove (fn [p] (some #(= (:id p) (:id %)) recents)))
+                         (sort-by :title))
+
+        ;; Find today's journal for nav link
+        today-journal (first (sort-by :title #(compare %2 %1) journal-pages))]
+
     [:nav.sidebar {:aria-label "Page navigation"}
 
      ;; Storage section
@@ -212,40 +264,79 @@
                       :on-pick-folder on-pick-folder
                       :on-clear-folder on-clear-folder})
 
-     ;; Pages section
-     (SectionHeader {:title "Pages"
-                     :action-label "New"
-                     :on-action (fn []
-                                  (let [title (js/prompt "Page title:")]
-                                    (when (and title (not= title ""))
-                                      (when on-intent
-                                        (on-intent {:type :create-page :title title})))))})
+     ;; Journals link - opens journals view
+     [:div.sidebar-nav
+      [:div.sidebar-nav-item
+       {:class (when (vs/journals-view?) "active")
+        :on {:click (fn [e]
+                      (.preventDefault e)
+                      (vs/toggle-journals-view!))}}
+       [:span.nav-label "Journals"]
+       (when (seq journal-pages)
+         [:span.nav-count (count journal-pages)])]]
 
-     [:div.sidebar-page-list
-      (if (seq all-pages)
-        ;; Show journals first, then regular pages
-        [:<>
-         ;; Journal pages (if any)
-         (when (seq journals)
-           [:<>
-            (for [{:keys [id title]} journals]
-              ^{:key id}
-              [PageItem {:db db
-                         :page-id id
-                         :title title
-                         :is-current? (= id current-page-id)
-                         :is-journal? true
-                         :on-intent on-intent}])])
-         ;; Regular pages
-         (for [{:keys [id title]} regular-pages]
-           ^{:key id}
-           [PageItem {:db db
-                      :page-id id
-                      :title title
-                      :is-current? (= id current-page-id)
-                      :is-journal? false
-                      :on-intent on-intent}])]
-        ;; Empty state
-        [:div.sidebar-empty
-         [:p "No pages yet"]
-         [:p.hint "Create your first page above"]])]]))
+     ;; Favorites section
+     (when (seq favorites)
+       (CollapsibleSection
+        {:title "Favorites"
+         :count (count favorites)
+         :collapsed? false
+         :children
+         (into [:div.page-list]
+               (for [{:keys [id title]} favorites]
+                 ^{:key id}
+                 (PageItem {:db db
+                            :page-id id
+                            :title title
+                            :is-current? (= id current-page-id)
+                            :is-journal? false
+                            :is-favorite? true
+                            :show-star? true
+                            :on-intent on-intent})))}))
+
+     ;; Recents section (LOGSEQ: excludes journals)
+     (when (seq recents)
+       (CollapsibleSection
+        {:title "Recents"
+         :count (count recents)
+         :collapsed? false
+         :children
+         (into [:div.page-list]
+               (for [{:keys [id title favorite?]} recents]
+                 ^{:key id}
+                 (PageItem {:db db
+                            :page-id id
+                            :title title
+                            :is-current? (= id current-page-id)
+                            :is-journal? false
+                            :is-favorite? favorite?
+                            :show-star? true
+                            :on-intent on-intent})))}))
+
+     ;; All Pages section
+     (CollapsibleSection
+      {:title "Pages"
+       :count (count other-pages)
+       :collapsed? false
+       :on-action (fn []
+                    (let [title (js/prompt "Page title:")]
+                      (when (and title (not (str/blank? title)) (not= title "Untitled"))
+                        (when on-intent
+                          (on-intent {:type :create-page :title title})))))
+       :action-label "+"
+       :children
+       (if (seq other-pages)
+         (into [:div.page-list]
+               (for [{:keys [id title favorite?]} other-pages]
+                 ^{:key id}
+                 (PageItem {:db db
+                            :page-id id
+                            :title title
+                            :is-current? (= id current-page-id)
+                            :is-journal? false
+                            :is-favorite? favorite?
+                            :show-star? true
+                            :on-intent on-intent})))
+         [:div.sidebar-empty
+          [:p "No pages yet"]
+          [:p.hint "Click + to create a page"]])})]))

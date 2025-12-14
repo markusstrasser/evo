@@ -46,12 +46,15 @@
         :cursor-position nil
         :keep-edit-on-blur false
         :document-view? false
+        :journals-view? false ; Show all journals stacked (newest first)
         :drag nil
         :sidebar-visible? true ; Left sidebar (pages) visibility
         :hotkeys-visible? false ; Hotkeys reference panel visibility
         :autocomplete nil ; Autocomplete popup state (see autocomplete-show!)
         :quick-switcher nil ; Quick switcher state {:query "" :selected-idx 0}
-        :notification nil} ; Toast notification {:message :type :action :timeout-id}
+        :notification nil ; Toast notification {:message :type :action :timeout-id}
+        :favorites #{} ; Set of favorited page IDs (star icon in sidebar)
+        :recents []} ; Vector of recently visited page IDs (most recent first)
    :sidebar {:right []}})
 
 (defonce !view-state (atom default-view-state))
@@ -142,6 +145,11 @@
   "Check if the hotkeys reference panel is visible."
   []
   (get-in @!view-state [:ui :hotkeys-visible?] false))
+
+(defn journals-view?
+  "Check if journals view is active (showing all journals stacked)."
+  []
+  (get-in @!view-state [:ui :journals-view?] false))
 
 ;; ── View State Mutation API ─────────────────────────────────────────────────────
 
@@ -263,6 +271,16 @@
   "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
   []
   (swap-view-state! update-in [:ui :hotkeys-visible?] not))
+
+(defn toggle-journals-view!
+  "Toggle journals view (shows all journals stacked, newest first)."
+  []
+  (swap-view-state! update-in [:ui :journals-view?] not))
+
+(defn set-journals-view!
+  "Set journals view state explicitly."
+  [active?]
+  (swap-view-state! assoc-in [:ui :journals-view?] active?))
 
 ;; ── Drag State API ────────────────────────────────────────────────────────────
 
@@ -524,4 +542,115 @@
                              action (assoc :action action)
                              timeout-id (assoc :timeout-id timeout-id))]
      (swap-view-state! assoc-in [:ui :notification] notification-data))))
+
+;; ── LocalStorage Persistence ─────────────────────────────────────────────────
+;; Persist favorites and recents to localStorage for cross-session continuity.
+
+(def ^:const storage-key-favorites "evo:favorites")
+(def ^:const storage-key-recents "evo:recents")
+(def ^:const max-recents 15)
+
+(defn- save-to-storage!
+  "Save value to localStorage as JSON."
+  [key value]
+  (try
+    (.setItem js/localStorage key (js/JSON.stringify (clj->js value)))
+    (catch :default _e nil)))
+
+(defn- load-from-storage
+  "Load value from localStorage, parsing JSON."
+  [key default]
+  (try
+    (if-let [stored (.getItem js/localStorage key)]
+      (js->clj (js/JSON.parse stored) :keywordize-keys false)
+      default)
+    (catch :default _e default)))
+
+(defn load-persisted-state!
+  "Load favorites and recents from localStorage into view state.
+   Call this once at app startup."
+  []
+  (let [favorites (set (load-from-storage storage-key-favorites []))
+        recents (vec (load-from-storage storage-key-recents []))]
+    (swap-view-state! assoc-in [:ui :favorites] favorites)
+    (swap-view-state! assoc-in [:ui :recents] recents)))
+
+;; ── Favorites API (Logseq-style star icon) ──────────────────────────────────
+;; Favorites are page IDs that user explicitly starred.
+;; Persisted to localStorage for cross-session continuity.
+
+(defn favorites
+  "Get set of favorited page IDs."
+  []
+  (get-in @!view-state [:ui :favorites] #{}))
+
+(defn favorite?
+  "Check if page is favorited."
+  [page-id]
+  (contains? (favorites) page-id))
+
+(defn- persist-favorites!
+  "Save current favorites to localStorage."
+  []
+  (save-to-storage! storage-key-favorites (vec (favorites))))
+
+(defn toggle-favorite!
+  "Toggle favorite status for a page. Returns new favorite status."
+  [page-id]
+  (let [currently-fav? (favorite? page-id)]
+    (if currently-fav?
+      (swap-view-state! update-in [:ui :favorites] disj page-id)
+      (swap-view-state! update-in [:ui :favorites] conj page-id))
+    (persist-favorites!)
+    (not currently-fav?)))
+
+(defn add-favorite!
+  "Add page to favorites."
+  [page-id]
+  (swap-view-state! update-in [:ui :favorites] conj page-id)
+  (persist-favorites!))
+
+(defn remove-favorite!
+  "Remove page from favorites."
+  [page-id]
+  (swap-view-state! update-in [:ui :favorites] disj page-id)
+  (persist-favorites!))
+
+;; ── Recents API (auto-populated on page visits) ─────────────────────────────
+;; Recent pages are tracked automatically when user visits a page.
+;; LOGSEQ PARITY: Clicking an existing recent does NOT move it to top.
+;; Newest items appear at the END (appended), not front.
+;; Capped at max-recents entries. Persisted to localStorage.
+
+(defn recents
+  "Get vector of recently visited page IDs."
+  []
+  (get-in @!view-state [:ui :recents] []))
+
+(defn- persist-recents!
+  "Save current recents to localStorage."
+  []
+  (save-to-storage! storage-key-recents (recents)))
+
+(defn add-to-recents!
+  "Add page to recent visits. Called when switching pages.
+   LOGSEQ PARITY: If page already in list, position is NOT changed.
+   New pages are appended to end. Caps at max-recents."
+  [page-id]
+  (when page-id
+    (let [current-recents (recents)]
+      ;; Only add if not already in list (Logseq behavior)
+      (when-not (some #{page-id} current-recents)
+        (swap-view-state! update-in [:ui :recents]
+                          (fn [recents]
+                            (->> (conj (vec recents) page-id)
+                                 (take-last max-recents)
+                                 vec)))
+        (persist-recents!)))))
+
+(defn clear-recents!
+  "Clear all recent pages."
+  []
+  (swap-view-state! assoc-in [:ui :recents] [])
+  (persist-recents!))
 
