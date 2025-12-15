@@ -16,7 +16,8 @@
    :output-dir "public/js/blocks-ui"
    :asset-path "/js/blocks-ui"
    :modules {:main {:init-fn shell.editor/main}}
-   :devtools {:reload-strategy :full}  ;; Force full page reload to prevent stale state
+   :devtools {:reload-strategy :full   ;; Force full page reload to prevent stale state
+              :watch-dir "public"}     ;; Hot-reload CSS when output.css changes
    :preloads [debug]}
 
   :test
