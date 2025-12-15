@@ -1180,7 +1180,7 @@
      Page Title (editable, matches journal-title style)
      ───────────────────────────────────────────────────────────────────────── */
   .page-title-header {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-2);
   }
 
   h1.page-title-display {
@@ -1729,15 +1729,15 @@
   .journals-view {
     max-width: 800px;
     margin: 0 auto;
-    padding: var(--space-6);
+    padding: var(--space-3);
   }
 
   .journals-header {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-    padding-bottom: var(--space-4);
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-2);
     border-bottom: 1px solid oklch(90% 0.01 250);
   }
 
@@ -1777,10 +1777,10 @@
   }
 
   .journal-item {
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-2) var(--space-2);
     border-bottom: 1px solid oklch(92% 0.01 250);
     border-radius: var(--radius-lg);
-    margin: 0 calc(-1 * var(--space-4));
+    margin: 0 calc(-1 * var(--space-2));
     transition: background 0.15s ease, box-shadow 0.15s ease;
 
     &:last-child,
@@ -1811,7 +1811,7 @@
     font-size: var(--text-lg);
     font-weight: 600;
     color: oklch(45% 0.15 250);
-    margin: 0 0 var(--space-3) 0;
+    margin: 0 0 var(--space-1) 0;
     transition: color 0.15s ease;
   }
 
