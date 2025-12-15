@@ -376,21 +376,20 @@
                                            editable-el)
                                       (try
                                         ;; Use text-selection utilities for correct offset calculation
-                                        (when-let [pos-info (text-sel/get-position editable-el)]
-                                          (let [{:keys [position extent]} pos-info]
-                                            (when (pos? extent) ;; Only if there's actual selection
-                                              ;; Sync DOM text to DB first (text might only be in buffer)
-                                              (let [dom-text (.-textContent editable-el)]
-                                                (executor/apply-intent! !db
-                                                                        {:type :update-content
-                                                                         :block-id editing?
-                                                                         :text dom-text}
-                                                                        "FORMAT-SYNC")
-                                                ;; Return enriched intent with correct offsets
-                                                (merge intent-with-id
-                                                       {:block-id editing?
-                                                        :start position
-                                                        :end (+ position extent)})))))
+                                        (let [pos-info (text-sel/get-position editable-el)]
+                                          (when pos-info
+                                            (let [{:keys [position extent]} pos-info]
+                                              (when (pos? extent) ;; Only if there's actual selection
+                                                ;; Sync DOM text to DB first (text might only be in buffer)
+                                                (let [dom-text (.-textContent editable-el)]
+                                                  (handle-intent {:type :update-content
+                                                                  :block-id editing?
+                                                                  :text dom-text})
+                                                  ;; Return enriched intent with correct offsets
+                                                  (merge intent-with-id
+                                                         {:block-id editing?
+                                                          :start position
+                                                          :end (+ position extent)}))))))
                                         (catch js/Error e
                                           (js/console.error "Selection read failed:" e)
                                           nil)) ;; Return nil if enrichment fails
@@ -1009,8 +1008,15 @@
                  (js/requestAnimationFrame
                   (fn []
                     (when-let [editable-el (.querySelector js/document
-                                                           (str "[data-block-id='" block-id "'].content-edit"))]
+                                                           (str "[data-block-id='" block-id "'] .block-content"))]
                       (try
+                        ;; CRITICAL: Update DOM text from DB BEFORE setting selection
+                        ;; This ensures formatting changes (e.g., **bold**) are visible in contenteditable
+                        ;; Without this, blur handler would commit stale DOM text back to DB
+                        (let [db @!db
+                              db-text (get-in db [:nodes block-id :props :text] "")]
+                          (when (not= (.-textContent editable-el) db-text)
+                            (set! (.-textContent editable-el) db-text)))
                         ;; Use make-range for correct multi-node DOM handling
                         (let [range (text-sel/make-range editable-el start end)]
                           (text-sel/set-current-range! range))
