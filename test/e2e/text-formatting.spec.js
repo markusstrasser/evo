@@ -103,23 +103,40 @@ test.describe('Inline Text Formatting', () => {
   });
 
   test.describe('Italic Formatting (Cmd+I)', () => {
-    test('wraps selected text with __ markers', async ({ page }) => {
-      const result = await setTextSelectAndFormat(page, 'hello world', 0, 5, '__');
-      expect(result).toBe('__hello__ world');
+    test('wraps selected text with * markers (Logseq parity)', async ({ page }) => {
+      const result = await setTextSelectAndFormat(page, 'hello world', 0, 5, '*');
+      expect(result).toBe('*hello* world');
     });
 
     test('italic also trims whitespace', async ({ page }) => {
       // Select "  something  " with surrounding whitespace
-      const result = await setTextSelectAndFormat(page, 'say  something  here', 3, 15, '__');
-      expect(result).toBe('say  __something__  here');
+      const result = await setTextSelectAndFormat(page, 'say  something  here', 3, 15, '*');
+      expect(result).toBe('say  *something*  here');
+    });
+  });
+
+  test.describe('Highlight Formatting (Cmd+Shift+H)', () => {
+    test('wraps selected text with == markers (Logseq parity)', async ({ page }) => {
+      const result = await setTextSelectAndFormat(page, 'highlight this', 0, 9, '==');
+      expect(result).toBe('==highlight== this');
+    });
+  });
+
+  test.describe('Strikethrough Formatting (Cmd+Shift+S)', () => {
+    test('wraps selected text with ~~ markers', async ({ page }) => {
+      const result = await setTextSelectAndFormat(page, 'strike this', 0, 6, '~~');
+      expect(result).toBe('~~strike~~ this');
     });
   });
 
   test.describe('Keyboard Shortcut Integration', () => {
-    test('Cmd+B with DOM selection formats text', async ({ page }) => {
-      // Type text directly into contenteditable (so DOM and DB are in sync)
+    /**
+     * Helper to type text, select a range, and press a key combo
+     */
+    async function typeSelectAndPress(page, text, selectStart, selectEnd, keyCombo) {
+      // Type text directly into contenteditable
       await page.click('[contenteditable="true"]');
-      await page.keyboard.type('keyboard test');
+      await page.keyboard.type(text);
       await wait(page, 100);
 
       // Commit text to DB explicitly
@@ -135,32 +152,50 @@ test.describe('Inline Text Formatting', () => {
       }, blockId);
       await wait(page);
 
-      // Create a selection for "keyboard"
-      await page.evaluate(() => {
+      // Create selection
+      await page.evaluate(({ start, end }) => {
         const editable = document.querySelector('[contenteditable="true"]');
         if (editable && editable.firstChild) {
           editable.focus();
           const range = document.createRange();
-          range.setStart(editable.firstChild, 0);
-          range.setEnd(editable.firstChild, 8); // "keyboard"
+          range.setStart(editable.firstChild, start);
+          range.setEnd(editable.firstChild, end);
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
         }
-      });
+      }, { start: selectStart, end: selectEnd });
       await wait(page);
 
-      // Press Cmd+B
-      await page.keyboard.press('Meta+b');
+      // Press the key combo
+      await page.keyboard.press(keyCombo);
       await wait(page, 200);
 
-      // Check result
-      const result = await page.evaluate((bid) => {
+      // Get result from DB
+      return await page.evaluate((bid) => {
         const db = window.DEBUG.getDb();
         return db?.nodes?.[bid]?.props?.text;
       }, blockId);
+    }
 
+    test('Cmd+B with DOM selection formats text as bold', async ({ page }) => {
+      const result = await typeSelectAndPress(page, 'keyboard test', 0, 8, 'Meta+b');
       expect(result).toBe('**keyboard** test');
+    });
+
+    test('Cmd+I with DOM selection formats text as italic', async ({ page }) => {
+      const result = await typeSelectAndPress(page, 'italic word', 0, 6, 'Meta+i');
+      expect(result).toBe('*italic* word');
+    });
+
+    test('Cmd+Shift+H with DOM selection formats text as highlight', async ({ page }) => {
+      const result = await typeSelectAndPress(page, 'highlight me', 0, 9, 'Meta+Shift+h');
+      expect(result).toBe('==highlight== me');
+    });
+
+    test('Cmd+Shift+S with DOM selection formats text as strikethrough', async ({ page }) => {
+      const result = await typeSelectAndPress(page, 'strike out', 0, 6, 'Meta+Shift+s');
+      expect(result).toBe('~~strike~~ out');
     });
   });
 });
