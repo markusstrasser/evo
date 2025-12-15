@@ -16,6 +16,7 @@
             [utils.text-selection :as text-sel]
             [utils.cursor-boundaries :as bounds]
             [utils.dom :as dom]
+            [util.html-to-markdown :as html-md]
             [shell.view-state :as vs]
             [shell.storage :as storage]
             [clojure.string :as str]))
@@ -1155,6 +1156,7 @@
            ;; For multi-block paste (markdown/blank lines), let the intent handle it.
            ;; INTERNAL FORMAT: When pasting from our own copy/cut, use clipboard-blocks
            ;; which preserves exact hierarchy (siblings stay siblings).
+           ;; HTML CONVERSION: If text/html is richer than text/plain, convert via turndown.
            :paste (fn [e]
                     (.preventDefault e)
                     (let [target (.-target e)
@@ -1172,13 +1174,18 @@
                         (upload-and-insert-images! image-files target selection-start block-id on-intent)
 
                         ;; TEXT PASTE: Fall through to existing text handling
-                        (let [pasted-text (.getData clipboard-data "text/plain")
+                        (let [plain-text (.getData clipboard-data "text/plain")
+                              html-text (.getData clipboard-data "text/html")
+                              ;; HTML CONVERSION: Use converted HTML if it adds formatting value
+                              pasted-text (if (html-md/better-than-plain? html-text plain-text)
+                                            (html-md/convert html-text)
+                                            plain-text)
                               selection-end (max anchor-offset focus-offset)
                               ;; Check if this paste matches our internal clipboard
                               internal-text (vs/clipboard-text)
                               internal-blocks (vs/clipboard-blocks)
                               use-internal? (and (seq internal-blocks)
-                                                 (= pasted-text internal-text))
+                                                 (= plain-text internal-text))
                               ;; Detect multi-block paste (markdown or blank lines)
                               is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
                               has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
