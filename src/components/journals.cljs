@@ -88,15 +88,17 @@
                            (when on-intent
                              (on-intent {:type :switch-page :page-id page-id})))]
     [:div.journal-item
-     {:class [(when is-last? "journal-last")
+     {:replicant/key page-id
+      :class [(when is-last? "journal-last")
               "journal-clickable"]
       :on {:click navigate-to-page}}
      ;; Journal title/date header
      [:h3.journal-title title]
      ;; Journal blocks with proper hierarchy
+     ;; NOTE: Replicant doesn't support React fragments [:<>], use wrapper div
      (if has-any-content?
-       [:div.journal-blocks
-        (into [:<>] (keep #(JournalBlock db % 0) children))]
+       (into [:div.journal-blocks]
+             (keep #(JournalBlock db % 0) children))
        [:div.journal-empty
         [:span.empty-hint "Click to add entries"]])]))
 
@@ -146,7 +148,16 @@
                                      (:is-today? b) 1
                                      ;; Then by date descending (newest first)
                                      :else (compare (:date b) (:date a))))))
-        total (count journal-pages)]
+        total (count journal-pages)
+        ;; Build journal items via function calls (Replicant style, not vector syntax)
+        journal-items (map-indexed
+                       (fn [idx {:keys [id title]}]
+                         (JournalPage {:db db
+                                       :page-id id
+                                       :title title
+                                       :is-last? (= idx (dec total))
+                                       :on-intent on-intent}))
+                       journal-pages)]
 
     [:div.journals-view
      ;; Header with back button
@@ -159,19 +170,9 @@
       [:h2.journals-title "Journals"]
       [:span.journals-count (str total " entries")]]
 
-     ;; Journal pages list - use Replicant VECTOR SYNTAX for components
+     ;; Journal pages list
      (if (seq journal-pages)
-       (into [:div.journals-list]
-             (map-indexed
-              (fn [idx {:keys [id title]}]
-                ;; REPLICANT: Use vector syntax [Component props], not (Component props)
-                ^{:key id}
-                [JournalPage {:db db
-                              :page-id id
-                              :title title
-                              :is-last? (= idx (dec total))
-                              :on-intent on-intent}])
-              journal-pages))
+       (into [:div.journals-list] journal-items)
        [:div.journals-empty
         [:p "No journal pages yet"]
         [:p.hint "Journal pages are date-formatted pages like 'Dec 14th, 2025'"]])]))
