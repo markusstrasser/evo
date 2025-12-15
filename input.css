@@ -325,7 +325,7 @@
   .main-content {
     width: 100%;
     max-width: 1000px;
-    padding: 0;
+    padding: 1rem 1.5rem; /* Vertical spacing + horizontal breathing room */
     container-type: inline-size;
     container-name: main;
   }
@@ -1869,6 +1869,7 @@
   /* ── Backlinks Panel (Editorial style from publishing/Acknowledgements) ─── */
   .backlinks-panel {
     margin-top: var(--space-10);
+    margin-bottom: 1rem; /* Bottom breathing room */
     padding: var(--space-4) var(--space-5);
     border: 1px solid oklch(88% 0.03 279);
     border-left: 3px solid oklch(68% 0.08 279);
