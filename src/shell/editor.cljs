@@ -44,6 +44,7 @@
             [components.quick-switcher :as quick-switcher]
             [components.notification :as notification]
             [components.journals :as journals]
+            [components.all-pages :as all-pages]
             [utils.journal :as journal]
             [utils.cursor-boundaries :as cursor-bounds]))
 
@@ -746,12 +747,9 @@
                                       :page-title page-title
                                       :on-intent handle-intent})]
 
-          ;; No page selected
+;; All Pages view (no page selected)
           :else
-          [:div {:style {:padding "40px"
-                         :text-align "center"
-                         :color "rgb(156, 163, 175)"}}
-           [:p "Select a page from the sidebar to begin"]])
+          (all-pages/AllPagesView {:db db :on-intent handle-intent}))
 
         ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
         ;; Auto-show when ?devtools query param present
