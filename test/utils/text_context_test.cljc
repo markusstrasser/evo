@@ -268,6 +268,29 @@
       (is (= :markup (:type result)))
       (is (= "**" (:marker result)))))
 
+  (testing "Nested page refs - cursor in inner"
+    (let [text "[[outer [[inner]] rest]]"
+          result (ctx/detect-page-ref-at-cursor text 12)] ; Inside "inner"
+      (is (= :page-ref (:type result)))
+      (is (= "inner" (:page-name result)))
+      (is (= 8 (:start result)))
+      (is (= 17 (:end result)))))
+
+  (testing "Nested page refs - cursor in outer after inner"
+    (let [text "[[outer [[inner]] rest]]"
+          result (ctx/detect-page-ref-at-cursor text 20)] ; Inside "rest"
+      (is (= :page-ref (:type result)))
+      (is (= "outer [[inner]] rest" (:page-name result)))
+      (is (= 0 (:start result)))
+      (is (= 24 (:end result)))))
+
+  (testing "Nested page refs - cursor in outer before inner"
+    (let [text "[[outer [[inner]] rest]]"
+          result (ctx/detect-page-ref-at-cursor text 4)] ; Inside "outer"
+      (is (= :page-ref (:type result)))
+      (is (= "outer [[inner]] rest" (:page-name result)))
+      (is (= 0 (:start result)))))
+
   (testing "Adjacent markup regions"
     (let [text "**first****second**"]
       (is (= 0 (:start (ctx/context-at-cursor text 2)))) ; In first

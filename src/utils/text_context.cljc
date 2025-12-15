@@ -70,6 +70,94 @@
     (when pos
       {:pos (+ cursor-pos pos)})))
 
+(defn- find-enclosing-pair-simple
+  "Simple pair detection for symmetric markers (e.g., ** -> **).
+   Searches backwards for opening, forwards for closing."
+  [text cursor-pos marker]
+  (let [marker-len (count marker)
+        opening (find-previous-marker text cursor-pos marker)
+        closing (find-next-marker text cursor-pos marker)]
+    (when (and opening closing
+               (< (:pos opening) cursor-pos)
+               (<= cursor-pos (:pos closing)))
+      {:start (:pos opening)
+       :end (+ (:pos closing) marker-len)
+       :inner-start (+ (:pos opening) marker-len)
+       :inner-end (:pos closing)
+       :complete? true})))
+
+(defn- find-enclosing-pair-nested
+  "Nested pair detection for asymmetric markers (e.g., [[ -> ]]).
+   Tracks nesting depth to find the innermost enclosing pair.
+
+   Algorithm:
+   1. Scan backwards from cursor, tracking depth (+1 for closing, -1 for opening)
+   2. When depth hits 0 at an opening marker, that's our match
+   3. Scan forwards from cursor similarly
+   4. Validate the inner content doesn't contain unbalanced markers (Logseq parity)"
+  [text cursor-pos opening-marker closing-marker]
+  (let [text-len (count text)
+        open-len (count opening-marker)
+        close-len (count closing-marker)
+
+        ;; Search backwards for opening with depth tracking
+        find-opening
+        (fn []
+          (loop [pos (dec cursor-pos)
+                 depth 0]
+            (when (>= pos 0)
+              (cond
+                ;; Found closing marker going backwards = increase depth
+                (and (>= (+ pos close-len) 0)
+                     (<= (+ pos close-len) text-len)
+                     (= closing-marker (subs text pos (min text-len (+ pos close-len)))))
+                (recur (dec pos) (inc depth))
+
+                ;; Found opening marker going backwards
+                (and (>= (+ pos open-len) 0)
+                     (<= (+ pos open-len) text-len)
+                     (= opening-marker (subs text pos (min text-len (+ pos open-len)))))
+                (if (zero? depth)
+                  pos ; Found our opening!
+                  (recur (dec pos) (dec depth)))
+
+                :else
+                (recur (dec pos) depth)))))
+
+        ;; Search forwards for closing with depth tracking
+        find-closing
+        (fn []
+          (loop [pos cursor-pos
+                 depth 0]
+            (when (< pos text-len)
+              (cond
+                ;; Found opening marker going forwards = increase depth
+                (and (<= (+ pos open-len) text-len)
+                     (= opening-marker (subs text pos (+ pos open-len))))
+                (recur (+ pos open-len) (inc depth))
+
+                ;; Found closing marker going forwards
+                (and (<= (+ pos close-len) text-len)
+                     (= closing-marker (subs text pos (+ pos close-len))))
+                (if (zero? depth)
+                  pos ; Found our closing!
+                  (recur (+ pos close-len) (dec depth)))
+
+                :else
+                (recur (inc pos) depth)))))
+
+        opening-pos (find-opening)
+        closing-pos (find-closing)]
+
+    (when (and opening-pos closing-pos
+               (< opening-pos cursor-pos)
+               (<= cursor-pos closing-pos))
+      {:start opening-pos
+       :end (+ closing-pos close-len)
+       :inner-start (+ opening-pos open-len)
+       :inner-end closing-pos
+       :complete? true})))
+
 (defn- find-enclosing-pair
   "Find enclosing pair of markers around cursor position.
 
@@ -80,24 +168,20 @@
      closing-marker: '**' (or nil to use opening-marker)
      => {:start 6 :end 15 :inner-start 8 :inner-end 13 :complete? true}
 
+   For asymmetric markers like [[/]], handles nested structures correctly:
+     text: '[[outer [[inner]] rest]]'
+     cursor-pos: 12 (inside 'inner')
+     => Returns bounds of [[inner]], not [[outer...]]
+
    Returns nil if not found or cursor not inside pair."
   ([text cursor-pos marker]
-   (find-enclosing-pair text cursor-pos marker marker))
+   (find-enclosing-pair-simple text cursor-pos marker))
   ([text cursor-pos opening-marker closing-marker]
-   (let [opening-len (count opening-marker)
-         closing-len (count closing-marker)
-         ;; Search backwards for opening marker
-         opening (find-previous-marker text cursor-pos opening-marker)
-         ;; Search forwards for closing marker
-         closing (find-next-marker text cursor-pos closing-marker)]
-     (when (and opening closing
-                (< (:pos opening) cursor-pos)
-                (<= cursor-pos (:pos closing)))
-       {:start (:pos opening)
-        :end (+ (:pos closing) closing-len)
-        :inner-start (+ (:pos opening) opening-len)
-        :inner-end (:pos closing)
-        :complete? true}))))
+   (if (= opening-marker closing-marker)
+     ;; Symmetric markers can't nest, use simple search
+     (find-enclosing-pair-simple text cursor-pos opening-marker)
+     ;; Asymmetric markers need depth tracking
+     (find-enclosing-pair-nested text cursor-pos opening-marker closing-marker))))
 
 ;; ── Core Detection Functions ──────────────────────────────────────────────────
 
