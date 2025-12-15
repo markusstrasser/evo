@@ -46,7 +46,7 @@
         :cursor-position nil
         :keep-edit-on-blur false
         :document-view? false
-        :journals-view? false ; Show all journals stacked (newest first)
+        :journals-view? true ; Show all journals stacked (newest first)
         :drag nil
         :sidebar-visible? true ; Left sidebar (pages) visibility
         :hotkeys-visible? false ; Hotkeys reference panel visibility

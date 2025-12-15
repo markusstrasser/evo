@@ -120,6 +120,26 @@
         d (.getDate now)]
     (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
 
+(defn- ordinal-suffix
+  "Get ordinal suffix for a day number (1st, 2nd, 3rd, 4th, etc.)."
+  [day]
+  (cond
+    (or (= day 11) (= day 12) (= day 13)) "th"
+    (= (mod day 10) 1) "st"
+    (= (mod day 10) 2) "nd"
+    (= (mod day 10) 3) "rd"
+    :else "th"))
+
+(defn- today-title
+  "Get today's date as human-readable title: 'Dec 14th, 2025'."
+  []
+  (let [now (js/Date.)
+        months ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
+        y (.getFullYear now)
+        m (.getMonth now)
+        d (.getDate now)]
+    (str (nth months m) " " d (ordinal-suffix d) ", " y)))
+
 (defn JournalsView
   "Main journals view showing all journal pages stacked and EDITABLE.
 
@@ -129,37 +149,40 @@
 
    LOGSEQ PARITY:
    - Today's journal always shows (even if empty), positioned first
+   - Auto-creates today's journal if it doesn't exist
    - Other empty journals are hidden
    - Journals sorted by date descending (newest first)
    - Full editing support (same as regular pages)"
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
         today (today-iso)
+        today-human (today-title)
         ;; Session state for editing context (same as Outline)
         editing-block-id (vs/editing-block-id)
         focus-block-id (vs/focus-id)
         selection-set (vs/selection-nodes)
         folded-set (vs/folded)
         ;; Get journal pages with titles and content status
-        journal-pages (->> all-pages
-                           (map (fn [pid]
-                                  (let [title (q/page-title db pid)
-                                        date (parse-journal-date title)]
-                                    {:id pid
-                                     :title title
-                                     :date date
-                                     :is-today? (= date today)
-                                     :has-content? (has-content? db pid)})))
-                           (filter #(journal-page? (:title %)))
-                           ;; Keep: today OR has content
+        existing-journals (->> all-pages
+                               (map (fn [pid]
+                                      (let [title (q/page-title db pid)
+                                            date (parse-journal-date title)]
+                                        {:id pid
+                                         :title title
+                                         :date date
+                                         :is-today? (= date today)
+                                         :has-content? (has-content? db pid)})))
+                               (filter #(journal-page? (:title %))))
+        ;; Check if today's journal exists
+        today-exists? (some :is-today? existing-journals)
+        ;; Filter to visible journals (today or has content)
+        journal-pages (->> existing-journals
                            (filter #(or (:is-today? %) (:has-content? %)))
                            ;; Sort: today first, then by date descending
                            (sort (fn [a b]
                                    (cond
-                                     ;; Today always first
                                      (:is-today? a) -1
                                      (:is-today? b) 1
-                                     ;; Then by date descending (newest first)
                                      :else (compare (:date b) (:date a))))))
         total (count journal-pages)
         ;; Build journal items with editing context
@@ -176,19 +199,19 @@
                                        :folded-set folded-set}))
                        journal-pages)]
 
+    ;; Auto-create today's journal if it doesn't exist (Logseq parity)
+    (when (and (not today-exists?) on-intent)
+      ;; Use js/setTimeout to avoid dispatching during render
+      (js/setTimeout #(on-intent {:type :create-page :title today-human}) 0))
+
     [:div.journals-view
-     ;; Header with back button
+     ;; Header
      [:div.journals-header
-      [:button.journals-back
-       {:on {:click (fn [e]
-                      (.preventDefault e)
-                      (vs/set-journals-view! false))}}
-       "← Back"]
       [:h2.journals-title "Journals"]
-      [:span.journals-count (str total " entries")]]
+      [:span.journals-count (str (if today-exists? total (inc total)) " entries")]]
 
      ;; Journal pages list - fully editable
-     (if (seq journal-pages)
+     (if (or (seq journal-pages) (not today-exists?))
        (into [:div.journals-list] journal-items)
        [:div.journals-empty
         [:p "No journal pages yet"]
