@@ -22,6 +22,7 @@
             [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
+            [utils.text-selection :as text-sel]
             [dev.tooling :as tooling]
             [debug-api]
             ;; Load all plugins to register intents
@@ -368,22 +369,28 @@
                                      intent-with-focus)
                   ;; Enrich format-selection intent with DOM selection data
                     enriched-intent (cond
-                                    ;; Format-selection: get DOM selection range
+                                    ;; Format-selection: get DOM selection range and sync text
                                       (and (map? intent-with-id)
                                            (= (:type intent-with-id) :format-selection)
                                            editing?
                                            editable-el)
                                       (try
-                                        (let [sel (.getSelection js/window)]
-                                          (when (and sel (pos? (.-rangeCount sel)))
-                                            (let [range (.getRangeAt sel 0)
-                                                  start (.-startOffset range)
-                                                  end (.-endOffset range)]
-                                              (when (not= start end) ;; Only if there's actual selection
+                                        ;; Use text-selection utilities for correct offset calculation
+                                        (when-let [pos-info (text-sel/get-position editable-el)]
+                                          (let [{:keys [position extent]} pos-info]
+                                            (when (pos? extent) ;; Only if there's actual selection
+                                              ;; Sync DOM text to DB first (text might only be in buffer)
+                                              (let [dom-text (.-textContent editable-el)]
+                                                (executor/apply-intent! !db
+                                                                        {:type :update-content
+                                                                         :block-id editing?
+                                                                         :text dom-text}
+                                                                        "FORMAT-SYNC")
+                                                ;; Return enriched intent with correct offsets
                                                 (merge intent-with-id
                                                        {:block-id editing?
-                                                        :start start
-                                                        :end end})))))
+                                                        :start position
+                                                        :end (+ position extent)})))))
                                         (catch js/Error e
                                           (js/console.error "Selection read failed:" e)
                                           nil)) ;; Return nil if enrichment fails
@@ -1004,14 +1011,9 @@
                     (when-let [editable-el (.querySelector js/document
                                                            (str "[data-block-id='" block-id "'].content-edit"))]
                       (try
-                        (let [text-node (.-firstChild editable-el)
-                              sel (.getSelection js/window)
-                              range (.createRange js/document)]
-                          (when (and text-node (= (.-nodeType text-node) 3))
-                            (.setStart range text-node start)
-                            (.setEnd range text-node end)
-                            (.removeAllRanges sel)
-                            (.addRange sel range)))
+                        ;; Use make-range for correct multi-node DOM handling
+                        (let [range (text-sel/make-range editable-el start end)]
+                          (text-sel/set-current-range! range))
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
                     ;; Clear pending selection after applying
