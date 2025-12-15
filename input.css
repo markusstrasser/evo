@@ -313,22 +313,21 @@
     min-height: 100vh;
   }
 
-  .main-content {
+  /* Wrapper takes remaining space after sidebar */
+  .main-wrapper {
     flex: 1;
-    padding: var(--space-10) var(--space-8);
-    max-width: 680px;
-    margin: 0 auto;
-    margin-left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width) - 680px) / 2);
-    container-type: inline-size;
-    container-name: main;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    overflow-x: hidden;
   }
 
-  /* When viewport is narrow, just offset by sidebar width */
-  @media (max-width: 960px) {
-    .main-content {
-      margin-left: var(--sidebar-width);
-      margin-right: 0;
-    }
+  .main-content {
+    width: 100%;
+    max-width: 900px;
+    padding: var(--space-10) var(--space-8);
+    container-type: inline-size;
+    container-name: main;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -345,19 +344,24 @@
     --sidebar-active: oklch(93% 0.02 250);
     --sidebar-accent: oklch(55% 0.15 250);
 
+    /* Flex item - doesn't shrink, width controlled by CSS variable */
+    flex-shrink: 0;
     width: var(--sidebar-width);
     min-width: var(--sidebar-min-width);
     max-width: var(--sidebar-max-width);
-    background: var(--sidebar-bg);
-    border-right: 1px solid var(--sidebar-border);
-    position: fixed;
-    top: 0;
-    left: 0;
+    
+    /* Layout */
     height: 100vh;
+    position: sticky;
+    top: 0;
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
+    
+    /* Styling */
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
     font-family: var(--font-body);
 
     /* Subtle inner shadow for depth */
@@ -740,6 +744,88 @@
     margin-top: var(--space-1);
     font-size: var(--text-xs);
     color: var(--sidebar-text-faint);
+  }
+
+  /* ── Trash Section ───────────────────────────────────────────────────────── */
+  .trash-hint {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--sidebar-text-faint);
+    font-style: italic;
+  }
+
+  .trash-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-trash-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 5px 8px;
+    border-radius: var(--radius-md);
+    transition: background 0.12s ease;
+  }
+
+  .sidebar-trash-item:hover {
+    background: var(--sidebar-hover);
+  }
+
+  .trash-title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 450;
+    color: var(--sidebar-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+
+  .trash-date {
+    font-size: var(--text-xs);
+    color: var(--sidebar-text-faint);
+    white-space: nowrap;
+  }
+
+  .trash-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .sidebar-trash-item:hover .trash-actions {
+    opacity: 1;
+  }
+
+  .restore-button,
+  .permanent-delete-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--sidebar-text-faint);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .restore-button:hover {
+    color: oklch(60% 0.15 145); /* Green for restore */
+    background: oklch(95% 0.05 145);
+  }
+
+  .permanent-delete-button:hover {
+    color: oklch(55% 0.2 25); /* Red for delete */
+    background: oklch(95% 0.05 25);
   }
 
   /* ── Responsive ─────────────────────────────────────────────────────────── */
