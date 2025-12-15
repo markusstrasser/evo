@@ -114,7 +114,13 @@
       ;; Skip for navigate-back/forward (those modify history-index directly)
       (when-let [new-page (get-in session-updates [:ui :current-page])]
         (when-not (#{:navigate-back :navigate-forward} intent-type)
-          (vs/push-history! new-page old-page))))
+          (vs/push-history! new-page old-page)))
+
+      ;; NAVIGATION HISTORY: Also track journals view as a "virtual page"
+      ;; When entering journals view, push :journals to history
+      (when (true? (get-in session-updates [:ui :journals-view?]))
+        (when-not (#{:navigate-back :navigate-forward} intent-type)
+          (vs/push-history! :journals old-page))))
 
     ;; CLIPBOARD: Write to system clipboard if copy/cut operation set clipboard-text
     (when-let [clipboard-text (get-in session-updates [:ui :clipboard-text])]
