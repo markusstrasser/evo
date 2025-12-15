@@ -1,12 +1,13 @@
 (ns kernel.ops
-  "Pure operations for the three-op kernel: create-node, place, update-node.
+  "Pure operations for the kernel: create-node, place, update-node, delete-node.
 
    READER GUIDE:
    ─────────────
-   This is the kernel's operation layer. Three operations, nothing more:
+   This is the kernel's operation layer. Four operations:
    1. create-node - Add a node shell to :nodes (idempotent)
    2. place - Position node under parent at anchor (remove from old parent first)
    3. update-node - Merge props into existing node
+   4. delete-node - Permanently remove node from database
 
    ONE LAW: All operations are pure functions (DB → DB). No side effects, no validation.
    Validation happens in transaction layer, derivation happens in derive-indexes.
@@ -165,3 +166,20 @@
   (if (contains? (:nodes db) id)
     (update-in db [:nodes id :props] #(deep-merge % props))
     db))
+
+(defn delete-node
+  "Permanently delete a node from the database.
+   Removes from :nodes map and from its parent's children list.
+   
+   NOTE: This does NOT delete descendants - caller must delete children first.
+   
+   Args:
+     db - database
+     id - node to delete
+   
+   Returns:
+     Updated database with node removed"
+  [db id]
+  (-> db
+      (update :nodes dissoc id)
+      (remove-from-current-parent id)))
