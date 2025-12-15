@@ -137,11 +137,14 @@
 ;; ── Intent Implementations (Structural Changes) ───────────────────────────────
 
 (intent/register-intent! :update-content
-                         {:doc "Update block text content."
+                         {:doc "Update block text content. Skips no-op updates for performance."
                           :fr/ids #{:fr.edit/smart-split}
                           :spec [:map [:type [:= :update-content]] [:block-id :string] [:text :string]]
-                          :handler (fn [_db _session {:keys [block-id text]}]
-                                     [{:op :update-node :id block-id :props {:text text}}])})
+                          :handler (fn [db _session {:keys [block-id text]}]
+                                     (let [current-text (get-in db [:nodes block-id :props :text] "")]
+                                       ;; Only emit op if text actually changed
+                                       (when (not= current-text text)
+                                         [{:op :update-node :id block-id :props {:text text}}])))})
 
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
