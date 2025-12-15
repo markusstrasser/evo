@@ -261,6 +261,46 @@
   [db]
   (db/validate db))
 
+(defn gc-tombstones
+  "Garbage collect tombstoned nodes from database.
+   
+   Tombstones are nodes marked with {:tombstone? true} - they represent
+   permanently deleted items that should eventually be purged.
+   
+   This operation BYPASSES the transaction pipeline (no history, no undo)
+   because it's garbage collection, not a user action.
+   
+   Returns new DB with tombstoned nodes removed from :nodes and :children-by-parent.
+   
+   Example:
+     (swap! !db gc-tombstones)  ; Purge all tombstones
+     
+   Typically called on app startup or periodically."
+  [db]
+  (let [tombstoned-ids (->> (:nodes db)
+                            (filter (fn [[_id node]]
+                                      (get-in node [:props :tombstone?])))
+                            (map first)
+                            set)]
+    (if (empty? tombstoned-ids)
+      db
+      (-> db
+          ;; Remove from :nodes
+          (update :nodes #(apply dissoc % tombstoned-ids))
+          ;; Remove from all children lists
+          (update :children-by-parent
+                  (fn [cbp]
+                    (reduce-kv
+                     (fn [acc parent children]
+                       (let [filtered (filterv #(not (tombstoned-ids %)) children)]
+                         (if (empty? filtered)
+                           (dissoc acc parent)
+                           (assoc acc parent filtered))))
+                     {}
+                     cbp)))
+          ;; Recompute derived indexes
+          db/derive-indexes))))
+
 ;; ── Journal Replay (depends on dispatch*) ────────────────────────────────────
 
 #?(:clj

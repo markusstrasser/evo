@@ -257,7 +257,8 @@
                           :handler handle-auto-trash-empty-page})
 
 (defn- handle-permanently-delete-page
-  "Permanently delete a page from trash (no recovery)."
+  "Permanently delete a page from trash (no recovery).
+   Uses tombstone pattern - marks nodes as {:tombstone? true} so UI filters them out."
   [db _session {:keys [page-id]}]
   (when page-id
     (let [parent (get-in db [:derived :parent-of page-id])]
@@ -265,17 +266,17 @@
       (when (= parent const/root-trash)
         (let [descendants (collect-descendants db page-id)]
           {:ops (into
-                 ;; Delete all descendants
-                 (mapv (fn [id] {:op :delete-node :id id}) descendants)
-                 ;; Delete the page itself
-                 [{:op :delete-node :id page-id}])})))))
+                 ;; Mark all descendants as tombstones
+                 (mapv (fn [id] {:op :update-node :id id :props {:tombstone? true}}) descendants)
+                 ;; Mark the page itself as tombstone
+                 [{:op :update-node :id page-id :props {:tombstone? true}}])})))))
 
 (intent/register-intent! :permanently-delete-page
                          {:doc "Permanently delete a page from trash"
                           :handler handle-permanently-delete-page})
 
 (defn- handle-cleanup-old-trash
-  "Delete pages that have been in trash for more than 30 days."
+  "Mark pages that have been in trash for more than 30 days as tombstones."
   [db _session _intent]
   (let [trash-pages (q/trashed-pages db)
         now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
@@ -290,8 +291,8 @@
                   (mapcat (fn [page-id]
                             (let [descendants (collect-descendants db page-id)]
                               (into
-                               (mapv (fn [id] {:op :delete-node :id id}) descendants)
-                               [{:op :delete-node :id page-id}])))
+                               (mapv (fn [id] {:op :update-node :id id :props {:tombstone? true}}) descendants)
+                               [{:op :update-node :id page-id :props {:tombstone? true}}])))
                           old-pages))})))
 
 (defn- handle-scan-empty-pages
