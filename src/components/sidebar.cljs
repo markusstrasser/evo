@@ -22,6 +22,44 @@
     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
         (re-matches #"\d{4}-\d{2}-\d{2}" title))))
 
+(defn- parse-journal-date
+  "Parse journal title to sortable ISO date (YYYY-MM-DD)."
+  [title]
+  (when title
+    (cond
+      ;; ISO format: 2025-12-14
+      (re-matches #"\d{4}-\d{2}-\d{2}" title)
+      title
+
+      ;; Human format: Dec 14th, 2025 -> 2025-12-14
+      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+      (let [months {"Jan" "01" "Feb" "02" "Mar" "03" "Apr" "04"
+                    "May" "05" "Jun" "06" "Jul" "07" "Aug" "08"
+                    "Sep" "09" "Oct" "10" "Nov" "11" "Dec" "12"}
+            [_ mon day _ year] (re-matches #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th), (\d{4})" title)]
+        (when (and mon day year)
+          (str year "-" (months mon) "-" (when (< (count day) 2) "0") day)))
+
+      :else nil)))
+
+(defn- today-iso
+  "Get today's date in ISO format."
+  []
+  (let [now (js/Date.)
+        y (.getFullYear now)
+        m (inc (.getMonth now))
+        d (.getDate now)]
+    (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
+
+(defn- has-content?
+  "Check if a journal page has any non-empty blocks."
+  [db page-id]
+  (let [children (q/children db page-id)]
+    (some (fn [bid]
+            (let [text (q/block-text db bid)]
+              (and text (not (str/blank? text)))))
+          children)))
+
 (defn- valid-page?
   "Check if page has a valid, displayable title.
    Filters out Untitled and blank pages."
@@ -215,7 +253,8 @@
    LOGSEQ PARITY:
    - Journals is a nav link, not a page list
    - Recents exclude journal pages
-   - Invalid pages (Untitled, blank) are filtered"
+   - Invalid pages (Untitled, blank) are filtered
+   - Journal count shows only journals with content (or today)"
   [{:keys [db on-intent on-pick-folder on-clear-folder storage-status]}]
   (let [all-pages (q/all-pages db)
         current-page-id (vs/current-page)
@@ -223,21 +262,28 @@
         loading? (:loading? storage-status)
         favorites-set (vs/favorites)
         recents-list (vs/recents)
+        today (today-iso)
 
         ;; Build page metadata, filtering invalid pages
         pages-with-meta (->> all-pages
                              (map (fn [pid]
-                                    (let [title (q/page-title db pid)]
+                                    (let [title (q/page-title db pid)
+                                          date (parse-journal-date title)]
                                       {:id pid
                                        :title title
                                        :journal? (journal-page? title)
+                                       :is-today? (= date today)
+                                       :has-content? (has-content? db pid)
                                        :favorite? (contains? favorites-set pid)
                                        :valid? (valid-page? title)})))
                              (filter :valid?))
 
         ;; Separate journals from regular pages
-        journal-pages (filter :journal? pages-with-meta)
+        all-journal-pages (filter :journal? pages-with-meta)
         regular-pages (remove :journal? pages-with-meta)
+
+        ;; Filter journals: only show today OR those with content (Logseq parity)
+        visible-journal-pages (filter #(or (:is-today? %) (:has-content? %)) all-journal-pages)
 
         ;; Group regular pages by type (LOGSEQ: recents exclude journals)
         favorites (->> regular-pages
@@ -251,10 +297,7 @@
         other-pages (->> regular-pages
                          (remove :favorite?)
                          (remove (fn [p] (some #(= (:id p) (:id %)) recents)))
-                         (sort-by :title))
-
-        ;; Find today's journal for nav link
-        today-journal (first (sort-by :title #(compare %2 %1) journal-pages))]
+                         (sort-by :title))]
 
     [:nav.sidebar {:aria-label "Page navigation"}
 
@@ -272,8 +315,9 @@
                       (.preventDefault e)
                       (vs/toggle-journals-view!))}}
        [:span.nav-label "Journals"]
-       (when (seq journal-pages)
-         [:span.nav-count (count journal-pages)])]]
+       ;; Count shows only visible journals (with content or today)
+       (when (seq visible-journal-pages)
+         [:span.nav-count (count visible-journal-pages)])]]
 
      ;; Favorites section
      (when (seq favorites)
