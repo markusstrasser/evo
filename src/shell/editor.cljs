@@ -646,9 +646,6 @@
         can-go-back? (vs/can-go-back?)
         can-go-forward? (vs/can-go-forward?)]
     [:div.app
-     {:style {:display "flex"
-              :min-height "100vh"}}
-
      ;; Sidebar for page navigation (toggleable via Cmd+B)
      ;; Always show sidebar - it has the folder picker
      (when sidebar-visible?
@@ -658,107 +655,54 @@
                          :on-clear-folder clear-folder!
                          :storage-status storage-status}))
 
-     ;; Main content area - only render after storage check completes
-     (when-not checking?
-       [:div.main-content
-        {:style {:flex "1"
-                 :margin-left (if sidebar-visible? "260px" "20px") ; Offset for fixed sidebar (240px + 20px gap)
-                 :font-family "system-ui, -apple-system, sans-serif"
-                 :padding "20px"
-                 :max-width "800px"}
-         ;; Background click to clear selection (Logseq parity)
-         ;; Blocks call stopPropagation, so this only fires for empty background clicks
-         :on {:click (fn [_e]
-                       ;; Only clear if not editing and clicking empty background
-                       (when-not (vs/editing-block-id)
-                         (handle-intent {:type :selection :mode :clear})))}}
+     ;; Main wrapper - flexbox centering for content
+     [:div.main-wrapper
+      ;; Main content area - only render after storage check completes
+      (when-not checking?
+        [:main.main-content
+         {:on {:click (fn [_e]
+                        ;; Background click to clear selection (Logseq parity)
+                        (when-not (vs/editing-block-id)
+                          (handle-intent {:type :selection :mode :clear})))}}
 
-        ;; Mock-text for cursor detection
-        (MockText)
+         ;; Mock-text for cursor detection
+         (MockText)
 
-        ;; Header with navigation
-        [:div.page-header
-         {:style {:display "flex"
-                  :align-items "center"
-                  :gap "8px"
-                  :margin-bottom "10px"}}
-         ;; Navigation arrows (subtle, always visible when history exists)
-         [:div.nav-arrows
-          {:style {:display "flex"
-                   :gap "2px"}}
-          [:button.nav-arrow
-           {:style {:background "none"
-                    :border "none"
-                    :padding "4px 6px"
-                    :cursor (if can-go-back? "pointer" "default")
-                    :color (if can-go-back? "#6b7280" "#d1d5db")
-                    :font-size "14px"
-                    :border-radius "4px"
-                    :transition "all 0.15s ease"}
-            :title "Go back (Cmd+[)"
-            :disabled (not can-go-back?)
-            :on {:click (fn [e]
-                          (.preventDefault e)
-                          (when can-go-back?
-                            (handle-intent {:type :navigate-back})))}}
-           "←"]
-          [:button.nav-arrow
-           {:style {:background "none"
-                    :border "none"
-                    :padding "4px 6px"
-                    :cursor (if can-go-forward? "pointer" "default")
-                    :color (if can-go-forward? "#6b7280" "#d1d5db")
-                    :font-size "14px"
-                    :border-radius "4px"
-                    :transition "all 0.15s ease"}
-            :title "Go forward (Cmd+])"
-            :disabled (not can-go-forward?)
-            :on {:click (fn [e]
-                          (.preventDefault e)
-                          (when can-go-forward?
-                            (handle-intent {:type :navigate-forward})))}}
-           "→"]]
-         [:h2 {:style {:margin "0"}} "Blocks UI"]]
+         ;; Header with navigation
 
-        [:p {:style {:color "#666" :margin-top "5px"}}
-         "Page refs " [:code "[[Page]]"]]
+;; Main content area - journals view, current page, or empty state
+         (cond
+           ;; Journals view - all journals stacked
+           journals-view?
+           (journals/JournalsView {:db db :on-intent handle-intent})
 
-        ;; Main content area - journals view, current page, or empty state
-        (cond
-          ;; Journals view - all journals stacked
-          journals-view?
-          (journals/JournalsView {:db db :on-intent handle-intent})
+           ;; Single page view
+           current-page-id
+           [:div
+            [:h3.page-title "📄 " page-title]
 
-          ;; Single page view
-          current-page-id
-          [:div
-           [:h3 {:style {:margin-top "20px"
-                         :margin-bottom "10px"
-                         :color "rgb(29, 78, 216)"}}
-            "📄 " page-title]
+            ;; Main outline for current page only
+            (Outline {:db db
+                      :root-id current-page-id
+                      :on-intent handle-intent})
 
-           ;; Main outline for current page only
-           (Outline {:db db
-                     :root-id current-page-id
-                     :on-intent handle-intent})
+            ;; Backlinks panel - shows "Linked References" from other pages
+            (backlinks/BacklinksPanel {:db db
+                                       :page-title page-title
+                                       :on-intent handle-intent})]
 
-           ;; Backlinks panel - shows "Linked References" from other pages
-           (backlinks/BacklinksPanel {:db db
-                                      :page-title page-title
-                                      :on-intent handle-intent})]
+           ;; All Pages view (no page selected)
+           :else
+           (all-pages/AllPagesView {:db db :on-intent handle-intent}))
 
-;; All Pages view (no page selected)
-          :else
-          (all-pages/AllPagesView {:db db :on-intent handle-intent}))
+         ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
+         ;; Auto-show when ?devtools query param present
+         (when (devtools-enabled?)
+           (devtools/DevToolsPanel {:db db}))
 
-        ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
-        ;; Auto-show when ?devtools query param present
-        (when (devtools-enabled?)
-          (devtools/DevToolsPanel {:db db}))
-
-        ;; Hotkeys reference (toggleable via Cmd+?)
-        (when hotkeys-visible?
-          (HotkeysReference))])
+         ;; Hotkeys reference (toggleable via Cmd+?)
+         (when hotkeys-visible?
+           (HotkeysReference))])]
 
      ;; Quick Switcher overlay (Cmd+K) - rendered outside main content for proper modal behavior
      (when quick-switcher-visible?
@@ -780,16 +724,29 @@
 ;; this coalesces them into a single render call.
 (defonce ^:private render-scheduled? (atom false))
 
+(defn- process-auto-trash-queue!
+  "Process queued pages for auto-trash check.
+   Called after render to avoid nested dispatch."
+  []
+  (doseq [page-id (vs/take-auto-trash-queue!)]
+    (executor/apply-intent! !db
+                            {:type :auto-trash-empty-page
+                             :page-id page-id}
+                            "AUTO-TRASH")))
+
 (defn request-render!
   "Request a render on the next animation frame.
-   Multiple calls in the same frame are coalesced into one render."
+   Multiple calls in the same frame are coalesced into one render.
+   Also processes auto-trash queue after render completes."
   []
   (when-not @render-scheduled?
     (reset! render-scheduled? true)
     (js/requestAnimationFrame
      (fn []
        (reset! render-scheduled? false)
-       (render!)))))
+       (render!)
+       ;; Process auto-trash queue after render completes
+       (js/setTimeout process-auto-trash-queue! 100)))))
 
 ;; ── Test Helpers ──────────────────────────────────────────────────────────────
 
@@ -932,6 +889,17 @@
 
   ;; Load persisted favorites and recents from localStorage
   (vs/load-persisted-state!)
+
+  ;; Cleanup old trash (30+ days) and scan for empty pages on startup
+  ;; Deferred to allow DB to load first
+  (js/setTimeout
+   (fn []
+     (when-not (test-mode?)
+       ;; First, permanently delete pages in trash > 30 days
+       (executor/apply-intent! !db {:type :cleanup-old-trash} "STARTUP")
+       ;; Then, auto-trash any empty pages (except today's journal)
+       (executor/apply-intent! !db {:type :scan-empty-pages} "STARTUP")))
+   2000)
 
 ;; Note: Current page is set by load-from-folder! after storage check completes
 
