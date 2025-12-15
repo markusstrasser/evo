@@ -107,7 +107,7 @@
                  ;; Follow link (Logseq parity)
             [{:key "o" :mod true} {:type :follow-link-under-cursor :block-id :editing-block-id :cursor-pos :cursor-pos}]
                  ;; UI Chrome toggles
-            [{:key "b" :mod true} {:type :toggle-sidebar}] ; Note: In editing mode, Cmd+B = bold (takes precedence)
+            [{:key "\\" :mod true} {:type :toggle-sidebar}]
             [{:key "p" :mod true} {:type :toggle-hotkeys}]
             [{:key "k" :mod true} {:type :toggle-quick-switcher}]
                  ;; Navigation history (browser-style back/forward)
