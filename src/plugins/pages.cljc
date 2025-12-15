@@ -94,10 +94,11 @@
 
 (defn- handle-switch-page
   "Switch to a specific page by ID.
-   LOGSEQ PARITY: Clears zoom-root when switching pages."
+   LOGSEQ PARITY: Clears zoom-root and exits journals view when switching pages."
   [_db _session {:keys [page-id]}]
   {:session-updates {:ui {:current-page page-id
-                          :zoom-root nil}}})
+                          :zoom-root nil
+                          :journals-view? false}}})
 
 (defn- navigate-or-create-page
   "Navigate to page by name, creating it if it doesn't exist.
