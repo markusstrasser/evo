@@ -324,7 +324,7 @@
 
   .main-content {
     width: 100%;
-    max-width: 900px;
+    max-width: 1000px;
     padding: var(--space-10) var(--space-8);
     container-type: inline-size;
     container-name: main;
@@ -873,8 +873,8 @@
      ───────────────────────────────────────────────────────────────────────── */
   .block {
     position: relative;
-    padding: 3px 0 3px var(--space-6);
-    margin: 2px 0;
+    padding: 0 0 0 var(--space-6);
+    margin: 0;
     border-radius: var(--radius-sm);
     border-left: 2px solid transparent;
 
@@ -918,10 +918,10 @@
   .block-content {
     font-family: var(--font-sans);
     font-size: inherit;
-    line-height: 1.65;
+    line-height: 1.3;
     color: var(--color-text);
     outline: none;
-    min-height: 1.65em;
+    min-height: 1.3em;
     display: block;
     width: 100%;
     caret-color: var(--color-accent);
@@ -1162,18 +1162,54 @@
 
   .block-children {
     margin-left: 0;
-    padding-left: 8px;
+    padding-left: 6px;
     border-left: 1px solid var(--color-border);
   }
 
   @container outline (max-width: 400px) {
     .block-children {
-      padding-left: 6px;
+      padding-left: 4px;
     }
-    
+
     .block {
       padding-left: var(--space-5);
     }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Page Title (editable, matches journal-title style)
+     ───────────────────────────────────────────────────────────────────────── */
+  .page-title-header {
+    margin-bottom: var(--space-4);
+  }
+
+  h1.page-title-display {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: oklch(45% 0.15 250);
+    margin: 0;
+    cursor: text;
+    padding: var(--space-1) 0;
+    border-radius: var(--radius-sm);
+    transition: background 0.1s ease;
+
+    &:hover {
+      background: var(--color-surface);
+    }
+  }
+
+  .page-title-input {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: oklch(45% 0.15 250);
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    margin: 0;
+    border: 2px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
