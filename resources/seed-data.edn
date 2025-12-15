@@ -1,4 +1,27 @@
-[
+[;; ── Journal: Dec 14th, 2025 (Today) ──
+ {:op :create-node :id "journal-dec-14" :type :page :props {:title "Dec 14th, 2025"}}
+ {:op :place :id "journal-dec-14" :under :doc :at :last}
+ {:op :create-node :id "j14-1" :type :block :props {:text "Working on Evolver outliner today"}}
+ {:op :place :id "j14-1" :under "journal-dec-14" :at :last}
+ {:op :create-node :id "j14-2" :type :block :props {:text "Fixed journals navigation to use global ← → buttons"}}
+ {:op :place :id "j14-2" :under "journal-dec-14" :at :last}
+ {:op :create-node :id "j14-2-1" :type :block :props {:text "Removed redundant Back button from journals view"}}
+ {:op :place :id "j14-2-1" :under "j14-2" :at :last}
+ {:op :create-node :id "j14-2-2" :type :block :props {:text "Now :journals is a virtual page in history"}}
+ {:op :place :id "j14-2-2" :under "j14-2" :at :last}
+
+ ;; ── Journal: Dec 13th, 2025 (Yesterday) ──
+ {:op :create-node :id "journal-dec-13" :type :page :props {:title "Dec 13th, 2025"}}
+ {:op :place :id "journal-dec-13" :under :doc :at :last}
+ {:op :create-node :id "j13-1" :type :block :props {:text "Implemented editable journals using real Block components"}}
+ {:op :place :id "j13-1" :under "journal-dec-13" :at :last}
+ {:op :create-node :id "j13-1-1" :type :block :props {:text "Each journal date is now fully editable"}}
+ {:op :place :id "j13-1-1" :under "j13-1" :at :last}
+ {:op :create-node :id "j13-1-2" :type :block :props {:text "Supports indent/outdent, folding, all editing operations"}}
+ {:op :place :id "j13-1-2" :under "j13-1" :at :last}
+ {:op :create-node :id "j13-2" :type :block :props {:text "Related: [[Projects]] page has project overview"}}
+ {:op :place :id "j13-2" :under "journal-dec-13" :at :last}
+
  ;; ── Projects Page ──
  {:op :create-node :id "projects" :type :page :props {:title "Projects"}}
  {:op :place :id "projects" :under :doc :at :last}
@@ -43,5 +66,4 @@
  {:op :create-node :id "note-4" :type :block :props {:text "Full embed of task tree:"}}
  {:op :place :id "note-4" :under "notes" :at :last}
  {:op :create-node :id "note-4-1" :type :block :props {:text "{{embed ((task-1))}}"}}
- {:op :place :id "note-4-1" :under "note-4" :at :last}
-]
+ {:op :place :id "note-4-1" :under "note-4" :at :last}]
