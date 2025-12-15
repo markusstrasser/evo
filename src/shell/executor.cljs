@@ -117,7 +117,11 @@
           (vs/push-history! new-page old-page)
           ;; RECENTS: Track in recents for sidebar display
           ;; (sidebar filters out journals automatically per Logseq parity)
-          (vs/add-to-recents! new-page)))
+          (vs/add-to-recents! new-page)
+          ;; AUTO-TRASH: Queue check for empty page we're leaving
+          ;; (deferred to avoid nested dispatch during render)
+          (when (and old-page (not= old-page new-page))
+            (vs/queue-auto-trash-check! old-page))))
 
       ;; NAVIGATION HISTORY: Also track journals view as a "virtual page"
       ;; When entering journals view, push :journals to history
