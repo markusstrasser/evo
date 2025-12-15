@@ -244,17 +244,15 @@
 (defn Sidebar
   "Left sidebar for page navigation (Logseq-style).
 
-   Structure:
-   - Navigation: Journals link (goes to today's journal)
+   Structure (matches Logseq):
+   - Navigation links: Journals, All Pages
    - Favorites: User-starred pages (star icon affordance)
-   - Recents: Auto-populated on page visits (excludes journals)
-   - Pages: All regular pages
+   - Recents: Auto-populated on page visits
 
    LOGSEQ PARITY:
-   - Journals is a nav link, not a page list
+   - All Pages is a nav link (opens page listing view), NOT inline list
    - Recents exclude journal pages
-   - Invalid pages (Untitled, blank) are filtered
-   - Journal count shows only journals with content (or today)"
+   - Invalid pages (Untitled, blank) are filtered"
   [{:keys [db on-intent on-pick-folder on-clear-folder storage-status]}]
   (let [all-pages (q/all-pages db)
         current-page-id (vs/current-page)
@@ -293,11 +291,7 @@
                      (keep (fn [pid]
                              (some #(when (= (:id %) pid) %) regular-pages)))
                      (remove :favorite?) ; Don't duplicate favorites
-                     (take 10))
-        other-pages (->> regular-pages
-                         (remove :favorite?)
-                         (remove (fn [p] (some #(= (:id p) (:id %)) recents)))
-                         (sort-by :title))]
+                     (take 10))]
 
     [:nav.sidebar {:aria-label "Page navigation"}
 
@@ -307,17 +301,32 @@
                       :on-pick-folder on-pick-folder
                       :on-clear-folder on-clear-folder})
 
-     ;; Journals link - opens journals view
+     ;; Navigation section (Logseq-style)
      [:div.sidebar-nav
+      ;; Journals link - opens journals view
       [:div.sidebar-nav-item
        {:class (when (vs/journals-view?) "active")
         :on {:click (fn [e]
                       (.preventDefault e)
-                      (vs/toggle-journals-view!))}}
+                      (on-intent {:type :open-journals-view}))}}
+       [:span.nav-icon (Icon {:name :calendar :size 16})]
        [:span.nav-label "Journals"]
        ;; Count shows only visible journals (with content or today)
        (when (seq visible-journal-pages)
-         [:span.nav-count (count visible-journal-pages)])]]
+         [:span.nav-count (count visible-journal-pages)])]
+
+      ;; All Pages link - opens page listing (like Logseq)
+      [:div.sidebar-nav-item
+       {:class (when (and (not (vs/journals-view?))
+                          (nil? current-page-id))
+                 "active")
+        :on {:click (fn [e]
+                      (.preventDefault e)
+                      (on-intent {:type :open-all-pages-view}))}}
+       [:span.nav-icon (Icon {:name :file :size 16})]
+       [:span.nav-label "All Pages"]
+       (when (seq regular-pages)
+         [:span.nav-count (count regular-pages)])]]
 
      ;; Favorites section
      (when (seq favorites)
@@ -338,7 +347,7 @@
                             :show-star? true
                             :on-intent on-intent})))}))
 
-     ;; Recents section (LOGSEQ: excludes journals)
+     ;; Recents section (LOGSEQ: excludes journals, excludes favorites)
      (when (seq recents)
        (CollapsibleSection
         {:title "Recents"
@@ -355,32 +364,4 @@
                             :is-journal? false
                             :is-favorite? favorite?
                             :show-star? true
-                            :on-intent on-intent})))}))
-
-     ;; All Pages section
-     (CollapsibleSection
-      {:title "Pages"
-       :count (count other-pages)
-       :collapsed? false
-       :on-action (fn []
-                    (let [title (js/prompt "Page title:")]
-                      (when (and title (not (str/blank? title)) (not= title "Untitled"))
-                        (when on-intent
-                          (on-intent {:type :create-page :title title})))))
-       :action-label "+"
-       :children
-       (if (seq other-pages)
-         (into [:div.page-list]
-               (for [{:keys [id title favorite?]} other-pages]
-                 ^{:key id}
-                 (PageItem {:db db
-                            :page-id id
-                            :title title
-                            :is-current? (= id current-page-id)
-                            :is-journal? false
-                            :is-favorite? favorite?
-                            :show-star? true
-                            :on-intent on-intent})))
-         [:div.sidebar-empty
-          [:p "No pages yet"]
-          [:p.hint "Click + to create a page"]])})]))
+                            :on-intent on-intent})))}))]))
