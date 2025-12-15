@@ -2,9 +2,9 @@
   "All Pages view - shows all pages in a list (Logseq-style /all-pages).
 
    Features:
-   - Shows all pages (excluding journals)
+   - Shows ALL pages including journals (journals first, then alphabetical)
+   - Journals shown with calendar icon, regular pages with file icon
    - Click to navigate
-   - Search/filter (future)
    - Create new page button"
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
@@ -27,13 +27,13 @@
 (defn AllPagesView
   "All Pages listing view (like Logseq's /all-pages).
 
-   Shows all regular pages (excluding journals) in a clean list.
+   Shows ALL pages including journals in a clean list.
    Click to navigate to page."
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
         favorites-set (vs/favorites)
 
-        ;; Build page metadata, filtering invalid/journal pages
+        ;; Build page metadata, including journals
         pages (->> all-pages
                    (map (fn [pid]
                           (let [title (q/page-title db pid)]
@@ -43,8 +43,18 @@
                              :valid? (valid-page? title)
                              :journal? (journal-page? title)})))
                    (filter :valid?)
-                   (remove :journal?)
-                   (sort-by (comp str/lower-case :title)))]
+                   ;; Sort: journals first (by date desc), then regular pages alphabetically
+                   (sort (fn [a b]
+                           (cond
+                             ;; Both journals - sort by title descending (newer dates first)
+                             (and (:journal? a) (:journal? b))
+                             (compare (:title b) (:title a))
+                             ;; Journal vs regular - journals first
+                             (:journal? a) -1
+                             (:journal? b) 1
+                             ;; Both regular - alphabetical
+                             :else (compare (str/lower-case (:title a))
+                                            (str/lower-case (:title b)))))))]
 
     [:div.all-pages-view
      {:style {:padding "0"}}
@@ -77,7 +87,7 @@
         {:style {:display "flex"
                  :flex-direction "column"
                  :gap "2px"}}
-        (for [{:keys [id title favorite?]} pages]
+        (for [{:keys [id title favorite? journal?]} pages]
           ^{:key id}
           [:div.all-pages-item
            {:style {:padding "10px 12px"
@@ -95,8 +105,8 @@
                                (set! (.. e -currentTarget -style -background) "#f3f4f6"))
                  :mouseleave (fn [e]
                                (set! (.. e -currentTarget -style -background) "transparent"))}}
-           ;; Page icon
-           [:span {:style {:color "#9ca3af"}} "📄"]
+           ;; Page icon - calendar for journals, file for regular
+           [:span {:style {:color "#9ca3af"}} (if journal? "📅" "📄")]
            ;; Title
            [:span {:style {:flex "1"
                            :color "#374151"}}
