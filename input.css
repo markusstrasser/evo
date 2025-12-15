@@ -188,6 +188,11 @@
     --color-danger-subtle: oklch(96% 0.04 25);
     --color-success: oklch(50% 0.14 145);
 
+    /* ─── Sidebar Dimensions (shared for layout) ─────────────────────────── */
+    --sidebar-width: 240px;
+    --sidebar-min-width: 180px;
+    --sidebar-max-width: 400px;
+
     /* ─── Spacing ────────────────────────────────────────────────────────── */
     --space-px: 1px;
     --space-0: 0;
@@ -313,15 +318,24 @@
     padding: var(--space-10) var(--space-8);
     max-width: 680px;
     margin: 0 auto;
+    margin-left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width) - 680px) / 2);
     container-type: inline-size;
     container-name: main;
+  }
+
+  /* When viewport is narrow, just offset by sidebar width */
+  @media (max-width: 960px) {
+    .main-content {
+      margin-left: var(--sidebar-width);
+      margin-right: 0;
+    }
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
      Sidebar - Editorial refinement with subtle depth
      ───────────────────────────────────────────────────────────────────────── */
   .sidebar {
-    --sidebar-width: 240px;
+    /* Dimensions inherited from :root for layout coordination */
     --sidebar-bg: oklch(98.5% 0.002 250);
     --sidebar-border: oklch(92% 0.005 250);
     --sidebar-text: oklch(35% 0.02 250);
@@ -332,6 +346,8 @@
     --sidebar-accent: oklch(55% 0.15 250);
 
     width: var(--sidebar-width);
+    min-width: var(--sidebar-min-width);
+    max-width: var(--sidebar-max-width);
     background: var(--sidebar-bg);
     border-right: 1px solid var(--sidebar-border);
     position: fixed;
@@ -346,6 +362,46 @@
 
     /* Subtle inner shadow for depth */
     box-shadow: inset -8px 0 16px -12px oklch(0% 0 0 / 0.04);
+  }
+
+  /* Sidebar resize handle */
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+    background: transparent;
+
+    /* Visual indicator on hover */
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 2px;
+      width: 2px;
+      height: 100%;
+      background: var(--color-accent);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    &:hover::after,
+    &.dragging::after {
+      opacity: 0.5;
+    }
+
+    &.dragging::after {
+      opacity: 1;
+    }
+  }
+
+  /* Prevent text selection during resize */
+  body.sidebar-resizing {
+    cursor: col-resize !important;
+    user-select: none;
   }
 
   /* ── Storage Section ────────────────────────────────────────────────────── */
@@ -1686,6 +1742,88 @@
       font-size: var(--text-sm);
       margin-top: var(--space-2);
     }
+  }
+
+  /* ── Backlinks Panel (Editorial style from publishing/Acknowledgements) ─── */
+  .backlinks-panel {
+    margin-top: var(--space-10);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid oklch(88% 0.03 279);
+    border-left: 3px solid oklch(68% 0.08 279);
+    border-radius: var(--radius-sm);
+    background: oklch(98% 0.008 279);
+  }
+
+  .backlinks-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: var(--space-3);
+  }
+
+  .backlinks-ornament {
+    font-size: 1.1rem;
+    color: oklch(62% 0.08 279);
+    line-height: 1;
+  }
+
+  .backlinks-title {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: oklch(38% 0.06 279);
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  .backlinks-count {
+    background: oklch(92% 0.04 279);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: oklch(50% 0.08 279);
+  }
+
+  .backlinks-content {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+  }
+
+  .backlinks-empty {
+    color: var(--color-text-tertiary);
+    font-style: italic;
+    margin: 0;
+  }
+
+  .backlink-group {
+    margin-bottom: var(--space-4);
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .backlink-page-header {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: oklch(45% 0.1 279);
+    margin-bottom: var(--space-2);
+    cursor: pointer;
+
+    &:hover {
+      color: oklch(52% 0.12 279);
+      text-decoration: underline;
+    }
+  }
+
+  .backlink-block {
+    padding: var(--space-2) var(--space-3);
+    margin: var(--space-1) 0;
+    background: oklch(96% 0.01 279);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    line-height: 1.5;
   }
 
 }

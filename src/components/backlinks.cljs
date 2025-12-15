@@ -2,7 +2,9 @@
   "Backlinks panel showing blocks that reference the current page.
    
    Logseq calls this 'Linked References' - shows all blocks containing
-   [[Current Page]] references, grouped by source page."
+   [[Current Page]] references, grouped by source page.
+   
+   Styling: Editorial design inspired by publishing/Acknowledgements component."
   (:require [plugins.backlinks-index :as backlinks]
             [clojure.string :as str]
             [components.page-ref :as page-ref]))
@@ -61,35 +63,22 @@
   "Single backlink block showing the referencing text with clickable page refs."
   [{:keys [block-text block-id on-intent]}]
   [:div.backlink-block
-   {:style {:padding "8px 12px"
-            :margin "4px 0"
-            :background "var(--color-surface, #f5f5f5)"
-            :border-radius "4px"
-            :font-size "13px"
-            :line-height "1.5"}
-    :replicant/key block-id}
-   ;; Parse text and render [[Page]] refs as clickable links
+   {:replicant/key block-id}
    (parse-text-with-refs block-text on-intent)])
 
 (defn- BacklinkGroup
   "Group of backlinks from a single page."
   [{:keys [page-title blocks on-intent]}]
   [:div.backlink-group
-   {:style {:margin-bottom "16px"}}
 
    ;; Page header (clickable to navigate)
    [:div.backlink-page-header
-    {:style {:font-weight "600"
-             :font-size "14px"
-             :color "var(--color-text, #333)"
-             :margin-bottom "8px"
-             :cursor "pointer"}
-     :on {:click (fn [e]
+    {:on {:click (fn [e]
                    (.preventDefault e)
                    (when on-intent
                      (on-intent {:type :navigate-to-page
                                  :page-name page-title})))}}
-    "📄 " page-title]
+    page-title]
 
    ;; Blocks from this page
    (into [:div.backlink-blocks]
@@ -112,42 +101,23 @@
   (let [backlinks (backlinks/get-backlinks db page-title)
         grouped (group-by-page backlinks)
         backlink-count (count backlinks)]
-    [:div.backlinks-panel
-     {:style {:margin-top "40px"
-              :padding-top "20px"
-              :border-top "1px solid var(--color-border, #e5e5e5)"}}
+    [:aside.backlinks-panel {:aria-label "Linked References"}
 
-     ;; Header with count
+     ;; Header with ornament and count
      [:div.backlinks-header
-      {:style {:display "flex"
-               :align-items "center"
-               :gap "8px"
-               :margin-bottom "16px"}}
-      [:h4 {:style {:margin "0"
-                    :font-size "14px"
-                    :font-weight "600"
-                    :color "var(--color-text-muted, #666)"}}
-       "Linked References"]
-      [:span.backlinks-count
-       {:style {:background "var(--color-surface, #f0f0f0)"
-                :padding "2px 8px"
-                :border-radius "10px"
-                :font-size "12px"
-                :color "var(--color-text-muted, #666)"}}
-       backlink-count]]
+      [:span.backlinks-ornament "❧"]
+      [:h4.backlinks-title "Linked References"]
+      (when (pos? backlink-count)
+        [:span.backlinks-count backlink-count])]
 
      ;; Content
-     (if (empty? backlinks)
-       [:div.backlinks-empty
-        {:style {:padding "20px"
-                 :text-align "center"
-                 :color "var(--color-text-muted, #999)"
-                 :font-size "13px"}}
-        "No references to this page yet"]
+     [:div.backlinks-content
+      (if (empty? backlinks)
+        [:p.backlinks-empty "No references to this page yet."]
 
-       (into [:div.backlinks-content]
-             (map (fn [group]
-                    (BacklinkGroup {:page-title (:page-title group)
-                                    :blocks (:blocks group)
-                                    :on-intent on-intent}))
-                  grouped)))]))
+        (into [:<>]
+              (map (fn [group]
+                     (BacklinkGroup {:page-title (:page-title group)
+                                     :blocks (:blocks group)
+                                     :on-intent on-intent}))
+                   grouped)))]]))
