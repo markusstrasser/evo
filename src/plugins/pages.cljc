@@ -189,6 +189,57 @@
                           :fr/ids #{:fr.struct/delete-block}
                           :handler handle-delete-page})
 
+(defn- escape-regex
+  "Escape special regex characters for literal matching."
+  [s]
+  (str/replace s #"([.*+?^${}()|\[\]\\])" "\\$1"))
+
+(defn- find-blocks-with-page-ref
+  "Find all blocks containing [[page-name]] references (case-insensitive).
+   Returns seq of [block-id block-text] pairs."
+  [db page-name]
+  (let [pattern (re-pattern (str "(?i)\\[\\[" (escape-regex page-name) "\\]\\]"))]
+    (->> (:nodes db)
+         (filter (fn [[_id node]] (= (:type node) :block)))
+         (keep (fn [[block-id node]]
+                 (let [text (get-in node [:props :text] "")]
+                   (when (re-find pattern text)
+                     [block-id text])))))))
+
+(defn- update-page-refs-in-text
+  "Replace [[old-name]] with [[new-name]] in text (case-insensitive match, preserves case of replacement)."
+  [text old-name new-name]
+  (let [pattern (re-pattern (str "(?i)\\[\\[" (escape-regex old-name) "\\]\\]"))]
+    (str/replace text pattern (str "[[" new-name "]]"))))
+
+(defn- handle-rename-page
+  "Rename a page by updating its title and all [[OldName]] references.
+   Validates: non-empty, no collision with existing page.
+   LOGSEQ PARITY: Updates all page references across the graph."
+  [db _session {:keys [page-id new-title]}]
+  (when (and page-id (not (str/blank? new-title)))
+    (let [trimmed-title (str/trim new-title)
+          old-title (q/page-title db page-id)
+          existing (q/find-page-by-name db trimmed-title)]
+      ;; Only rename if title is different and doesn't collide
+      (when (and (not (str/blank? trimmed-title))
+                 (not= old-title trimmed-title)
+                 (or (nil? existing) (= existing page-id)))
+        (let [;; Find all blocks with [[old-title]] references
+              blocks-to-update (find-blocks-with-page-ref db old-title)
+              ;; Generate update ops for each block
+              ref-update-ops (map (fn [[block-id text]]
+                                    {:op :update-node
+                                     :id block-id
+                                     :props {:text (update-page-refs-in-text text old-title trimmed-title)}})
+                                  blocks-to-update)]
+          {:ops (into [{:op :update-node :id page-id :props {:title trimmed-title}}]
+                      ref-update-ops)})))))
+
+(intent/register-intent! :rename-page
+                         {:doc "Rename a page by updating its title"
+                          :handler handle-rename-page})
+
 (defn- handle-restore-page
   "Restore a page and its descendants from trash.
 
