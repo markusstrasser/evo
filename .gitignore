@@ -134,3 +134,4 @@ CLAUDE.md
 AGENTS.md
 *.transcript
 .claude/skills/skill-authoring
+test-screenshots/
