@@ -4,10 +4,11 @@
    Like Logseq's /all-journals view:
    - Multiple journal pages on one scrollable page
    - Newest journals at top
-   - Each journal is a full page with its blocks
+   - Each journal is FULLY EDITABLE (uses real Block components)
    - Borders between journals for visual separation"
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
+            [components.block :as block]
             [clojure.string :as str]))
 
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,50 +57,56 @@
 
 ;; ── Journal Page Renderer ──────────────────────────────────────────────────────
 
-(defn- JournalBlock
-  "Recursively render a block and its children with proper hierarchy.
-   depth controls indentation (0 = top-level)."
-  [db block-id depth]
-  (let [text (q/block-text db block-id)
-        children (q/children db block-id)
-        ;; Skip empty blocks without children
-        has-text? (and text (not (str/blank? text)))
-        has-children? (seq children)]
-    (when (or has-text? has-children?)
-      [:div.journal-block {:style {:margin-left (str (* depth 20) "px")}}
-       (when has-text?
-         [:div.journal-block-content
-          [:span.block-bullet "•"]
-          [:span.block-text text]])
-       (when has-children?
-         (into [:div.journal-block-children]
-               (keep #(JournalBlock db % (inc depth)) children)))])))
-
 (defn- JournalPage
-  "Single journal page in the journals list.
-   The entire journal item is clickable to navigate to that page."
-  [{:keys [db page-id title is-last? on-intent]}]
+  "Single journal page in the journals list - FULLY EDITABLE.
+   Uses real Block components for inline editing.
+   Title is clickable to navigate to that page."
+  [{:keys [db page-id title is-last? on-intent
+           editing-block-id focus-block-id selection-set folded-set]}]
   (let [children (q/children db page-id)
-        ;; Check if page has any content (recursively)
-        has-any-content? (has-content? db page-id)
+        has-any-content? (or (seq children) (has-content? db page-id))
         navigate-to-page (fn [e]
                            (.preventDefault e)
+                           (.stopPropagation e)
                            (vs/set-journals-view! false)
                            (when on-intent
                              (on-intent {:type :switch-page :page-id page-id})))]
     [:div.journal-item
      {:replicant/key page-id
-      :class [(when is-last? "journal-last")
-              "journal-clickable"]
-      :on {:click navigate-to-page}}
-     ;; Journal title/date header
-     [:h3.journal-title title]
-     ;; Journal blocks with proper hierarchy
-     ;; NOTE: Replicant doesn't support React fragments [:<>], use wrapper div
+      :class [(when is-last? "journal-last")]}
+     ;; Journal title/date header - clickable to navigate
+     [:h3.journal-title
+      {:on {:click navigate-to-page}
+       :style {:cursor "pointer"}}
+      title]
+     ;; Journal blocks - REAL Block components for full editing
      (if has-any-content?
        (into [:div.journal-blocks]
-             (keep #(JournalBlock db % 0) children))
+             (map (fn [child-id]
+                    (block/Block {:db db
+                                  :block-id child-id
+                                  :depth 0
+                                  :is-focused (= focus-block-id child-id)
+                                  :is-selected (contains? selection-set child-id)
+                                  :is-editing (= editing-block-id child-id)
+                                  :is-folded (contains? folded-set child-id)
+                                  :on-intent on-intent}))
+                  children))
+       ;; Empty journal - clickable placeholder to create first block
        [:div.journal-empty
+        {:style {:padding "20px"
+                 :text-align "center"
+                 :color "#9ca3af"
+                 :cursor "text"
+                 :border "1px dashed #e5e7eb"
+                 :border-radius "4px"
+                 :margin "10px 0"}
+         :on {:click (fn [e]
+                       (.stopPropagation e)
+                       (let [new-id (str "block-" (random-uuid))]
+                         (on-intent {:type :create-block-in-page
+                                     :page-id page-id
+                                     :block-id new-id})))}}
         [:span.empty-hint "Click to add entries"]])]))
 
 ;; ── Main Journals View ─────────────────────────────────────────────────────────
@@ -114,19 +121,25 @@
     (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
 
 (defn JournalsView
-  "Main journals view showing all journal pages stacked.
+  "Main journals view showing all journal pages stacked and EDITABLE.
 
    Props:
    - db: Database
-   - on-intent: Intent handler for navigation
+   - on-intent: Intent handler for navigation and editing
 
    LOGSEQ PARITY:
    - Today's journal always shows (even if empty), positioned first
    - Other empty journals are hidden
-   - Journals sorted by date descending (newest first)"
+   - Journals sorted by date descending (newest first)
+   - Full editing support (same as regular pages)"
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
         today (today-iso)
+        ;; Session state for editing context (same as Outline)
+        editing-block-id (vs/editing-block-id)
+        focus-block-id (vs/focus-id)
+        selection-set (vs/selection-nodes)
+        folded-set (vs/folded)
         ;; Get journal pages with titles and content status
         journal-pages (->> all-pages
                            (map (fn [pid]
@@ -149,14 +162,18 @@
                                      ;; Then by date descending (newest first)
                                      :else (compare (:date b) (:date a))))))
         total (count journal-pages)
-        ;; Build journal items via function calls (Replicant style, not vector syntax)
+        ;; Build journal items with editing context
         journal-items (map-indexed
                        (fn [idx {:keys [id title]}]
                          (JournalPage {:db db
                                        :page-id id
                                        :title title
                                        :is-last? (= idx (dec total))
-                                       :on-intent on-intent}))
+                                       :on-intent on-intent
+                                       :editing-block-id editing-block-id
+                                       :focus-block-id focus-block-id
+                                       :selection-set selection-set
+                                       :folded-set folded-set}))
                        journal-pages)]
 
     [:div.journals-view
@@ -170,7 +187,7 @@
       [:h2.journals-title "Journals"]
       [:span.journals-count (str total " entries")]]
 
-     ;; Journal pages list
+     ;; Journal pages list - fully editable
      (if (seq journal-pages)
        (into [:div.journals-list] journal-items)
        [:div.journals-empty
