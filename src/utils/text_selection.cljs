@@ -74,14 +74,23 @@
 
 ;; ── Position Calculation ────────────────────────────────────────────────────
 
+(defn- count-brs-in-range
+  "Count BR elements in a range. Used to correct for range.toString() ignoring BRs."
+  [range]
+  (let [fragment (.cloneContents range)]
+    (.-length (.querySelectorAll fragment "br"))))
+
 (defn get-position
   "Get cursor position information from an element.
 
    Returns map with:
-   - :position - absolute character offset from start of element
+   - :position - absolute character offset from start of element (BR = 1 char)
    - :extent - length of selection (0 if collapsed)
    - :content - text content of current line up to cursor
-   - :line - zero-based line number"
+   - :line - zero-based line number
+   
+   NOTE: Corrects for range.toString() ignoring BR elements by counting them
+   separately. This is critical for multiline contenteditable."
   [element]
   (when-let [range (get-current-range)]
     (let [;; Calculate extent (selection length)
@@ -90,19 +99,27 @@
                    (count (.toString range)))
 
           ;; Create range from element start to cursor
-          until-range (.createRange js/document)]
-      (.setStart until-range element 0)
-      (.setEnd until-range (.-startContainer range) (.-startOffset range))
+          until-range (.createRange js/document)
+          _ (.setStart until-range element 0)
+          _ (.setEnd until-range (.-startContainer range) (.-startOffset range))
 
-      (let [content (.toString until-range)
-            position (count content)
-            lines (str/split content #"\n")
-            line (dec (count lines))
-            line-content (last lines)]
-        {:position position
-         :extent extent
-         :content line-content
-         :line line}))))
+          ;; Get text content (doesn't include BRs)
+          text-content (.toString until-range)
+          ;; Count BR elements that toString() missed
+          br-count (count-brs-in-range until-range)
+          ;; True position = text chars + BR chars (as newlines)
+          position (+ (count text-content) br-count)
+
+          ;; Get text up to cursor for line info
+          full-text (element->text element)
+          text-before-cursor (subs full-text 0 (min position (count full-text)))
+          lines (str/split text-before-cursor #"\n" -1)
+          line (dec (count lines))
+          line-content (last lines)]
+      {:position position
+       :extent extent
+       :content line-content
+       :line line})))
 
 ;; ── Range Creation ──────────────────────────────────────────────────────────
 
