@@ -6,6 +6,7 @@
   (:require [kernel.api :as api]
             [kernel.db :as db]
             [shell.view-state :as vs]
+            [shell.storage :as storage]
             [dev.tooling :as dev]))
 
 ;; ── Clipboard API ─────────────────────────────────────────────────────────────
@@ -57,13 +58,6 @@
      intent-map - The intent to dispatch
      label      - Debug label for assert (e.g. \"NEXUS\" or \"DIRECT\")"
   [!db intent-map label]
-  ;; Debug logging for image upload tracing
-  (when (= (:type intent-map) :update-content)
-    (js/console.log "📷 apply-intent! received :update-content"
-                    (clj->js {:blockId (:block-id intent-map)
-                              :textLength (count (:text intent-map))
-                              :textPreview (subs (:text intent-map) 0 (min 100 (count (:text intent-map))))})))
-
   ;; UNDO/REDO FIX: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
     (vs/set-cursor-position! cursor-pos))
@@ -83,18 +77,6 @@
         {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
-
-    ;; Debug: Check if DB actually changed for update-content
-    (when (= intent-type :update-content)
-      (let [block-id (:block-id intent-map)
-            text-before (get-in db-before [:nodes block-id :props :text])
-            text-after (get-in db-after [:nodes block-id :props :text])]
-        (js/console.log "📷 DB update check:"
-                        (clj->js {:blockId block-id
-                                  :textBefore text-before
-                                  :textAfter text-after
-                                  :changed? (not= text-before text-after)
-                                  :issues issues}))))
 
     ;; Report validation issues
     (when (seq issues)
@@ -143,8 +125,15 @@
                       :else :unknown)]
         (dev/record-clipboard-op! op-type clipboard-text block-ids)))
 
-    ;; Apply DB changes (triggers re-render)
-    (reset! !db db-after)
+    ;; STORAGE: Delete old file when page is renamed
+    ;; Prevents duplicate pages from old .md files being reloaded
+    (when-let [old-title (get-in session-updates [:storage :delete-old-file])]
+      (storage/delete-page-file! nil old-title))
+
+;; Apply DB changes ONLY IF changed (triggers re-render + debounced save)
+    ;; Skip reset when db unchanged to avoid spurious watcher notifications
+    (when-not (identical? db-before db-after)
+      (reset! !db db-after))
 
     ;; Clear buffer after successful dispatch (if buffer was injected and used)
     (when buffer-text
