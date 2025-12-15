@@ -53,6 +53,7 @@
         :autocomplete nil ; Autocomplete popup state (see autocomplete-show!)
         :quick-switcher nil ; Quick switcher state {:query "" :selected-idx 0}
         :notification nil ; Toast notification {:message :type :action :timeout-id}
+        :editing-page-title? false ; True when page title is being edited
         :favorites #{} ; Set of favorited page IDs (star icon in sidebar)
         :recents [] ; Vector of recently visited page IDs (most recent first)
         :history [] ; Navigation history stack (page IDs)
@@ -152,6 +153,11 @@
   "Check if journals view is active (showing all journals stacked)."
   []
   (get-in @!view-state [:ui :journals-view?] false))
+
+(defn editing-page-title?
+  "Check if page title is currently being edited."
+  []
+  (get-in @!view-state [:ui :editing-page-title?] false))
 
 ;; ── View State Mutation API ─────────────────────────────────────────────────────
 
@@ -283,6 +289,11 @@
   "Set journals view state explicitly."
   [active?]
   (swap-view-state! assoc-in [:ui :journals-view?] active?))
+
+(defn set-editing-page-title!
+  "Set whether page title is being edited."
+  [editing?]
+  (swap-view-state! assoc-in [:ui :editing-page-title?] editing?))
 
 ;; ── Drag State API ────────────────────────────────────────────────────────────
 

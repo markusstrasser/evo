@@ -567,6 +567,49 @@
                             :on-intent on-intent}))
             children)])))
 
+(defn PageTitle
+  "Editable page title component.
+   Matches journal-title styling. Click to edit, blur/Enter to save.
+   Uses uncontrolled input pattern (browser owns value during edit)."
+  [{:keys [page-id page-title on-intent]}]
+  (let [editing? (vs/editing-page-title?)]
+    (if editing?
+      ;; Edit mode - uncontrolled input (browser owns value)
+      [:div.page-title-header
+       [:input.page-title-input
+        {:type "text"
+         :replicant/key (str page-id "-edit")
+         :default-value page-title
+         :replicant/on-mount (fn [{:replicant/keys [node]}]
+                               (.focus node)
+                               (.select node))
+         :on {:blur (fn [e]
+                      (let [new-title (str/trim (.-value (.-target e)))]
+                        ;; Update DB first, THEN update view state
+                        ;; This ensures re-render sees the new title
+                        (when (and (not (str/blank? new-title))
+                                   (not= new-title page-title))
+                          (on-intent {:type :rename-page
+                                      :page-id page-id
+                                      :new-title new-title}))
+                        (vs/set-editing-page-title! false)))
+              :keydown (fn [e]
+                         (case (.-key e)
+                           "Enter" (do (.preventDefault e)
+                                       (.blur (.-target e)))
+                           "Escape" (do (.preventDefault e)
+                                        ;; Reset value and exit without saving
+                                        (set! (.-value (.-target e)) page-title)
+                                        (vs/set-editing-page-title! false))
+                           nil))}}]]
+      ;; View mode - clickable h1
+      [:div.page-title-header
+       [:h1.page-title-display
+        {:replicant/key (str page-id "-view")
+         :on {:click (fn [_e]
+                       (vs/set-editing-page-title! true))}}
+        page-title]])))
+
 (defn HotkeysReference []
   (let [kbd (fn [& key-names]
               (into [:span.kbd-group {:style {:display "inline-flex" :gap "2px" :align-items "center"}}]
@@ -680,7 +723,10 @@
            ;; Single page view
            current-page-id
            [:div
-            [:h3.page-title "📄 " page-title]
+            ;; Editable page title (click to rename)
+            (PageTitle {:page-id current-page-id
+                        :page-title page-title
+                        :on-intent handle-intent})
 
             ;; Main outline for current page only
             (Outline {:db db
