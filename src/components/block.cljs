@@ -9,6 +9,7 @@
             [kernel.query :as q]
             [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
+            [parser.inline-format :as inline-format]
             [parser.images :as images]
             [components.page-ref :as page-ref]
             [components.image :as image]
@@ -934,8 +935,34 @@
       (interpose [:br] (map #(if (empty? %) "" %) parts)))
     text))
 
+(defn- render-formatted-segment
+  "Render a single formatted segment as hiccup.
+   Returns a vector: either a single hiccup element or sequence of text/br elements."
+  [{:keys [type value]}]
+  (case type
+    :bold [[:strong value]]
+    :italic [[:em value]]
+    :highlight [[:mark value]]
+    :strikethrough [[:del value]]
+    ;; Plain text - handle newlines
+    :text (let [result (text-segment->hiccup value)]
+            (if (seq? result)
+              (vec result)  ; Sequence with [:br] elements
+              [result]))))  ; Single string
+
+(defn- render-text-with-inline-formatting
+  "Parse and render inline formatting (bold, italic, highlight, strikethrough).
+   Returns vector of hiccup elements."
+  [text]
+  (if (inline-format/has-formatting? text)
+    (vec (mapcat render-formatted-segment
+                 (inline-format/split-with-formatting text)))
+    ;; No formatting - just handle newlines
+    (let [result (text-segment->hiccup text)]
+      (if (seq? result) (vec result) [result]))))
+
 (defn- render-text-segment-with-images
-  "Render a plain text segment, parsing out any images.
+  "Render a plain text segment, parsing out any images and inline formatting.
    Returns vector of hiccup elements."
   [text on-intent]
   (if (images/image? text)
@@ -943,14 +970,12 @@
     (->> (images/split-with-images text)
          (mapcat (fn [{:keys [type value alt path]}]
                    (case type
-                     :text (let [result (text-segment->hiccup value)]
-                             (if (seq? result) result [result]))
+                     :text (render-text-with-inline-formatting value)
                      :image [(image/Image {:path path
                                            :alt alt
                                            :on-intent on-intent})]))))
-    ;; No images - just handle newlines
-    (let [result (text-segment->hiccup text)]
-      (if (seq? result) result [result]))))
+    ;; No images - handle inline formatting + newlines
+    (render-text-with-inline-formatting text)))
 
 (defn- render-text-with-page-refs
   "Render text with [[page-refs]] and ![images] as components.
