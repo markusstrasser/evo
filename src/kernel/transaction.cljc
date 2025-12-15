@@ -291,6 +291,15 @@
       [(make-issue op op-index :node-not-found
                    (str "Node " id " does not exist"))])))
 
+(defn- validate-delete-node
+  "Validate :delete-node operation."
+  [db op op-index]
+  (let [{:keys [id]} op]
+    (if (contains? (:nodes db) id)
+      []
+      [(make-issue op op-index :node-not-found
+                   (str "Node " id " does not exist"))])))
+
 (defn- validate-op
   "Validate a single operation. Returns vector of issues.
 
@@ -308,6 +317,7 @@
                     :create-node (validate-create-node db op op-index)
                     :place (validate-place db op op-index)
                     :update-node (validate-update-node db op op-index)
+                    :delete-node (validate-delete-node db op op-index)
                     [(make-issue op op-index :unknown-op
                                  (str "Unknown operation: " (:op op)))])]
 
@@ -319,7 +329,8 @@
   (case op
     :create-node (ops/create-node db id node-type props)
     :place (ops/place db id under at)
-    :update-node (ops/update-node db id props)))
+    :update-node (ops/update-node db id props)
+    :delete-node (ops/delete-node db id)))
 
 (defn- process-operation
   "Process a single operation during validation.

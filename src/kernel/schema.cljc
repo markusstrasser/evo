@@ -91,9 +91,15 @@
    [:id Id]
    [:props :map]])
 
+(def Op-Delete
+  "Delete node operation - permanently removes node from database"
+  [:map
+   [:op [:= :delete-node]]
+   [:id Id]])
+
 (def Op
   "Any valid operation"
-  [:or Op-Create Op-Place Op-Update])
+  [:or Op-Create Op-Place Op-Update Op-Delete])
 
 (def Transaction
   "Collection of operations"
