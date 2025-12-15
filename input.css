@@ -7,7 +7,6 @@
    Technical features:
    - CSS Nesting, Container Queries, :has(), oklch colors
    - Native <dialog>, Popover API, text-box
-   - Light/dark mode via color-scheme + prefers-color-scheme
    - No animations — snappy, professional
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -215,50 +214,8 @@
     --shadow-dialog: 0 16px 48px oklch(20% 0.02 80 / 20%), 0 4px 12px oklch(20% 0.02 80 / 10%);
   }
 
-  /* ─── Dark Mode ────────────────────────────────────────────────────────── */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      /* Deep charcoal, not pure black */
-      --color-bg: oklch(14% 0.01 280);
-      --color-surface: oklch(18% 0.01 280);
-      --color-surface-raised: oklch(22% 0.012 280);
-      
-      /* Subtle borders */
-      --color-border: oklch(26% 0.01 280);
-      --color-border-strong: oklch(32% 0.012 280);
-
-      /* Softer white text */
-      --color-text: oklch(92% 0.01 80);
-      --color-text-secondary: oklch(70% 0.01 80);
-      --color-text-tertiary: oklch(55% 0.008 80);
-
-      /* Warmer amber accent in dark mode */
-      --color-accent: oklch(70% 0.16 55);
-      --color-accent-hover: oklch(75% 0.18 55);
-      --color-accent-subtle: oklch(25% 0.06 55);
-      --color-accent-text: oklch(75% 0.14 55);
-
-      /* Selection */
-      --color-selected-bg: oklch(25% 0.04 280);
-      --color-selected-border: oklch(45% 0.08 280);
-      
-      /* Focus */
-      --color-focus-ring: oklch(65% 0.15 55);
-      --color-focused-bg: oklch(22% 0.03 55);
-
-      /* Semantic */
-      --color-danger-subtle: oklch(25% 0.06 25);
-
-      /* Shadows (more prominent in dark) */
-      --shadow-sm: 0 1px 3px oklch(0% 0 0 / 30%);
-      --shadow-md: 0 3px 10px oklch(0% 0 0 / 35%), 0 1px 3px oklch(0% 0 0 / 25%);
-      --shadow-lg: 0 10px 30px oklch(0% 0 0 / 40%), 0 3px 8px oklch(0% 0 0 / 30%);
-      --shadow-dialog: 0 20px 60px oklch(0% 0 0 / 50%), 0 6px 16px oklch(0% 0 0 / 35%);
-    }
-  }
-
   html {
-    color-scheme: light dark;
+    color-scheme: light;
   }
 
   body {
@@ -389,20 +346,6 @@
 
     /* Subtle inner shadow for depth */
     box-shadow: inset -8px 0 16px -12px oklch(0% 0 0 / 0.04);
-  }
-
-  /* Dark mode overrides */
-  @media (prefers-color-scheme: dark) {
-    .sidebar {
-      --sidebar-bg: oklch(18% 0.01 250);
-      --sidebar-border: oklch(25% 0.015 250);
-      --sidebar-text: oklch(90% 0.01 250);
-      --sidebar-text-muted: oklch(70% 0.01 250);
-      --sidebar-text-faint: oklch(50% 0.01 250);
-      --sidebar-hover: oklch(22% 0.01 250);
-      --sidebar-active: oklch(28% 0.025 250);
-      --sidebar-accent: oklch(70% 0.12 250);
-    }
   }
 
   /* ── Storage Section ────────────────────────────────────────────────────── */
@@ -723,16 +666,6 @@
   .delete-button:hover {
     color: oklch(55% 0.2 25); /* Red */
     background: oklch(95% 0.05 25);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .star-button:hover {
-      background: oklch(30% 0.08 85);
-    }
-
-    .delete-button:hover {
-      background: oklch(30% 0.08 25);
-    }
   }
 
   /* ── Empty State ────────────────────────────────────────────────────────── */
@@ -1444,12 +1377,6 @@
     }
   }
 
-  @media (prefers-color-scheme: dark) {
-    dialog.quick-switcher::backdrop {
-      background: oklch(0% 0 0 / 70%);
-    }
-  }
-
   .quick-switcher-content {
     display: flex;
     flex-direction: column;
@@ -1581,32 +1508,6 @@
     background: oklch(95% 0.03 250);
     color: oklch(35% 0.1 250);
     border: 1px solid oklch(85% 0.06 250);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .notification--success {
-      background: oklch(25% 0.08 145);
-      color: oklch(85% 0.1 145);
-      border-color: oklch(35% 0.1 145);
-    }
-
-    .notification--error {
-      background: oklch(25% 0.08 25);
-      color: oklch(85% 0.1 25);
-      border-color: oklch(35% 0.1 25);
-    }
-
-    .notification--warning {
-      background: oklch(25% 0.06 85);
-      color: oklch(85% 0.08 85);
-      border-color: oklch(35% 0.08 85);
-    }
-
-    .notification--info {
-      background: oklch(25% 0.04 250);
-      color: oklch(85% 0.06 250);
-      border-color: oklch(35% 0.06 250);
-    }
   }
 
   .notification__message {
@@ -1787,40 +1688,6 @@
     }
   }
 
-  @media (prefers-color-scheme: dark) {
-    .journals-header {
-      border-bottom-color: oklch(30% 0.02 250);
-    }
-
-    .journals-back {
-      border-color: oklch(35% 0.03 250);
-
-      &:hover {
-        background: oklch(25% 0.03 250);
-      }
-    }
-
-    .journal-item {
-      border-bottom-color: oklch(28% 0.02 250);
-
-      &.journal-clickable:hover {
-        background: oklch(22% 0.02 250);
-        box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2);
-      }
-
-      &.journal-clickable:active {
-        background: oklch(25% 0.03 250);
-      }
-    }
-
-    .journal-title {
-      color: oklch(75% 0.12 250);
-    }
-
-    .journal-item.journal-clickable:hover .journal-title {
-      color: oklch(85% 0.1 250);
-    }
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
