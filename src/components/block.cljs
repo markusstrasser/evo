@@ -459,14 +459,13 @@
 (defn handle-enter [e db block-id on-intent]
   (.preventDefault e)
   (let [target (.-target e)
-        text-content (.-textContent target)
-        ;; FIXED: Use text-sel/get-position for correct multiline cursor position
-        ;; Previously used (.-anchorOffset selection) which only gives offset
-        ;; within the current text node, not the overall position
+        ;; Get DOM text with proper newline handling (BR → \n)
+        dom-text (extract-text-with-newlines target)
+        ;; Get cursor position that matches DOM text (includes BRs as \n)
         cursor-pos (or (:position (text-sel/get-position target)) 0)
         ;; LOGSEQ PARITY: Empty block auto-outdent
         ;; Conditions: empty content + no next sibling + not at top level
-        is-empty? (str/blank? text-content)
+        is-empty? (str/blank? dom-text)
         has-next? (some? (q/next-sibling db block-id))
         parent (q/parent-of db block-id)
         at-root? (= parent :doc)]
@@ -475,9 +474,12 @@
       ;; Use :outdent-selected which preserves editing state
       (on-intent {:type :outdent-selected})
       ;; Normal: create new block via context-aware-enter
+      ;; CRITICAL: Pass pending-buffer with DOM text so split uses same text
+      ;; that cursor position was calculated against (fixes multiline split)
       (on-intent {:type :context-aware-enter
                   :block-id block-id
-                  :cursor-pos cursor-pos}))))
+                  :cursor-pos cursor-pos
+                  :pending-buffer {:block-id block-id :text dom-text}}))))
 
 (defn handle-escape [e _db block-id on-intent]
   (.preventDefault e)
