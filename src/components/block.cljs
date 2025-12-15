@@ -460,8 +460,10 @@
   (.preventDefault e)
   (let [target (.-target e)
         text-content (.-textContent target)
-        selection (.getSelection js/window)
-        cursor-pos (.-anchorOffset selection)
+        ;; FIXED: Use text-sel/get-position for correct multiline cursor position
+        ;; Previously used (.-anchorOffset selection) which only gives offset
+        ;; within the current text node, not the overall position
+        cursor-pos (or (:position (text-sel/get-position target)) 0)
         ;; LOGSEQ PARITY: Empty block auto-outdent
         ;; Conditions: empty content + no next sibling + not at top level
         is-empty? (str/blank? text-content)
