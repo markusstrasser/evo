@@ -11,6 +11,7 @@
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.history :as H]
+            [kernel.api :as api]
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
@@ -895,9 +896,11 @@
   (js/setTimeout
    (fn []
      (when-not (test-mode?)
-       ;; First, permanently delete pages in trash > 30 days
+       ;; First, mark pages in trash > 30 days as tombstones
        (executor/apply-intent! !db {:type :cleanup-old-trash} "STARTUP")
-       ;; Then, auto-trash any empty pages (except today's journal)
+       ;; Then, garbage collect tombstoned nodes (bypasses transaction pipeline)
+       (swap! !db api/gc-tombstones)
+       ;; Finally, auto-trash any empty pages (except today's journal)
        (executor/apply-intent! !db {:type :scan-empty-pages} "STARTUP")))
    2000)
 

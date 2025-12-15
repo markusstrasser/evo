@@ -467,10 +467,16 @@
                     (or (nil? text) (str/blank? text))))
                 child-ids))))
 
+(defn tombstone?
+  "Check if a node is marked as a tombstone (permanently deleted)."
+  [db node-id]
+  (get-in db [:nodes node-id :props :tombstone?]))
+
 (defn trashed-pages
-  "Get list of all page IDs in trash."
+  "Get list of all page IDs in trash (excludes tombstoned nodes)."
   [db]
-  (children db :trash))
+  (->> (children db :trash)
+       (remove #(tombstone? db %))))
 
 (defn trashed-at
   "Get the timestamp when a page was trashed, or nil if not set."
