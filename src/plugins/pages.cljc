@@ -215,7 +215,8 @@
 (defn- handle-rename-page
   "Rename a page by updating its title and all [[OldName]] references.
    Validates: non-empty, no collision with existing page.
-   LOGSEQ PARITY: Updates all page references across the graph."
+   LOGSEQ PARITY: Updates all page references across the graph.
+   Returns :delete-old-file in session-updates so executor can clean up old .md file."
   [db _session {:keys [page-id new-title]}]
   (when (and page-id (not (str/blank? new-title)))
     (let [trimmed-title (str/trim new-title)
@@ -234,7 +235,9 @@
                                      :props {:text (update-page-refs-in-text text old-title trimmed-title)}})
                                   blocks-to-update)]
           {:ops (into [{:op :update-node :id page-id :props {:title trimmed-title}}]
-                      ref-update-ops)})))))
+                      ref-update-ops)
+           ;; Signal executor to delete old file
+           :session-updates {:storage {:delete-old-file old-title}}})))))
 
 (intent/register-intent! :rename-page
                          {:doc "Rename a page by updating its title"
@@ -392,8 +395,8 @@
                    (mapcat (fn [page-id]
                              (let [descendants (collect-descendants db page-id)]
                                (into
-                                (mapv (fn [id] {:op :delete-node :id id}) descendants)
-                                [{:op :delete-node :id page-id}])))
+                                (mapv (fn [id] {:op :update-node :id id :props {:tombstone? true}}) descendants)
+                                [{:op :update-node :id page-id :props {:tombstone? true}}])))
                            to-delete)
                    ;; Trash valid empty pages
                    (mapcat (fn [page-id]
