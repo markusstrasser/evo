@@ -92,6 +92,7 @@
 
 (defn BacklinksPanel
   "Panel showing all backlinks to the current page.
+   Returns nil if no backlinks exist (panel hidden entirely).
    
    Props:
    - db: Application database
@@ -101,23 +102,20 @@
   (let [backlinks (backlinks/get-backlinks db page-title)
         grouped (group-by-page backlinks)
         backlink-count (count backlinks)]
-    [:aside.backlinks-panel {:aria-label "Linked References"}
+    ;; Only render if there are actual backlinks
+    (when (pos? backlink-count)
+      [:aside.backlinks-panel {:aria-label "Linked References"}
 
-     ;; Header with ornament and count
-     [:div.backlinks-header
-      [:span.backlinks-ornament "❧"]
-      [:h4.backlinks-title "Linked References"]
-      (when (pos? backlink-count)
-        [:span.backlinks-count backlink-count])]
+       ;; Header with ornament and count
+       [:div.backlinks-header
+        [:span.backlinks-ornament "❧"]
+        [:h4.backlinks-title "Linked References"]
+        [:span.backlinks-count backlink-count]]
 
-     ;; Content
-     [:div.backlinks-content
-      (if (empty? backlinks)
-        [:p.backlinks-empty "No references to this page yet."]
-
-        (into [:<>]
-              (map (fn [group]
-                     (BacklinkGroup {:page-title (:page-title group)
-                                     :blocks (:blocks group)
-                                     :on-intent on-intent}))
-                   grouped)))]]))
+       ;; Content - grouped by source page
+       [:div.backlinks-content
+        (for [group grouped]
+          ^{:key (:page-id group)}
+          (BacklinkGroup {:page-title (:page-title group)
+                          :blocks (:blocks group)
+                          :on-intent on-intent}))]])))

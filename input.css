@@ -1790,12 +1790,6 @@
     line-height: 1.6;
   }
 
-  .backlinks-empty {
-    color: var(--color-text-tertiary);
-    font-style: italic;
-    margin: 0;
-  }
-
   .backlink-group {
     margin-bottom: var(--space-4);
 
