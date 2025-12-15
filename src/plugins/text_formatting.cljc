@@ -4,9 +4,7 @@
 
    Logseq parity: Auto-trims whitespace from selection before formatting
    so '** bold text **' becomes '**bold text**' with surrounding spaces preserved."
-  (:require [kernel.intent :as intent]
-            #?(:clj [clojure.string :as str]
-               :cljs [clojure.string :as str])))
+  (:require [kernel.intent :as intent]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
