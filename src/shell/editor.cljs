@@ -640,7 +640,10 @@
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
         journals-view? (vs/journals-view?)
-        quick-switcher-visible? (vs/quick-switcher-visible?)]
+        quick-switcher-visible? (vs/quick-switcher-visible?)
+        ;; Navigation history state
+        can-go-back? (vs/can-go-back?)
+        can-go-forward? (vs/can-go-forward?)]
     [:div.app
      {:style {:display "flex"
               :min-height "100vh"}}
@@ -672,9 +675,52 @@
         ;; Mock-text for cursor detection
         (MockText)
 
-        [:h2 "Blocks UI - Multi-Page Demo"]
-        [:p {:style {:color "#666"}}
-         "Features: Page refs " [:code "[[Page]]"]]
+        ;; Header with navigation
+        [:div.page-header
+         {:style {:display "flex"
+                  :align-items "center"
+                  :gap "8px"
+                  :margin-bottom "10px"}}
+         ;; Navigation arrows (subtle, always visible when history exists)
+         [:div.nav-arrows
+          {:style {:display "flex"
+                   :gap "2px"}}
+          [:button.nav-arrow
+           {:style {:background "none"
+                    :border "none"
+                    :padding "4px 6px"
+                    :cursor (if can-go-back? "pointer" "default")
+                    :color (if can-go-back? "#6b7280" "#d1d5db")
+                    :font-size "14px"
+                    :border-radius "4px"
+                    :transition "all 0.15s ease"}
+            :title "Go back (Cmd+[)"
+            :disabled (not can-go-back?)
+            :on {:click (fn [e]
+                          (.preventDefault e)
+                          (when can-go-back?
+                            (handle-intent {:type :navigate-back})))}}
+           "←"]
+          [:button.nav-arrow
+           {:style {:background "none"
+                    :border "none"
+                    :padding "4px 6px"
+                    :cursor (if can-go-forward? "pointer" "default")
+                    :color (if can-go-forward? "#6b7280" "#d1d5db")
+                    :font-size "14px"
+                    :border-radius "4px"
+                    :transition "all 0.15s ease"}
+            :title "Go forward (Cmd+])"
+            :disabled (not can-go-forward?)
+            :on {:click (fn [e]
+                          (.preventDefault e)
+                          (when can-go-forward?
+                            (handle-intent {:type :navigate-forward})))}}
+           "→"]]
+         [:h2 {:style {:margin "0"}} "Blocks UI"]]
+
+        [:p {:style {:color "#666" :margin-top "5px"}}
+         "Page refs " [:code "[[Page]]"]]
 
         ;; Main content area - journals view, current page, or empty state
         (cond
