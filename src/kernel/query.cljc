@@ -454,3 +454,25 @@
                               str/trim
                               str/lower-case)))))
            first))))
+
+(defn page-empty?
+  "Check if a page has no meaningful content.
+   A page is empty if all its child blocks have blank/empty text.
+   Returns true if page has no children or all children are blank."
+  [db page-id]
+  (let [child-ids (children db page-id)]
+    (or (empty? child-ids)
+        (every? (fn [bid]
+                  (let [text (block-text db bid)]
+                    (or (nil? text) (str/blank? text))))
+                child-ids))))
+
+(defn trashed-pages
+  "Get list of all page IDs in trash."
+  [db]
+  (children db :trash))
+
+(defn trashed-at
+  "Get the timestamp when a page was trashed, or nil if not set."
+  [db page-id]
+  (get-in db [:nodes page-id :props :trashed-at]))

@@ -106,6 +106,9 @@
       :clock [:svg props
               [:circle {:cx "12" :cy "12" :r "10"}]
               [:polyline {:points "12 6 12 12 16 14"}]]
+      :undo [:svg props
+             [:path {:d "M3 7v6h6"}]
+             [:path {:d "M3 13a9 9 0 1 0 3-7.5L3 7"}]]
       :chevron-down [:svg props
                      [:polyline {:points "6 9 12 15 18 9"}]]
       :chevron-right [:svg props
@@ -173,6 +176,46 @@
     (when show-star?
       (StarButton {:page-id page-id :is-favorite? is-favorite?}))
     (DeleteButton {:page-id page-id :title title :db db :on-intent on-intent})]])
+
+;; ── Trash Item ───────────────────────────────────────────────────────────────
+
+(defn- format-days-ago
+  "Format trashed-at timestamp as 'X days ago' or 'today'."
+  [trashed-at]
+  (when trashed-at
+    (let [now (.now js/Date)
+          diff-ms (- now trashed-at)
+          days (js/Math.floor (/ diff-ms (* 24 60 60 1000)))]
+      (cond
+        (< days 1) "today"
+        (= days 1) "1 day ago"
+        :else (str days " days ago")))))
+
+(defn- TrashItem
+  "Item in trash section with restore and delete buttons."
+  [{:keys [page-id title trashed-at on-intent]}]
+  [:div.sidebar-trash-item
+   [:span.trash-title title]
+   [:span.trash-date (format-days-ago trashed-at)]
+   [:span.trash-actions
+    [:button.restore-button
+     {:title "Restore page"
+      :on {:click (fn [e]
+                    (.preventDefault e)
+                    (.stopPropagation e)
+                    (on-intent {:type :restore-page
+                                :page-id page-id
+                                :switch-to? true}))}}
+     (Icon {:name :undo :size 12})]
+    [:button.permanent-delete-button
+     {:title "Delete permanently"
+      :on {:click (fn [e]
+                    (.preventDefault e)
+                    (.stopPropagation e)
+                    (when (js/confirm "Permanently delete this page? This cannot be undone.")
+                      (on-intent {:type :permanently-delete-page
+                                  :page-id page-id})))}}
+     (Icon {:name :x :size 12})]]])
 
 ;; ── Collapsible Section ──────────────────────────────────────────────────────
 
@@ -294,6 +337,20 @@
                      (remove :favorite?) ; Don't duplicate favorites
                      (take 10))
 
+        ;; Trashed pages for Trashbin section (filter out invalid/Untitled)
+        trashed-pages (->> (q/trashed-pages db)
+                           (keep (fn [pid]
+                                   (let [title (q/page-title db pid)
+                                         trashed-at (q/trashed-at db pid)]
+                                     ;; Only show valid pages with real titles
+                                     (when (and title
+                                                (not (str/blank? title))
+                                                (not= title "Untitled"))
+                                       {:id pid
+                                        :title title
+                                        :trashed-at trashed-at}))))
+                           (sort-by (fn [p] (or (:trashed-at p) 0)) >))
+
         ;; Resize handle event handlers
         on-resize-start
         (fn [e]
@@ -409,4 +466,21 @@
                             :is-journal? false
                             :is-favorite? favorite?
                             :show-star? true
-                            :on-intent on-intent})))}))]))
+                            :on-intent on-intent})))}))
+
+     ;; Trash section - shows pages pending permanent deletion
+     (when (seq trashed-pages)
+       (CollapsibleSection
+        {:title "Trash"
+         :count (count trashed-pages)
+         :collapsed? (vs/section-collapsed? :trash)
+         :on-toggle #(vs/toggle-section-collapsed! :trash)
+         :children
+         [:div.trash-list
+          [:div.trash-hint "Auto-deletes after 30 days"]
+          (for [{:keys [id title trashed-at]} trashed-pages]
+            ^{:key id}
+            (TrashItem {:page-id id
+                        :title title
+                        :trashed-at trashed-at
+                        :on-intent on-intent}))]}))]))

@@ -142,7 +142,8 @@
 
 (defn- handle-delete-page
   "Delete a page and all its contents by moving to trash.
-   If deleting the current page, switches to another page."
+   If deleting the current page, switches to another page.
+   Adds :trashed-at timestamp for 30-day cleanup."
   [db session {:keys [page-id]}]
   (when page-id
     (let [current-page-id (q/current-page session)
@@ -152,12 +153,15 @@
           ;; Figure out which page to switch to if deleting current
           other-pages (remove #{page-id} pages)
           next-page (first other-pages)
-          deleting-current? (= page-id current-page-id)]
+          deleting-current? (= page-id current-page-id)
+          ;; Add timestamp for 30-day cleanup
+          now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))]
       {:ops (into
              ;; Move all descendants to trash first
              (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last}) descendants)
-             ;; Then move the page itself to trash
-             [{:op :place :id page-id :under const/root-trash :at :last}])
+             ;; Move page to trash and add timestamp
+             [{:op :place :id page-id :under const/root-trash :at :last}
+              {:op :update-node :id page-id :props {:trashed-at now}}])
        ;; If we deleted the current page, switch to another
        :session-updates (when deleting-current?
                           {:ui {:current-page next-page}})})))
@@ -214,6 +218,147 @@
                          {:doc "Restore a page from trash (undo delete)"
                           :fr/ids #{:fr.struct/delete-block}
                           :handler handle-restore-page})
+
+(defn- today-journal-title
+  "Get today's journal title in human format (Dec 14th, 2025)."
+  []
+  (let [months ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
+        now #?(:clj (java.util.Date.) :cljs (js/Date.))
+        day #?(:clj (.getDate now) :cljs (.getDate now))
+        month #?(:clj (.getMonth now) :cljs (.getMonth now))
+        year #?(:clj (+ 1900 (.getYear now)) :cljs (.getFullYear now))
+        suffix (cond
+                 (#{11 12 13} (mod day 100)) "th"
+                 (= 1 (mod day 10)) "st"
+                 (= 2 (mod day 10)) "nd"
+                 (= 3 (mod day 10)) "rd"
+                 :else "th")]
+    (str (nth months month) " " day suffix ", " year)))
+
+(defn- handle-auto-trash-empty-page
+  "Auto-trash a page if it's empty and has no backlinks.
+   Excludes today's journal page.
+   Called when navigating away from a page."
+  [db session {:keys [page-id]}]
+  (when page-id
+    (let [page-title (q/page-title db page-id)
+          today-title (today-journal-title)
+          is-today-journal? (= page-title today-title)
+          is-empty? (q/page-empty? db page-id)
+          backlinks (get-in db [:derived :backlinks-by-page
+                                (some-> page-title str/lower-case)] [])
+          has-backlinks? (seq backlinks)]
+      ;; Only auto-trash if: empty, no backlinks, and not today's journal
+      (when (and is-empty? (not has-backlinks?) (not is-today-journal?))
+        (handle-delete-page db session {:page-id page-id})))))
+
+(intent/register-intent! :auto-trash-empty-page
+                         {:doc "Auto-trash an empty page with no backlinks (except today's journal)"
+                          :handler handle-auto-trash-empty-page})
+
+(defn- handle-permanently-delete-page
+  "Permanently delete a page from trash (no recovery)."
+  [db _session {:keys [page-id]}]
+  (when page-id
+    (let [parent (get-in db [:derived :parent-of page-id])]
+      ;; Only delete if actually in trash
+      (when (= parent const/root-trash)
+        (let [descendants (collect-descendants db page-id)]
+          {:ops (into
+                 ;; Delete all descendants
+                 (mapv (fn [id] {:op :delete-node :id id}) descendants)
+                 ;; Delete the page itself
+                 [{:op :delete-node :id page-id}])})))))
+
+(intent/register-intent! :permanently-delete-page
+                         {:doc "Permanently delete a page from trash"
+                          :handler handle-permanently-delete-page})
+
+(defn- handle-cleanup-old-trash
+  "Delete pages that have been in trash for more than 30 days."
+  [db _session _intent]
+  (let [trash-pages (q/trashed-pages db)
+        now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
+        thirty-days-ms (* 30 24 60 60 1000)
+        old-pages (->> trash-pages
+                       (filter (fn [pid]
+                                 (let [trashed-at (q/trashed-at db pid)]
+                                   (and trashed-at
+                                        (> (- now trashed-at) thirty-days-ms))))))]
+    (when (seq old-pages)
+      {:ops (into []
+                  (mapcat (fn [page-id]
+                            (let [descendants (collect-descendants db page-id)]
+                              (into
+                               (mapv (fn [id] {:op :delete-node :id id}) descendants)
+                               [{:op :delete-node :id page-id}])))
+                          old-pages))})))
+
+(defn- handle-scan-empty-pages
+  "Scan all pages and clean up:
+   - Permanently delete invalid pages (Untitled, blank titles)
+   - Auto-trash valid empty pages (except today's journal)
+   Run on startup to clean up orphaned pages."
+  [db _session _intent]
+  (let [all-pages (q/all-pages db)
+        trash-pages (q/trashed-pages db)
+        all-page-ids (concat all-pages trash-pages)
+        today-title (today-journal-title)
+        now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
+
+        ;; Categorize pages
+        {:keys [to-delete to-trash]}
+        (reduce
+         (fn [acc page-id]
+           (let [page-title (q/page-title db page-id)
+                 is-invalid? (or (nil? page-title)
+                                 (str/blank? page-title)
+                                 (= page-title "Untitled"))
+                 is-today? (= page-title today-title)
+                 is-empty? (q/page-empty? db page-id)
+                 backlinks (get-in db [:derived :backlinks-by-page
+                                       (some-> page-title str/lower-case)] [])
+                 has-backlinks? (seq backlinks)
+                 already-trashed? (= (q/parent-of db page-id) const/root-trash)]
+             (cond
+               ;; Invalid pages → permanently delete
+               is-invalid?
+               (update acc :to-delete conj page-id)
+
+               ;; Valid, empty, no backlinks, not today, not already trashed → trash
+               (and is-empty? (not has-backlinks?) (not is-today?) (not already-trashed?))
+               (update acc :to-trash conj page-id)
+
+               :else acc)))
+         {:to-delete [] :to-trash []}
+         all-page-ids)]
+
+    (when (or (seq to-delete) (seq to-trash))
+      {:ops (into []
+                  (concat
+                   ;; Permanently delete invalid pages
+                   (mapcat (fn [page-id]
+                             (let [descendants (collect-descendants db page-id)]
+                               (into
+                                (mapv (fn [id] {:op :delete-node :id id}) descendants)
+                                [{:op :delete-node :id page-id}])))
+                           to-delete)
+                   ;; Trash valid empty pages
+                   (mapcat (fn [page-id]
+                             (let [descendants (collect-descendants db page-id)]
+                               (into
+                                (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last})
+                                      descendants)
+                                [{:op :place :id page-id :under const/root-trash :at :last}
+                                 {:op :update-node :id page-id :props {:trashed-at now}}])))
+                           to-trash)))})))
+
+(intent/register-intent! :scan-empty-pages
+                         {:handler handle-scan-empty-pages})
+
+(intent/register-intent! :cleanup-old-trash
+                         {:doc "Delete pages that have been in trash for more than 30 days"
+                          :handler handle-cleanup-old-trash})
 
 (intent/register-intent! :follow-link-under-cursor
                          {:doc "Follow link/reference under cursor (Cmd+O in Logseq).

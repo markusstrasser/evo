@@ -76,9 +76,12 @@
   "Serialize a page to Logseq-style markdown."
   [db page-id]
   (let [title (get-in db [:nodes page-id :props :title] "Untitled")
-        children (get-in db [:children-by-parent page-id] [])]
+        trashed-at (get-in db [:nodes page-id :props :trashed-at])
+        children (get-in db [:children-by-parent page-id] [])
+        header-lines (cond-> [(str "title:: " title)]
+                       trashed-at (conj (str "trashed-at:: " trashed-at)))]
     (str/join "\n"
-              (into [(str "title:: " title)]
+              (into header-lines
                     (mapcat #(block->markdown db % 0) children)))))
 
 ;; ── Markdown Parsing ─────────────────────────────────────────────────────────
@@ -103,17 +106,45 @@
   (when (str/starts-with? line "title:: ")
     (subs line 8)))
 
+(defn- parse-trashed-at-line
+  "Extract trashed-at timestamp from 'trashed-at:: Value' line."
+  [line]
+  (when (str/starts-with? line "trashed-at:: ")
+    (js/parseInt (subs line 13) 10)))
+
 (defn markdown->ops
   "Parse Logseq-style markdown into kernel ops."
   [page-id markdown]
   (let [lines (str/split-lines markdown)
-        title-line (first lines)
-        title (or (parse-title-line title-line) "Untitled")
-        content-lines (if (parse-title-line title-line)
-                        (rest lines)
-                        lines)
-        ops (atom [{:op :create-node :id page-id :type :page :props {:title title}}
-                   {:op :place :id page-id :under :doc :at :last}])
+        ;; Parse header properties (title::, trashed-at::)
+        {:keys [title trashed-at content-lines]}
+        (loop [lines lines
+               title nil
+               trashed-at nil]
+          (if (empty? lines)
+            {:title (or title "Untitled") :trashed-at trashed-at :content-lines []}
+            (let [line (first lines)]
+              (cond
+                (str/starts-with? line "title:: ")
+                (recur (rest lines) (subs line 8) trashed-at)
+
+                (str/starts-with? line "trashed-at:: ")
+                (recur (rest lines) title (js/parseInt (subs line 13) 10))
+
+                :else
+                {:title (or title "Untitled")
+                 :trashed-at trashed-at
+                 :content-lines lines}))))
+
+        ;; Determine root based on trashed state
+        root (if trashed-at :trash :doc)
+
+        ;; Page props include trashed-at if present
+        page-props (cond-> {:title title}
+                     trashed-at (assoc :trashed-at trashed-at))
+
+        ops (atom [{:op :create-node :id page-id :type :page :props page-props}
+                   {:op :place :id page-id :under root :at :last}])
         counter (atom 0)
         parent-stack (atom {0 page-id})]
 

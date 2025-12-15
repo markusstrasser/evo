@@ -790,3 +790,45 @@
     (save-to-storage! storage-key-sidebar-width clamped)
     clamped))
 
+;; ── Auto-Trash Queue ──────────────────────────────────────────────────────────
+;; When navigating away from a page, we queue it for empty-page check.
+;; The check is deferred to avoid nested dispatch during render.
+
+(defonce ^:private !auto-trash-queue (atom #{}))
+
+(defn queue-auto-trash-check!
+  "Queue a page for auto-trash check (deferred).
+   Called when navigating away from a page."
+  [page-id]
+  (when page-id
+    (swap! !auto-trash-queue conj page-id)))
+
+(defn take-auto-trash-queue!
+  "Take and clear all queued page IDs for auto-trash check."
+  []
+  (let [queued @!auto-trash-queue]
+    (reset! !auto-trash-queue #{})
+    queued))
+
+;; ── Sidebar Section Collapse State ───────────────────────────────────────────
+
+(def default-collapsed-sections
+  "Sections that start collapsed by default."
+  #{:trash})
+
+(defn section-collapsed?
+  "Check if a sidebar section is collapsed."
+  [section-key]
+  (let [collapsed-set (get-in @!view-state [:ui :collapsed-sections] default-collapsed-sections)]
+    (contains? collapsed-set section-key)))
+
+(defn toggle-section-collapsed!
+  "Toggle the collapsed state of a sidebar section."
+  [section-key]
+  (swap! !view-state update-in [:ui :collapsed-sections]
+         (fn [current]
+           (let [collapsed-set (or current default-collapsed-sections)]
+             (if (contains? collapsed-set section-key)
+               (disj collapsed-set section-key)
+               (conj collapsed-set section-key))))))
+
