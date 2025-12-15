@@ -261,6 +261,7 @@
         favorites-set (vs/favorites)
         recents-list (vs/recents)
         today (today-iso)
+        sidebar-width (vs/sidebar-width)
 
         ;; Build page metadata, filtering invalid pages
         pages-with-meta (->> all-pages
@@ -291,9 +292,53 @@
                      (keep (fn [pid]
                              (some #(when (= (:id %) pid) %) regular-pages)))
                      (remove :favorite?) ; Don't duplicate favorites
-                     (take 10))]
+                     (take 10))
 
-    [:nav.sidebar {:aria-label "Page navigation"}
+        ;; Resize handle event handlers
+        on-resize-start
+        (fn [e]
+          (.preventDefault e)
+          (let [start-x (.-clientX e)
+                start-width sidebar-width
+                ^js handle (.-currentTarget e)
+                body js/document.body
+                root js/document.documentElement
+                ;; Use volatile to allow on-up to reference itself
+                !on-move (volatile! nil)
+                !on-up (volatile! nil)]
+
+            (vreset! !on-move
+                     (fn [move-e]
+                       (let [delta (- (.-clientX move-e) start-x)
+                             new-width (+ start-width delta)
+                             clamped-width (vs/set-sidebar-width! new-width)]
+                         ;; Update CSS variable on document root for layout coordination
+                         (.setProperty (.-style root)
+                                       "--sidebar-width" (str clamped-width "px")))))
+
+            (vreset! !on-up
+                     (fn [_]
+                       (.classList.remove body "sidebar-resizing")
+                       (.classList.remove ^js handle "dragging")
+                       (.removeEventListener js/document "mousemove" @!on-move)
+                       (.removeEventListener js/document "mouseup" @!on-up)))
+
+            (.classList.add body "sidebar-resizing")
+            (.classList.add ^js handle "dragging")
+            (.addEventListener js/document "mousemove" @!on-move)
+            (.addEventListener js/document "mouseup" @!on-up)))]
+
+    [:nav.sidebar {:aria-label "Page navigation"
+                   :replicant/on-mount
+                   (fn [_]
+                     ;; Set initial sidebar width on document root for layout coordination
+                     (.setProperty (.-style js/document.documentElement)
+                                   "--sidebar-width" (str sidebar-width "px")))}
+
+     ;; Resize handle
+     [:div.sidebar-resize-handle
+      {:on {:mousedown on-resize-start}
+       :title "Drag to resize"}]
 
      ;; Storage section
      (StorageSection {:folder-name folder-name

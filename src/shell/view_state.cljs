@@ -768,3 +768,25 @@
   (swap-view-state! assoc-in [:ui :history] [])
   (swap-view-state! assoc-in [:ui :history-index] -1))
 
+;; ── Sidebar Width (Resizable) ─────────────────────────────────────────────────
+
+(def ^:const storage-key-sidebar-width "evo:sidebar-width")
+(def ^:const default-sidebar-width 240)
+(def ^:const min-sidebar-width 180)
+(def ^:const max-sidebar-width 400)
+
+(defn sidebar-width
+  "Get current sidebar width (from localStorage or default)."
+  []
+  (load-from-storage storage-key-sidebar-width default-sidebar-width))
+
+(defn set-sidebar-width!
+  "Set sidebar width and persist to localStorage.
+   Clamps value between min and max."
+  [width]
+  (let [clamped (-> width
+                    (max min-sidebar-width)
+                    (min max-sidebar-width))]
+    (save-to-storage! storage-key-sidebar-width clamped)
+    clamped))
+
