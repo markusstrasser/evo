@@ -40,11 +40,11 @@
                  ;; NOTE: Backspace/Delete are NOT bound here - handled by contenteditable + component logic
                  ;; Special cases (merge at position 0) are handled in the block editor component
 
-                 ;; === Text Formatting ===
-             [{:key "b" :mod true} {:type :format-selection :marker "**"}]
-             [{:key "i" :mod true} {:type :format-selection :marker "__"}]
-             [{:key "h" :shift true :mod true} {:type :format-selection :marker "^^"}]
-             [{:key "s" :shift true :mod true} {:type :format-selection :marker "~~"}]
+                 ;; === Text Formatting (Logseq markdown parity) ===
+             [{:key "b" :mod true} {:type :format-selection :marker "**"}]  ; Bold
+             [{:key "i" :mod true} {:type :format-selection :marker "*"}]   ; Italic (single asterisk)
+             [{:key "h" :shift true :mod true} {:type :format-selection :marker "=="}]  ; Highlight
+             [{:key "s" :shift true :mod true} {:type :format-selection :marker "~~"}]  ; Strikethrough
 
                  ;; === Indent/Outdent ===
              [{:key "Tab"} :indent-selected]
