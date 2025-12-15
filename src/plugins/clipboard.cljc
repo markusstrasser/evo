@@ -19,6 +19,13 @@
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 
+(defn- url?
+  "Check if text looks like a URL.
+   Matches http://, https://, and www. prefixes."
+  [text]
+  (when (and text (not (str/blank? text)))
+    (boolean (re-matches #"^(https?://|www\.)[^\s]+$" (str/trim text)))))
+
 (defn- split-by-blank-lines
   "Split text by blank lines (two or more newlines).
    Returns vector of paragraphs (strings)."
@@ -227,6 +234,8 @@
 
          Detection order:
          0. If clipboard-blocks provided → use internal format (preserves exact hierarchy)
+         0.5 Smart URL paste: If selection + URL pasted → [selection](URL)
+                              If URL selected + text pasted → [text](URL)
          1. If has blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
          2. If text looks like markdown blocks → parse as hierarchy
          3. Otherwise → inline paste
@@ -251,7 +260,12 @@
                                   sel-end (or selection-end cursor-pos)
                                   before (subs current-text 0 cursor-pos)
                                   after (subs current-text sel-end)
-                                  parent (get-in db [:derived :parent-of block-id])]
+                                  selection (when (not= cursor-pos sel-end)
+                                              (subs current-text cursor-pos sel-end))
+                                  parent (get-in db [:derived :parent-of block-id])
+                                  ;; Smart URL paste detection
+                                  pasted-url? (url? pasted-text)
+                                  selection-url? (url? selection)]
 
                               (cond
                                 ;; Case 0: Internal clipboard-blocks format → use directly (preserves structure)
@@ -274,6 +288,25 @@
                                   {:ops (vec (cons update-op ops))
                                    :session-updates {:ui {:editing-block-id final-id
                                                           :cursor-position final-cursor-pos}}})
+
+                                ;; Case 0.5: Smart URL paste (Logseq parity)
+                                ;; If text selected + URL pasted → [selection](URL)
+                                ;; If URL selected + text pasted → [text](URL)
+                                (and selection
+                                     (or (and pasted-url? (not selection-url?))
+                                         (and selection-url? (not pasted-url?))))
+                                (let [[label url-text] (if pasted-url?
+                                                         [selection pasted-text]
+                                                         [pasted-text selection])
+                                      link-text (str "[" label "](" url-text ")")
+                                      new-text (str before link-text after)
+                                      ;; Cursor after the link
+                                      new-cursor-pos (+ (count before) (count link-text))]
+                                  {:ops [{:op :update-node
+                                          :id block-id
+                                          :props {:text new-text}}]
+                                   :session-updates {:ui {:editing-block-id block-id
+                                                          :cursor-position new-cursor-pos}}})
 
                                 ;; Case 1: Has blank lines → split into sibling blocks (preserves raw text)
                                 ;; This takes precedence because blank lines indicate explicit paragraph breaks

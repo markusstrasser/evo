@@ -184,3 +184,85 @@
         (is (= "root" (get-in db [:nodes root-id :props :text])))
         (is (= "mid" (get-in db [:nodes mid-id :props :text])))
         (is (= "deep" (get-in db [:nodes deep-id :props :text])))))))
+
+;; ── Smart URL Paste Tests (Logseq Parity) ────────────────────────────────────
+
+(deftest paste-url-over-selection-creates-link-test
+  (testing "Pasting URL over selected text creates markdown link"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "click here for info"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; Select "here" (positions 6-10)
+          {:keys [db session]} (run-intent db session {:type :paste-text
+                                                       :block-id "a"
+                                                       :cursor-pos 6
+                                                       :selection-end 10
+                                                       :pasted-text "https://example.com"})]
+      ;; "here" should become a link
+      (is (= "click [here](https://example.com) for info"
+             (get-in db [:nodes "a" :props :text])))
+      ;; Cursor should be after the link
+      (is (= (+ 6 (count "[here](https://example.com)"))
+             (get-in session [:ui :cursor-position]))))))
+
+(deftest paste-text-over-url-selection-creates-link-test
+  (testing "Pasting text over selected URL creates markdown link"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "Visit https://example.com today"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; Select the URL (positions 6-25)
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 6
+                                               :selection-end 25
+                                               :pasted-text "my site"})]
+      ;; URL should become a link with pasted text as label
+      (is (= "Visit [my site](https://example.com) today"
+             (get-in db [:nodes "a" :props :text]))))))
+
+(deftest paste-url-no-selection-stays-inline-test
+  (testing "Pasting URL without selection stays as plain text"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "Check out "}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 10 ; At end
+                                               :pasted-text "https://example.com"})]
+      ;; Just inline paste, no link formatting
+      (is (= "Check out https://example.com"
+             (get-in db [:nodes "a" :props :text]))))))
+
+(deftest paste-www-url-creates-link-test
+  (testing "Pasting www. URL over selection creates link"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "go here"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; Select "here" (positions 3-7)
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 3
+                                               :selection-end 7
+                                               :pasted-text "www.example.com"})]
+      (is (= "go [here](www.example.com)"
+             (get-in db [:nodes "a" :props :text]))))))
+
+(deftest paste-both-urls-stays-plain-test
+  (testing "When both selection and paste are URLs, no link formatting"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "see https://old.com for more"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          ;; Select old URL, paste new URL
+          {:keys [db]} (run-intent db session {:type :paste-text
+                                               :block-id "a"
+                                               :cursor-pos 4
+                                               :selection-end 19
+                                               :pasted-text "https://new.com"})]
+      ;; Both are URLs, so just replace (no link formatting)
+      (is (= "see https://new.com for more"
+             (get-in db [:nodes "a" :props :text]))))))
