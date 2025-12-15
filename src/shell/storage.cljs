@@ -63,12 +63,23 @@
 
 (defn- block->markdown
   "Convert a single block and its children to markdown lines.
-   Returns vector of lines with proper indentation."
+   Returns vector of lines with proper indentation.
+   
+   Multiline blocks (from Shift+Enter) are formatted as:
+   - first line
+     continuation line
+     another continuation"
   [db block-id depth]
   (let [text (get-in db [:nodes block-id :props :text] "")
         children (get-in db [:children-by-parent block-id] [])
         indent (apply str (repeat (* depth 2) " "))
-        lines [(str indent "- " text)]]
+        ;; Split text on newlines for multiline support
+        text-lines (str/split-lines text)
+        ;; First line gets bullet, continuation lines get extra indent (no bullet)
+        first-line (str indent "- " (first text-lines))
+        continuation-indent (str indent "  ") ;; 2 extra spaces to align with text after "- "
+        continuation-lines (map #(str continuation-indent %) (rest text-lines))
+        lines (into [first-line] continuation-lines)]
     (into lines
           (mapcat #(block->markdown db % (inc depth)) children))))
 
@@ -113,7 +124,11 @@
     (js/parseInt (subs line 13) 10)))
 
 (defn markdown->ops
-  "Parse Logseq-style markdown into kernel ops."
+  "Parse Logseq-style markdown into kernel ops.
+   
+   Handles multiline blocks where continuation lines are indented without bullets:
+   - first line
+     continuation line (no bullet, just indented)"
   [page-id markdown]
   (let [lines (str/split-lines markdown)
         ;; Parse header properties (title::, trashed-at::)
@@ -146,17 +161,44 @@
         ops (atom [{:op :create-node :id page-id :type :page :props page-props}
                    {:op :place :id page-id :under root :at :last}])
         counter (atom 0)
-        parent-stack (atom {0 page-id})]
+        parent-stack (atom {0 page-id})
+        ;; Track last block for continuation lines
+        last-block-id (atom nil)
+        last-block-text (atom nil)]
 
     (doseq [line content-lines]
-      (when (str/includes? line "- ")
-        (let [depth (parse-indent-level line)
-              text (strip-bullet line)
-              block-id (str page-id "-b" (swap! counter inc))
-              parent-id (or (get @parent-stack depth) page-id)]
-          (swap! ops conj {:op :create-node :id block-id :type :block :props {:text text}})
-          (swap! ops conj {:op :place :id block-id :under parent-id :at :last})
-          (swap! parent-stack assoc (inc depth) block-id))))
+      (let [has-bullet? (str/includes? line "- ")
+            trimmed (str/triml line)
+            ;; Continuation line: indented but no bullet at start
+            is-continuation? (and (not (str/starts-with? trimmed "-"))
+                                  (not (str/blank? trimmed))
+                                  @last-block-id)]
+        (cond
+          ;; Regular bullet line - new block
+          has-bullet?
+          (let [depth (parse-indent-level line)
+                text (strip-bullet line)
+                block-id (str page-id "-b" (swap! counter inc))
+                parent-id (or (get @parent-stack depth) page-id)]
+            (swap! ops conj {:op :create-node :id block-id :type :block :props {:text text}})
+            (swap! ops conj {:op :place :id block-id :under parent-id :at :last})
+            (swap! parent-stack assoc (inc depth) block-id)
+            ;; Track for potential continuation
+            (reset! last-block-id block-id)
+            (reset! last-block-text text))
+
+          ;; Continuation line - append to last block with newline
+          is-continuation?
+          (let [new-text (str @last-block-text "\n" trimmed)]
+            (reset! last-block-text new-text)
+            ;; Update the create-node op for this block
+            (swap! ops (fn [current-ops]
+                         (mapv (fn [op]
+                                 (if (and (= (:op op) :create-node)
+                                          (= (:id op) @last-block-id))
+                                   (assoc-in op [:props :text] new-text)
+                                   op))
+                               current-ops)))))))
 
     @ops))
 
