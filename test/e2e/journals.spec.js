@@ -302,6 +302,24 @@ test.describe('Journals View', () => {
   });
 
   test.describe('Logseq Parity', () => {
+    test('empty journals (except today) are hidden from view', async ({ page }) => {
+      // Create journals - one with content, two without
+      await createJournalPages(page, ['Dec 14th, 2025']);  // Has content
+      await createJournalPages(page, ['Dec 13th, 2025', 'Dec 12th, 2025'], { addContent: false });  // Empty
+
+      // Only the one with content should appear in count
+      const navCount = page.locator('.sidebar-nav-item .nav-count');
+      await expect(navCount).toHaveText('1');
+
+      // Open journals view
+      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+
+      // Only Dec 14th should be visible (the one with content)
+      const journalTitles = page.locator('.journal-title');
+      await expect(journalTitles).toHaveCount(1);
+      await expect(journalTitles.first()).toHaveText('Dec 14th, 2025');
+    });
+
     test('journals excluded from Recents (Logseq behavior)', async ({ page }) => {
       // Create a journal and a regular page
       await createJournalPages(page, ['Dec 14th, 2025']);
@@ -337,6 +355,19 @@ test.describe('Journals View', () => {
       // Click should work
       await journalTitle.click();
       await expect(page.locator('.journals-view')).not.toBeVisible();
+    });
+
+    test('journal blocks show bullet points for content', async ({ page }) => {
+      await createJournalPages(page, ['Dec 14th, 2025']);
+      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+
+      // Journal content should have bullet points
+      const journalBlocks = page.locator('.journal-block');
+      await expect(journalBlocks.first()).toBeVisible();
+
+      // Should show bullet character
+      const bullet = page.locator('.block-bullet').first();
+      await expect(bullet).toContainText('•');
     });
   });
 });
