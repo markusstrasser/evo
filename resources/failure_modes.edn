@@ -423,4 +423,80 @@
    :related [:track-changes-memory-leak]
    :verified true
    :discovery-date "2025-12-11"
-   :example-fix "src/dev/tooling.cljs - use !last-db-snapshot instead of log entries"}}}
+   :example-fix "src/dev/tooling.cljs - use !last-db-snapshot instead of log entries"}
+
+  :replicant-vector-vs-function
+  {:name "Replicant Component Renders as Raw Data (Vector Syntax Bug)"
+   :severity :critical
+   :symptoms
+   ["Component shows as '[#object[namespace$Component] {:props ...}]'"
+    "Raw EDN/data rendered instead of hiccup"
+    "Child components appear as stringified function + props"
+    "Works in Reagent but broken in Replicant"]
+   :root-causes
+   ["Using Reagent-style [Component props] vector syntax in Replicant"
+    "Replicant does NOT auto-resolve function references in vectors"
+    "Vector [fn props] treated as literal data, not component invocation"
+    "Copy-paste from Reagent codebases or documentation"]
+   :detection
+   ["DOM shows stringified function: '#object[ns$fn]'"
+    "Browser devtools: element contains raw props map as text"
+    "Component function never actually called"]
+   :fixes
+   ["Change [Component props] to (Component props)"
+    "Replicant: Call component functions directly"
+    "grep -r '\\[Component-Name {' to find all instances"]
+   :tests
+   ["Visual inspection: component renders UI not raw data"
+    "No '#object[' strings in rendered DOM"
+    "Snapshot test catches stringified functions"]
+   :prevention
+   "Lint pattern: [CapitalizedName {] in Replicant files = likely bug"
+   :reagent-vs-replicant
+   ";; REAGENT (auto-resolves):
+    [MyComponent {:prop value}]
+
+    ;; REPLICANT (must call directly):
+    (MyComponent {:prop value})"
+   :related [:declarative-anti-pattern]
+   :verified true
+   :discovery-date "2025-12-14"
+   :example-fix "src/components/journals.cljs - (JournalPage {...}) not [JournalPage {...}]"}
+
+  :replicant-react-fragment
+  {:name "React Fragment Syntax [:<>] Crashes Replicant"
+   :severity :critical
+   :symptoms
+   ["InvalidCharacterError: tag name '<>' is not valid"
+    "Component partially renders then errors"
+    "Console shows createElement failure for '<>'"
+    "Children inside fragment never appear in DOM"]
+   :root-causes
+   ["Using React fragment syntax [:<>] in Replicant"
+    "Replicant tries to create DOM element literally named '<>'"
+    "Copy-paste from React/Reagent codebases"
+    "Expecting fragment support that doesn't exist"]
+   :detection
+   ["Console error: InvalidCharacterError with '<>'"
+    "Parent renders but children inside fragment missing"
+    "grep for '\\[:<>' in codebase"]
+   :fixes
+   ["Use wrapper div: (into [:div.wrapper] children)"
+    "Spread children into parent directly"
+    "Remove fragment and restructure hiccup"]
+   :tests
+   ["No InvalidCharacterError in console"
+    "All children render in DOM"
+    "Snapshot test shows expected structure"]
+   :prevention
+   "Lint pattern: [:<>] in Replicant files = unsupported"
+   :react-vs-replicant
+   ";; REACT/REAGENT (supported):
+    (into [:<>] children)
+
+    ;; REPLICANT (use wrapper instead):
+    (into [:div.wrapper] children)"
+   :related [:replicant-vector-vs-function]
+   :verified true
+   :discovery-date "2025-12-14"
+   :example-fix "src/components/journals.cljs - (into [:div.journal-blocks] ...) not (into [:<>] ...)"}}}
