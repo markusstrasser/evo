@@ -170,6 +170,59 @@ test.describe('Block Navigation', () => {
   });
 });
 
+test.describe('Empty Block Navigation', () => {
+  test('arrow down through empty block', async ({ page }) => {
+    await page.goto('/blocks.html?test=true');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await enterEditModeAndClick(page);
+
+    // Type in first block
+    await page.keyboard.type('First block');
+
+    // Create second block (empty)
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(100);
+
+    // Create third block with content
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(100);
+    await page.keyboard.type('Third block');
+
+    // Go back up twice to first block
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(100);
+
+    // Verify we're in first block
+    let text = await page.evaluate(() => document.activeElement?.textContent);
+    expect(text).toBe('First block');
+
+    // Now go down - should go to empty block
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(
+      (prevText) => document.activeElement?.textContent !== prevText,
+      'First block',
+      { timeout: 3000 }
+    );
+
+    text = await page.evaluate(() => document.activeElement?.textContent);
+    expect(text).toBe(''); // Empty block
+
+    // Go down again - should go to third block
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(
+      (prevText) => document.activeElement?.textContent !== prevText,
+      '',
+      { timeout: 3000 }
+    );
+
+    text = await page.evaluate(() => document.activeElement?.textContent);
+    expect(text).toBe('Third block');
+  });
+});
+
 test.describe('Cross-Page Navigation (Journals)', () => {
   test.skip('arrow down navigates from one journal page to the next', async ({ page }) => {
     // TODO: This test requires a more complex setup with multiple journal pages.
