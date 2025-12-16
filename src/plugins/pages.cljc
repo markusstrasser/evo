@@ -107,7 +107,9 @@
   [db page-name]
   (if-let [page-id (q/find-page-by-name db page-name)]
     ;; Page exists - just navigate
-    {:session-updates {:ui {:current-page page-id}}}
+    {:session-updates {:ui {:current-page page-id
+                            :editing-block-id nil
+                            :journals-view? false}}}
     ;; Page doesn't exist - create it and navigate
     (let [new-page-id (str "page-" (random-uuid))
           first-block-id (str "block-" (random-uuid))]
@@ -117,7 +119,9 @@
              {:op :place :id first-block-id :under new-page-id :at :last}]
        ;; BUGFIX: nodes must include focus block, otherwise state machine sees :idle
        ;; and blocks :enter-edit intent
-       :session-updates {:ui {:current-page new-page-id}
+       :session-updates {:ui {:current-page new-page-id
+                              :editing-block-id nil
+                              :journals-view? false}
                          :selection {:nodes #{first-block-id}
                                      :focus first-block-id
                                      :anchor first-block-id}}})))
