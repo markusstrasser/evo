@@ -409,6 +409,20 @@
                                           (js/console.error "Cursor position read failed:" e)
                                           nil))
 
+                                    ;; Selection navigation: inject DOM fallback for cross-page nav in journals
+                                      (and (map? intent-with-id)
+                                           (= (:type intent-with-id) :selection)
+                                           (#{:next :prev :extend-next :extend-prev} (:mode intent-with-id))
+                                           (vs/journals-view?)
+                                           focus-id)
+                                      (let [direction (case (:mode intent-with-id)
+                                                        (:next :extend-next) :down
+                                                        (:prev :extend-prev) :up)
+                                            dom-fallback (block/get-adjacent-block-by-dom direction focus-id)]
+                                        (if dom-fallback
+                                          (assoc intent-with-id :dom-adjacent-id dom-fallback)
+                                          intent-with-id))
+
                                     ;; Default: no enrichment needed
                                       :else intent-with-id)
                   ;; Structural operations during editing require text commit first

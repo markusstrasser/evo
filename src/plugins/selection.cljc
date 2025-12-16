@@ -114,6 +114,7 @@
   "Pure: calculate props for navigating in a direction with incremental selection.
    direction: :next or :prev
    extend?: if true, extends selection incrementally; if false, replaces selection
+   dom-adjacent-id: optional fallback for cross-page navigation (journals view)
 
    Incremental extension (Logseq parity):
    - First Shift+Arrow: set anchor and direction
@@ -122,7 +123,7 @@
    - When only one block remains, flip direction and start extending other way
 
    Non-extend mode: When no block is focused, select first/last visible block."
-  [db session state direction extend?]
+  [db session state direction extend? & [{:keys [dom-adjacent-id]}]]
   (if extend?
     ;; Incremental extension mode
     (let [current-focus (:focus state)
@@ -185,8 +186,11 @@
     ;; Non-extend mode (plain arrow navigation)
     (if-let [current (:focus state)]
       ;; Normal case: navigate from current focus (skip containers)
-      (when-let [next-id (next-selectable-block db session current direction)]
-        (calc-select-props next-id))
+      ;; Fall back to DOM-adjacent ID for cross-page navigation in journals view
+      (let [db-target (next-selectable-block db session current direction)
+            target-id (or db-target dom-adjacent-id)]
+        (when target-id
+          (calc-select-props target-id)))
       ;; Edge case: no focus (after Escape) → select first/last block
       (when-let [first-or-last (get-first-last-visible-block db session direction)]
         (calc-select-props first-or-last)))))
@@ -245,10 +249,12 @@
                                           [:mode [:= :clear]]]]
                                  [:next [:map
                                          [:type [:= :selection]]
-                                         [:mode [:= :next]]]]
+                                         [:mode [:= :next]]
+                                         [:dom-adjacent-id {:optional true} [:maybe :string]]]]
                                  [:prev [:map
                                          [:type [:= :selection]]
-                                         [:mode [:= :prev]]]]
+                                         [:mode [:= :prev]]
+                                         [:dom-adjacent-id {:optional true} [:maybe :string]]]]
                                  [:extend-next [:map
                                                 [:type [:= :selection]]
                                                 [:mode [:= :extend-next]]]]
@@ -265,9 +271,11 @@
                                                 [:type [:= :selection]]
                                                 [:mode [:= :all-in-view]]]]]
 
-                          :handler (fn [db session {:keys [mode ids]}]
+                          :handler (fn [db session {:keys [mode ids dom-adjacent-id]}]
                                      ;; Get current selection state from session
                                      (let [state (q/selection-state session)
+                                           ;; Options for calc-navigate-props (cross-page fallback)
+                                           nav-opts {:dom-adjacent-id dom-adjacent-id}
 
                                            ;; Calculate new selection props based on mode
                                            props (case mode
@@ -280,10 +288,10 @@
                                                                (calc-deselect-props state id)
                                                                (calc-extend-props state id)))
                                                    :clear (calc-clear-props state)
-                                                   :next (calc-navigate-props db session state :next false)
-                                                   :prev (calc-navigate-props db session state :prev false)
-                                                   :extend-next (calc-navigate-props db session state :next true)
-                                                   :extend-prev (calc-navigate-props db session state :prev true)
+                                                   :next (calc-navigate-props db session state :next false nav-opts)
+                                                   :prev (calc-navigate-props db session state :prev false nav-opts)
+                                                   :extend-next (calc-navigate-props db session state :next true nav-opts)
+                                                   :extend-prev (calc-navigate-props db session state :prev true nav-opts)
                                                    :parent (let [selection (:nodes state)
                                                                  parents (set (keep #(q/parent-of db %) selection))]
                                                              (when (= 1 (count parents))
