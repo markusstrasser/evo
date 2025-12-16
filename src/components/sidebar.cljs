@@ -72,11 +72,11 @@
 
 (defn- Icon
   "Minimal SVG icons. size in pixels."
-  [{:keys [name size] :or {size 16}}]
+  [{:keys [icon-name size] :or {size 16}}]
   (let [props {:width size :height size :viewBox "0 0 24 24"
                :fill "none" :stroke "currentColor" :stroke-width "1.5"
                :stroke-linecap "round" :stroke-linejoin "round"}]
-    (case name
+    (case icon-name
       :file [:svg props
              [:path {:d "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"}]
              [:polyline {:points "14 2 14 8 20 8"}]]
@@ -128,7 +128,7 @@
                   (.preventDefault e)
                   (.stopPropagation e)
                   (vs/toggle-favorite! page-id))}}
-   (Icon {:name (if is-favorite? :star-filled :star) :size 12})])
+   (Icon {:icon-name (if is-favorite? :star-filled :star) :size 12})])
 
 (defn- DeleteButton
   "Delete button for removing a page."
@@ -153,7 +153,7 @@
                                                          :page-id page-id
                                                          :descendants descendants
                                                          :switch-to? true})))}}))}}
-     (Icon {:name :trash :size 12})]))
+     (Icon {:icon-name :trash :size 12})]))
 
 ;; ── Page Item ────────────────────────────────────────────────────────────────
 
@@ -206,7 +206,7 @@
                     (on-intent {:type :restore-page
                                 :page-id page-id
                                 :switch-to? true}))}}
-     (Icon {:name :undo :size 12})]
+     (Icon {:icon-name :undo :size 12})]
     [:button.permanent-delete-button
      {:title "Delete permanently"
       :on {:click (fn [e]
@@ -215,7 +215,7 @@
                     (when (js/confirm "Permanently delete this page? This cannot be undone.")
                       (on-intent {:type :permanently-delete-page
                                   :page-id page-id})))}}
-     (Icon {:name :x :size 12})]]])
+     (Icon {:icon-name :x :size 12})]]])
 
 ;; ── Collapsible Section ──────────────────────────────────────────────────────
 
@@ -229,7 +229,7 @@
                    (.preventDefault e)
                    (when on-toggle (on-toggle)))}}
     [:span.section-chevron
-     (Icon {:name (if collapsed? :chevron-right :chevron-down) :size 12})]
+     (Icon {:icon-name (if collapsed? :chevron-right :chevron-down) :size 12})]
     [:span.section-title title]
     (when (and count (pos? count))
       [:span.section-count count])
@@ -239,7 +239,7 @@
                       (.preventDefault e)
                       (.stopPropagation e)
                       (when on-action (on-action)))}}
-       (Icon {:name :plus :size 12})])]
+       (Icon {:icon-name :plus :size 12})])]
    ;; Content (hidden when collapsed)
    (when-not collapsed?
      [:div.sidebar-section-content children])])
@@ -253,21 +253,21 @@
    (if folder-name
      ;; Connected state
      [:div.storage-connected
-      [:span.storage-icon (Icon {:name :folder :size 14})]
+      [:span.storage-icon (Icon {:icon-name :folder :size 14})]
       [:span.storage-name folder-name]
       [:button.storage-disconnect
        {:on {:click (fn [e]
                       (.preventDefault e)
                       (when on-clear-folder (on-clear-folder)))}
         :title "Disconnect folder"}
-       (Icon {:name :x :size 12})]]
+       (Icon {:icon-name :x :size 12})]]
      ;; Disconnected state
      [:button.storage-picker
       {:disabled loading?
        :on {:click (fn [e]
                      (.preventDefault e)
                      (when on-pick-folder (on-pick-folder)))}}
-      (Icon {:name :folder-open :size 16})
+      (Icon {:icon-name :folder-open :size 16})
       [:span (if loading? "Loading..." "Open Folder")]])])
 
 ;; ── Navigation Item ──────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@
    {:on {:click (fn [e]
                   (.preventDefault e)
                   (when on-click (on-click)))}}
-   [:span.nav-icon (Icon {:name icon :size 16})]
+   [:span.nav-icon (Icon {:icon-name icon :size 16})]
    [:span.nav-label label]])
 
 ;; ── Main Sidebar ─────────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@
         :on {:click (fn [e]
                       (.preventDefault e)
                       (on-intent {:type :open-journals-view}))}}
-       [:span.nav-icon (Icon {:name :calendar :size 16})]
+       [:span.nav-icon (Icon {:icon-name :calendar :size 16})]
        [:span.nav-label "Journals"]
        ;; Count shows only visible journals (with content or today)
        (when (seq visible-journal-pages)
@@ -425,7 +425,7 @@
         :on {:click (fn [e]
                       (.preventDefault e)
                       (on-intent {:type :open-all-pages-view}))}}
-       [:span.nav-icon (Icon {:name :file :size 16})]
+       [:span.nav-icon (Icon {:icon-name :file :size 16})]
        [:span.nav-label "All Pages"]
        (when (seq regular-pages)
          [:span.nav-count (count regular-pages)])]]

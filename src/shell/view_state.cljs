@@ -656,8 +656,8 @@
       ;; Only add if not already in list (Logseq behavior)
       (when-not (some #{page-id} current-recents)
         (swap-view-state! update-in [:ui :recents]
-                          (fn [recents]
-                            (->> (conj (vec recents) page-id)
+                          (fn [recent-list]
+                            (->> (conj (vec recent-list) page-id)
                                  (take-last max-recents)
                                  vec)))
         (persist-recents!)))))

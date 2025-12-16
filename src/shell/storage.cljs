@@ -450,7 +450,7 @@
    Returns Promise<string>."
   [original-name blob]
   (-> (hash-blob blob)
-      (.then (fn [hash]
+      (.then (fn [content-hash]
                (let [dot-idx (str/last-index-of original-name ".")
                      ext (if dot-idx
                            (subs original-name (inc dot-idx))
@@ -463,7 +463,7 @@
                                         (str/replace #"_+" "_")
                                         (str/replace #"^_|_$" ""))
                      final-stem (if (str/blank? sanitized-stem) "image" sanitized-stem)]
-                 (str final-stem "_" hash "." ext))))))
+                 (str final-stem "_" content-hash "." ext))))))
 
 (defn- file-exists?
   "Check if a file exists in the assets directory.
@@ -489,8 +489,8 @@
   (-> (ensure-assets-dir!)
       (.then (fn [assets-dir]
                (-> (file-exists? assets-dir filename)
-                   (.then (fn [exists?]
-                            (if exists?
+                   (.then (fn [file-exists]
+                            (if file-exists
                               ;; File exists - dedup: return path without writing
                               (do
                                 (js/console.log "📷 Dedup: reusing existing asset" filename)
