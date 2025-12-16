@@ -71,23 +71,32 @@
    - Get cursor rect via Range API
    - Compare cursor-top to element-top (first row check)
    - Compare cursor-top to element-bottom (last row check)
-   - Use line-height heuristic (range height or fallback 20px)"
+   - Use line-height heuristic (range height or fallback 20px)
+
+   EDGE CASE: Empty contenteditable elements have no text nodes, so the
+   selection range may have unusual behavior. For empty elements, we
+   return both first-row and last-row as true (the single empty row)."
   [element]
   (when element
-    (when-let [selection (.getSelection js/window)]
-      (when (pos? (.-rangeCount selection))
-        (let [range (.getRangeAt selection 0)
-              rect (.getBoundingClientRect range)
-              elem-rect (.getBoundingClientRect element)
-              cursor-top (.-top rect)
-              elem-top (.-top elem-rect)
-              elem-bottom (.-bottom elem-rect)
-              ;; Range height can be 0 for collapsed cursor - must check explicitly
-              ;; (ClojureScript: 0 is truthy so (or 0 20) returns 0)
-              raw-height (.-height rect)
-              line-height (if (and raw-height (pos? raw-height)) raw-height 20)]
-          {:first-row? (< (- cursor-top elem-top) line-height)
-           :last-row? (< (- elem-bottom cursor-top) (* 1.5 line-height))})))))
+    (let [text-content (.-textContent element)]
+      ;; Empty element: cursor is on the only (empty) row - both first and last
+      (if (empty? text-content)
+        {:first-row? true :last-row? true}
+        ;; Non-empty: use Range API to detect row position
+        (when-let [selection (.getSelection js/window)]
+          (when (pos? (.-rangeCount selection))
+            (let [range (.getRangeAt selection 0)
+                  rect (.getBoundingClientRect range)
+                  elem-rect (.getBoundingClientRect element)
+                  cursor-top (.-top rect)
+                  elem-top (.-top elem-rect)
+                  elem-bottom (.-bottom elem-rect)
+                  ;; Range height can be 0 for collapsed cursor - must check explicitly
+                  ;; (ClojureScript: 0 is truthy so (or 0 20) returns 0)
+                  raw-height (.-height rect)
+                  line-height (if (and raw-height (pos? raw-height)) raw-height 20)]
+              {:first-row? (< (- cursor-top elem-top) line-height)
+               :last-row? (< (- elem-bottom cursor-top) (* 1.5 line-height))})))))))
 
 ;; ── Horizontal Boundary Detection ─────────────────────────────────────────────
 ;;
