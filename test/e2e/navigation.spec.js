@@ -68,6 +68,17 @@ test.describe('Block Navigation', () => {
     // Navigate up (first block only has 5 chars)
     await page.keyboard.press('ArrowUp');
 
+    // Wait for focus to move to first block
+    await page.waitForFunction(
+      (fromId) => {
+        const el = document.activeElement;
+        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        return blockId && blockId !== fromId;
+      },
+      blocks[1].id,
+      { timeout: 5000 }
+    );
+
     const cursor = await getCursorPosition(page);
     // Should be at end of shorter block
     expect(cursor.offset).toBe(5);
