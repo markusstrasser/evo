@@ -25,6 +25,23 @@
 ;; Forward declarations for functions used in drag/drop before definition
 (declare get-image-files upload-and-insert-images!)
 
+;; ── MathJax Integration ──────────────────────────────────────────────────────
+;; Debounced typeset to avoid excessive re-rendering during typing
+
+(defonce ^:private mathjax-timeout (atom nil))
+
+(defn- typeset-math!
+  "Trigger MathJax to typeset any .math elements. Debounced to 100ms."
+  []
+  (when-let [timeout @mathjax-timeout]
+    (js/clearTimeout timeout))
+  (reset! mathjax-timeout
+          (js/setTimeout
+           (fn []
+             (when (and js/window.MathJax js/window.MathJax.typesetPromise)
+               (.typesetPromise js/window.MathJax)))
+           100)))
+
 ;; ── Helpers ──────────────────────────────────────────────────────────────────
 
 (defn- extract-text-with-newlines
@@ -979,6 +996,10 @@
     :italic [[:em value]]
     :highlight [[:mark value]]
     :strikethrough [[:del value]]
+    ;; Math - wrap with delimiters for MathJax (class="math" triggers processing)
+    :math-block [[:div.math {:style {:text-align "center" :margin "0.5em 0"}}
+                  (str "$$" value "$$")]]
+    :math-inline [[:span.math (str "$" value "$")]]
     ;; Plain text - handle newlines
     :text (let [result (text-segment->hiccup value)]
             (if (seq? result)
@@ -1428,10 +1449,16 @@
             rendered (render-text-with-page-refs db content on-intent)
             children (if (seq rendered)
                        rendered
-                       ["\u200B"])]  ; ZWS makes block visible to a11y tree
-        (into [container-tag
-               (merge {:replicant/key view-key} click-handler)]
-              children)))))
+                       ["\u200B"])  ; ZWS makes block visible to a11y tree
+            ;; Check if content has math ($ or $$)
+            has-math? (and (string? content)
+                           (or (str/includes? content "$$")
+                               (re-find #"\$[^$]+\$" content)))
+            ;; Add on-render hook to typeset math when present
+            container-props (cond-> (merge {:replicant/key view-key} click-handler)
+                              has-math? (assoc :replicant/on-render
+                                               (fn [_] (typeset-math!))))]
+        (into [container-tag container-props] children)))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
