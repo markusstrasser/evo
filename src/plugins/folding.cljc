@@ -217,6 +217,7 @@
 
 (intent/register-intent! :toggle-sidebar
                          {:doc "Toggle left sidebar (pages) visibility. Bound to Cmd+B."
+                          :fr/ids #{:fr.ui/quick-switcher}
                           :spec [:map [:type [:= :toggle-sidebar]]]
                           :handler (fn [_db session _intent]
                                      (let [visible? (get-in session [:ui :sidebar-visible?] true)]
@@ -224,6 +225,7 @@
 
 (intent/register-intent! :toggle-hotkeys
                          {:doc "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
+                          :fr/ids #{:fr.ui/quick-switcher}
                           :spec [:map [:type [:= :toggle-hotkeys]]]
                           :handler (fn [_db session _intent]
                                      (let [visible? (get-in session [:ui :hotkeys-visible?] false)]

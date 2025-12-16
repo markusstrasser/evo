@@ -245,6 +245,7 @@
 
 (intent/register-intent! :rename-page
                          {:doc "Rename a page by updating its title"
+                          :fr/ids #{:fr.pages/switch-page}
                           :handler handle-rename-page})
 
 (defn- handle-restore-page
@@ -312,6 +313,7 @@
 
 (intent/register-intent! :auto-trash-empty-page
                          {:doc "Auto-trash an empty page with no backlinks (except today's journal)"
+                          :fr/ids #{:fr.struct/delete-block}
                           :handler handle-auto-trash-empty-page})
 
 (defn- handle-permanently-delete-page
@@ -331,6 +333,7 @@
 
 (intent/register-intent! :permanently-delete-page
                          {:doc "Permanently delete a page from trash"
+                          :fr/ids #{:fr.struct/delete-block}
                           :handler handle-permanently-delete-page})
 
 (defn- handle-cleanup-old-trash
@@ -413,10 +416,13 @@
                            to-trash)))})))
 
 (intent/register-intent! :scan-empty-pages
-                         {:handler handle-scan-empty-pages})
+                         {:doc "Scan pages and clean up invalid/empty ones"
+                          :fr/ids #{:fr.struct/delete-block}
+                          :handler handle-scan-empty-pages})
 
 (intent/register-intent! :cleanup-old-trash
                          {:doc "Delete pages that have been in trash for more than 30 days"
+                          :fr/ids #{:fr.struct/delete-block}
                           :handler handle-cleanup-old-trash})
 
 (intent/register-intent! :follow-link-under-cursor
@@ -455,6 +461,7 @@
          'MMM do, yyyy' (e.g., 'Dec 11th, 2025')
 
          See docs/DAILY_JOURNAL_SPEC.md for format details."
+                          :fr/ids #{:fr.pages/switch-page}
                           :spec [:map
                                  [:type [:= :go-to-journal]]
                                  [:journal-title :string]]
@@ -465,6 +472,7 @@
 (intent/register-intent! :open-journals-view
                          {:doc "Open the journals view (all journals stacked).
          Pushes :journals to navigation history for proper back/forward support."
+                          :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :open-journals-view]]]
                           :handler
                           (fn [_db _session _intent]
@@ -473,6 +481,7 @@
 (intent/register-intent! :open-all-pages-view
                          {:doc "Open the all-pages view (page listing like Logseq).
          Clears current page selection to show the page list."
+                          :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :open-all-pages-view]]]
                           :handler
                           (fn [_db _session _intent]
@@ -485,8 +494,9 @@
                          {:doc "Navigate back in page history (Cmd+[).
          Returns to the previous page in navigation history without
          affecting undo/redo history. Like browser back button.
-         
+
          Handles :journals as a virtual page for journals view."
+                          :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :navigate-back]]]
                           :handler
                           (fn [_db session _intent]
@@ -511,8 +521,9 @@
                          {:doc "Navigate forward in page history (Cmd+]).
          Goes to the next page in navigation history (after going back).
          Like browser forward button.
-         
+
          Handles :journals as a virtual page for journals view."
+                          :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :navigate-forward]]]
                           :handler
                           (fn [_db session _intent]
