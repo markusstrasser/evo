@@ -203,7 +203,9 @@
          :at-end? (boolean at-end?)
          :is-composing? (boolean is-composing?)
          :text-length (count text-content)
-         :text-content text-content}
+         :text-content text-content
+         ;; cursor-pos: anchor-offset when collapsed, selection-start when selecting
+         :cursor-pos (or (:anchor-offset sel-state) 0)}
         row-pos
         sel-state)))))
 
