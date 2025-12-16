@@ -32,7 +32,7 @@
             [plugins.pages :as p-pages]
             [plugins.text-formatting :as p-text-formatting]
             [plugins.autocomplete :as p-autocomplete]
-            ;; Derived index plugins (register with plugins.registry)
+            ;; Derived index plugins (register with kernel.derived-registry)
             [plugins.backlinks-index :as p-backlinks-index]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════

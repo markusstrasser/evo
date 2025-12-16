@@ -185,7 +185,7 @@
   (println)
   (println "### Plugin Layer")
   (println "```")
-  (println "plugins.registry → plugins.* → kernel.api")
+  (println "kernel.derived-registry → plugins.* → kernel.api")
   (println "                      ↓")
   (println "               kernel.query")
   (println "```")
@@ -194,7 +194,7 @@
   (println "```")
   (println "shell.editor → components.* → shell.nexus")
   (println "       ↓                              ↓")
-  (println "  kernel.api                   plugins.registry")
+  (println "  kernel.api                   kernel.derived-registry")
   (println "```"))
 
 (defn -main []
