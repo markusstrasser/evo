@@ -310,7 +310,7 @@ Use `util.text-selection` for contenteditable DOM operations:
 - `make-range`: Creates DOM Range for cursor positioning
 - Use **`textContent`** for input handlers, **`element->text`** only with `make-range`
 
-See `src/util/text_selection.cljs` for full API.
+See `src/utils/text_selection.cljs` for full API.
 
 ### Move "Climb" Semantics (Logseq Parity)
 
