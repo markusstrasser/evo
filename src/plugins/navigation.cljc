@@ -6,8 +6,8 @@
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.navigation :as nav]
-            #?(:clj [clojure.string :as str]
-               :cljs [clojure.string :as str])))
+            [utils.text :as text]
+            [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
@@ -36,88 +36,21 @@
     (when (and target (q/same-page? db session block-id target))
       target)))
 
-(defn- grapheme-count
-  "Count graphemes (user-perceived characters) in a string.
-   Handles emoji, CJK, and other multi-byte characters correctly."
-  [s]
-  #?(:cljs
-     (try
-       (if (and js/Intl js/Intl.Segmenter)
-         ;; Use Intl.Segmenter for proper grapheme counting (emoji-aware)
-         (let [segmenter (js/Intl.Segmenter. "en" #js {:granularity "grapheme"})
-               segments (.segment segmenter s)]
-           ;; Convert iterator to array by spreading
-           (-> segments
-               (js-invoke "values")
-               (js/Array.from)
-               (.-length)))
-         ;; Fallback for older browsers or when Segmenter not available
-         (count s))
-       (catch js/Error _
-         ;; Fallback if Segmenter fails
-         (count s)))
-     :clj
-     ;; CLJ implementation for testing - use Java BreakIterator for grapheme counting
-     (let [^java.text.BreakIterator bi (java.text.BreakIterator/getCharacterInstance)]
-       (.setText bi s)
-       ;; Count by iterating through boundaries
-       (loop [num-graphemes 0
-              pos (.next bi)]
-         (if (= java.text.BreakIterator/DONE pos)
-           num-graphemes
-           (recur (inc num-graphemes) (.next bi)))))))
-
 (defn get-line-pos
   "Calculate horizontal cursor position within current line.
 
    Returns grapheme count from start of current line to cursor.
-   Handles multi-byte characters (emojis) correctly using JS Intl.Segmenter.
+   Handles multi-byte characters (emojis) correctly using utils.text.
 
    Example:
      Text: 'hello\\nwo|rld'  (| = cursor)
      Returns: 2  (cursor is 2 chars into 'world' line)"
   [text cursor-pos]
-  (let [;; Find the start of the current line
-        text-before (subs text 0 cursor-pos)
+  (let [text-before (subs text 0 cursor-pos)
         last-newline-idx (str/last-index-of text-before "\n")
         line-start (if last-newline-idx (inc last-newline-idx) 0)
         line-text (subs text line-start cursor-pos)]
-    (grapheme-count line-text)))
-
-(defn- grapheme-offset-to-char-offset
-  "Convert grapheme offset to character offset in a string.
-   Example: '👨‍👩‍👧‍👦hello' with grapheme offset 1 returns char offset 7 (after the emoji)"
-  [s grapheme-offset]
-  #?(:cljs
-     (try
-       (if (and js/Intl js/Intl.Segmenter)
-         (let [segmenter (js/Intl.Segmenter. "en" #js {:granularity "grapheme"})
-               segments (.segment segmenter s)
-               segment-array (js/Array.from (js-invoke segments "values"))]
-           (if (<= grapheme-offset 0)
-             0
-             (if (>= grapheme-offset (.-length segment-array))
-               (count s)
-               ;; Get the segment at grapheme-offset and return its start index
-               (let [target-segment (aget segment-array grapheme-offset)]
-                 (.-index target-segment)))))
-         ;; Fallback for older browsers
-         (min grapheme-offset (count s)))
-       (catch js/Error _
-         ;; Fallback if Segmenter fails
-         (min grapheme-offset (count s))))
-     :clj
-     ;; CLJ implementation using Java BreakIterator
-     (if (<= grapheme-offset 0)
-       0
-       (let [^java.text.BreakIterator bi (java.text.BreakIterator/getCharacterInstance)]
-         (.setText bi s)
-         (loop [idx 0
-                pos (.next bi)]
-           (cond
-             (= pos java.text.BreakIterator/DONE) (count s)
-             (>= idx grapheme-offset) pos
-             :else (recur (inc idx) (.next bi))))))))
+    (text/count-graphemes line-text)))
 
 (defn get-target-cursor-pos
   "Calculate where cursor should land in target block.
@@ -138,13 +71,10 @@
   [target-text line-pos direction]
   (let [up? (= direction :up)
         lines (str/split-lines target-text)
-        ;; Select target line based on direction: up → last, down → first
         target-line (str (if up? (last lines) (first lines)))
-        ;; Calculate clamped position in target line
-        target-line-grapheme-count (grapheme-count target-line)
+        target-line-grapheme-count (text/count-graphemes target-line)
         target-line-grapheme-pos (min line-pos target-line-grapheme-count)
-        target-line-char-pos (grapheme-offset-to-char-offset target-line target-line-grapheme-pos)]
-    ;; Calculate absolute position: up → offset from previous lines, down → position in first line
+        target-line-char-pos (text/grapheme-index-to-cursor-pos target-line target-line-grapheme-pos)]
     (if up?
       (transduce (map #(inc (count %))) + target-line-char-pos (butlast lines))
       target-line-char-pos)))
