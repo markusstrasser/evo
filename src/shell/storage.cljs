@@ -332,7 +332,11 @@
 (defn restore-folder!
   "Try to restore the previously selected folder from IndexedDB.
    Returns Promise<boolean> indicating if folder was restored.
-   Returns false immediately on unsupported browsers."
+   Returns false immediately on unsupported browsers.
+
+   IMPORTANT: After getting permission, we verify the folder still exists
+   by attempting to iterate its entries. If the folder was moved/deleted,
+   this will fail and we clear the stale handle."
   []
   (if-not (exists? js/window.showDirectoryPicker)
     (js/Promise.resolve false)
@@ -344,10 +348,20 @@
                    (-> (.requestPermission handle #js {:mode "readwrite"})
                        (.then (fn [permission]
                                 (if (= permission "granted")
-                                  (do
-                                    (reset! !dir-handle handle)
-                                    (js/console.log "📁 Restored folder:" (.-name handle))
-                                    true)
+                                  ;; Verify folder still exists by trying to access it
+                                  (-> (.entries handle)
+                                      (.next)
+                                      (.then (fn [_]
+                                               (reset! !dir-handle handle)
+                                               (js/console.log "📁 Restored folder:" (.-name handle))
+                                               true))
+                                      (.catch (fn [err]
+                                                ;; Folder was moved/deleted - clear stale handle
+                                                (js/console.warn "📁 Folder no longer exists:" (.-name handle))
+                                                (js/console.warn "   Error:" (.-message err))
+                                                ;; Just reset atom - full cleanup via clear-folder! not needed here
+                                                (reset! !dir-handle nil)
+                                                false)))
                                   (do
                                     (js/console.log "📁 Permission denied, need to pick folder again")
                                     false)))))
