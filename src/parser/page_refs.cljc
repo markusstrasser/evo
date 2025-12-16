@@ -8,8 +8,8 @@
 (def page-ref-pattern
   "Regex pattern matching [[page-name]] references.
    Captures the page name in group 1.
-   Allows alphanumeric, spaces, hyphens, underscores, forward slashes (for namespaces)."
-  #"\[\[([a-zA-Z0-9\s\-_/]+)\]\]")
+   Allows alphanumeric, spaces, hyphens, underscores, forward slashes, commas, periods, apostrophes."
+  #"\[\[([a-zA-Z0-9\s\-_/,.']+)\]\]")
 
 (defn extract-refs
   "Extract all page references from text.
