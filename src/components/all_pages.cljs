@@ -1,125 +1,163 @@
 (ns components.all-pages
-  "All Pages view - shows all pages in a list (Logseq-style /all-pages).
+  "All Pages view - compact table layout with metadata.
 
-   Features:
-   - Shows ALL pages including journals (journals first, then alphabetical)
-   - Journals shown with calendar icon, regular pages with file icon
-   - Click to navigate
-   - Create new page button"
+   Design: Dense, information-rich table inspired by file managers.
+   Shows: title, modified time, word count, block count.
+   Color-coded sections for favorites/pages/journals."
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
             [clojure.string :as str]))
 
-(defn- journal-page?
-  "Detect if a page title looks like a journal date."
-  [title]
-  (when title
-    (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-        (re-matches #"\d{4}-\d{2}-\d{2}" title))))
+;; ── Time Formatting ───────────────────────────────────────────────────────────
 
-(defn- valid-page?
-  "Check if page has a valid, displayable title."
-  [title]
-  (and (some? title)
-       (not (str/blank? title))
-       (not= title "Untitled")))
+(defn- format-relative-time
+  "Format timestamp as relative time (e.g., '2h ago', 'Dec 14')."
+  [timestamp]
+  (if (nil? timestamp)
+    "—"
+    (let [now (js/Date.now)
+          diff-ms (- now timestamp)
+          diff-min (/ diff-ms 1000 60)
+          diff-hr (/ diff-min 60)
+          diff-days (/ diff-hr 24)]
+      (cond
+        (< diff-min 1) "now"
+        (< diff-hr 1) (str (int diff-min) "m")
+        (< diff-days 1) (str (int diff-hr) "h")
+        (< diff-days 7) (str (int diff-days) "d")
+        :else
+        (let [date (js/Date. timestamp)
+              months ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+                      "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]]
+          (str (nth months (.getMonth date)) " " (.getDate date)))))))
+
+;; ── Number Formatting ─────────────────────────────────────────────────────────
+
+(defn- format-number
+  "Format number with k suffix for thousands."
+  [n]
+  (cond
+    (nil? n) "—"
+    (< n 1000) (str n)
+    :else (str (/ (int (* n 10) ) 10000.0) "k")))
+
+;; ── Row ──────────────────────────────────────────────────────────────────────
+
+(defn- page-row
+  "Single row in the pages list."
+  [{:keys [id title created-at updated-at word-count block-count favorite? on-intent]}]
+  [:div.pages-row
+   {:replicant/key id
+    :on {:click (fn [e]
+                  (.preventDefault e)
+                  (vs/add-to-recents! id)
+                  (on-intent {:type :switch-page :page-id id}))}}
+   [:span.pages-cell.pages-cell--title
+    (when favorite? [:span.pages-star "★"])
+    [:span.pages-title-text title]]
+   [:span.pages-cell.pages-cell--created
+    (format-relative-time created-at)]
+   [:span.pages-cell.pages-cell--modified
+    (format-relative-time updated-at)]
+   [:span.pages-cell.pages-cell--words
+    (format-number word-count)]
+   [:span.pages-cell.pages-cell--blocks
+    block-count]])
+
+;; ── Section List ─────────────────────────────────────────────────────────────
+
+(defn- pages-list
+  "List of pages for a section."
+  [pages on-intent]
+  [:div.pages-list
+   (for [page pages]
+     (page-row (assoc page :on-intent on-intent)))])
+
+;; ── Main View ─────────────────────────────────────────────────────────────────
 
 (defn AllPagesView
-  "All Pages listing view (like Logseq's /all-pages).
+  "All Pages index - compact table layout.
 
-   Shows ALL pages including journals in a clean list.
-   Click to navigate to page."
+   Structure:
+   1. Summary stats
+   2. Favorites table (if any)
+   3. Pages table
+   4. Journals table"
   [{:keys [db on-intent]}]
-  (let [all-pages (q/all-pages db)
+  (let [all-page-ids (q/all-pages db)
         favorites-set (vs/favorites)
 
-        ;; Build page metadata, including journals
-        pages (->> all-pages
-                   (map (fn [pid]
-                          (let [title (q/page-title db pid)]
-                            {:id pid
-                             :title title
-                             :favorite? (contains? favorites-set pid)
-                             :valid? (valid-page? title)
-                             :journal? (journal-page? title)})))
-                   (filter :valid?)
-                   ;; Sort: journals first (by date desc), then regular pages alphabetically
-                   (sort (fn [a b]
-                           (cond
-                             ;; Both journals - sort by title descending (newer dates first)
-                             (and (:journal? a) (:journal? b))
-                             (compare (:title b) (:title a))
-                             ;; Journal vs regular - journals first
-                             (:journal? a) -1
-                             (:journal? b) 1
-                             ;; Both regular - alphabetical
-                             :else (compare (str/lower-case (:title a))
-                                            (str/lower-case (:title b)))))))]
+        ;; Build full metadata for each page
+        pages (->> all-page-ids
+                   (map #(q/page-metadata db % favorites-set))
+                   (filter #(and (:title %)
+                                 (not (str/blank? (:title %)))
+                                 (not= (:title %) "Untitled"))))
 
-    [:div.all-pages-view
-     {:style {:padding "0"}}
+        ;; Separate into groups
+        favorites (->> pages
+                       (filter :favorite?)
+                       (sort-by #(str/lower-case (:title %))))
+        journals (->> pages
+                      (filter :journal?)
+                      (sort-by :title)
+                      reverse)
+        regular (->> pages
+                     (filter #(and (not (:journal? %))
+                                   (not (:favorite? %))))
+                     (sort-by #(str/lower-case (:title %))))
 
-     [:div.all-pages-header
-      {:style {:display "flex"
-               :align-items "center"
-               :justify-content "space-between"
-               :margin-bottom "20px"}}
-      [:h3 {:style {:margin "0"
-                    :color "#374151"}}
-       "All Pages"]
-      [:button.create-page-btn
-       {:style {:padding "6px 12px"
-                :background "#3b82f6"
-                :color "white"
-                :border "none"
-                :border-radius "6px"
-                :cursor "pointer"
-                :font-size "13px"}
-        :on {:click (fn [e]
-                      (.preventDefault e)
-                      (let [title (js/prompt "Page title:")]
-                        (when (and title (not (str/blank? title)))
-                          (on-intent {:type :create-page :title title}))))}}
-       "+ New Page"]]
+        ;; Stats
+        total-words (reduce + 0 (map :word-count pages))
+        total-blocks (reduce + 0 (map :block-count pages))]
 
-     (if (seq pages)
-       [:div.all-pages-list
-        {:style {:display "flex"
-                 :flex-direction "column"
-                 :gap "2px"}}
-        (for [{:keys [id title favorite? journal?]} pages]
-          ^{:key id}
-          [:div.all-pages-item
-           {:style {:padding "10px 12px"
-                    :border-radius "6px"
-                    :cursor "pointer"
-                    :display "flex"
-                    :align-items "center"
-                    :gap "8px"
-                    :transition "background 0.15s ease"}
-            :on {:click (fn [e]
-                          (.preventDefault e)
-                          (vs/add-to-recents! id)
-                          (on-intent {:type :switch-page :page-id id}))
-                 :mouseenter (fn [e]
-                               (set! (.. e -currentTarget -style -background) "#f3f4f6"))
-                 :mouseleave (fn [e]
-                               (set! (.. e -currentTarget -style -background) "transparent"))}}
-           ;; Page icon - calendar for journals, file for regular
-           [:span {:style {:color "#9ca3af"}} (if journal? "📅" "📄")]
-           ;; Title
-           [:span {:style {:flex "1"
-                           :color "#374151"}}
-            title]
-           ;; Favorite indicator
-           (when favorite?
-             [:span {:style {:color "#fbbf24"}} "★"])])]
+    [:article.pages-index
 
-       ;; Empty state
-       [:div.all-pages-empty
-        {:style {:padding "40px"
-                 :text-align "center"
-                 :color "#9ca3af"}}
+     ;; Summary header
+     [:header.pages-summary
+      [:span.pages-stat (str (count pages))]
+      [:span.pages-stat-label "pages"]
+      [:span.pages-sep "·"]
+      [:span.pages-stat (format-number total-words)]
+      [:span.pages-stat-label "words"]
+      [:span.pages-sep "·"]
+      [:span.pages-stat (str total-blocks)]
+      [:span.pages-stat-label "blocks"]]
+
+     ;; Column headers (shared)
+     [:div.pages-header-row
+      [:span.pages-header.pages-header--title "Title"]
+      [:span.pages-header.pages-header--created "Created"]
+      [:span.pages-header.pages-header--modified "Modified"]
+      [:span.pages-header.pages-header--words "Words"]
+      [:span.pages-header.pages-header--blocks "¶"]]
+
+     ;; Favorites section
+     (when (seq favorites)
+       [:section.pages-section.pages-section--favorites
+        [:h2.pages-section-label
+         "Favorites"
+         [:span.pages-section-count (count favorites)]]
+        (pages-list favorites on-intent)])
+
+     ;; Regular pages section
+     (when (seq regular)
+       [:section.pages-section.pages-section--regular
+        [:h2.pages-section-label
+         "Pages"
+         [:span.pages-section-count (count regular)]]
+        (pages-list regular on-intent)])
+
+     ;; Journals section
+     (when (seq journals)
+       [:section.pages-section.pages-section--journals
+        [:h2.pages-section-label
+         "Journals"
+         [:span.pages-section-count (count journals)]]
+        (pages-list journals on-intent)])
+
+     ;; Empty state
+     (when (empty? pages)
+       [:div.pages-empty
         [:p "No pages yet"]
-        [:p {:style {:font-size "13px"}}
-         "Click \"+ New Page\" to create one"]])]))
+        [:p.pages-empty-hint "Create a page from the sidebar"]])]))
