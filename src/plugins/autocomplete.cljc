@@ -444,7 +444,8 @@
                               ;; Page exists - just navigate
                               {:session-updates
                                {:ui {:current-page page-id
-                                     :editing-block-id nil}
+                                     :editing-block-id nil
+                                     :journals-view? false}  ; Exit journals view when navigating
                                 :selection {:focus nil :anchor nil :nodes #{}}}}
                               ;; Page doesn't exist - create and navigate
                               (let [new-page-id (generate-page-id page-name)]
@@ -458,7 +459,8 @@
                                         :at :last}]
                                  :session-updates
                                  {:ui {:current-page new-page-id
-                                       :editing-block-id nil}
+                                       :editing-block-id nil
+                                       :journals-view? false}  ; Exit journals view when navigating
                                   :selection {:focus nil :anchor nil :nodes #{}}}})))})
 
 
