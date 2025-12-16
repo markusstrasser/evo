@@ -52,7 +52,7 @@
 
 ;; ── Cross-page navigation (for JournalsView) ─────────────────────────────────
 
-(defn- get-adjacent-block-by-dom
+(defn get-adjacent-block-by-dom
   "Find adjacent block ID by DOM order. Works across page boundaries.
 
    In JournalsView, blocks from multiple pages render in visual order.
@@ -502,7 +502,10 @@
         is-empty? (str/blank? dom-text)
         has-next? (some? (q/next-sibling db block-id))
         parent (q/parent-of db block-id)
-        at-root? (= parent :doc)]
+        ;; "At root" = parent is :doc OR parent is a page (blocks directly under pages
+        ;; shouldn't auto-outdent since there's nowhere to outdent TO)
+        parent-is-page? (= :page (get-in db [:nodes parent :type]))
+        at-root? (or (= parent :doc) parent-is-page?)]
     (if (and is-empty? (not has-next?) (not at-root?))
       ;; Auto-outdent: move block to be sibling of parent
       ;; Use :outdent-selected which preserves editing state
@@ -1420,10 +1423,15 @@
                                            (on-intent {:type :enter-edit :block-id block-id})
 
                                            :else
-                                           (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+                                           (on-intent {:type :selection :mode :replace :ids block-id})))}}
+            ;; Render content; empty blocks get zero-width space for a11y tree visibility
+            rendered (render-text-with-page-refs db content on-intent)
+            children (if (seq rendered)
+                       rendered
+                       ["\u200B"])]  ; ZWS makes block visible to a11y tree
         (into [container-tag
                (merge {:replicant/key view-key} click-handler)]
-              (render-text-with-page-refs db content on-intent))))))
+              children)))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
