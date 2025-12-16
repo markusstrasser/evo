@@ -415,53 +415,8 @@
                                (when navigate?
                                  {:ui {:current-page page-id}})}))})
 
-(defn- find-page-by-title
-  "Find a page ID by its title (case-insensitive)."
-  [db title]
-  (let [pages (get-in db [:children-by-parent :doc] [])
-        title-lower (str/lower-case title)]
-    (some (fn [id]
-            (let [page-title (get-in db [:nodes id :props :title] "")]
-              (when (= (str/lower-case page-title) title-lower)
-                id)))
-          pages)))
-
-(intent/register-intent! :navigate-to-page
-                         {:doc "Navigate to a page by name.
-
-         If page exists, sets it as current page.
-         If page doesn't exist, creates it first then navigates."
-
-                          :fr/ids #{:fr.pages/switch-page}
-
-                          :spec [:map
-                                 [:type [:= :navigate-to-page]]
-                                 [:page-name :string]]
-
-                          :handler
-                          (fn [db _session {:keys [page-name]}]
-                            (if-let [page-id (find-page-by-title db page-name)]
-                              ;; Page exists - just navigate
-                              {:session-updates
-                               {:ui {:current-page page-id
-                                     :editing-block-id nil
-                                     :journals-view? false}  ; Exit journals view when navigating
-                                :selection {:focus nil :anchor nil :nodes #{}}}}
-                              ;; Page doesn't exist - create and navigate
-                              (let [new-page-id (generate-page-id page-name)]
-                                {:ops [{:op :create-node
-                                        :id new-page-id
-                                        :type :page
-                                        :props {:title page-name}}
-                                       {:op :place
-                                        :id new-page-id
-                                        :under :doc
-                                        :at :last}]
-                                 :session-updates
-                                 {:ui {:current-page new-page-id
-                                       :editing-block-id nil
-                                       :journals-view? false}  ; Exit journals view when navigating
-                                  :selection {:focus nil :anchor nil :nodes #{}}}})))})
+;; NOTE: :navigate-to-page intent is registered in plugins.pages
+;; (canonical location for page navigation logic)
 
 
 ;; ══════════════════════════════════════════════════════════════════════════════
