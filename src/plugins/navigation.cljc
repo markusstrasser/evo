@@ -153,7 +153,11 @@
                          {:doc "Navigate to adjacent block, preserving cursor column position.
 
          This is the PRIMARY navigation intent while editing.
-         Replaces simple :selection :mode :prev/:next when cursor memory is desired."
+         Replaces simple :selection :mode :prev/:next when cursor memory is desired.
+
+         CROSS-PAGE NAVIGATION: In JournalsView, blocks from different pages
+         render together. The optional :dom-adjacent-id provides a fallback
+         target when the normal DB query finds no adjacent block (page boundary)."
 
                           :fr/ids #{:fr.nav/vertical-cursor-memory}
                           :allowed-states #{:editing}
@@ -163,16 +167,19 @@
                                  [:direction [:enum :up :down]]
                                  [:current-block-id :string]
                                  [:current-text :string]
-                                 [:current-cursor-pos :int]]
+                                 [:current-cursor-pos :int]
+                                 [:dom-adjacent-id {:optional true} [:maybe :string]]]
                           :handler
-                          (fn [db session {:keys [direction current-block-id current-text current-cursor-pos]}]
+                          (fn [db session {:keys [direction current-block-id current-text current-cursor-pos dom-adjacent-id]}]
                             (let [;; Calculate and store cursor memory
                                   line-pos (get-line-pos current-text current-cursor-pos)
 
                                   ;; Find target block (fold/zoom/page-aware)
-                                  target-id (case direction
+                                  ;; Fall back to DOM-adjacent ID for cross-page navigation
+                                  db-target (case direction
                                               :up (get-prev-visible-block db session current-block-id)
-                                              :down (get-next-visible-block db session current-block-id))]
+                                              :down (get-next-visible-block db session current-block-id))
+                                  target-id (or db-target dom-adjacent-id)]
 
                               ;; BOUNDARY HANDLING: If no target, return no-op that keeps cursor in place
                               ;; This prevents exceptions at document edges (Logseq behavior)

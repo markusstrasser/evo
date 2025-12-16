@@ -50,6 +50,30 @@
       (str/replace #">" "&gt;")
       (str/replace #"\n" "<br>")))
 
+;; ── Cross-page navigation (for JournalsView) ─────────────────────────────────
+
+(defn- get-adjacent-block-by-dom
+  "Find adjacent block ID by DOM order. Works across page boundaries.
+
+   In JournalsView, blocks from multiple pages render in visual order.
+   When at a page boundary, normal DB queries find no adjacent block,
+   but DOM traversal reveals the next/prev block from another page.
+
+   Returns block ID string or nil if at document boundary."
+  [direction current-block-id]
+  (when-let [current-el (.querySelector js/document
+                                        (str "[data-block-id='" current-block-id "']"))]
+    ;; Get all visible blocks in DOM order
+    (let [all-blocks (array-seq (.querySelectorAll js/document
+                                                   ".block[data-block-id]"))
+          current-idx (.indexOf all-blocks current-el)
+          target-idx (case direction
+                       :up (dec current-idx)
+                       :down (inc current-idx))]
+      (when (and (>= target-idx 0) (< target-idx (count all-blocks)))
+        (let [target-el (nth all-blocks target-idx)]
+          (.getAttribute target-el "data-block-id"))))))
+
 ;; ── Cursor row detection ──────────────────────────────────────────────────────
 ;; MOVED: detect-cursor-row-position → utils/cursor_boundaries.cljs
 ;; Now computed ONCE per keydown via bounds/boundary-state
@@ -337,6 +361,10 @@
 
    REFACTORED: Now receives pre-computed boundaries from handle-keydown.
 
+   CROSS-PAGE NAVIGATION: In JournalsView, blocks from different pages
+   are rendered together. When at a page boundary, we provide a DOM-based
+   fallback block ID so navigation can cross page boundaries seamlessly.
+
    Args:
    - direction: :up or :down
    - e, _db, block-id, on-intent: standard handler args
@@ -354,11 +382,15 @@
       ;; At boundary row - navigate to adjacent block with cursor memory
       (get cursor-bounds boundary-key)
       (do (.preventDefault e)
-          (on-intent {:type :navigate-with-cursor-memory
-                      :current-block-id block-id
-                      :current-text (:text-content cursor-bounds)
-                      :current-cursor-pos (:cursor-pos cursor-bounds)
-                      :direction direction}))
+          ;; In journals view, provide DOM-adjacent fallback for cross-page nav
+          (let [dom-fallback (when (vs/journals-view?)
+                               (get-adjacent-block-by-dom direction block-id))]
+            (on-intent (cond-> {:type :navigate-with-cursor-memory
+                                :current-block-id block-id
+                                :current-text (:text-content cursor-bounds)
+                                :current-cursor-pos (:cursor-pos cursor-bounds)
+                                :direction direction}
+                         dom-fallback (assoc :dom-adjacent-id dom-fallback)))))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
