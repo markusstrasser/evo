@@ -138,12 +138,14 @@
      :cljs (.now js/Date)))
 
 (defn- enrich-create-op
-  "Add created-at and updated-at timestamps to :create-node ops."
+  "Add created-at and updated-at timestamps to :create-node ops.
+   Preserves existing timestamps if already present (e.g., from file import)."
   [{:keys [props] :as op}]
-  (let [ts (now)]
-    (update op :props assoc
-            :created-at ts
-            :updated-at ts)))
+  (let [ts (now)
+        existing (select-keys props [:created-at :updated-at])]
+    (update op :props merge
+            {:created-at ts :updated-at ts}
+            existing)))
 
 (defn- enrich-update-op
   "Add updated-at timestamp to :update-node ops."
