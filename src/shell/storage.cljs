@@ -87,9 +87,13 @@
   "Serialize a page to Logseq-style markdown."
   [db page-id]
   (let [title (get-in db [:nodes page-id :props :title] "Untitled")
+        created-at (get-in db [:nodes page-id :props :created-at])
+        updated-at (get-in db [:nodes page-id :props :updated-at])
         trashed-at (get-in db [:nodes page-id :props :trashed-at])
         children (get-in db [:children-by-parent page-id] [])
         header-lines (cond-> [(str "title:: " title)]
+                       created-at (conj (str "created-at:: " created-at))
+                       updated-at (conj (str "updated-at:: " updated-at))
                        trashed-at (conj (str "trashed-at:: " trashed-at)))]
     (str/join "\n"
               (into header-lines
@@ -125,38 +129,60 @@
 
 (defn markdown->ops
   "Parse Logseq-style markdown into kernel ops.
-   
+
    Handles multiline blocks where continuation lines are indented without bullets:
    - first line
-     continuation line (no bullet, just indented)"
-  [page-id markdown]
+     continuation line (no bullet, just indented)
+
+   Optional opts map:
+   - :file-modified - file's lastModified timestamp (fallback for created-at/updated-at)"
+  [page-id markdown & [{:keys [file-modified]}]]
   (let [lines (str/split-lines markdown)
-        ;; Parse header properties (title::, trashed-at::)
-        {:keys [title trashed-at content-lines]}
+        ;; Parse header properties (title::, timestamps, trashed-at::)
+        {:keys [title created-at updated-at trashed-at content-lines]}
         (loop [lines lines
                title nil
+               created-at nil
+               updated-at nil
                trashed-at nil]
           (if (empty? lines)
-            {:title (or title "Untitled") :trashed-at trashed-at :content-lines []}
+            {:title (or title "Untitled")
+             :created-at created-at
+             :updated-at updated-at
+             :trashed-at trashed-at
+             :content-lines []}
             (let [line (first lines)]
               (cond
                 (str/starts-with? line "title:: ")
-                (recur (rest lines) (subs line 8) trashed-at)
+                (recur (rest lines) (subs line 8) created-at updated-at trashed-at)
+
+                (str/starts-with? line "created-at:: ")
+                (recur (rest lines) title (js/parseInt (subs line 13) 10) updated-at trashed-at)
+
+                (str/starts-with? line "updated-at:: ")
+                (recur (rest lines) title created-at (js/parseInt (subs line 13) 10) trashed-at)
 
                 (str/starts-with? line "trashed-at:: ")
-                (recur (rest lines) title (js/parseInt (subs line 13) 10))
+                (recur (rest lines) title created-at updated-at (js/parseInt (subs line 13) 10))
 
                 :else
                 {:title (or title "Untitled")
+                 :created-at created-at
+                 :updated-at updated-at
                  :trashed-at trashed-at
                  :content-lines lines}))))
 
         ;; Determine root based on trashed state
         root (if trashed-at :trash :doc)
 
-        ;; Page props include trashed-at if present
+        ;; Page props: frontmatter timestamps take priority, file-modified is fallback
         page-props (cond-> {:title title}
-                     trashed-at (assoc :trashed-at trashed-at))
+                     trashed-at (assoc :trashed-at trashed-at)
+                     ;; Use frontmatter timestamps if present, else fall back to file-modified
+                     (or created-at file-modified)
+                     (assoc :created-at (or created-at file-modified))
+                     (or updated-at file-modified)
+                     (assoc :updated-at (or updated-at file-modified)))
 
         ops (atom [{:op :create-node :id page-id :type :page :props page-props}
                    {:op :place :id page-id :under root :at :last}])
@@ -249,14 +275,19 @@
                   (js/console.error "Failed to write file:" filename err))))))
 
 (defn- read-file
-  "Read content from a file in the selected directory."
+  "Read content from a file in the selected directory.
+   Returns {:content string :last-modified timestamp} or nil."
   [filename]
   (when-let [dir @!dir-handle]
     (-> (.getFileHandle dir filename)
         (.then (fn [file-handle]
                  (.getFile file-handle)))
         (.then (fn [file]
-                 (.text file)))
+                 (let [last-mod (.-lastModified file)]
+                   (-> (.text file)
+                       (.then (fn [text]
+                                {:content text
+                                 :last-modified last-mod}))))))
         (.catch (fn [_err]
                   nil))))) ; File doesn't exist
 
@@ -320,10 +351,12 @@
                   (to-array
                    (map (fn [filename]
                           (-> (read-file filename)
-                              (.then (fn [content]
-                                       (when content
-                                         (let [page-id (str/replace filename #"\.md$" "")]
-                                           (markdown->ops page-id content)))))))
+                              (.then (fn [file-data]
+                                       (when file-data
+                                         (let [page-id (str/replace filename #"\.md$" "")
+                                               {:keys [content last-modified]} file-data]
+                                           (markdown->ops page-id content
+                                                          {:file-modified last-modified})))))))
                         files)))))
         (.then (fn [results]
                  (vec (apply concat (filter some? results))))))
