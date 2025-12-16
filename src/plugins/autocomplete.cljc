@@ -50,11 +50,16 @@
 (defmethod search-items :page-ref
   [db {:keys [query]}]
   (let [pages (get-in db [:children-by-parent :doc] [])
-        page-data (map (fn [id]
-                         {:id id
-                          :title (get-in db [:nodes id :props :title] "Untitled")
-                          :type :existing})
-                       pages)
+        page-data (->> pages
+                       (map (fn [id]
+                              {:id id
+                               :title (get-in db [:nodes id :props :title])
+                               :type :existing}))
+                       ;; Filter out untitled/blank pages
+                       (filter (fn [{:keys [title]}]
+                                 (and title
+                                      (not (str/blank? title))
+                                      (not= title "Untitled")))))
         ;; Filter existing pages
         filtered (if (str/blank? query)
                    (take 10 page-data)
