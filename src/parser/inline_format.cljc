@@ -1,22 +1,26 @@
 (ns parser.inline-format
-  "Parser for inline text formatting (bold, italic, highlight, strikethrough).
+  "Parser for inline text formatting (bold, italic, highlight, strikethrough, math).
 
    Logseq-style markdown:
    - **bold** or __bold__ → :bold
    - *italic* or _italic_ → :italic
    - ==highlight== → :highlight
    - ~~strikethrough~~ → :strikethrough
+   - $$block math$$ → :math-block
+   - $inline math$ → :math-inline
 
-   Returns segments with {:type :text/:bold/:italic/:highlight/:strikethrough
+   Returns segments with {:type :text/:bold/:italic/:highlight/:strikethrough/:math-block/:math-inline
                          :value \"content\"}"
   (:require [clojure.string :as str]))
 
 ;; Marker definitions - order matters (longer markers first to avoid partial matches)
 (def ^:private markers
-  [["**" :bold]
+  [["$$" :math-block]
+   ["**" :bold]
    ["__" :bold]
    ["==" :highlight]
    ["~~" :strikethrough]
+   ["$" :math-inline]
    ["*" :italic]
    ["_" :italic]])
 
@@ -91,10 +95,12 @@
   "Quick check if text contains any inline formatting markers."
   [text]
   (and (string? text)
-       (or (str/includes? text "**")
+       (or (str/includes? text "$$")
+           (str/includes? text "**")
            (str/includes? text "__")
            (str/includes? text "==")
            (str/includes? text "~~")
-           ;; Single * or _ could be formatting, but check for pairs
+           ;; Single markers - check for pairs
+           (re-find #"\$[^$]+\$" text)
            (re-find #"\*[^*]+\*" text)
            (re-find #"_[^_]+_" text))))
