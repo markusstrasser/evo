@@ -14,7 +14,10 @@
             },
             options: {
                 skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-                processHtmlClass: 'math'
+                processHtmlClass: 'math',
+                // CRITICAL: Skip elements being edited (contenteditable)
+                // Without this, MathJax will process raw $...$ in edit mode and strip delimiters
+                ignoreHtmlClass: 'math-ignore'
             }
         };
     </script>

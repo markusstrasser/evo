@@ -1128,12 +1128,15 @@
 
 (defn- edit-content
   "Edit mode content: uncontrolled contenteditable.
-   
+
    Browser owns text state. Syncs to buffer on input, commits on blur.
-   Lifecycle hooks handle focus and cursor positioning."
+   Lifecycle hooks handle focus and cursor positioning.
+
+   NOTE: .math-ignore class tells MathJax to skip this element.
+   Without it, MathJax would process $...$ patterns and strip delimiters."
   [{:keys [block-id text on-intent db]}]
   (let [edit-key (str block-id "-edit")]
-    [:span.block-content
+    [:span.block-content.math-ignore
      {:contentEditable true
       :suppressContentEditableWarning true
       :replicant/key edit-key
