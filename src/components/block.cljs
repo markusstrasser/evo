@@ -17,7 +17,7 @@
             [utils.text-selection :as text-sel]
             [utils.cursor-boundaries :as bounds]
             [utils.dom :as dom]
-            [util.html-to-markdown :as html-md]
+            [utils.html-to-markdown :as html-md]
             [shell.view-state :as vs]
             [shell.storage :as storage]
             [clojure.string :as str]))
@@ -1003,8 +1003,8 @@
     ;; Plain text - handle newlines
     :text (let [result (text-segment->hiccup value)]
             (if (seq? result)
-              (vec result)  ; Sequence with [:br] elements
-              [result]))))  ; Single string
+              (vec result) ; Sequence with [:br] elements
+              [result])))) ; Single string
 
 (defn- render-text-with-inline-formatting
   "Parse and render inline formatting (bold, italic, highlight, strikethrough).
@@ -1452,7 +1452,7 @@
             rendered (render-text-with-page-refs db content on-intent)
             children (if (seq rendered)
                        rendered
-                       ["\u200B"])  ; ZWS makes block visible to a11y tree
+                       ["\u200B"]) ; ZWS makes block visible to a11y tree
             ;; Check if content has math ($ or $$)
             has-math? (and (string? content)
                            (or (str/includes? content "$$")

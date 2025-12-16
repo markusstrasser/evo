@@ -1,4 +1,4 @@
-(ns util.html-to-markdown
+(ns utils.html-to-markdown
   "Convert HTML to Markdown for paste operations.
 
    Uses the turndown.js library for robust HTML→Markdown conversion.
@@ -11,8 +11,8 @@
 
 (defonce turndown-instance
   (let [td (TurndownService. #js {:headingStyle "atx"
-                                   :codeBlockStyle "fenced"
-                                   :bulletListMarker "-"})]
+                                  :codeBlockStyle "fenced"
+                                  :bulletListMarker "-"})]
     ;; Keep strikethrough handling (del, s, strike)
     (.addRule td "strikethrough"
               #js {:filter #js ["del" "s" "strike"]
@@ -50,14 +50,14 @@
     ;; HTML adds value if converted result differs significantly from plain text
     ;; (i.e., contains markdown formatting characters)
     (and (not= (str/trim converted) (str/trim plain-text))
-         (or (str/includes? converted "[")    ; Links
-             (str/includes? converted "**")   ; Bold
-             (str/includes? converted "_")    ; Italic
-             (str/includes? converted "`")    ; Code
-             (str/includes? converted "#")    ; Headings
-             (str/includes? converted "- ")   ; Lists
-             (str/includes? converted "> ")   ; Blockquotes
-             (str/includes? converted "~~")   ; Strikethrough
-             (str/includes? converted "![")   ; Images
-             (str/includes? converted "```")  ; Code blocks
+         (or (str/includes? converted "[") ; Links
+             (str/includes? converted "**") ; Bold
+             (str/includes? converted "_") ; Italic
+             (str/includes? converted "`") ; Code
+             (str/includes? converted "#") ; Headings
+             (str/includes? converted "- ") ; Lists
+             (str/includes? converted "> ") ; Blockquotes
+             (str/includes? converted "~~") ; Strikethrough
+             (str/includes? converted "![") ; Images
+             (str/includes? converted "```") ; Code blocks
              (str/includes? converted "|")))));; Tables
