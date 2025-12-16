@@ -220,3 +220,40 @@
           nodes-with-parents (keys (get-in db [:derived :parent-of]))]
       (is (= (set placed-nodes) (set nodes-with-parents)))
       (is (db-valid? db)))))
+
+;; ── Timestamp Preservation Tests ──────────────────────────────────────────────
+
+(deftest test-create-auto-timestamps
+  (testing "create-node auto-adds created-at and updated-at"
+    (let [db (apply-ops [(create-op "a" :block)])
+          props (node-props-all db "a")]
+      (is (number? (:created-at props)) "created-at should be auto-added")
+      (is (number? (:updated-at props)) "updated-at should be auto-added")
+      (is (= (:created-at props) (:updated-at props)) "both should be equal on creation"))))
+
+(deftest test-create-preserves-existing-timestamps
+  (testing "create-node preserves timestamps from props (e.g., file import)"
+    (let [old-time 1609459200000  ; Jan 1, 2021
+          db (apply-ops [{:op :create-node
+                          :id "a"
+                          :type :page
+                          :props {:title "Test"
+                                  :created-at old-time
+                                  :updated-at old-time}}])
+          props (node-props-all db "a")]
+      (is (= old-time (:created-at props)) "created-at should be preserved")
+      (is (= old-time (:updated-at props)) "updated-at should be preserved"))))
+
+(deftest test-update-refreshes-updated-at
+  (testing "update-node refreshes updated-at but not created-at"
+    (let [old-time 1609459200000
+          db1 (apply-ops [{:op :create-node
+                           :id "a"
+                           :type :block
+                           :props {:text "hi"
+                                   :created-at old-time
+                                   :updated-at old-time}}])
+          db2 (apply-ops db1 [(update-op "a" {:text "hello"})])
+          props (node-props-all db2 "a")]
+      (is (= old-time (:created-at props)) "created-at unchanged")
+      (is (> (:updated-at props) old-time) "updated-at should be refreshed"))))
