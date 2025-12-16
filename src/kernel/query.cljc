@@ -482,3 +482,57 @@
   "Get the timestamp when a page was trashed, or nil if not set."
   [db page-id]
   (get-in db [:nodes page-id :props :trashed-at]))
+
+;; ── Page Metadata Queries ─────────────────────────────────────────────────────
+
+(defn created-at
+  "Get the creation timestamp of a node (page or block)."
+  [db node-id]
+  (get-in db [:nodes node-id :props :created-at]))
+
+(defn updated-at
+  "Get the last update timestamp of a node (page or block)."
+  [db node-id]
+  (get-in db [:nodes node-id :props :updated-at]))
+
+(defn page-block-count
+  "Count total blocks under a page (recursive, all descendants)."
+  [db page-id]
+  (letfn [(count-descendants [node-id]
+            (let [child-ids (children db node-id)]
+              (+ (count child-ids)
+                 (reduce + 0 (map count-descendants child-ids)))))]
+    (count-descendants page-id)))
+
+(defn page-word-count
+  "Count total words across all blocks under a page."
+  [db page-id]
+  (letfn [(count-words [text]
+            (if (or (nil? text) (str/blank? text))
+              0
+              (count (str/split (str/trim text) #"\s+"))))
+          (sum-descendants [node-id]
+            (let [text (block-text db node-id)
+                  child-ids (children db node-id)]
+              (+ (count-words text)
+                 (reduce + 0 (map sum-descendants child-ids)))))]
+    (sum-descendants page-id)))
+
+(defn page-metadata
+  "Get all metadata for a page in one call.
+   Returns {:title :created-at :updated-at :block-count :word-count :favorite? :journal?}."
+  [db page-id favorites-set]
+  (let [title (page-title db page-id)
+        created (created-at db page-id)
+        updated (updated-at db page-id)]
+    {:id page-id
+     :title title
+     :created-at created
+     :updated-at (or updated created)  ; Fall back to created if never updated
+     :block-count (page-block-count db page-id)
+     :word-count (page-word-count db page-id)
+     :favorite? (contains? favorites-set page-id)
+     :journal? (boolean
+                (and title
+                     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+                         (re-matches #"\d{4}-\d{2}-\d{2}" title))))}))
