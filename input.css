@@ -209,7 +209,8 @@
     /* ─── Block Layout (threading-aware) ─────────────────────────────────── */
     --block-line-height: 1.5;
     --block-indent: 18px;           /* Reduced from 24px - tighter nesting */
-    --block-bullet-size: 5px;
+    --block-bullet-size: 0.3em;     /* Scales with text size */
+    --block-bullet-padding: 0.5em;  /* Click target padding around bullet */
     --block-bullet-left: 5px;       /* Bullet position from block left edge */
     --block-thread-width: 1px;
     --block-thread-color: var(--color-border);
@@ -1232,9 +1233,10 @@
   .block-bullet {
     position: absolute;
     left: var(--block-bullet-left);
-    top: calc((var(--block-line-height) * 1em - var(--block-bullet-size)) / 2);
-    width: calc(var(--block-bullet-size) + 8px);
-    height: calc(var(--block-bullet-size) + 8px);
+    /* Center the wrapper (bullet + padding) in the line height */
+    top: calc((var(--block-line-height) * 1em - var(--block-bullet-size) - var(--block-bullet-padding)) / 2);
+    width: calc(var(--block-bullet-size) + var(--block-bullet-padding));
+    height: calc(var(--block-bullet-size) + var(--block-bullet-padding));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1255,14 +1257,14 @@
     }
 
     &.bullet-collapsed::before {
-      width: calc(var(--block-bullet-size) + 3px);
-      height: calc(var(--block-bullet-size) + 3px);
+      width: calc(var(--block-bullet-size) + 0.2em);
+      height: calc(var(--block-bullet-size) + 0.2em);
       background: var(--color-text-secondary);
     }
 
     &.bullet-expanded::before {
-      width: calc(var(--block-bullet-size) + 2px);
-      height: calc(var(--block-bullet-size) + 2px);
+      width: calc(var(--block-bullet-size) + 0.125em);
+      height: calc(var(--block-bullet-size) + 0.125em);
       background: transparent;
       border: 1.5px solid var(--color-text-tertiary);
     }
