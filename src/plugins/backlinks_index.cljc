@@ -15,7 +15,7 @@
    - Blocks in trash (no valid page ancestor)
    - Self-references (blocks on the target page itself)"
   (:require [clojure.string :as str]
-            [plugins.registry :as registry]))
+            [kernel.derived-registry :as registry]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
 

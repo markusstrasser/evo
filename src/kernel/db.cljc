@@ -3,7 +3,7 @@
   (:require [medley.core :as m]
             [clojure.set :as set]
             [kernel.constants :as const]
-            [plugins.registry :as plugins])
+            [kernel.derived-registry :as plugins])
   #?(:cljs (:require [goog.string :as gstr]
                      [goog.string.format])))
 
@@ -69,8 +69,8 @@
   (loop [current id]
     (cond
       (= current const/root-doc) true
-      (keyword? current) false  ; reached a different root
-      (nil? current) false       ; no parent found
+      (keyword? current) false ; reached a different root
+      (nil? current) false ; no parent found
       :else (recur (get parent-of current)))))
 
 (defn- filter-doc-traversal

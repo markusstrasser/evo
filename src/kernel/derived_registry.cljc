@@ -1,10 +1,13 @@
-(ns plugins.registry
-  "Plugin registry for derived index extensions.
+(ns kernel.derived-registry
+  "Registry for derived index extensions.
 
   Plugins are pure functions Db → {keyword any} that compute additional
   derived views. They cannot mutate canonical data.
 
-  Plugins are registered once at startup and run after every transaction.")
+  Plugins are registered once at startup and run after every transaction.
+
+  NOTE: Renamed from plugins.registry to clarify that this is kernel
+  infrastructure for derived indexes, not intent handlers.")
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Registry
@@ -68,7 +71,7 @@
               (merge acc (f db))
               (catch #?(:clj Exception :cljs js/Error) e
                 ;; Log error but don't fail the whole derive phase
-                #?(:clj  (println "Plugin error:" (.getMessage e))
+                #?(:clj (println "Plugin error:" (.getMessage e))
                    :cljs (.error js/console "Plugin error:" (.-message e)))
                 acc)))
           {}
