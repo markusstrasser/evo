@@ -341,11 +341,12 @@
     {:errors {:type [(str "Unknown intent type: " type)]}}))
 
 (defn intent->ops
-  "DEPRECATED: Use apply-intent instead. Kept for backward compatibility.
-
-   Note: Passes nil for session. Handlers that need session will not work correctly."
-  [db intent]
-  (:ops (apply-intent db nil intent)))
+  "Compile an intent to kernel operations.
+   
+   Use for composing intents inside handlers - returns just the ops vector.
+   For full dispatch with session-updates, use apply-intent instead."
+  [db session intent]
+  (:ops (apply-intent db session intent)))
 
 ;; ── FR Coverage Audit (REPL Introspection) ───────────────────────────────────
 
