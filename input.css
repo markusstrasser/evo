@@ -154,6 +154,9 @@
     --text-2xl: 1.75rem;   /* 28px */
     --text-3xl: 2.25rem;   /* 36px */
 
+    /* ─── Responsive Line Height (gwern-inspired) ───────────────────────────── */
+    --line-height-prose: 1.5; /* Default, overridden by media queries below */
+
     /* ─── Light Mode Colors ──────────────────────────────────────────────── */
     /* Warm paper tones instead of pure white */
     --color-bg: oklch(99% 0.002 80);
@@ -232,6 +235,20 @@
 
   html {
     color-scheme: light;
+  }
+
+  /* Responsive line-height scaling (gwern-inspired progressive typography) */
+  @media (max-width: 649px) {
+    :root { --line-height-prose: 1.45; }
+  }
+  @media (min-width: 650px) and (max-width: 999px) {
+    :root { --line-height-prose: 1.5; }
+  }
+  @media (min-width: 1000px) and (max-width: 1199px) {
+    :root { --line-height-prose: 1.55; }
+  }
+  @media (min-width: 1200px) {
+    :root { --line-height-prose: 1.6; }
   }
 
   body {
@@ -937,6 +954,10 @@
     width: 100%;
     caret-color: var(--color-accent);
 
+    /* Editorial typography (gwern-inspired) */
+    font-variant-numeric: oldstyle-nums; /* Elegant prose numerals */
+    hanging-punctuation: first last;
+
     &:focus,
     &:focus-visible {
       outline: none;
@@ -1278,10 +1299,19 @@
     font-weight: 500;
     cursor: pointer;
 
+    /* Lining numerals for links (avoid descender clash with underline) */
+    font-variant-numeric: lining-nums;
+
+    /* Animated underline (gwern-style) */
+    text-decoration: none;
+    background-image: linear-gradient(to right, currentColor 0%, currentColor 100%);
+    background-size: 0% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size 0.25s ease, color 0.15s ease;
+
     &:hover {
-      text-decoration: underline;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 2px;
+      background-size: 100% 1px;
     }
   }
 
@@ -1292,6 +1322,13 @@
     border-radius: var(--radius-sm);
     font-size: 0.95em;
     cursor: pointer;
+    font-variant-numeric: lining-nums;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      background: oklch(from var(--color-accent-subtle) calc(l - 0.03) c h);
+      box-shadow: 0 1px 2px oklch(0% 0 0 / 0.08);
+    }
 
     &-missing {
       background: var(--color-danger-subtle);
@@ -2176,5 +2213,90 @@
   [inert] {
     pointer-events: none;
     user-select: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRINT STYLESHEET
+   Clean layout for printing/exporting notes
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media print {
+  /* Hide non-essential elements */
+  .sidebar,
+  .quick-switcher,
+  .autocomplete-popup,
+  .notification,
+  .devtools-panel,
+  .hotkeys-reference,
+  button:not(.print-include) {
+    display: none !important;
+  }
+
+  /* Reset colors for print */
+  :root {
+    --color-text: black;
+    --color-text-secondary: oklch(30% 0 0);
+    --color-text-tertiary: oklch(50% 0 0);
+    --color-bg: white;
+    --color-surface: white;
+    --color-accent-text: black;
+  }
+
+  /* Full-width main content */
+  .app {
+    display: block;
+  }
+
+  .main-wrapper,
+  .main-content {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  /* Optimize typography for print */
+  body {
+    font-size: 11pt;
+    line-height: 1.5;
+    color: black;
+    background: white;
+  }
+
+  .block-content {
+    font-size: 11pt;
+  }
+
+  /* Links show URL */
+  .page-ref::after {
+    content: ' [' attr(data-page-name) ']';
+    font-size: 0.85em;
+    color: oklch(50% 0 0);
+  }
+
+  /* Remove decorative elements */
+  .block-bullet {
+    &::before {
+      background: black !important;
+      border-color: black !important;
+    }
+  }
+
+  /* Prevent orphans and widows */
+  .block-content {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Avoid breaks inside blocks */
+  .block {
+    break-inside: avoid;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 2cm;
+  }
+
+  @page :first {
+    margin-top: 3cm;
   }
 }
