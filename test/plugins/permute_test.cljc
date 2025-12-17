@@ -34,21 +34,21 @@
       (is (= ["A" "B" "D" "C"] result)
           "B and D should be placed after A"))))
 
-(deftest test-planned-positions-at-start
-  (testing "Move to start"
+(deftest test-planned-positions-first
+  (testing "Move to first position"
     (let [db (make-test-db)
           intent {:selection ["C" "D"]
                   :parent "P"
-                  :anchor :at-start}
+                  :anchor :first}
           result (struct/planned-positions db intent)]
       (is (= ["C" "D" "A" "B"] result)))))
 
-(deftest test-planned-positions-at-end
-  (testing "Move to end"
+(deftest test-planned-positions-last
+  (testing "Move to last position"
     (let [db (make-test-db)
           intent {:selection ["A" "B"]
                   :parent "P"
-                  :anchor :at-end}
+                  :anchor :last}
           result (struct/planned-positions db intent)]
       (is (= ["C" "D" "A" "B"] result)))))
 
@@ -57,7 +57,7 @@
     (let [db (make-test-db)
           intent {:selection ["B" "C"]
                   :parent "Q"
-                  :anchor :at-end}
+                  :anchor :last}
           result (struct/planned-positions db intent)]
       (is (= ["X" "B" "C"] result)
           "B and C should be appended to Q's children"))))
@@ -107,7 +107,7 @@
           intent {:intent :move
                   :selection ["B" "C"]
                   :parent "Q"
-                  :anchor :at-end}
+                  :anchor :last}
           {:keys [ops issues]} (struct/lower-move db intent)]
       (is (empty? issues))
       (is (= 2 (count ops)))
@@ -126,7 +126,7 @@
           intent {:intent :reorder
                   :selection ["B" "MISSING"]
                   :parent "P"
-                  :anchor :at-end}
+                  :anchor :last}
           issue (struct/validate-move-intent db intent)]
       (is (some? issue))
       (is (= ::struct/node-not-found (:reason issue)))
@@ -138,7 +138,7 @@
           intent {:intent :reorder
                   :selection ["B"]
                   :parent "MISSING"
-                  :anchor :at-end}
+                  :anchor :last}
           issue (struct/validate-move-intent db intent)]
       (is (some? issue))
       (is (= ::struct/parent-not-found (:reason issue))))))
@@ -153,7 +153,7 @@
           intent {:intent :move
                   :selection ["P"]
                   :parent "B"
-                  :anchor :at-end}
+                  :anchor :last}
           issue (struct/validate-move-intent db intent)]
       (is (some? issue))
       (is (= ::struct/would-create-cycle (:reason issue))))))
@@ -185,7 +185,7 @@
           intent {:intent :reorder
                   :selection ["B" "D"]
                   :parent "P"
-                  :anchor :at-start}
+                  :anchor :first}
           {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
@@ -199,7 +199,7 @@
           intent {:intent :reorder
                   :selection []
                   :parent "P"
-                  :anchor :at-end}
+                  :anchor :last}
           {:keys [ops issues]} (struct/lower-move db intent)]
       (is (empty? issues))
       (is (empty? ops)))))
@@ -210,7 +210,7 @@
           intent {:intent :reorder
                   :selection ["D"]
                   :parent "P"
-                  :anchor :at-start}
+                  :anchor :first}
           {:keys [ops]} (struct/lower-move db intent)
           {:keys [db issues]} (tx/txret db ops)]
       (is (empty? issues))
@@ -245,7 +245,7 @@
           ;; Build DB with these children
           db (-> (db/empty-db)
                  (assoc :nodes (assoc (zipmap children (repeat {:type :p :props {}}))
-                                     parent {:type :p :props {}}))
+                                      parent {:type :p :props {}}))
                  (assoc-in [:children-by-parent parent] (vec children))
                  db/derive-indexes)
 
