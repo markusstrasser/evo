@@ -29,6 +29,7 @@
     "test:e2e:headed": "PLAYWRIGHT_HEADLESS=false npx playwright test",
     "test:e2e:debug": "PLAYWRIGHT_HEADLESS=false npx playwright test --debug",
     "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:smoke": "PLAYWRIGHT_HEADLESS=true npx playwright test --project=smoke",
     "test:e2e:chromium": "PLAYWRIGHT_HEADLESS=true npx playwright test --project=chromium",
     "test:all": "npm run test:unit && npm run test:e2e",
     "kb:thin": "uv run ~/Projects/best/thin_repos.py"

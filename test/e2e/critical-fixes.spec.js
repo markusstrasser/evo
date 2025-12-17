@@ -83,7 +83,7 @@ async function indentBlock(page, id) {
   await page.waitForTimeout(50);
 }
 
-test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
+test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html?test=true');
     await waitForBlocks(page);
@@ -173,7 +173,7 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', () => {
   });
 });
 
-test.describe('CRITICAL: Logical Outdenting (Logseq Default)', () => {
+test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }, () => {
   /**
    * LOGSEQ PARITY: Logical outdenting (editor/logical-outdenting? = true)
    *

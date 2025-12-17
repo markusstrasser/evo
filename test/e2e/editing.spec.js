@@ -8,7 +8,7 @@
 import { test, expect } from '@playwright/test';
 import { getCursorPosition, typeAndVerifyCursor, enterEditModeAndClick } from './helpers/index.js';
 
-test.describe('Text Editing', () => {
+test.describe('Text Editing', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for empty database with clean state
     await page.goto('/index.html?test=true');

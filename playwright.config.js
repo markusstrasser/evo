@@ -52,9 +52,19 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 }
   },
 
-  // Cross-browser testing
-  // Only Chromium enabled - Firefox/Webkit/Mobile Safari require browser installation
+  // Test tiers via projects
+  // - smoke: Critical paths (~15 tests, <30s) - run always
+  // - chromium: Full suite (~285 tests, ~5min) - PR/nightly
+  //
+  // Usage:
+  //   npx playwright test --project=smoke    # Quick validation
+  //   npx playwright test                    # Full suite
   projects: [
+    {
+      name: 'smoke',
+      use: { ...devices['Desktop Chrome'] },
+      grep: /@smoke/  // Only run tests tagged with @smoke
+    },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] }

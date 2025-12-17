@@ -9,7 +9,7 @@ import { getCursorPosition, setCursorPosition, getAllBlocks, enterEditModeAndCli
 
 const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
 
-test.describe('Block Navigation', () => {
+test.describe('Block Navigation', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');

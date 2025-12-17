@@ -46,7 +46,7 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await page.waitForTimeout(500);
   });
 
-  test('UC-01: Basic typing without cursor jumps', async ({ page }) => {
+  test('UC-01: Basic typing without cursor jumps', { tag: '@smoke' }, async ({ page }) => {
     const firstBlock = page.locator('[data-block-id]').first();
     const editable = await enterEditMode(page, firstBlock);
     await expect(editable).toBeFocused();
@@ -100,7 +100,7 @@ test.describe('Uncontrolled Editing Architecture', () => {
     expect(finalText).toContain('brown');
   });
 
-  test('UC-03: Blur commits to DB', async ({ page }) => {
+  test('UC-03: Blur commits to DB', { tag: '@smoke' }, async ({ page }) => {
     const firstBlock = page.locator('[data-block-id]').first();
     const editable = await enterEditMode(page, firstBlock);
     await expect(editable).toBeFocused();
