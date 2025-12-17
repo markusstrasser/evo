@@ -238,6 +238,156 @@ test.describe('Cross-Page Navigation (Journals)', () => {
   });
 });
 
+test.describe('Navigation State Sync Edge Cases', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/blocks.html?test=true');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await enterEditModeAndClick(page);
+  });
+
+  test('sequential navigation maintains state consistency', async ({ page }) => {
+    // Create multiple blocks
+    await page.keyboard.type('First');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
+    await page.keyboard.type('Second');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 3);
+    await page.keyboard.type('Third');
+
+    // Navigate up twice (with waits to ensure each navigation completes)
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(
+      () => document.activeElement?.textContent === 'Second',
+      { timeout: 3000 }
+    );
+
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(
+      () => document.activeElement?.textContent === 'First',
+      { timeout: 3000 }
+    );
+
+    // Verify kernel state matches DOM
+    const kernelState = await page.evaluate(() => {
+      const session = window.TEST_HELPERS?.getSession();
+      return session?.ui?.editing_block_id || session?.ui?.['editing-block-id'] || null;
+    });
+    const domFocusedId = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute('data-block-id') ||
+             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+    });
+
+    expect(kernelState).toBe(domFocusedId);
+    // Should be on first block after two ArrowUp from third
+    const text = await page.evaluate(() => document.activeElement?.textContent);
+    expect(text).toBe('First');
+  });
+
+  test('ArrowUp at document top is no-op (stays in first block)', async ({ page }) => {
+    await page.keyboard.type('Only block');
+
+    const blocksBefore = await getAllBlocks(page);
+    const firstBlockId = blocksBefore[0].id;
+
+    // Try to navigate up when already at top
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(50);
+
+    const domFocusedId = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute('data-block-id') ||
+             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+    });
+
+    expect(domFocusedId).toBe(firstBlockId);
+    // Focus should still be on contenteditable
+    const isFocused = await page.evaluate(() =>
+      document.activeElement?.getAttribute('contenteditable') === 'true'
+    );
+    expect(isFocused).toBe(true);
+  });
+
+  test('ArrowDown at document bottom is no-op (stays in last block)', async ({ page }) => {
+    await page.keyboard.type('First');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
+    await page.keyboard.type('Last block');
+
+    const blocks = await getAllBlocks(page);
+    const lastBlockId = blocks[blocks.length - 1].id;
+
+    // We're already in last block after typing
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(50);
+
+    const domFocusedId = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute('data-block-id') ||
+             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+    });
+
+    expect(domFocusedId).toBe(lastBlockId);
+  });
+
+  test('focus persists on contenteditable after navigation', async ({ page }) => {
+    await page.keyboard.type('Block one');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
+    await page.keyboard.type('Block two');
+
+    // Navigate through all blocks
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(50);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(50);
+
+    // Verify focus is on contenteditable
+    const focusInfo = await page.evaluate(() => ({
+      isContentEditable: document.activeElement?.getAttribute('contenteditable') === 'true',
+      tagName: document.activeElement?.tagName,
+      hasBlockId: !!document.activeElement?.getAttribute('data-block-id') ||
+                  !!document.activeElement?.closest('[data-block-id]')
+    }));
+
+    expect(focusInfo.isContentEditable).toBe(true);
+    expect(focusInfo.hasBlockId).toBe(true);
+  });
+
+  test('kernel editing state matches DOM active element after navigation', async ({ page }) => {
+    await page.keyboard.type('Alpha');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 2);
+    await page.keyboard.type('Beta');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelectorAll('[data-block-id]').length >= 3);
+    await page.keyboard.type('Gamma');
+
+    // Navigate to middle block
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(
+      () => document.activeElement?.textContent === 'Beta',
+      { timeout: 3000 }
+    );
+
+    // Check state consistency
+    const { kernelId, domId, match } = await page.evaluate(() => {
+      const session = window.TEST_HELPERS?.getSession();
+      const kernelId = session?.ui?.editing_block_id || session?.ui?.['editing-block-id'] || null;
+      const el = document.activeElement;
+      const domId = el?.getAttribute('data-block-id') ||
+                   el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      return { kernelId, domId, match: kernelId === domId };
+    });
+
+    expect(match).toBe(true);
+    expect(kernelId).toBeTruthy();
+    expect(domId).toBeTruthy();
+  });
+});
+
 test.describe(`${NAV_PARENT_HOP}`, () => {
   test('ArrowLeft at block start hops to parent and lands caret at end', async ({ page }) => {
     // LOGSEQ-PARITY-112: Testing boundary hop navigation
