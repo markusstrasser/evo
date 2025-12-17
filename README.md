@@ -49,7 +49,7 @@ src/parser/         # Page refs and text parsing
 src/utils/          # Shared utilities
 test/               # Unit/property + view/integration tests (CLJS + Playwright)
 dev/                # REPL helpers, specs, diagnostics, fixtures
-resources/          # FR registry, plugin manifest, demo data, tooling assets
+resources/          # FR registry, seed data, tooling assets
 docs/               # Architecture notes, rendering/dispatch reference, testing guides
 ```
 
@@ -61,7 +61,6 @@ docs/               # Architecture notes, rendering/dispatch reference, testing 
 
 **Key docs & data**:
 - `docs/DX_INDEX.md` - Entry point for all documentation
-- `resources/plugins.edn` - Declarative plugin manifest (loaded via `shell.plugin-manifest`)
 - `resources/seed-data.edn` - Seed operations for the Blocks UI demo
 - `CLAUDE.md` - Agent instructions and tooling index
 - `VISION.md` - Product philosophy and architectural direction
