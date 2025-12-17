@@ -727,7 +727,7 @@
         selection-set (set selection)
         kids-without-selection (vec (remove selection-set current-kids))
         target-idx (try
-                     (pos/resolve-anchor-in-vec kids-without-selection anchor)
+                     (pos/resolve-insert-index kids-without-selection anchor)
                      (catch #?(:clj Exception :cljs js/Error) _
                        ;; If anchor references a selected node, it will fail after removal
                        ;; Fallback to end

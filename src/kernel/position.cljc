@@ -93,14 +93,14 @@
 
         :else
         (throw (ex-info "Invalid map anchor - must have :before or :after"
-                       {:reason ::bad-anchor :anchor anchor})))
+                        {:reason ::bad-anchor :anchor anchor})))
 
       ;; Unknown anchor type
       :else
       (throw (ex-info "Unknown anchor type"
-                     {:reason ::bad-anchor
-                      :anchor anchor
-                      :expected "One of: :first, :last, {:before id}, {:after id}"})))))
+                      {:reason ::bad-anchor
+                       :anchor anchor
+                       :expected "One of: :first, :last, {:before id}, {:after id}"})))))
 
 (defn resolve-insert-index
   "Resolve anchor within kids vec, optionally dropping `id` before resolution.
@@ -180,19 +180,4 @@
   [db parent-id anchor]
   (:idx (->index db parent-id anchor)))
 
-(defn resolve-anchor-in-vec
-  "Resolve anchor within an arbitrary vector (not from DB).
 
-   DEPRECATED: Use resolve-insert-index instead for new code.
-   This function is kept for backwards compatibility.
-
-   Args:
-     kids-vec - vector of IDs
-     anchor - anchor specification
-
-   Returns: index (integer)
-   Throws: ex-info on invalid anchor
-
-   This is useful when you need to resolve an anchor in a modified sibling list."
-  [kids-vec anchor]
-  (resolve-insert-index kids-vec anchor nil))
