@@ -186,9 +186,44 @@ test/
 Located in `test/e2e/`. Run with:
 
 ```bash
-bb e2e              # Run all E2E tests
-bb e2e-watch        # Watch mode
-bb e2e-debug        # Debug mode with browser visible
+# Quick validation (recommended for development)
+npm run test:e2e:smoke      # 15 critical tests, ~5 seconds
+
+# Full suite
+npm run test:e2e            # All tests (~5 minutes)
+npm run test:e2e:headed     # With browser visible
+npm run test:e2e:debug      # Playwright debugger
+npm run test:e2e:ui         # Interactive UI mode
+
+# CI
+npx playwright test --project=smoke    # PR checks
+npx playwright test --project=chromium # Nightly
+```
+
+### Test Tiers
+
+**Smoke tests** (`{ tag: '@smoke' }`) cover critical paths (~15 tests, <30s):
+- Basic typing and cursor behavior
+- Block navigation
+- Backspace merge (data loss prevention)
+- Outdenting behavior
+
+**Full suite** (~285 tests, ~5min) covers:
+- All navigation patterns
+- Clipboard operations
+- Undo/redo
+- Formatting, slash commands, etc.
+
+### Tagging Tests
+
+Use Playwright 1.42+ tag syntax:
+
+```javascript
+// Tag individual tests
+test('critical feature', { tag: '@smoke' }, async ({ page }) => {});
+
+// Tag describe blocks
+test.describe('Critical Suite', { tag: '@smoke' }, () => {});
 ```
 
 ### Keyboard Helpers
