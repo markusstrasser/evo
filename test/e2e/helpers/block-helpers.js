@@ -10,6 +10,12 @@
  * 2. Use page.keyboard only for typing text (not navigation/actions)
  * 3. Check selection via inline styles (app uses background-color, not .selected)
  * 4. Target specific elements (div.block, .block-content) to avoid ambiguity
+ *
+ * TODO: Replace waitForTimeout with waitForFunction/waitForSelector
+ * Current helpers use fixed waits which is an anti-pattern. Prefer:
+ * - waitForFunction(() => condition) for state-based waits
+ * - waitForSelector for DOM-based waits
+ * See helpers/index.js for waitForState, waitForEditing, waitForSelection
  */
 
 /**

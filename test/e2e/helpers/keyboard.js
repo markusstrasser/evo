@@ -88,24 +88,8 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
   await page.keyboard.press(keyCombo);
 }
 
-/**
- * Type text character-by-character on contenteditable element.
- *
- * For simple typing, `page.keyboard.type()` usually works. Use this helper
- * if you need guaranteed event dispatch for each character.
- *
- * @param {import('@playwright/test').Page} page - Playwright page object
- * @param {string} text - Text to type
- *
- * @example
- * await typeOnContentEditable(page, 'Hello world');
- */
-export async function typeOnContentEditable(page, text) {
-  for (const char of text) {
-    await pressKeyOnContentEditable(page, char);
-    await page.waitForTimeout(10); // Small delay between characters
-  }
-}
+// NOTE: typeOnContentEditable was removed - page.keyboard.type() works fine
+// and has better performance. Use page.keyboard.type() for typing text.
 
 /**
  * Press a modifier key combination on contenteditable element.

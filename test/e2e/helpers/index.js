@@ -15,7 +15,7 @@
 
 export { selectPage, enterEditModeAndClick } from './edit-mode.js';
 
-export { getCursorPosition, setCursorPosition, typeAndVerifyCursor } from './cursor.js';
+export { getCursorPosition, setCursorPosition, typeAndVerifyCursor, expectCursorAt } from './cursor.js';
 
 export {
   pressKeyOnContentEditable,
