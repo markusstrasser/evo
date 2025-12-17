@@ -30,6 +30,7 @@
             [kernel.ops :as ops]
             [kernel.position :as pos]
             [kernel.schema :as schema]
+            [kernel.time :as time]
             [medley.core :as m]))
 
 (defn- same-position-after-place?
@@ -131,17 +132,11 @@
 ;; Timestamp enrichment - auto-add created-at/updated-at
 ;; =============================================================================
 
-(defn- now
-  "Current timestamp in milliseconds since epoch."
-  []
-  #?(:clj (System/currentTimeMillis)
-     :cljs (.now js/Date)))
-
 (defn- enrich-create-op
   "Add created-at and updated-at timestamps to :create-node ops.
    Preserves existing timestamps if already present (e.g., from file import)."
   [{:keys [props] :as op}]
-  (let [ts (now)
+  (let [ts (time/now-ms)
         existing (select-keys props [:created-at :updated-at])]
     (update op :props merge
             {:created-at ts :updated-at ts}
@@ -150,7 +145,7 @@
 (defn- enrich-update-op
   "Add updated-at timestamp to :update-node ops."
   [op]
-  (update op :props assoc :updated-at (now)))
+  (update op :props assoc :updated-at (time/now-ms)))
 
 (defn- enrich-op
   "Enrich operation with auto-generated metadata (timestamps)."
