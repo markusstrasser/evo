@@ -20,11 +20,17 @@
                           :fr/ids #{:fr.selection/edit-view-exclusive}
                           :allowed-states #{:selection}
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
-                          :handler (fn [_db _session {:keys [block-id cursor-at]}]
-                                     {:session-updates
-                                      {:selection {:nodes #{} :focus nil :anchor nil}
-                                       :ui {:editing-block-id block-id
-                                            :cursor-position cursor-at}}})})
+                          :handler (fn [db _session {:keys [block-id cursor-at]}]
+                                     (let [text-length (count (get-in db [:nodes block-id :props :text] ""))
+                                           cursor-pos (case cursor-at
+                                                        :start 0
+                                                        :end text-length
+                                                        ;; Default to end if not specified
+                                                        text-length)]
+                                       {:session-updates
+                                        {:selection {:nodes #{} :focus nil :anchor nil}
+                                         :ui {:editing-block-id block-id
+                                              :cursor-position cursor-pos}}}))})
 
 (intent/register-intent! :exit-edit
                          {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."

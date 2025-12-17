@@ -154,7 +154,8 @@ Range respects document order and visibility (folding/zoom).
 |---------|----------|
 | Cursor at position 0 | Create block above, stay in current |
 | Cursor in middle | Split block at cursor, move to new block |
-| Cursor at end | Create block below, move to it |
+| Cursor at end, has expanded children | Create as **first child**, move to it |
+| Cursor at end, no children (or folded) | Create sibling below, move to it |
 | Empty list item (`- `) | Unformat + create peer at parent level |
 | Inside code fence | Insert literal newline |
 
