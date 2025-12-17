@@ -99,7 +99,7 @@ bb repomix                 # Creates repomix-output.txt with full codebase
 ### Core Layers
 
 ```
-src/kernel/          # Pure kernel: db, ops, transaction, schema, errors
+src/kernel/          # Pure kernel: db, ops, transaction, schema
 src/plugins/         # Intent handlers: navigation, editing, selection
 src/shell/           # UI adapters: Replicant components
 src/keymap/          # Keybinding definitions and dispatch
@@ -107,7 +107,7 @@ src/parser/          # Page refs
 src/components/      # Replicant UI components
 resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
 resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
-resources/seed-data.edn # Editor seed data (load via shell.demo-data)
+resources/seed-data.edn # Editor seed data (load via shell.demo_data)
 dev/spec_registry.cljc  # FR loader + validation
 dev/test_scanner.cljc   # Test verification coverage scanner
 ```
@@ -268,7 +268,7 @@ All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` +
 
 **Root constants**: `:doc`, `:trash` (defined in `src/kernel/constants.cljc`)
 
-**Session state** lives in a separate atom (see `shell/session.cljs`). Query via `kernel.query`.
+**Session state** lives in a separate atom (see `shell/view_state.cljs`). Query via `kernel.query`.
 
 **CRITICAL: Query function signatures vary!** Not all query functions take a session parameter:
 ```clojure
@@ -528,10 +528,10 @@ const db = await page.evaluate(() => window.DEBUG.state());
 :builds
   {:blocks-ui  ; Block editor UI (primary development build)
    :test       ; Unit tests (node-test)
-   :frontend}  ; Legacy build
+   :frontend}  ; Browser REPL build (connects via dev/repl/init.cljc)
 ```
 
-Use `:blocks-ui` build for primary development. REPL connects to `:frontend` by default (see `dev/repl/init.cljc`).
+Use `:blocks-ui` for primary development. `:frontend` is used for browser REPL connections.
 
 ## Babashka Tasks
 
