@@ -28,6 +28,7 @@ import {
   exitEditMode,
   isBlockSelected,
   countSelectedBlocks,
+  countBlocks,
   getBlockText,
   getEditingBlockId,
   isEditing,
@@ -45,6 +46,10 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 
   test('Enter on selected block enters edit mode at END of text', async ({ page }) => {
     const blockId = await getFirstBlockId(page);
+    
+    // Set actual text content (test seed data creates empty blocks with ZWS for a11y)
+    const testText = 'Hello World';
+    await updateBlockText(page, blockId, testText);
 
     // Select block via intent
     await selectBlock(page, blockId);
@@ -53,11 +58,8 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     expect(await isBlockSelected(page, blockId)).toBe(true);
     expect(await isEditing(page)).toBe(false);
 
-    // Get the text length (block's own text, not children)
-    const textLength = await page.evaluate((id) => {
-      const viewSpan = document.querySelector(`[data-block-id="${id}"] .block-content`);
-      return viewSpan?.textContent?.length || 0;
-    }, blockId);
+    // Use the known text length (more reliable than DOM query which may include ZWS)
+    const textLength = testText.length;
 
     // Press Enter
     await page.keyboard.press('Enter');
@@ -414,6 +416,237 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
   });
 });
 
+test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
+  /**
+   * LOGSEQ PARITY: When pressing Enter at end of a block with expanded children,
+   * the new block should become the FIRST CHILD, not a sibling.
+   *
+   * This matches Logseq's behavior where:
+   * - Block A has visible children → Enter at end of A creates first child of A
+   * - Block A has no children (or is folded) → Enter creates sibling after A
+   *
+   * See: plugins/context_editing.cljc has-expanded-children? function
+   */
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/index.html?test=true');
+    // IMPORTANT: Explicitly reset to test DB to ensure we have predictable test-block-1
+    // The app may navigate to journals on startup, overwriting the test state
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.resetToEmptyDb();
+    });
+    await page.waitForTimeout(100);
+    await waitForBlocks(page);
+  });
+
+  test('Enter at end of parent with expanded children creates first child', async ({ page }) => {
+    // Setup: Create parent-child structure directly via transact (more reliable than Enter+indent)
+    const parentId = 'test-block-1';
+    const existingChildId = 'existing-child';
+    
+    // Create the structure directly: parent with one child
+    await page.evaluate(({ parentId, childId }) => {
+      // First update parent text
+      window.TEST_HELPERS?.setBlockText(parentId, 'Parent A');
+      // Create and place child under parent
+      window.TEST_HELPERS?.transact([
+        { op: 'create-node', id: childId, type: 'block', props: { text: 'Child B' } },
+        { op: 'place', id: childId, under: parentId, at: 'last' }
+      ]);
+    }, { parentId, childId: existingChildId });
+    await page.waitForTimeout(100);
+
+    // Verify setup: child is under parent
+    const setupCorrect = await page.evaluate(({ parentId, childId }) => {
+      const db = window.TEST_HELPERS?.getDb();
+      const children = db?.['children-by-parent']?.[parentId] || [];
+      return children.includes(childId);
+    }, { parentId, childId: existingChildId });
+    expect(setupCorrect).toBe(true);
+
+    // Count blocks before test action
+    const blocksBefore = await countBlocks(page);
+
+    // Enter edit mode on parent - click the contenteditable to ensure DOM cursor is at end
+    await enterEditMode(page, parentId, 'end');
+    await page.waitForTimeout(100);
+    
+    // Click at end of text to ensure DOM cursor is properly positioned
+    const editableInput = page.locator(`[data-block-id="${parentId}"] [contenteditable="true"]`);
+    await editableInput.click();
+    // Move to end with Cmd+Right (Mac) which maps to End key behavior
+    await page.keyboard.press('Meta+ArrowRight');
+    await page.waitForTimeout(50);
+
+    // Press Enter - should create FIRST child (above existing child B)
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+
+    // Verify: New block was created
+    const blocksAfter = await countBlocks(page);
+    expect(blocksAfter).toBe(blocksBefore + 1);
+
+    // Verify: Still in edit mode
+    expect(await isEditing(page)).toBe(true);
+
+    // Get the new block being edited
+    const newBlockId = await getEditingBlockId(page);
+    expect(newBlockId).not.toBe(parentId);
+    expect(newBlockId).not.toBe(existingChildId);
+
+    // Verify: New block is a child of parent (check DOM structure)
+    const isChildOfParent = await page.evaluate(({ parentId, newId }) => {
+      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+      const childrenContainer = parentBlock?.querySelector('.block-children');
+      const newBlock = childrenContainer?.querySelector(`[data-block-id="${newId}"]`);
+      return newBlock !== null;
+    }, { parentId, newId: newBlockId });
+
+    expect(isChildOfParent).toBe(true);
+
+    // Verify: New block is FIRST child (comes before existing child)
+    const childOrder = await page.evaluate(({ parentId, newId, childId }) => {
+      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+      const childrenContainer = parentBlock?.querySelector('.block-children');
+      if (!childrenContainer) return { newIndex: -1, existingIndex: -1 };
+
+      const children = childrenContainer.querySelectorAll(':scope > [data-block-id]');
+      let newIndex = -1;
+      let existingIndex = -1;
+
+      children.forEach((child, idx) => {
+        const id = child.getAttribute('data-block-id');
+        if (id === newId) newIndex = idx;
+        if (id === childId) existingIndex = idx;
+      });
+
+      return { newIndex, existingIndex };
+    }, { parentId, newId: newBlockId, childId: existingChildId });
+
+    // New block should come before existing child (lower index)
+    expect(childOrder.newIndex).toBeLessThan(childOrder.existingIndex);
+  });
+
+  test('Enter at end of folded parent creates sibling (not child)', async ({ page }) => {
+    // Setup: Use the known test block ID from reset-to-empty-db!
+    const parentId = 'test-block-1';
+    await updateBlockText(page, parentId, 'Parent A');
+
+    // Create child block under parent
+    await enterEditMode(page, parentId);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+
+    const childId = await getEditingBlockId(page);
+    await page.keyboard.type('Child B');
+    await page.waitForTimeout(100);
+
+    // Indent to make it a child
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.dispatchIntent({ type: 'indent-selected' });
+    });
+    await page.waitForTimeout(200);
+
+    // Fold the parent (hide children)
+    await page.evaluate((id) => {
+      window.TEST_HELPERS?.dispatchIntent({ type: 'toggle-fold', 'block-id': id });
+    }, parentId);
+    await page.waitForTimeout(200);
+
+    // Verify parent is folded (children not visible)
+    const childVisibleBefore = await page.evaluate((id) => {
+      const child = document.querySelector(`[data-block-id="${id}"]`);
+      return child !== null;
+    }, childId);
+    expect(childVisibleBefore).toBe(false);
+
+    // Count blocks before test action (only counts visible blocks)
+    const blocksBefore = await countBlocks(page);
+
+    // Enter edit mode on parent at end
+    await enterEditMode(page, parentId, 'end');
+    await page.waitForTimeout(100);
+
+    // Press Enter - should create sibling (not child) since parent is folded
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+
+    // Verify: New block was created
+    const blocksAfter = await countBlocks(page);
+    expect(blocksAfter).toBe(blocksBefore + 1);
+
+    // Get the new block
+    const newBlockId = await getEditingBlockId(page);
+    expect(newBlockId).not.toBe(parentId);
+
+    // Verify: New block is a sibling of parent (not a child)
+    const isSiblingOfParent = await page.evaluate(({ parentId, newId }) => {
+      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+
+      // Both should have the same parent container
+      const parentContainer = parentBlock?.parentElement;
+      const newContainer = newBlock?.parentElement;
+
+      return parentContainer === newContainer && parentContainer !== null;
+    }, { parentId, newId: newBlockId });
+
+    expect(isSiblingOfParent).toBe(true);
+
+    // Verify: New block comes after parent in DOM order
+    const order = await page.evaluate(({ parentId, newId }) => {
+      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+      if (!parentBlock || !newBlock) return null;
+
+      // Check DOM order using compareDocumentPosition
+      const position = parentBlock.compareDocumentPosition(newBlock);
+      // DOCUMENT_POSITION_FOLLOWING = 4 means newBlock comes after parentBlock
+      return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    }, { parentId, newId: newBlockId });
+
+    expect(order).toBe(true);
+  });
+
+  test('Enter at end of block without children creates sibling', async ({ page }) => {
+    // Setup: Use the known test block ID from reset-to-empty-db!
+    const blockId = 'test-block-1';
+    await updateBlockText(page, blockId, 'Leaf block');
+
+    // Count blocks before
+    const blocksBefore = await countBlocks(page);
+
+    // Enter edit mode at end
+    await enterEditMode(page, blockId, 'end');
+    await page.waitForTimeout(100);
+
+    // Press Enter - should create sibling since no children
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+
+    // Verify: New block was created
+    const blocksAfter = await countBlocks(page);
+    expect(blocksAfter).toBe(blocksBefore + 1);
+
+    // Get the new block
+    const newBlockId = await getEditingBlockId(page);
+    expect(newBlockId).not.toBe(blockId);
+
+    // Verify: New block is a sibling (same parent container)
+    const isSibling = await page.evaluate(({ blockId, newId }) => {
+      const originalBlock = document.querySelector(`[data-block-id="${blockId}"]`);
+      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+
+      const originalParent = originalBlock?.parentElement;
+      const newParent = newBlock?.parentElement;
+
+      return originalParent === newParent && originalParent !== null;
+    }, { blockId, newId: newBlockId });
+
+    expect(isSibling).toBe(true);
+  });
+});
+
 test.describe('Enter and Escape - Integration Flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html?test=true');
@@ -421,7 +654,20 @@ test.describe('Enter and Escape - Integration Flow', () => {
   });
 
   test('Natural navigation flow: Select -> Enter -> Edit -> Escape -> Selected (Logseq parity)', async ({ page }) => {
-    const blockId = await getFirstBlockId(page);
+    // Reset to test DB to get predictable structure
+    await page.evaluate(() => window.TEST_HELPERS?.resetToEmptyDb());
+    await page.waitForTimeout(100);
+    
+    // Create a second block for navigation testing
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.transact([
+        { op: 'create-node', id: 'test-block-2', type: 'block', props: { text: 'Second Block' } },
+        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' }
+      ]);
+    });
+    await waitForBlocks(page);
+    
+    const blockId = 'test-block-1';
 
     // 1. Select block
     await selectBlock(page, blockId);
@@ -448,8 +694,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await page.waitForTimeout(100);
 
     // ArrowDown from selected block moves to next block
-    const secondBlockId = await getBlockIdAt(page, 1);
-    expect(await isBlockSelected(page, secondBlockId)).toBe(true);
+    expect(await isBlockSelected(page, 'test-block-2')).toBe(true);
   });
 
   test('Edit -> Escape -> Arrow keys navigate blocks (not cursor)', async ({ page }) => {
@@ -476,11 +721,21 @@ test.describe('Enter and Escape - Integration Flow', () => {
   });
 
   test('Enter on different selected blocks enters edit in THAT block', async ({ page }) => {
-    // Get second block
-    const secondBlockId = await getBlockIdAt(page, 1);
+    // Reset to test DB to get predictable structure
+    await page.evaluate(() => window.TEST_HELPERS?.resetToEmptyDb());
+    await page.waitForTimeout(100);
+    
+    // Create a second block
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.transact([
+        { op: 'create-node', id: 'test-block-2', type: 'block', props: { text: 'Second Block' } },
+        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' }
+      ]);
+    });
+    await waitForBlocks(page);
 
     // Select second block via intent
-    await selectBlock(page, secondBlockId);
+    await selectBlock(page, 'test-block-2');
 
     // Press Enter
     await page.keyboard.press('Enter');
@@ -488,6 +743,6 @@ test.describe('Enter and Escape - Integration Flow', () => {
 
     // Verify: Editing the SECOND block (not first)
     const editingBlockId = await getEditingBlockId(page);
-    expect(editingBlockId).toBe(secondBlockId);
+    expect(editingBlockId).toBe('test-block-2');
   });
 });
