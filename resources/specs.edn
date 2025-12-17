@@ -1315,7 +1315,7 @@
 
  ;; Structural (additional)
  :fr.struct/delete-block
- {:desc "Delete selected blocks and re-parent children to parent"
+ {:desc "Delete selected blocks (children move to trash with parent)"
   :priority :high
   :type :intent-level
   :status :active
@@ -1325,23 +1325,24 @@
 
   :behaviors
   [{:context "Block with children deleted"
-    :behavior "Children move up to deleted block's parent"
-    :scenario :DELETE-REPARENT}
+    :behavior "Block and all children move to trash together (Logseq parity)"
+    :scenario :DELETE-WITH-CHILDREN}
    {:context "Leaf block deleted"
     :behavior "Block removed, cursor moves to previous sibling"
     :scenario :DELETE-LEAF}]
 
   :scenarios
-  {:DELETE-REPARENT
-   {:name "Delete block re-parents children"
+  {:DELETE-WITH-CHILDREN
+   {:name "Delete block moves children to trash with parent"
+    :tags #{:logseq-parity}
     :setup {:tree [:doc
                    [:a "Parent"
                     [:b "Target" {:selected? true}
                      [:c "Child"]]]]}
     :action {:type :delete-selected}
+    ;; Child [:c] is NOT reparented - it goes to trash with [:b]
     :expect {:tree [:doc
-                    [:a "Parent" {:selected? true}
-                     [:c "Child"]]]}}
+                    [:a "Parent" {:selected? true}]]}}
 
    :DELETE-LEAF
    {:name "Delete leaf block"

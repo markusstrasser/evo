@@ -52,32 +52,19 @@
     true))
 
 (defn delete-ops
-  "Compiles a delete intent into operations that:
-   1. Reparent children under deleted block's parent (LOGSEQ PARITY)
-   2. Move deleted block to :trash
+  "Compiles a delete intent into operations that move block to :trash.
 
-   Children are placed at the same position the deleted block occupied,
-   preserving document order.
+   LOGSEQ PARITY: Children move WITH the parent to trash (not reparented).
+   This matches Logseq's view-mode 'Delete Selected' behavior.
+
+   Note: This is different from BACKSPACE MERGE which reparents children
+   to the previous block before merging text.
 
    Signature: [db session id] - uniform with all op-fns for apply-to-active-targets."
   [db _session id]
-  (let [children (q/children db id)
-        parent (q/parent-of db id)]
-    (if (and (seq children) parent)
-      ;; Has children: reparent them under our parent, then move self to trash
-      ;; Place first child where deleted block was, remaining children after each other
-      (let [reparent-ops (vec
-                          (concat
-                           ;; First child takes our position
-                           [{:op :place :id (first children) :under parent :at {:before id}}]
-                           ;; Remaining children placed after each other
-                           (map-indexed
-                            (fn [idx child-id]
-                              {:op :place :id child-id :under parent :at {:after (nth children idx)}})
-                            (rest children))))]
-        (conj reparent-ops {:op :place :id id :under const/root-trash :at :last}))
-      ;; No children or no parent: just move to trash
-      [{:op :place :id id :under const/root-trash :at :last}])))
+  ;; Simply move block to trash - children come along automatically
+  ;; because they remain children of the moved block
+  [{:op :place :id id :under const/root-trash :at :last}])
 
 (defn indent-ops
   "Compiles an indent intent into a :place operation that moves the node
