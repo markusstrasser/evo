@@ -12,6 +12,7 @@
    components/block.cljs handle-enter BEFORE dispatching intents."
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
+            [kernel.query :as q]
             [utils.text-context :as ctx]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
@@ -44,6 +45,15 @@
     (if (and buffer-text (= buffer-block-id block-id))
       buffer-text
       (get-in db [:nodes block-id :props :text] ""))))
+
+(defn- has-expanded-children?
+  "Check if block has children AND is not folded.
+   
+   LOGSEQ PARITY: When Enter at end of block with expanded children,
+   new block becomes first child instead of sibling."
+  [db session block-id]
+  (and (seq (get-in db [:children-by-parent block-id]))
+       (not (q/folded? session block-id))))
 
 (defn- list-marker?
   "Check if text is only a list marker (empty list item)."
@@ -276,6 +286,7 @@
          - Numbered list → increment number for new block
          - Checkbox → continue checkbox pattern
          - Empty checkbox → unformat
+         - Cursor at end + expanded children → first child
          - Otherwise → simple split"
                           :spec [:map
                                  [:type [:= :smart-split]]
@@ -284,7 +295,7 @@
                           :fr/ids #{:fr.edit/smart-split}
                           :allowed-states #{:editing}
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos] :as intent}]
+                          (fn [db session {:keys [block-id cursor-pos] :as intent}]
                             (let [text (get-block-text db block-id intent)
                                   before (subs text 0 cursor-pos)
                                   after (subs text cursor-pos)
@@ -347,7 +358,16 @@
                                      :session-updates {:ui {:editing-block-id block-id
                                                             :cursor-position 0}}}
 
-                                    ;; LOGSEQ PARITY: Cursor at end → create empty block BELOW
+                                    ;; LOGSEQ PARITY: Cursor at end + expanded children → first child
+                                    ;; When block A has visible children, new block becomes A's first child
+                                    (and (empty? after)
+                                         (has-expanded-children? db session block-id))
+                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                           {:op :place :id new-id :under block-id :at :first}]
+                                     :session-updates {:ui {:editing-block-id new-id
+                                                            :cursor-position 0}}}
+
+                                    ;; LOGSEQ PARITY: Cursor at end → create empty block as sibling BELOW
                                     ;; Cursor moves to new block
                                     (empty? after)
                                     {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
@@ -376,7 +396,7 @@
          - Empty list item → Unformat (remove marker)
          - List item with content → Continue list pattern
          - Checkbox → Continue checkbox pattern
-         - Plain text → Normal split
+         - Plain text → Normal split (first child if expanded children, else sibling)
 
          NOTE: Empty block auto-outdent is handled in components/block.cljs handle-enter
          BEFORE this intent fires. That handler reads live DOM text (not stale DB text)
@@ -391,7 +411,7 @@
                                  [:cursor-pos :int]]
 
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos] :as intent}]
+                          (fn [db session {:keys [block-id cursor-pos] :as intent}]
                             (let [text (get-block-text db block-id intent)
                                   context (ctx/context-at-cursor text cursor-pos)
                                   parent (get-in db [:derived :parent-of block-id])]
@@ -516,7 +536,16 @@
                                        :session-updates {:ui {:editing-block-id block-id
                                                               :cursor-position 0}}}
 
-                                      ;; Normal split - create block BELOW
+                                      ;; LOGSEQ PARITY: Cursor at end + expanded children → first child
+                                      ;; When block A has visible children, new block becomes A's first child
+                                      (and (empty? after)
+                                           (has-expanded-children? db session block-id))
+                                      {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+                                             {:op :place :id new-id :under block-id :at :first}]
+                                       :session-updates {:ui {:editing-block-id new-id
+                                                              :cursor-position 0}}}
+
+                                      ;; Normal split - create block as sibling BELOW
                                       :else
                                       {:ops [{:op :update-node :id block-id :props {:text before}}
                                              ;; LOGSEQ PARITY: Left-trim second block text
