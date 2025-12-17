@@ -1,117 +1,113 @@
-{:lint-as {clojure.test.check.generators/let           [clojure.core/let]
-            clojure.test.check.clojure-test/defspec    [clojure.test/deftest]
-            clojure.test.check.properties/for-all      [clojure.core/let]
-            promesa.core/let                            [clojure.core/let]}
-
- :hooks {:analyze-call {kernel.intent/defintent hooks.defintent/defintent}}
+{:lint-as {clojure.test.check.generators/let [clojure.core/let]
+           clojure.test.check.clojure-test/defspec [clojure.test/deftest]
+           clojure.test.check.properties/for-all [clojure.core/let]}
 
  :linters {;; ═══════════════════════════════════════════════════════════════════
            ;; ERROR LEVEL - These are bugs
            ;; ═══════════════════════════════════════════════════════════════════
-           :unresolved-namespace         {:level :error}
-           :unresolved-symbol            {:level :error}
-           :invalid-arity                {:level :error}
-           :type-mismatch                {:level :error}
-           :redefined-var                {:level :error}
-           :duplicate-require            {:level :error}
+           :unresolved-namespace {:level :error}
+           :unresolved-symbol {:level :error}
+           :invalid-arity {:level :error}
+           :type-mismatch {:level :error}
+           :redefined-var {:level :error}
+           :duplicate-require {:level :error}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; HIGH VALUE - Catches real bugs in this codebase
            ;; ═══════════════════════════════════════════════════════════════════
 
            ;; Catches (reduce f coll) which throws on empty - common in DB ops
-           :reduce-without-init          {:level :warning}
+           :reduce-without-init {:level :warning}
 
            ;; Catches loops that never recur - likely copy/paste bugs
-           :loop-without-recur           {:level :warning}
+           :loop-without-recur {:level :warning}
 
            ;; Catches (fn [x] (f x)) → just use f - common in handlers
-           :redundant-fn-wrapper         {:level :warning}
+           :redundant-fn-wrapper {:level :warning}
 
            ;; Catches (merge m) with single arg - likely intended (merge m1 m2)
-           :redundant-call               {:level :warning}
+           :redundant-call {:level :warning}
 
            ;; Catches _foo being actually used (violates naming intent)
-           :used-underscored-binding     {:level :warning}
+           :used-underscored-binding {:level :warning}
 
            ;; Catches (when true ...) dead code
-           :condition-always-true        {:level :warning}
+           :condition-always-true {:level :warning}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; MEDIUM VALUE - Style/idiom enforcement
            ;; ═══════════════════════════════════════════════════════════════════
-           :single-operand-comparison    {:level :warning}
-           :single-logical-operand       {:level :warning}
-           :redundant-do                 {:level :warning}
-           :redundant-let                {:level   :warning
-                                          :exclude [core.history-test]}
-           :cond-else                    {:level :warning}
-           :not-empty?                   {:level :warning}
+           :single-operand-comparison {:level :warning}
+           :single-logical-operand {:level :warning}
+           :redundant-do {:level :warning}
+           :redundant-let {:level :warning
+                           :exclude [core.history-test]}
+           :cond-else {:level :warning}
+           :not-empty? {:level :warning}
 
            ;; (get-in m [:a]) → (get m :a)
-           :single-key-in                {:level :warning}
+           :single-key-in {:level :warning}
 
            ;; (= true x) → (true? x)
-           :equals-true                  {:level :warning}
-           :equals-false                 {:level :warning}
+           :equals-true {:level :warning}
+           :equals-false {:level :warning}
 
            ;; (- n 1) → (dec n)
-           :minus-one                    {:level :warning}
-           :plus-one                     {:level :warning}
+           :minus-one {:level :warning}
+           :plus-one {:level :warning}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; NAMESPACE/IMPORT HYGIENE
            ;; ═══════════════════════════════════════════════════════════════════
            ;; Namespaces that ARE used but clj-kondo can't detect (macros, side effects)
-           :unused-namespace             {:level         :warning
-                                          :exclude       [promesa.core     ; Macro expansion
-                                                          replicant.dom]}  ; Side effect imports
-           :unused-binding               {:level   :warning
-                                          :exclude [repl             ; REPL helpers
-                                                    kernel.dbg       ; Debug helpers
-                                                    dev.debug]}      ; Browser debug
-           :unused-referred-var          {:level :warning}
-           :unused-private-var           {:level :warning}
-           :unused-import                {:level :warning}
-           :refer-all                    {:level :warning}
+           :unused-namespace {:level :warning
+                              :exclude [replicant.dom]} ; Side effect imports
+           :unused-binding {:level :warning
+                            :exclude [repl ; REPL helpers
+                                      kernel.dbg ; Debug helpers
+                                      dev.debug]} ; Browser debug
+           :unused-referred-var {:level :warning}
+           :unused-private-var {:level :warning}
+           :unused-import {:level :warning}
+           :refer-all {:level :warning}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; SHADOWING - catches CLAUDE.md gotcha #1
            ;; ═══════════════════════════════════════════════════════════════════
-           :shadowed-var                 {:level   :warning
+           :shadowed-var {:level :warning
                                           ;; Domain names that are OK to shadow
-                                          :exclude [key range next type future
-                                                    parents descendants children
-                                                    chars ns-name record?
-                                                    count db new-db intent result
-                                                    children-after new-block-id]}
+                          :exclude [key range next type future
+                                    parents descendants children
+                                    chars ns-name record?
+                                    count db new-db intent result
+                                    children-after new-block-id]}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; ALIAS CONSISTENCY - easier code reading
            ;; ═══════════════════════════════════════════════════════════════════
-           :consistent-alias             {:level   :warning
-                                          :aliases {medley.core    m
-                                                    clojure.set    set
-                                                    clojure.string str
-                                                    kernel.query   q
-                                                    kernel.db      db
-                                                    kernel.transaction tx}}
+           :consistent-alias {:level :warning
+                              :aliases {medley.core m
+                                        clojure.set set
+                                        clojure.string str
+                                        kernel.query q
+                                        kernel.db db
+                                        kernel.transaction tx}}
 
            ;; ═══════════════════════════════════════════════════════════════════
            ;; OFF - Too noisy or not applicable
            ;; ═══════════════════════════════════════════════════════════════════
-           :syntax                       {:level :off}
-           :missing-docstring            {:level :off}
+           :syntax {:level :off}
+           :missing-docstring {:level :off}
            :unsorted-required-namespaces {:level :off}
-           :datalog-syntax               {:level :off}
-           :format                       {:level :off}
-           :misplaced-docstring          {:level   :warning
-                                          :exclude [plugins.selection-test]}
-           :deprecated-var               {:level :warning}}
+           :datalog-syntax {:level :off}
+           :format {:level :off}
+           :misplaced-docstring {:level :warning
+                                 :exclude [plugins.selection-test]}
+           :deprecated-var {:level :warning}}
 
- :dependencies {core.db        #{core.db}
-                core.ops       #{core.ops}
+ :dependencies {core.db #{core.db}
+                core.ops #{core.ops}
                 core.interpret #{core.db core.ops core.schema medley.core}
-                core.schema    #{}}
+                core.schema #{}}
 
  :skip-comments true}
