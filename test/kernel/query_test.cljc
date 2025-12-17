@@ -69,22 +69,22 @@
                          {:op :place :id "my-page" :under :doc :at :last}
                          {:op :create-node :id "b1" :type :block :props {:text "hello world"}}
                          {:op :place :id "b1" :under "my-page" :at :last}])
-          meta (q/page-metadata db "my-page" #{})]
-      (is (= "my-page" (:id meta)))
-      (is (= "My Page" (:title meta)))
-      (is (= created (:created-at meta)))
-      (is (= updated (:updated-at meta)))
-      (is (= 1 (:block-count meta)))
-      (is (= 2 (:word-count meta)))
-      (is (false? (:favorite? meta))))))
+          page-meta (q/page-metadata db "my-page" #{})]
+      (is (= "my-page" (:id page-meta)))
+      (is (= "My Page" (:title page-meta)))
+      (is (= created (:created-at page-meta)))
+      (is (= updated (:updated-at page-meta)))
+      (is (= 1 (:block-count page-meta)))
+      (is (= 2 (:word-count page-meta)))
+      (is (false? (:favorite? page-meta))))))
 
 (deftest test-page-metadata-favorites
   (testing "page-metadata correctly identifies favorites"
     (let [db (apply-ops [{:op :create-node :id "fav" :type :page :props {:title "Fav"}}
                          {:op :place :id "fav" :under :doc :at :last}])
           favorites #{"fav"}
-          meta (q/page-metadata db "fav" favorites)]
-      (is (true? (:favorite? meta))))))
+          page-meta (q/page-metadata db "fav" favorites)]
+      (is (true? (:favorite? page-meta))))))
 
 (deftest test-page-metadata-journal-detection
   (testing "page-metadata detects journal pages"
