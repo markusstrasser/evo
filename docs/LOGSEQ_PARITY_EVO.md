@@ -47,7 +47,7 @@ Features we intentionally don't implement. See `VISION.md` for philosophy.
     [{:op :update :id (:target intent) :props {:done true}}]))
 ```
 
-**Registration:** Add namespace to `resources/plugins.edn`
+**Registration:** Require the namespace in `shell/editor.cljs`
 
 **Why this is simpler:**
 - Same signature as existing `src/plugins/*` handlers

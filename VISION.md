@@ -12,9 +12,9 @@ Build → Learn → Extract → Generalize
   fly generatively
 * The indirection was done so that every step is data driven and can be tested
   and inspected separately... maybe it's not needed for this?
-* Plugins exist (src/plugins/, resources/plugins.edn) - intent handlers for
-  navigation, editing, selection, structure ops, etc. Next: chatbot/genui
-  where the LLM REPL-s in commands and forms
+* Plugins exist (src/plugins/) - intent handlers for navigation, editing,
+  selection, structure ops, etc. Next: chatbot/genui where the LLM REPL-s
+  in commands and forms
 
 > You’re not building a UI framework; you’re carving a UI IR + interpreter
 > that’s LLM-native and human (cognitive complexity) friendly.
