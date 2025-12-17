@@ -433,6 +433,8 @@ bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 - Test actual browser behavior: cursor position, focus, keyboard navigation
 - Use accessibility snapshots (not screenshots)
 - Verify DOM state, not internal DB structure
+- **Smoke tier** (`npm run test:e2e:smoke`): 15 critical tests, ~5 seconds - use during development
+- **Full suite** (`npm run test:e2e`): ~285 tests, ~5 minutes - use for PR validation
 
 **CRITICAL: Keyboard Events on `contenteditable` Elements**
 
