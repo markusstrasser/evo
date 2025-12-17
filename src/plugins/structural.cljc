@@ -462,10 +462,10 @@
 
       ;; Normal case: has previous sibling, move before it
       (and parent prev)
-      (intent/intent->ops db {:type :move
-                              :selection targets
-                              :parent parent
-                              :anchor (if before-prev {:after before-prev} :first)})
+      (intent/intent->ops db session {:type :move
+                                      :selection targets
+                                      :parent parent
+                                      :anchor (if before-prev {:after before-prev} :first)})
 
       ;; Climb case: first child with no prev sibling
       ;; Re-parent under grandparent, place before parent
@@ -485,10 +485,10 @@
                  (within-zoom-scope? db session grandparent))
           ;; Can climb: move to grandparent level, positioned before parent
           (let [parent-prev (q/prev-sibling db parent)]
-            (intent/intent->ops db {:type :move
-                                    :selection targets
-                                    :parent grandparent
-                                    :anchor (if parent-prev {:after parent-prev} :first)}))
+            (intent/intent->ops db session {:type :move
+                                            :selection targets
+                                            :parent grandparent
+                                            :anchor (if parent-prev {:after parent-prev} :first)}))
           ;; Can't climb: at page boundary OR grandparent outside zoom
           []))
 
@@ -545,10 +545,10 @@
 
       ;; Normal case: has next sibling, move after it
       (and parent next-sib)
-      (intent/intent->ops db {:type :move
-                              :selection targets
-                              :parent parent
-                              :anchor {:after next-sib}})
+      (intent/intent->ops db session {:type :move
+                                      :selection targets
+                                      :parent parent
+                                      :anchor {:after next-sib}})
 
       ;; Descend case: last child with no next sibling
       ;; Re-parent under parent's next sibling (if it exists), placed as first child
@@ -564,10 +564,10 @@
                  (not= parent-type :page)
                  (within-zoom-scope? db session parent-next))
           ;; Can descend: move into parent's next sibling as first child
-          (intent/intent->ops db {:type :move
-                                  :selection targets
-                                  :parent parent-next
-                                  :anchor :first})
+          (intent/intent->ops db session {:type :move
+                                          :selection targets
+                                          :parent parent-next
+                                          :anchor :first})
           ;; Can't descend: at page boundary OR target outside zoom
           []))
 
