@@ -105,7 +105,7 @@ dev/overviews/AUTO-*.md
 
 src/lab/srs/ops-log.edn
 .clojure-mcp/scratch_pad.edn
-public/output.css
+# public/output.css - removed, now using public/styles.css directly
 skills/architect/uv.lock
 
 # llmx - ignore build artifacts but track source
