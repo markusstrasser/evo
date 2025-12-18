@@ -7,6 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
+  # Fast quality gates + unit tests (all pushes)
   test:
     runs-on: ubuntu-latest
 
@@ -48,5 +49,84 @@ jobs:
       - name: Verify documentation references
         run: bb docs:verify
 
-      - name: Run tests
+      - name: Run unit tests
         run: bb test
+
+  # E2E smoke tier (all pushes) - ~15 critical tests, <30s
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Clojure
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          cli: latest
+          bb: latest
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run E2E smoke tests
+        run: npm run test:e2e:smoke
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-smoke-results
+          path: |
+            playwright-report/
+            test-results/
+
+  # Full E2E suite (main only) - ~285 tests, ~5min
+  e2e-full:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Clojure
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          cli: latest
+          bb: latest
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run full E2E suite
+        run: npm run test:e2e:chromium
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-full-results
+          path: |
+            playwright-report/
+            test-results/
