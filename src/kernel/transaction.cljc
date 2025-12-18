@@ -369,9 +369,22 @@
                           :cljs (.now js/Date)))
          normalized-ops (normalize-ops db txs)
          [final-db issues] (validate-ops db normalized-ops)
+         t1 (time/now-ms)
          derived-db (if skip-derived?
                       final-db
                       (db/derive-indexes final-db))
+         t2 (time/now-ms)
+
+         ;; Performance instrumentation (DEBUG only, >5ms threshold)
+         _ #?(:cljs (when ^boolean goog.DEBUG
+                      (let [derive-ms (- t2 t1)
+                            node-count (count (:nodes final-db))]
+                        (when (> derive-ms 5)
+                          (js/console.log "🔄 derive-indexes:"
+                                          derive-ms "ms |"
+                                          node-count "nodes |"
+                                          (.toFixed (/ derive-ms (max 1 node-count)) 3) "ms/node"))))
+              :clj nil)
 
          ;; Deterministic trace with all context
          num-applied (- (count normalized-ops) (count issues))
