@@ -369,17 +369,25 @@
                           :cljs (.now js/Date)))
          normalized-ops (normalize-ops db txs)
          [final-db issues] (validate-ops db normalized-ops)
+
+         ;; Optimization: skip derive-indexes for update-only transactions.
+         ;; :update-node only changes node props, not tree structure.
+         ;; :create-node without :place creates orphan (no derived change).
+         ;; Only :place ops modify tree structure and require re-derivation.
+         structure-changing? (some #(= (:op %) :place) normalized-ops)
+
          t1 (time/now-ms)
-         derived-db (if skip-derived?
-                      final-db
-                      (db/derive-indexes final-db))
+         derived-db (cond
+                      skip-derived? final-db
+                      (not structure-changing?) (assoc final-db :derived (:derived db))
+                      :else (db/derive-indexes final-db))
          t2 (time/now-ms)
 
          ;; Performance instrumentation (DEBUG only, >5ms threshold)
          _ #?(:cljs (when ^boolean goog.DEBUG
                       (let [derive-ms (- t2 t1)
                             node-count (count (:nodes final-db))]
-                        (when (> derive-ms 5)
+                        (when (and structure-changing? (> derive-ms 5))
                           (js/console.log "🔄 derive-indexes:"
                                           derive-ms "ms |"
                                           node-count "nodes |"
