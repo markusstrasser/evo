@@ -43,20 +43,9 @@
                              :exec-fn clojure-mcp.main/start-mcp-server
                              :exec-args {:port 55449}} ; shadow-cljs nREPL port from npm run dev
 
-           ;; Test runner with property-based testing and enhanced output
+           ;; Test utilities (fipp for pretty printing in CLJ)
            :test {:extra-paths ["test"]
-                  :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                               lambdaisland/kaocha-cljs2 {:mvn/version "0.2.72"}
-                               exoscale/ex {:mvn/version "0.4.0"}
-                               fipp/fipp {:mvn/version "0.6.26"}
-                               io.github.cognitect-labs/test-runner
-                               {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                :sha "48c3c67f98362ba1e20526db4eeb6996209c050a"
-                                :git/tag "v0.5.0"}}
-                  :main-opts ["-m" "kaocha.runner"]
-                  :exec-fn kaocha.runner/exec-fn
-                  :exec-args {:color? true
-                              :fail-fast? false}}}}
+                  :extra-deps {fipp/fipp {:mvn/version "0.6.26"}}}}}
 
 
 
