@@ -5,8 +5,7 @@
    Preserves FR citations in metadata for coverage tracking.
    
    Usage:
-     bb test:specs           ; Run all scenario tests
-     bb test -n spec.scenario-test  ; Run via kaocha"
+     bb test:specs           ; Run all scenario tests"
   (:require [clojure.test :refer [deftest testing is]]
             [spec.runner :as runner] ; Loads plugins via its requires
             [spec.registry :as fr]))
