@@ -275,6 +275,124 @@
                                        (when (not= text new-text)
                                          [{:op :update-node :id block-id :props {:text new-text}}])))})
 
+;; ── Smart Split Helpers ───────────────────────────────────────────────────────
+
+(defn- split-context
+  "Extract common split context from db/session/intent.
+   Returns map with :block-id :text :before :after :parent :new-id :code-block-ctx."
+  [db _session {:keys [block-id cursor-pos] :as intent}]
+  (let [text (get-block-text db block-id intent)]
+    {:block-id block-id
+     :text text
+     :before (subs text 0 cursor-pos)
+     :after (subs text cursor-pos)
+     :parent (get-in db [:derived :parent-of block-id])
+     :new-id (str "block-" (random-uuid))
+     :code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)}))
+
+(defn- make-split-result
+  "Build standard split result with ops and session updates.
+
+   Options:
+   - :current-text - update current block text (nil = no update)
+   - :new-text - text for new block
+   - :placement - where to place new block (:after :before :first-child)
+   - :editing-block-id - which block to edit after split
+   - :cursor-position - cursor position in edited block"
+  [{:keys [block-id parent new-id]}
+   {:keys [current-text new-text placement editing-block-id cursor-position]}]
+  (let [update-op (when current-text
+                    [{:op :update-node :id block-id :props {:text current-text}}])
+        create-op {:op :create-node :id new-id :type :block :props {:text new-text}}
+        place-op {:op :place
+                  :id new-id
+                  :under (if (= placement :first-child) block-id parent)
+                  :at (case placement
+                        :after {:after block-id}
+                        :before {:before block-id}
+                        :first-child :first)}]
+    {:ops (concat update-op [create-op place-op])
+     :session-updates {:ui {:editing-block-id editing-block-id
+                            :cursor-position cursor-position}}}))
+
+(defn- split-in-code-block
+  "Handle Enter inside code fence - insert newline without splitting."
+  [block-id cursor-pos {:keys [before after]}]
+  {:ops [{:op :update-node :id block-id :props {:text (str before "\n" after)}}]
+   :session-updates {:ui {:cursor-position (inc cursor-pos)}}})
+
+(defn- unformat-empty-marker
+  "Remove empty list marker or checkbox, leaving plain empty block."
+  [block-id]
+  [{:op :update-node :id block-id :props {:text ""}}])
+
+(defn- split-with-list-increment
+  "Split numbered list, incrementing the number for new block."
+  [{:keys [block-id parent new-id before after] :as ctx}]
+  (when parent
+    (when-let [num-value (extract-list-number before)]
+      (let [prefix (str (inc num-value) ". ")]
+        (make-split-result
+         ctx
+         {:current-text before
+          :new-text (str prefix (str/triml after))
+          :placement :after
+          :editing-block-id new-id
+          :cursor-position (count prefix)})))))
+
+(defn- split-with-checkbox
+  "Split checkbox block, continuing pattern in new block."
+  [{:keys [parent] :as ctx}]
+  (when parent
+    (make-split-result
+     ctx
+     {:current-text (:before ctx)
+      :new-text (str "[ ] " (str/triml (:after ctx)))
+      :placement :after
+      :editing-block-id (:new-id ctx)
+      :cursor-position 4})))
+
+(defn- split-at-position-zero
+  "Create empty block above current, keep cursor on current."
+  [{:keys [block-id] :as ctx}]
+  (make-split-result
+   ctx
+   {:new-text ""
+    :placement :before
+    :editing-block-id block-id
+    :cursor-position 0}))
+
+(defn- split-at-end-with-children
+  "Create first child when splitting at end of block with expanded children."
+  [ctx]
+  (make-split-result
+   ctx
+   {:new-text ""
+    :placement :first-child
+    :editing-block-id (:new-id ctx)
+    :cursor-position 0}))
+
+(defn- split-at-end
+  "Create sibling below when splitting at end of block."
+  [ctx]
+  (make-split-result
+   ctx
+   {:new-text ""
+    :placement :after
+    :editing-block-id (:new-id ctx)
+    :cursor-position 0}))
+
+(defn- split-normal
+  "Standard split - update current, create new with trimmed text."
+  [ctx]
+  (make-split-result
+   ctx
+   {:current-text (:before ctx)
+    :new-text (str/triml (:after ctx))
+    :placement :after
+    :editing-block-id (:new-id ctx)
+    :cursor-position 0}))
+
 ;; ── Smart Split (Unified Enter Key Behavior) ──────────────────────────────────
 
 (intent/register-intent! :smart-split
@@ -296,94 +414,247 @@
                           :allowed-states #{:editing}
                           :handler
                           (fn [db session {:keys [block-id cursor-pos] :as intent}]
-                            (let [text (get-block-text db block-id intent)
-                                  before (subs text 0 cursor-pos)
-                                  after (subs text cursor-pos)
-                                  parent (get-in db [:derived :parent-of block-id])
-                                  new-id (str "block-" (random-uuid))
-
-           ;; CRITICAL: Check if cursor is inside code fence (Logseq behavior)
-                                  code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)]
-
+                            (let [ctx (split-context db session intent)
+                                  {:keys [text before after parent code-block-ctx]} ctx]
                               (cond
-         ;; LOGSEQ PARITY: Inside code fence → insert newline (don't split)
+                                ;; Inside code fence - insert newline
                                 code-block-ctx
-                                (let [new-text (str before "\n" after)]
-                                  {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-            ;; Position cursor after newline
-                                   :session-updates {:ui {:cursor-position (inc cursor-pos)}}})
+                                (split-in-code-block block-id cursor-pos ctx)
 
-         ;; Empty list marker - just unformat
+                                ;; Empty list marker - unformat
                                 (and (empty? after) (list-marker? before))
-                                [{:op :update-node :id block-id :props {:text ""}}]
+                                (unformat-empty-marker block-id)
 
-         ;; Empty checkbox - unformat
+                                ;; Empty checkbox - unformat
                                 (and (empty? after) (empty-checkbox? before))
-                                [{:op :update-node :id block-id :props {:text ""}}]
+                                (unformat-empty-marker block-id)
 
-         ;; Numbered list - increment
-         ;; LOGSEQ PARITY: Cursor moves to new block after the list number prefix
+                                ;; Numbered list - increment
                                 (extract-list-number text)
-                                (let [num-value (extract-list-number before)
-                                      new-number (inc num-value)
-                                      prefix (str new-number ". ")
-                                      new-text (str prefix (str/triml after))]
-                                  (when parent
-                                    {:ops [{:op :update-node :id block-id :props {:text before}}
-                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}]
-                                     :session-updates {:ui {:editing-block-id new-id
-                                                            :cursor-position (count prefix)}}}))
+                                (split-with-list-increment ctx)
 
-         ;; Checkbox - continue pattern
-         ;; LOGSEQ PARITY: Cursor moves to new block after "[ ] " prefix
+                                ;; Checkbox - continue pattern
                                 (checkbox-pattern? text)
-                                (let [new-text (str "[ ] " (str/triml after))]
-                                  (when parent
-                                    {:ops [{:op :update-node :id block-id :props {:text before}}
-                                           {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}]
-                                     :session-updates {:ui {:editing-block-id new-id
-                                                            :cursor-position 4}}}))
+                                (split-with-checkbox ctx)
 
-         ;; Default split - handle cursor position
+                                ;; Position-based splits (require parent)
+                                (not parent) nil
+
+                                ;; Cursor at start - create block above
+                                (zero? cursor-pos)
+                                (split-at-position-zero ctx)
+
+                                ;; At end with expanded children - create first child
+                                (and (empty? after) (has-expanded-children? db session block-id))
+                                (split-at-end-with-children ctx)
+
+                                ;; At end - create sibling below
+                                (empty? after)
+                                (split-at-end ctx)
+
+                                ;; Normal split
                                 :else
-                                (when parent
-                                  (cond
-                                    ;; LOGSEQ PARITY: Cursor at position 0 → create empty block ABOVE
-                                    ;; Keep cursor on current block
-                                    (zero? cursor-pos)
-                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                           {:op :place :id new-id :under parent :at {:before block-id}}]
-                                     :session-updates {:ui {:editing-block-id block-id
-                                                            :cursor-position 0}}}
-
-                                    ;; LOGSEQ PARITY: Cursor at end + expanded children → first child
-                                    ;; When block A has visible children, new block becomes A's first child
-                                    (and (empty? after)
-                                         (has-expanded-children? db session block-id))
-                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                           {:op :place :id new-id :under block-id :at :first}]
-                                     :session-updates {:ui {:editing-block-id new-id
-                                                            :cursor-position 0}}}
-
-                                    ;; LOGSEQ PARITY: Cursor at end → create empty block as sibling BELOW
-                                    ;; Cursor moves to new block
-                                    (empty? after)
-                                    {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}]
-                                     :session-updates {:ui {:editing-block-id new-id
-                                                            :cursor-position 0}}}
-
-                                    ;; Normal split: trim leading whitespace, cursor on new block
-                                    :else
-                                    {:ops [{:op :update-node :id block-id :props {:text before}}
-                                           {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
-                                           {:op :place :id new-id :under parent :at {:after block-id}}]
-                                     :session-updates {:ui {:editing-block-id new-id
-                                                            :cursor-position 0}}})))))})
+                                (split-normal ctx))))})
 
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
+
+;; Shared operations helpers
+
+(defn- make-new-block-id
+  "Generate a new block ID."
+  []
+  (str "block-" (random-uuid)))
+
+(defn- split-text-at
+  "Split text at cursor position, returning [before after]."
+  [text cursor-pos]
+  [(subs text 0 cursor-pos) (subs text cursor-pos)])
+
+(defn- make-split-ops
+  "Create standard split operations: update current, create new, place new.
+
+   Args:
+     block-id: Current block ID
+     parent: Parent ID for placement
+     before: Text for current block
+     after: Text for new block
+     new-id: ID for new block (or nil to generate)
+
+   Returns:
+     Vector of [ops new-block-id] for operation chaining."
+  [block-id parent before after new-id]
+  (let [new-id (or new-id (make-new-block-id))]
+    [[{:op :update-node :id block-id :props {:text before}}
+      {:op :create-node :id new-id :type :block :props {:text after}}
+      {:op :place :id new-id :under parent :at {:after block-id}}]
+     new-id]))
+
+(defn- make-cursor-update
+  "Create cursor position update for new block."
+  [block-id cursor-pos]
+  {:ui {:editing-block-id block-id
+        :cursor-position cursor-pos}})
+
+;; Context-specific handlers
+
+(defn- handle-markup-enter
+  "Exit markup by moving cursor after closing marker."
+  [_db _session {:keys [block-id]} context]
+  {:session-updates (make-cursor-update block-id (:end context))})
+
+(defn- handle-code-block-enter
+  "Insert newline within code block (don't split)."
+  [_db _session {:keys [block-id cursor-pos] :as intent} _context]
+  (let [text (get-block-text _db block-id intent)
+        new-text (str (subs text 0 cursor-pos) "\n" (subs text cursor-pos))]
+    {:ops [{:op :update-node :id block-id :props {:text new-text}}]
+     :session-updates (make-cursor-update block-id (inc cursor-pos))}))
+
+(defn- handle-page-ref-enter
+  "Navigate to page (TODO: implement navigation)."
+  [_db _session _intent context]
+  {:session-updates {:ui {:navigate-to-page (:page-name context)}}})
+
+(defn- handle-checkbox-enter
+  "Handle checkbox: unformat if empty, continue pattern otherwise."
+  [db _session {:keys [block-id cursor-pos] :as intent} context]
+  (if (str/blank? (:content context))
+    ;; Empty checkbox - unformat
+    [{:op :update-node :id block-id :props {:text ""}}]
+    ;; Checkbox with content - continue pattern
+    (let [text (get-block-text db block-id intent)
+          [before after] (split-text-at text cursor-pos)
+          parent (get-in db [:derived :parent-of block-id])
+          new-id (make-new-block-id)
+          new-text (str "- [ ] " after)]
+      (when parent
+        {:ops [{:op :update-node :id block-id :props {:text before}}
+               {:op :create-node :id new-id :type :block :props {:text new-text}}
+               {:op :place :id new-id :under parent :at {:after block-id}}]
+         :session-updates (make-cursor-update new-id 6)}))))
+
+(defn- handle-empty-list-enter
+  "Handle empty list item: unformat and create peer block (Logseq parity).
+
+   Two behaviors:
+   1. Has grandparent: unformat current, create peer after parent
+   2. Top-level (parent is :doc): unformat current, create sibling"
+  [db _session {:keys [block-id]} _context]
+  (let [parent (get-in db [:derived :parent-of block-id])
+        grandparent (when parent (get-in db [:derived :parent-of parent]))
+        new-id (make-new-block-id)
+        ;; DEBUG: Verify grandparent→parent relationship (only logs errors)
+        _ #?(:cljs
+             (when ^boolean goog.DEBUG
+               (when grandparent
+                 (let [children-of-gp (get-in db [:children-by-parent grandparent] [])
+                       parent-in-children? (some #{parent} children-of-gp)]
+                   (when-not parent-in-children?
+                     (js/console.error
+                      "🚨 GRANDPARENT MISMATCH!"
+                      "\nblock-id:" block-id
+                      "\nparent:" parent
+                      "\ngrandparent:" grandparent
+                      "\nchildren of grandparent:" (pr-str children-of-gp)
+                      "\nparent NOT in grandparent's children!"
+                      "\nThis will cause :anchor-not-sibling validation error!")))))
+             :clj nil)]
+    (if grandparent
+      ;; Has grandparent: unformat + create peer after parent
+      {:ops [{:op :update-node :id block-id :props {:text ""}}
+             {:op :create-node :id new-id :type :block :props {:text ""}}
+             {:op :place :id new-id :under grandparent :at {:after parent}}]
+       :session-updates (make-cursor-update new-id 0)}
+      ;; Top-level: unformat + create sibling
+      (when parent
+        {:ops [{:op :update-node :id block-id :props {:text ""}}
+               {:op :create-node :id new-id :type :block :props {:text ""}}
+               {:op :place :id new-id :under parent :at {:after block-id}}]
+         :session-updates (make-cursor-update new-id 0)}))))
+
+(defn- handle-numbered-list-enter
+  "Handle numbered list: increment number, split at cursor."
+  [db _session {:keys [block-id cursor-pos] :as intent} context]
+  (let [text (get-block-text db block-id intent)
+        [before after] (split-text-at text cursor-pos)
+        parent (get-in db [:derived :parent-of block-id])
+        new-number (inc (:number context))
+        prefix (str new-number ". ")
+        new-text (str prefix after)
+        new-id (make-new-block-id)]
+    (when parent
+      {:ops [{:op :update-node :id block-id :props {:text before}}
+             {:op :create-node :id new-id :type :block :props {:text new-text}}
+             {:op :place :id new-id :under parent :at {:after block-id}}]
+       :session-updates (make-cursor-update new-id (count prefix))})))
+
+(defn- handle-simple-list-enter
+  "Handle simple list (-, *, +): continue with same marker."
+  [db _session {:keys [block-id cursor-pos] :as intent} context]
+  (let [text (get-block-text db block-id intent)
+        [before after] (split-text-at text cursor-pos)
+        parent (get-in db [:derived :parent-of block-id])
+        marker (:marker context)
+        new-text (str marker after)
+        new-id (make-new-block-id)]
+    (when parent
+      {:ops [{:op :update-node :id block-id :props {:text before}}
+             {:op :create-node :id new-id :type :block :props {:text new-text}}
+             {:op :place :id new-id :under parent :at {:after block-id}}]
+       :session-updates (make-cursor-update new-id (count marker))})))
+
+(defn- handle-list-item-enter
+  "Handle list item: delegate to empty/numbered/simple handlers."
+  [db session intent context]
+  (if (str/blank? (:content context))
+    (handle-empty-list-enter db session intent context)
+    (if (:numbered? context)
+      (handle-numbered-list-enter db session intent context)
+      (handle-simple-list-enter db session intent context))))
+
+(defn- handle-plain-text-enter
+  "Handle plain text: position-aware splitting (Logseq parity).
+
+   Behaviors:
+   - At position 0: create block above, stay on current
+   - At end + expanded children: create as first child
+   - Otherwise: normal split (trim whitespace from new block)"
+  [db session {:keys [block-id cursor-pos] :as intent} _context]
+  (let [text (get-block-text db block-id intent)
+        [before after] (split-text-at text cursor-pos)
+        parent (get-in db [:derived :parent-of block-id])
+        new-id (make-new-block-id)]
+    (when parent
+      (cond
+        ;; Enter at position 0 → create block above
+        (zero? cursor-pos)
+        {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+               {:op :place :id new-id :under parent :at {:before block-id}}]
+         :session-updates (make-cursor-update block-id 0)}
+
+        ;; Cursor at end + expanded children → first child
+        (and (empty? after)
+             (has-expanded-children? db session block-id))
+        {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
+               {:op :place :id new-id :under block-id :at :first}]
+         :session-updates (make-cursor-update new-id 0)}
+
+        ;; Normal split - trim whitespace from new block
+        :else
+        {:ops [{:op :update-node :id block-id :props {:text before}}
+               {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
+               {:op :place :id new-id :under parent :at {:after block-id}}]
+         :session-updates (make-cursor-update new-id 0)}))))
+
+;; Handler dispatch map
+(def ^:private context-handlers
+  "Dispatch map for context-specific enter handlers."
+  {:markup handle-markup-enter
+   :code-block handle-code-block-enter
+   :page-ref handle-page-ref-enter
+   :checkbox handle-checkbox-enter
+   :list-item handle-list-item-enter
+   :none handle-plain-text-enter})
 
 (intent/register-intent! :context-aware-enter
                          {:doc "Handle Enter key with full context awareness.
@@ -411,157 +682,11 @@
                                  [:cursor-pos :int]]
 
                           :handler
-                          (fn [db session {:keys [block-id cursor-pos] :as intent}]
-                            (let [text (get-block-text db block-id intent)
-                                  context (ctx/context-at-cursor text cursor-pos)
-                                  parent (get-in db [:derived :parent-of block-id])]
-
-                              (case (:type context)
-
-         ;; Inside markup - exit markup first (move cursor after closing marker)
-                                :markup
-                                (let [exit-pos (:end context)]
-                                  {:session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position exit-pos}}})
-
-         ;; Inside code block - insert newline (don't create new block)
-                                :code-block
-                                (let [new-text (str (subs text 0 cursor-pos)
-                                                    "\n"
-                                                    (subs text cursor-pos))]
-                                  {:ops [{:op :update-node
-                                          :id block-id
-                                          :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position (inc cursor-pos)}}})
-
-         ;; Inside page-ref - navigate to page (TODO: implement page navigation)
-                                :page-ref
-                                {:session-updates {:ui {:navigate-to-page (:page-name context)}}}
-
-         ;; Checkbox - check for empty
-                                :checkbox
-                                (if (str/blank? (:content context))
-           ;; Empty checkbox - unformat
-                                  [{:op :update-node
-                                    :id block-id
-                                    :props {:text ""}}]
-           ;; Checkbox with content - continue pattern
-                                  (let [before (subs text 0 cursor-pos)
-                                        after (subs text cursor-pos)
-                                        new-id (str "block-" (random-uuid))
-                 ;; New block gets unchecked checkbox
-                                        new-text (str "- [ ] " after)
-                                        _marker-len (count (:marker context))]
-                                    (when parent
-                                      {:ops [{:op :update-node :id block-id :props {:text before}}
-                                             {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                             {:op :place :id new-id :under parent :at {:after block-id}}]
-                                       :session-updates {:ui {:editing-block-id new-id
-                                                              :cursor-position 6}}}))) ; After "- [ ] "
-
-;; List item - check for empty
-                                :list-item
-                                (if (str/blank? (:content context))
-           ;; LOGSEQ PARITY: Empty list - unformat AND create peer block in one keystroke
-           ;; This matches Logseq's behavior where Enter on empty list item does two things:
-           ;; 1. Removes the list marker from current block
-           ;; 2. Creates a new empty peer block after the parent
-                                  (let [grandparent (when parent (get-in db [:derived :parent-of parent]))
-                                        new-id (str "block-" (random-uuid))
-                                        ;; DEBUG: Verify grandparent→parent relationship (only logs errors)
-                                        _ #?(:cljs
-                                             (when ^boolean goog.DEBUG
-                                               (when grandparent
-                                                 (let [children-of-gp (get-in db [:children-by-parent grandparent] [])
-                                                       parent-in-children? (some #{parent} children-of-gp)]
-                                                   (when-not parent-in-children?
-                                                     (js/console.error
-                                                      "🚨 GRANDPARENT MISMATCH!"
-                                                      "\nblock-id:" block-id
-                                                      "\nparent:" parent
-                                                      "\ngrandparent:" grandparent
-                                                      "\nchildren of grandparent:" (pr-str children-of-gp)
-                                                      "\nparent NOT in grandparent's children!"
-                                                      "\nThis will cause :anchor-not-sibling validation error!")))))
-                                             :clj nil)]
-                                    (if grandparent
-                                      ;; Has grandparent: unformat + create peer after parent
-                                      {:ops [{:op :update-node :id block-id :props {:text ""}}
-                                             {:op :create-node :id new-id :type :block :props {:text ""}}
-                                             {:op :place :id new-id :under grandparent :at {:after parent}}]
-                                       :session-updates {:ui {:editing-block-id new-id
-                                                              :cursor-position 0}}}
-                                      ;; TOP-LEVEL FIX: No grandparent (parent is :doc), just unformat + create sibling
-                                      (when parent
-                                        {:ops [{:op :update-node :id block-id :props {:text ""}}
-                                               {:op :create-node :id new-id :type :block :props {:text ""}}
-                                               {:op :place :id new-id :under parent :at {:after block-id}}]
-                                         :session-updates {:ui {:editing-block-id new-id
-                                                                :cursor-position 0}}})))
-           ;; List with content - continue pattern
-                                  (let [before (subs text 0 cursor-pos)
-                                        after (subs text cursor-pos)
-                                        new-id (str "block-" (random-uuid))]
-                                    (when parent
-                                      (if (:numbered? context)
-                 ;; Numbered list - increment
-                                        (let [new-number (inc (:number context))
-                                              new-text (str new-number ". " after)]
-                                          {:ops [{:op :update-node :id block-id :props {:text before}}
-                                                 {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
-                                           :session-updates {:ui {:editing-block-id new-id
-                                                                  :cursor-position (+ (count (str new-number)) 2)}}})
-                 ;; Simple list - continue with same marker
-                                        (let [new-text (str (:marker context) after)]
-                                          {:ops [{:op :update-node :id block-id :props {:text before}}
-                                                 {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
-                                           :session-updates {:ui {:editing-block-id new-id
-                                                                  :cursor-position (count (:marker context))}}})))))
-
-         ;; Plain text - normal split behavior
-         ;; NOTE: Empty block auto-outdent is handled in handle-enter before this intent fires
-                                :none
-                                (let [before (subs text 0 cursor-pos)
-                                      after (subs text cursor-pos)
-                                      new-id (str "block-" (random-uuid))]
-                                  (when parent
-                                    (cond
-                                      ;; LOGSEQ PARITY: Enter at position 0 → create block ABOVE
-                                      (zero? cursor-pos)
-                                      {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                             {:op :place :id new-id :under parent :at {:before block-id}}]
-                                       :session-updates {:ui {:editing-block-id block-id
-                                                              :cursor-position 0}}}
-
-                                      ;; LOGSEQ PARITY: Cursor at end + expanded children → first child
-                                      ;; When block A has visible children, new block becomes A's first child
-                                      (and (empty? after)
-                                           (has-expanded-children? db session block-id))
-                                      {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
-                                             {:op :place :id new-id :under block-id :at :first}]
-                                       :session-updates {:ui {:editing-block-id new-id
-                                                              :cursor-position 0}}}
-
-                                      ;; Normal split - create block as sibling BELOW
-                                      :else
-                                      {:ops [{:op :update-node :id block-id :props {:text before}}
-                                             ;; LOGSEQ PARITY: Left-trim second block text
-                                             {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
-                                             {:op :place :id new-id :under parent :at {:after block-id}}]
-                                       :session-updates {:ui {:editing-block-id new-id
-                                                              :cursor-position 0}}})))
-
-         ;; Default (shouldn't happen) - normal split
-                                (let [before (subs text 0 cursor-pos)
-                                      after (subs text cursor-pos)
-                                      new-id (str "block-" (random-uuid))]
-                                  (when parent
-                                    [{:op :update-node :id block-id :props {:text before}}
-                                     {:op :create-node :id new-id :type :block :props {:text after}}
-                                     {:op :place :id new-id :under parent :at {:after block-id}}])))))})
+                          (fn [db session intent]
+                            (let [text (get-block-text db (:block-id intent) intent)
+                                  context (ctx/context-at-cursor text (:cursor-pos intent))
+                                  handler (get context-handlers (:type context) handle-plain-text-enter)]
+                              (handler db session intent context)))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds
