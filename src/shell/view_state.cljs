@@ -564,6 +564,34 @@
 (def ^:const max-recents 15)
 (def ^:const max-history 50)
 
+;; ── Shared Navigation Helpers ─────────────────────────────────────────────────
+
+(defn- cap-vector
+  "Cap vector at max-size by dropping oldest entries from the front."
+  [v max-size]
+  (if (> (count v) max-size)
+    (vec (drop (- (count v) max-size) v))
+    v))
+
+(defn- can-navigate?
+  "Check if navigation is possible in the given direction (:back or :forward)."
+  [direction idx history-vec]
+  (case direction
+    :back (> idx 0)
+    :forward (and (>= idx 0) (< idx (dec (count history-vec))))))
+
+(defn- navigate-at-index!
+  "Generic navigation: update index by delta, return page at new index or nil."
+  [delta path-to-index path-to-vec]
+  (let [idx (get-in @!view-state path-to-index -1)
+        hist (get-in @!view-state path-to-vec [])]
+    (when (can-navigate? (if (neg? delta) :back :forward) idx hist)
+      (let [new-idx (+ idx delta)]
+        (swap-view-state! assoc-in path-to-index new-idx)
+        (nth hist new-idx)))))
+
+;; ── Storage Helpers ───────────────────────────────────────────────────────────
+
 (defn- save-to-storage!
   "Save value to localStorage as JSON."
   [key value]
@@ -657,9 +685,7 @@
       (when-not (some #{page-id} current-recents)
         (swap-view-state! update-in [:ui :recents]
                           (fn [recent-list]
-                            (->> (conj (vec recent-list) page-id)
-                                 (take-last max-recents)
-                                 vec)))
+                            (cap-vector (conj (vec recent-list) page-id) max-recents)))
         (persist-recents!)))))
 
 (defn clear-recents!
@@ -694,15 +720,12 @@
 (defn can-go-back?
   "Check if we can navigate back in history."
   []
-  (> (history-index) 0))
+  (can-navigate? :back (history-index) (history)))
 
 (defn can-go-forward?
   "Check if we can navigate forward in history."
   []
-  (let [idx (history-index)
-        hist (history)]
-    (and (>= idx 0)
-         (< idx (dec (count hist))))))
+  (can-navigate? :forward (history-index) (history)))
 
 (defn history-current-page
   "Get the page ID at current history position, or nil."
@@ -749,9 +772,7 @@
                          truncated
                          (conj truncated new-page-id))
               ;; Cap at max-history (drop oldest)
-              capped-hist (if (> (count new-hist) max-history)
-                            (vec (drop (- (count new-hist) max-history) new-hist))
-                            new-hist)
+              capped-hist (cap-vector new-hist max-history)
               ;; Calculate new index
               new-idx (dec (count capped-hist))]
           (swap-view-state! assoc-in [:ui :history] capped-hist)
@@ -760,18 +781,12 @@
 (defn navigate-back!
   "Navigate back in history. Returns the page ID to switch to, or nil if can't go back."
   []
-  (when (can-go-back?)
-    (let [new-idx (dec (history-index))]
-      (swap-view-state! assoc-in [:ui :history-index] new-idx)
-      (nth (history) new-idx))))
+  (navigate-at-index! -1 [:ui :history-index] [:ui :history]))
 
 (defn navigate-forward!
   "Navigate forward in history. Returns the page ID to switch to, or nil if can't go forward."
   []
-  (when (can-go-forward?)
-    (let [new-idx (inc (history-index))]
-      (swap-view-state! assoc-in [:ui :history-index] new-idx)
-      (nth (history) new-idx))))
+  (navigate-at-index! 1 [:ui :history-index] [:ui :history]))
 
 (defn clear-history!
   "Clear navigation history."
