@@ -442,18 +442,12 @@
    Returns nil if page not found."
   [db page-name]
   (when page-name
-    (let [normalized-name (-> page-name
-                              str/trim
-                              str/lower-case)
-          pages (all-pages db)]
-      (->> pages
-           (filter (fn [page-id]
-                     (let [title (page-title db page-id)]
-                       (= normalized-name
-                          (-> title
-                              str/trim
-                              str/lower-case)))))
-           first))))
+    (let [normalize (comp str/lower-case str/trim)
+          normalized-name (normalize page-name)]
+      (some (fn [page-id]
+              (when (= normalized-name (normalize (page-title db page-id)))
+                page-id))
+            (all-pages db)))))
 
 (defn page-empty?
   "Check if a page has no meaningful content.
