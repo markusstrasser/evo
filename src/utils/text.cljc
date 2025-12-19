@@ -145,6 +145,17 @@
       (= c \tab)
       (= c \return)))
 
+(defn- skip-while-forward
+  "Skip forward while predicate holds, starting from pos.
+   Returns final position (stops at text length if predicate always holds)."
+  [text pos pred]
+  (let [len (count text)]
+    (loop [p pos]
+      (if (and (< p len)
+               (pred (nth text p)))
+        (recur (inc p))
+        p))))
+
 (defn find-next-word-boundary
   "Find position of start of next word.
 
@@ -159,20 +170,9 @@
      (find-next-word-boundary \"hello   world\" 5) => 8
      (find-next-word-boundary \"hello\" 5)  => 5 (at end)"
   [text pos]
-  (let [len (count text)
-        ;; Skip current word (non-whitespace chars)
-        skip-current (loop [p pos]
-                       (if (and (< p len)
-                                (not (whitespace? (nth text p))))
-                         (recur (inc p))
-                         p))
-        ;; Skip whitespace
-        skip-spaces (loop [p skip-current]
-                      (if (and (< p len)
-                               (whitespace? (nth text p)))
-                        (recur (inc p))
-                        p))]
-    skip-spaces))
+  (let [after-word (skip-while-forward text pos (complement whitespace?))
+        after-spaces (skip-while-forward text after-word whitespace?)]
+    after-spaces))
 
 (defn find-word-end
   "Find position at end of current word (before trailing whitespace).
@@ -192,13 +192,17 @@
      (find-word-end \"hello\" 0)        => 5  (at end)
      (find-word-end \"  hello\" 0)      => 0  (already at whitespace)"
   [text pos]
-  (let [len (count text)]
-    ;; Skip non-whitespace (current word) only
-    (loop [p pos]
-      (if (and (< p len)
-               (not (whitespace? (nth text p))))
-        (recur (inc p))
-        p))))
+  (skip-while-forward text pos (complement whitespace?)))
+
+(defn- skip-while-backward
+  "Skip backward while predicate holds, starting from (dec pos).
+   Returns final position (may be negative if predicate always holds)."
+  [text pos pred]
+  (loop [p (dec pos)]
+    (if (and (>= p 0)
+             (pred (nth text p)))
+      (recur (dec p))
+      p)))
 
 (defn find-prev-word-boundary
   "Find position of start of previous word.
@@ -215,22 +219,12 @@
      (find-prev-word-boundary \"hello\" 0) => nil"
   [text pos]
   (when (pos? pos)
-    (let [;; Move back one if at space
-          start-pos (if (and (< pos (count text))
-                             (pos? pos)
-                             (whitespace? (nth text (dec pos))))
-                      (dec pos)
-                      pos)
-          ;; Skip spaces backward
-          skip-spaces (loop [p (dec start-pos)]
-                        (if (and (>= p 0)
-                                 (whitespace? (nth text p)))
-                          (recur (dec p))
-                          p))
-          ;; Skip word backward
-          skip-word (loop [p skip-spaces]
-                      (if (and (>= p 0)
-                               (not (whitespace? (nth text p))))
-                        (recur (dec p))
-                        p))]
-      (max 0 (inc skip-word)))))
+    (let [;; Move back one if currently at space
+          start-pos (cond-> pos
+                      (and (< pos (count text))
+                           (whitespace? (nth text (dec pos))))
+                      dec)
+          ;; Skip trailing spaces, then word chars
+          after-spaces (skip-while-backward text start-pos whitespace?)
+          after-word (skip-while-backward text after-spaces (complement whitespace?))]
+      (max 0 (inc after-word)))))
