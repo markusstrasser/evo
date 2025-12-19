@@ -227,6 +227,84 @@
                   new-depth-map
                   new-id)))))))
 
+;; ── Paste Strategy Helpers ────────────────────────────────────────────────────
+
+(defn- paste-strategy-inline
+  "Simple inline paste: before + pasted + after."
+  [before pasted after cursor-pos]
+  {:first-text (str before pasted after)
+   :remaining []
+   :final-cursor (+ cursor-pos (count pasted))})
+
+(defn- paste-strategy-url-link
+  "Smart URL paste: creates markdown link [label](url)."
+  [before after cursor-pos selection pasted-url? pasted-text]
+  (let [[label url-text] (if pasted-url?
+                           [selection pasted-text]
+                           [pasted-text selection])
+        link-text (str "[" label "](" url-text ")")]
+    {:first-text (str before link-text after)
+     :remaining []
+     :final-cursor (+ (count before) (count link-text))}))
+
+(defn- paste-strategy-blank-lines
+  "Blank line split: paragraphs become sibling blocks."
+  [before pasted after]
+  (let [paragraphs (split-by-blank-lines pasted)
+        first-para (first paragraphs)
+        remaining (rest paragraphs)]
+    {:first-text (str before first-para)
+     :remaining (mapv (fn [para] {:depth 0 :text (str/trim para)}) remaining)
+     :first-depth 0  ;; Current block is at depth 0, so siblings chain after it
+     :final-cursor (count (str/trim (if (seq remaining)
+                                       (last remaining)
+                                       (str before first-para))))}))
+
+(defn- paste-strategy-markdown
+  "Markdown blocks: parse hierarchy, first block merges with before/after."
+  [before pasted after]
+  (let [parsed (parse-markdown-blocks pasted)
+        first-parsed (first parsed)
+        first-text (if (str/blank? before)
+                     (:text first-parsed)
+                     (str before (:text first-parsed)))
+        remaining (rest parsed)]
+    {:first-text (str first-text after)
+     :remaining (vec remaining)
+     :first-depth (:depth first-parsed)  ;; Pass depth so children can find parent
+     :final-cursor (count first-text)}))
+
+(defn- paste-strategy-clipboard-blocks
+  "Internal clipboard format: uses exact block structure with depths."
+  [before clipboard-blocks after cursor-pos]
+  (let [first-block (first clipboard-blocks)
+        remaining (rest clipboard-blocks)]
+    {:first-text (str before (:text first-block) after)
+     :remaining (vec remaining)
+     :first-depth (:depth first-block)
+     :final-cursor (if (seq remaining)
+                     (count (:text (last remaining)))
+                     (+ cursor-pos (count (:text first-block))))}))
+
+(defn- apply-paste-strategy
+  "Apply paste strategy: update current block + create remaining blocks.
+
+   Strategy map should contain:
+   - :first-text - text for current block
+   - :remaining - vector of {:depth :text} maps for new blocks
+   - :final-cursor - cursor position in final block
+   - :first-depth - (optional) depth of first block for clipboard format"
+  [block-id parent strategy]
+  (let [{:keys [first-text remaining final-cursor first-depth]} strategy
+        update-op {:op :update-node
+                   :id block-id
+                   :props {:text first-text}}
+        {:keys [ops last-block-id]} (blocks-to-ops remaining parent block-id first-depth)
+        final-id (or last-block-id block-id)]
+    {:ops (vec (cons update-op ops))
+     :session-updates {:ui {:editing-block-id final-id
+                            :cursor-position final-cursor}}}))
+
 ;; ── Intent Implementations ────────────────────────────────────────────────────
 
 (intent/register-intent! :paste-text
@@ -263,128 +341,34 @@
                                   selection (when (not= cursor-pos sel-end)
                                               (subs current-text cursor-pos sel-end))
                                   parent (get-in db [:derived :parent-of block-id])
-                                  ;; Smart URL paste detection
                                   pasted-url? (url? pasted-text)
-                                  selection-url? (url? selection)]
+                                  selection-url? (url? selection)
 
-                              (cond
-                                ;; Case 0: Internal clipboard-blocks format → use directly (preserves structure)
-                                ;; This is the highest priority because it preserves the exact hierarchy from copy
-                                (seq clipboard-blocks)
-                                (let [;; First block's text goes into current block
-                                      first-block (first clipboard-blocks)
-                                      first-block-text (str before (:text first-block) after)
-                                      remaining-blocks (rest clipboard-blocks)
-                                      update-op {:op :update-node
-                                                 :id block-id
-                                                 :props {:text first-block-text}}
-                                      ;; Convert remaining blocks to ops using their preserved depths
-                                      ;; Pass first block's depth so children can find their parent
-                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-blocks parent block-id (:depth first-block))
-                                      final-id (or last-block-id block-id)
-                                      final-cursor-pos (if last-block-id
-                                                         (count (:text (last remaining-blocks)))
-                                                         (+ cursor-pos (count (:text (first clipboard-blocks)))))]
-                                  {:ops (vec (cons update-op ops))
-                                   :session-updates {:ui {:editing-block-id final-id
-                                                          :cursor-position final-cursor-pos}}})
+                                  ;; Determine paste strategy based on content
+                                  strategy (cond
+                                             ;; Internal clipboard format (highest priority)
+                                             (seq clipboard-blocks)
+                                             (paste-strategy-clipboard-blocks before clipboard-blocks after cursor-pos)
 
-                                ;; Case 0.5: Smart URL paste (Logseq parity)
-                                ;; If text selected + URL pasted → [selection](URL)
-                                ;; If URL selected + text pasted → [text](URL)
-                                (and selection
-                                     (or (and pasted-url? (not selection-url?))
-                                         (and selection-url? (not pasted-url?))))
-                                (let [[label url-text] (if pasted-url?
-                                                         [selection pasted-text]
-                                                         [pasted-text selection])
-                                      link-text (str "[" label "](" url-text ")")
-                                      new-text (str before link-text after)
-                                      ;; Cursor after the link
-                                      new-cursor-pos (+ (count before) (count link-text))]
-                                  {:ops [{:op :update-node
-                                          :id block-id
-                                          :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position new-cursor-pos}}})
+                                             ;; Smart URL paste (selection + URL)
+                                             (and selection
+                                                  (or (and pasted-url? (not selection-url?))
+                                                      (and selection-url? (not pasted-url?))))
+                                             (paste-strategy-url-link before after cursor-pos selection pasted-url? pasted-text)
 
-                                ;; Case 1: Has blank lines → split into sibling blocks (preserves raw text)
-                                ;; This takes precedence because blank lines indicate explicit paragraph breaks
-                                (has-blank-lines? pasted-text)
-                                (let [paragraphs (split-by-blank-lines pasted-text)
-                                      first-para (first paragraphs)
-                                      remaining-paras (rest paragraphs)
-                                      first-block-text (str before first-para)
-                                      new-block-ids (repeatedly (count remaining-paras)
-                                                                #(str "block-" (random-uuid)))
-                                      update-current-op {:op :update-node
-                                                         :id block-id
-                                                         :props {:text first-block-text}}
-                                      create-ops (mapv (fn [para new-id]
-                                                         {:op :create-node
-                                                          :id new-id
-                                                          :type :block
-                                                          :props {:text (str/trim para)}})
-                                                       remaining-paras
-                                                       new-block-ids)
-                                      place-ops (mapv (fn [new-id prev-id]
-                                                        {:op :place
-                                                         :id new-id
-                                                         :under parent
-                                                         :at {:after prev-id}})
-                                                      new-block-ids
-                                                      (cons block-id (drop-last new-block-ids)))
-                                      ;; Compute final position from actual text, not DB
-                                      final-block-id (if (seq new-block-ids)
-                                                       (last new-block-ids)
-                                                       block-id)
-                                      final-cursor-pos (if (seq new-block-ids)
-                                                         (count (str/trim (last remaining-paras)))
-                                                         (count first-block-text))]
-                                  {:ops (vec (concat [update-current-op] create-ops place-ops))
-                                   :session-updates {:ui {:editing-block-id final-block-id
-                                                          :cursor-position final-cursor-pos}}})
+                                             ;; Blank lines → paragraph split
+                                             (has-blank-lines? pasted-text)
+                                             (paste-strategy-blank-lines before pasted-text after)
 
-                                ;; Case 2: Markdown blocks detected → parse as hierarchy
-                                ;; Only applies to continuous lists without blank line breaks
-                                (markdown-blocks? pasted-text)
-                                (let [parsed (parse-markdown-blocks pasted-text)
-                                      first-parsed (first parsed)
-                                      ;; If there's text before cursor, append first block to it
-                                      ;; Otherwise replace current block content
-                                      first-block-text (if (str/blank? before)
-                                                         (:text first-parsed)
-                                                         (str before (:text first-parsed)))
-                                      remaining-parsed (rest parsed)
-                                      ;; The text that will be in the current block after update
-                                      current-block-final-text (str first-block-text after)
-                                      ;; Update current block with first paragraph + any trailing text
-                                      update-op {:op :update-node
-                                                 :id block-id
-                                                 :props {:text current-block-final-text}}
-                                      ;; Create remaining blocks after current
-                                      ;; Pass first block's depth so children can find their parent
-                                      {:keys [ops last-block-id]} (blocks-to-ops remaining-parsed parent block-id (:depth first-parsed))
-                                      ;; Determine final block and cursor position from COMPUTED text, not DB
-                                      final-id (or last-block-id block-id)
-                                      final-cursor-pos (if last-block-id
-                                                         ;; New block: cursor at end of last parsed block's text
-                                                         (count (:text (last remaining-parsed)))
-                                                         ;; Same block: cursor at end of first-block-text (before 'after')
-                                                         (count first-block-text))]
-                                  {:ops (vec (cons update-op ops))
-                                   :session-updates {:ui {:editing-block-id final-id
-                                                          :cursor-position final-cursor-pos}}})
+                                             ;; Markdown blocks → hierarchy
+                                             (markdown-blocks? pasted-text)
+                                             (paste-strategy-markdown before pasted-text after)
 
-                                ;; Case 3: Simple inline paste
-                                :else
-                                (let [new-text (str before pasted-text after)
-                                      new-cursor-pos (+ cursor-pos (count pasted-text))]
-                                  {:ops [{:op :update-node
-                                          :id block-id
-                                          :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position new-cursor-pos}}}))))})
+                                             ;; Simple inline paste
+                                             :else
+                                             (paste-strategy-inline before pasted-text after cursor-pos))]
+
+                              (apply-paste-strategy block-id parent strategy)))})
 
 (intent/register-intent! :copy-block
                          {:doc "Copy single block content to clipboard."
