@@ -12,6 +12,12 @@
    trigger derive-indexes. This matches the pattern in kernel.query/visible-blocks."
   (:require [kernel.constants :as const]))
 
+;; ── Constants ─────────────────────────────────────────────────────────────────
+
+(def ^:private root-set
+  "Cached set of root node IDs for efficient membership checks."
+  (set const/roots))
+
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
 
 (defn- folded-set
@@ -26,7 +32,7 @@
 
 (defn- visible-children
   "Get visible children of a parent, respecting fold state.
-   
+
    If parent is folded, returns empty vector (children hidden).
    Otherwise returns all children from canonical children-by-parent."
   [db session parent-id]
@@ -39,11 +45,24 @@
   [db node-id]
   (get-in db [:derived :parent-of node-id]))
 
+(defn- root?
+  "Check if a node is a root (page or trash container)."
+  [node-id]
+  (contains? root-set node-id))
+
 (defn- block?
   "Check if a node is a block (not a page or other container).
    Pages are containers for blocks and shouldn't be navigation targets."
   [db node-id]
   (= :block (get-in db [:nodes node-id :type])))
+
+(defn- navigable-parent?
+  "Check if a node can be used as a navigation parent.
+   Returns true if node exists, is not a root, and is a block."
+  [db node-id]
+  (and node-id
+       (not (root? node-id))
+       (block? db node-id)))
 
 (defn- index-in-siblings
   "Get the index of a node within its visible siblings."
@@ -61,24 +80,6 @@
   (let [parent (parent-of db node-id)]
     (visible-children db session parent)))
 
-(defn prev-visible-sibling
-  "Get the previous visible sibling of a node.
-   Returns nil if the node is the first visible child."
-  [db session node-id]
-  (let [siblings (visible-siblings db session node-id)
-        idx (index-in-siblings db session node-id)]
-    (when (and (>= idx 0) (pos? idx))
-      (nth siblings (dec idx) nil))))
-
-(defn next-visible-sibling
-  "Get the next visible sibling of a node.
-   Returns nil if the node is the last visible child."
-  [db session node-id]
-  (let [siblings (visible-siblings db session node-id)
-        idx (index-in-siblings db session node-id)]
-    (when (and (>= idx 0) (< idx (dec (count siblings))))
-      (nth siblings (inc idx) nil))))
-
 (defn first-visible-child
   "Get the first visible child of a node.
    Returns nil if the node has no visible children (or is folded)."
@@ -90,6 +91,43 @@
    Returns nil if the node has no visible children (or is folded)."
   [db session parent-id]
   (last (visible-children db session parent-id)))
+
+;; ── Helper Functions (depend on public API) ──────────────────────────────────
+
+(defn- sibling-at-offset
+  "Get sibling at given offset from node's current position.
+   Returns nil if offset would be out of bounds."
+  [db session node-id offset]
+  (let [siblings (visible-siblings db session node-id)
+        idx (index-in-siblings db session node-id)
+        target-idx (+ idx offset)]
+    (when (and (>= idx 0)
+               (>= target-idx 0)
+               (< target-idx (count siblings)))
+      (nth siblings target-idx nil))))
+
+(defn- deepest-last-descendant
+  "Find the deepest last descendant of a node by recursively following
+   last visible children until reaching a leaf or folded node."
+  [db session node-id]
+  (loop [current node-id]
+    (if-let [last-child (last-visible-child db session current)]
+      (recur last-child)
+      current)))
+
+;; ── Public API (continued) ────────────────────────────────────────────────────
+
+(defn prev-visible-sibling
+  "Get the previous visible sibling of a node.
+   Returns nil if the node is the first visible child."
+  [db session node-id]
+  (sibling-at-offset db session node-id -1))
+
+(defn next-visible-sibling
+  "Get the next visible sibling of a node.
+   Returns nil if the node is the last visible child."
+  [db session node-id]
+  (sibling-at-offset db session node-id 1))
 
 (defn has-visible-children?
   "Check if a node has any visible children (not folded and has children)."
@@ -103,14 +141,15 @@
    1. It's a root node, OR
    2. None of its ancestors are folded"
   [db session node-id]
-  (or (contains? (set const/roots) node-id)
+  (or (root? node-id)
       ;; Check if any ancestor is folded
-      (loop [current (parent-of db node-id)]
-        (cond
-          (nil? current) true
-          (contains? (set const/roots) current) true
-          (contains? (folded-set session) current) false
-          :else (recur (parent-of db current))))))
+      (let [folded (folded-set session)]
+        (loop [current (parent-of db node-id)]
+          (cond
+            (nil? current) true
+            (root? current) true
+            (contains? folded current) false
+            :else (recur (parent-of db current)))))))
 
 (defn prev-visible-block
   "Get the previous visible block in document order.
@@ -131,15 +170,10 @@
   [db session node-id]
   (if-let [prev-sib (prev-visible-sibling db session node-id)]
     ;; Go to previous sibling's last descendant
-    (loop [current prev-sib]
-      (if-let [last-child (last-visible-child db session current)]
-        (recur last-child)
-        current))
+    (deepest-last-descendant db session prev-sib)
     ;; No previous sibling, go to parent ONLY if it's a block (not page)
     (let [parent (parent-of db node-id)]
-      (when (and parent
-                 (not (contains? (set const/roots) parent))
-                 (block? db parent))
+      (when (navigable-parent? db parent)
         parent))))
 
 (defn next-visible-block
@@ -171,22 +205,20 @@
    ;; Walk up to find parent's next sibling (stop at pages)
    (loop [current node-id]
      (let [parent (parent-of db current)]
-       (when (and parent
-                  (not (contains? (set const/roots) parent))
-                  (block? db parent))  ;; Only continue if parent is a block
+       (when (navigable-parent? db parent)
          (or (next-visible-sibling db session parent)
              (recur parent)))))))
 
 (defn ancestor-chain
   "Get all ancestors of a node, from immediate parent to root.
    Returns a vector of node IDs.
-   
+
    Note: This is visibility-independent (shows structural ancestors)."
   [db node-id]
   (loop [current node-id
          chain []]
     (if-let [parent (parent-of db current)]
-      (if (contains? (set const/roots) parent)
+      (if (root? parent)
         chain
         (recur parent (conj chain parent)))
       chain)))
@@ -203,10 +235,8 @@
    Navigates to the deepest last descendant."
   [db session]
   (let [root (or (zoom-root session) const/root-doc)]
-    (loop [current (last-visible-child db session root)]
-      (if-let [last-child (last-visible-child db session current)]
-        (recur last-child)
-        current))))
+    (when-let [last-child (last-visible-child db session root)]
+      (deepest-last-descendant db session last-child))))
 
 (defn visible-block-count
   "Count total number of visible blocks in the outline."
