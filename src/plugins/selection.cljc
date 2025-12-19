@@ -110,6 +110,95 @@
         :next (first children)
         :prev (last children)))))
 
+(defn- calc-start-fresh-selection
+  "Start a fresh selection when no focus exists."
+  [db session direction]
+  (when-let [first-or-last (get-first-last-visible-block db session direction)]
+    {:nodes #{first-or-last}
+     :focus first-or-last
+     :anchor first-or-last
+     :direction direction}))
+
+(defn- calc-first-extend
+  "Handle first Shift+Arrow: set direction and anchor."
+  [{:keys [nodes focus]} direction next-block]
+  (when next-block
+    {:nodes (conj nodes next-block)
+     :focus next-block
+     :anchor focus
+     :direction direction}))
+
+(defn- calc-contract-selection
+  "Remove trailing block when moving opposite to current direction."
+  [db session {:keys [nodes focus anchor direction]} contracting-direction next-block]
+  (if (> (count nodes) 1)
+    ;; Remove current focus, move toward anchor
+    (let [new-nodes (disj nodes focus)
+          new-focus (case direction
+                      :next (q/visible-prev-block db session focus)
+                      :prev (q/visible-next-block db session focus))]
+      {:nodes new-nodes
+       :focus (or new-focus anchor)
+       :anchor anchor
+       :direction direction})
+    ;; Only anchor remains → flip direction and start extending
+    (when next-block
+      {:nodes #{anchor next-block}
+       :focus next-block
+       :anchor anchor
+       :direction contracting-direction})))
+
+(defn- calc-expand-selection
+  "Add next block when extending in same direction."
+  [{:keys [nodes anchor direction]} next-block]
+  (when next-block
+    {:nodes (conj nodes next-block)
+     :focus next-block
+     :anchor anchor
+     :direction direction}))
+
+(defn- calc-extend-navigate-props
+  "Calculate props for incremental selection extension.
+
+   Incremental extension (Logseq parity):
+   - First Shift+Arrow: set anchor and direction
+   - Same direction: add next visible block (expand selection)
+   - Opposite direction: remove trailing block (shrink selection)
+   - When only one block remains, flip direction and start extending other way"
+  [db session {:keys [focus direction] :as state} nav-direction]
+  (let [contracting? (and direction (not= direction nav-direction))
+        next-block (when focus
+                     (next-selectable-block db session focus nav-direction))]
+    (cond
+      ;; No focus → start fresh selection
+      (nil? focus)
+      (calc-start-fresh-selection db session nav-direction)
+
+      ;; No direction yet → first Shift+Arrow
+      (nil? direction)
+      (calc-first-extend state nav-direction next-block)
+
+      ;; Contracting (opposite direction) → remove trailing block
+      contracting?
+      (calc-contract-selection db session state nav-direction next-block)
+
+      ;; Extending (same direction) → add next block
+      :else
+      (calc-expand-selection state next-block))))
+
+(defn- calc-simple-navigate-props
+  "Calculate props for plain arrow navigation (no extension).
+
+   Falls back to dom-adjacent-id for cross-page navigation in journals view.
+   When no focus exists, selects first/last visible block."
+  [db session {:keys [focus]} direction dom-adjacent-id]
+  (if-let [current focus]
+    (when-let [target-id (or (next-selectable-block db session current direction)
+                             dom-adjacent-id)]
+      (calc-select-props target-id))
+    (when-let [first-or-last (get-first-last-visible-block db session direction)]
+      (calc-select-props first-or-last))))
+
 (defn- calc-navigate-props
   "Pure: calculate props for navigating in a direction with incremental selection.
    direction: :next or :prev
@@ -125,75 +214,8 @@
    Non-extend mode: When no block is focused, select first/last visible block."
   [db session state direction extend? & [{:keys [dom-adjacent-id]}]]
   (if extend?
-    ;; Incremental extension mode
-    (let [current-focus (:focus state)
-          current-anchor (:anchor state)
-          current-direction (:direction state)
-          current-nodes (:nodes state)
-
-          ;; Determine if we're contracting (moving opposite to current direction)
-          contracting? (and current-direction
-                            (not= current-direction direction))
-
-          ;; Get next selectable block in the specified direction (skip containers)
-          next-block (when current-focus
-                       (next-selectable-block db session current-focus direction))]
-
-      (cond
-        ;; No focus → start fresh selection
-        (nil? current-focus)
-        (when-let [first-or-last (get-first-last-visible-block db session direction)]
-          {:nodes #{first-or-last}
-           :focus first-or-last
-           :anchor first-or-last
-           :direction direction})
-
-        ;; No direction yet → this is the first Shift+Arrow, set direction and anchor
-        (nil? current-direction)
-        (when next-block
-          {:nodes (conj current-nodes next-block)
-           :focus next-block
-           :anchor current-focus
-           :direction direction})
-
-        ;; Contracting (opposite direction) → remove trailing block
-        contracting?
-        (if (> (count current-nodes) 1)
-          ;; Remove the current focus, move focus toward anchor
-          (let [new-nodes (disj current-nodes current-focus)
-                new-focus (case current-direction
-                            :next (q/visible-prev-block db session current-focus)
-                            :prev (q/visible-next-block db session current-focus))]
-            {:nodes new-nodes
-             :focus (or new-focus current-anchor)
-             :anchor current-anchor
-             :direction current-direction})
-          ;; Only anchor remains → flip direction and start extending
-          (when next-block
-            {:nodes #{current-anchor next-block}
-             :focus next-block
-             :anchor current-anchor
-             :direction direction}))
-
-        ;; Extending (same direction) → add next block
-        :else
-        (when next-block
-          {:nodes (conj current-nodes next-block)
-           :focus next-block
-           :anchor current-anchor
-           :direction current-direction})))
-
-    ;; Non-extend mode (plain arrow navigation)
-    (if-let [current (:focus state)]
-      ;; Normal case: navigate from current focus (skip containers)
-      ;; Fall back to DOM-adjacent ID for cross-page navigation in journals view
-      (let [db-target (next-selectable-block db session current direction)
-            target-id (or db-target dom-adjacent-id)]
-        (when target-id
-          (calc-select-props target-id)))
-      ;; Edge case: no focus (after Escape) → select first/last block
-      (when-let [first-or-last (get-first-last-visible-block db session direction)]
-        (calc-select-props first-or-last)))))
+    (calc-extend-navigate-props db session state direction)
+    (calc-simple-navigate-props db session state direction dom-adjacent-id)))
 
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
 
