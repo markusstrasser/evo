@@ -32,6 +32,8 @@
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 
+(defn- inc' "Increment, breaking type inference for nil-guarded values." [n] (inc n))
+
 (defn- find-line-start
   "Find start position of line containing cursor-pos."
   [text cursor-pos]
@@ -274,15 +276,17 @@
 
     (when (and open-idx close-idx)
       (let [open-line (nth lines open-idx)
-            lang (str/trim (subs open-line 3)) ; Extract language after ```
+            close-line (nth lines close-idx)
+            after-close-idx (inc' close-idx)
+            lang (str/trim (subs open-line 3))
             start-pos (cumulative-position lines open-idx)
-            end-pos (dec (cumulative-position lines (inc close-idx)))] ; Don't include final newline
+            end-pos (dec (cumulative-position lines after-close-idx))]
         {:type :code-block
          :lang (when-not (str/blank? lang) lang)
          :start start-pos
          :end end-pos
          :inner-start (+ start-pos (count open-line) 1)
-         :inner-end (- end-pos (count (nth lines close-idx)) 1)}))))
+         :inner-end (- end-pos (count close-line) 1)}))))
 
 (defn detect-list-item-at-cursor
   "Detect if cursor is on a line starting with list marker.
