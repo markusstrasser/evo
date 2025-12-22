@@ -12,6 +12,7 @@
             [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
+            [medley.core :as m]
             [utils.text-context :as ctx]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -28,17 +29,55 @@
            (map second)
            set))))
 
+(defn- find-page-ancestor
+  "Walk up parent chain to find the page containing a block.
+   Returns nil if block is in trash or orphaned (no page ancestor)."
+  [db block-id]
+  (let [parent-of (get-in db [:derived :parent-of])
+        nodes (:nodes db)]
+    (loop [id block-id]
+      (when-let [parent (get parent-of id)]
+        (cond
+          ;; Reached doc root or trash - no page ancestor
+          (#{:doc :trash} parent) nil
+          ;; Found a page - return it
+          (= :page (get-in nodes [parent :type])) parent
+          ;; Keep traversing up
+          :else (recur parent))))))
+
+(defn- refs-match-target?
+  "Check if block's page refs include the target page (case-insensitive)."
+  [text target-lower]
+  (when-let [refs (extract-page-refs text)]
+    (let [refs-lower (set (map str/lower-case refs))]
+      (contains? refs-lower target-lower))))
+
+(defn- build-backlink
+  "Build backlink map for a block referencing the target page."
+  [db block-id text]
+  (when-let [page-id (find-page-ancestor db block-id)]
+    {:block-id block-id
+     :block-text text
+     :page-id page-id
+     :page-title (q/page-title db page-id)}))
+
+(defn- page-title-matches?
+  "Check if backlink's page title matches target (case-insensitive)."
+  [backlink target-lower]
+  (= (str/lower-case (or (:page-title backlink) ""))
+     target-lower))
+
 (defn find-backlinks
   "DEPRECATED: Use plugins.backlinks-index/get-backlinks for O(1) lookup.
-   
+
    Find all blocks that reference a given page (O(n) scan).
-   
+
    Returns a list of maps:
    {:block-id \"...\"
     :block-text \"...\"
     :page-id \"...\"
     :page-title \"...\"}
-   
+
    Searches all blocks in the DB for [[target-page]] references.
    Excludes:
    - Blocks in trash (no valid page ancestor)
@@ -46,49 +85,13 @@
   [db target-page]
   (when target-page
     (let [target-lower (str/lower-case target-page)
-          all-nodes (:nodes db)
-          parent-of (:parent-of (:derived db))
-
-          ;; Find the page that contains a block by walking up the parent chain
-          ;; Returns nil if block is in trash or orphaned (no page ancestor)
-          find-source-page (fn [block-id]
-                             (loop [id block-id]
-                               (let [parent (get parent-of id)]
-                                 (cond
-                                   ;; Reached doc root or trash - return nil
-                                   (or (nil? parent)
-                                       (= parent :doc)
-                                       (= parent :trash))
-                                   nil
-
-                                   ;; Found a page - return it
-                                   (= :page (get-in all-nodes [parent :type]))
-                                   parent
-
-                                   ;; Keep traversing up
-                                   :else
-                                   (recur parent)))))
-
-          blocks (->> all-nodes
-                      (filter (fn [[_id node]] (= (:type node) :block)))
-                      (keep (fn [[block-id node]]
-                              (let [text (get-in node [:props :text] "")
-                                    refs (extract-page-refs text)
-                                    refs-lower (set (map str/lower-case refs))]
-                                (when (contains? refs-lower target-lower)
-                                  (let [source-page-id (find-source-page block-id)]
-                                    ;; Only include blocks that have a valid page ancestor
-                                    ;; (excludes trashed/orphaned blocks)
-                                    (when source-page-id
-                                      {:block-id block-id
-                                       :block-text text
-                                       :page-id source-page-id
-                                       :page-title (q/page-title db source-page-id)})))))))]
-      ;; Filter out blocks from the current page (don't show self-references)
-      (remove (fn [backlink]
-                (= (str/lower-case (or (:page-title backlink) ""))
-                   target-lower))
-              blocks))))
+          blocks (m/filter-vals #(= :block (:type %)) (:nodes db))]
+      (->> blocks
+           (keep (fn [[block-id node]]
+                   (let [text (get-in node [:props :text] "")]
+                     (when (refs-match-target? text target-lower)
+                       (build-backlink db block-id text)))))
+           (remove #(page-title-matches? % target-lower))))))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
@@ -356,64 +359,74 @@
                                [{:op :update-node :id page-id :props {:tombstone? true}}])))
                           old-pages))})))
 
+(defn- invalid-page?
+  "Check if page has invalid title (nil, blank, or 'Untitled')."
+  [page-title]
+  (or (nil? page-title)
+      (str/blank? page-title)
+      (= page-title "Untitled")))
+
+(defn- trashable-page?
+  "Check if page should be auto-trashed (empty, no backlinks, not today, not already trashed)."
+  [db page-id page-title today-title]
+  (let [is-today? (= page-title today-title)
+        is-empty? (q/page-empty? db page-id)
+        backlinks (get-in db [:derived :backlinks-by-page
+                              (some-> page-title str/lower-case)] [])
+        has-backlinks? (seq backlinks)
+        already-trashed? (= (q/parent-of db page-id) const/root-trash)]
+    (and is-empty? (not has-backlinks?) (not is-today?) (not already-trashed?))))
+
+(defn- categorize-pages
+  "Categorize pages into :to-delete (invalid) and :to-trash (empty, valid) sets."
+  [db page-ids today-title]
+  (reduce
+   (fn [acc page-id]
+     (let [page-title (q/page-title db page-id)]
+       (cond
+         (invalid-page? page-title)
+         (update acc :to-delete conj page-id)
+
+         (trashable-page? db page-id page-title today-title)
+         (update acc :to-trash conj page-id)
+
+         :else acc)))
+   {:to-delete [] :to-trash []}
+   page-ids))
+
+(defn- tombstone-ops-for-page
+  "Generate tombstone operations for a page and all descendants."
+  [db page-id]
+  (let [descendants (collect-descendants db page-id)
+        all-nodes (conj descendants page-id)]
+    (mapv (fn [id] {:op :update-node :id id :props {:tombstone? true}})
+          all-nodes)))
+
+(defn- trash-ops-for-page
+  "Generate trash operations for a page and all descendants."
+  [db page-id now]
+  (let [descendants (collect-descendants db page-id)
+        place-ops (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last})
+                        (conj descendants page-id))
+        timestamp-op {:op :update-node :id page-id :props {:trashed-at now}}]
+    (conj place-ops timestamp-op)))
+
 (defn- handle-scan-empty-pages
   "Scan all pages and clean up:
    - Permanently delete invalid pages (Untitled, blank titles)
    - Auto-trash valid empty pages (except today's journal)
    Run on startup to clean up orphaned pages."
   [db _session _intent]
-  (let [all-pages (q/all-pages db)
-        trash-pages (q/trashed-pages db)
-        all-page-ids (concat all-pages trash-pages)
+  (let [all-page-ids (concat (q/all-pages db) (q/trashed-pages db))
         today-title (today-journal-title)
         now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
-
-        ;; Categorize pages
-        {:keys [to-delete to-trash]}
-        (reduce
-         (fn [acc page-id]
-           (let [page-title (q/page-title db page-id)
-                 is-invalid? (or (nil? page-title)
-                                 (str/blank? page-title)
-                                 (= page-title "Untitled"))
-                 is-today? (= page-title today-title)
-                 is-empty? (q/page-empty? db page-id)
-                 backlinks (get-in db [:derived :backlinks-by-page
-                                       (some-> page-title str/lower-case)] [])
-                 has-backlinks? (seq backlinks)
-                 already-trashed? (= (q/parent-of db page-id) const/root-trash)]
-             (cond
-               ;; Invalid pages → permanently delete
-               is-invalid?
-               (update acc :to-delete conj page-id)
-
-               ;; Valid, empty, no backlinks, not today, not already trashed → trash
-               (and is-empty? (not has-backlinks?) (not is-today?) (not already-trashed?))
-               (update acc :to-trash conj page-id)
-
-               :else acc)))
-         {:to-delete [] :to-trash []}
-         all-page-ids)]
+        {:keys [to-delete to-trash]} (categorize-pages db all-page-ids today-title)]
 
     (when (or (seq to-delete) (seq to-trash))
       {:ops (into []
                   (concat
-                   ;; Permanently delete invalid pages
-                   (mapcat (fn [page-id]
-                             (let [descendants (collect-descendants db page-id)]
-                               (into
-                                (mapv (fn [id] {:op :update-node :id id :props {:tombstone? true}}) descendants)
-                                [{:op :update-node :id page-id :props {:tombstone? true}}])))
-                           to-delete)
-                   ;; Trash valid empty pages
-                   (mapcat (fn [page-id]
-                             (let [descendants (collect-descendants db page-id)]
-                               (into
-                                (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last})
-                                      descendants)
-                                [{:op :place :id page-id :under const/root-trash :at :last}
-                                 {:op :update-node :id page-id :props {:trashed-at now}}])))
-                           to-trash)))})))
+                   (mapcat #(tombstone-ops-for-page db %) to-delete)
+                   (mapcat #(trash-ops-for-page db % now) to-trash)))})))
 
 (intent/register-intent! :scan-empty-pages
                          {:doc "Scan pages and clean up invalid/empty ones"
