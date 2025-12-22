@@ -54,19 +54,16 @@
       (contains? refs-lower target-lower))))
 
 (defn- build-backlink
-  "Build backlink map for a block referencing the target page."
-  [db block-id text]
+  "Build backlink map for a block referencing the target page.
+   Returns nil if block is on the target page itself (self-reference)."
+  [db block-id text target-lower]
   (when-let [page-id (find-page-ancestor db block-id)]
-    {:block-id block-id
-     :block-text text
-     :page-id page-id
-     :page-title (q/page-title db page-id)}))
-
-(defn- page-title-matches?
-  "Check if backlink's page title matches target (case-insensitive)."
-  [backlink target-lower]
-  (= (str/lower-case (or (:page-title backlink) ""))
-     target-lower))
+    (let [page-title (q/page-title db page-id)]
+      (when-not (= (str/lower-case (or page-title "")) target-lower)
+        {:block-id block-id
+         :block-text text
+         :page-id page-id
+         :page-title page-title}))))
 
 (defn find-backlinks
   "DEPRECATED: Use plugins.backlinks-index/get-backlinks for O(1) lookup.
@@ -85,14 +82,13 @@
    - Self-references (blocks on the target page itself)"
   [db target-page]
   (when target-page
-    (let [target-lower (str/lower-case target-page)
-          blocks (m/filter-vals #(= :block (:type %)) (:nodes db))]
-      (->> blocks
+    (let [target-lower (str/lower-case target-page)]
+      (->> (:nodes db)
+           (m/filter-vals #(= :block (:type %)))
            (keep (fn [[block-id node]]
                    (let [text (get-in node [:props :text] "")]
                      (when (refs-match-target? text target-lower)
-                       (build-backlink db block-id text)))))
-           (remove #(page-title-matches? % target-lower))))))
+                       (build-backlink db block-id text target-lower)))))))))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
