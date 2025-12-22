@@ -14,6 +14,39 @@
             [scripts.script :as script]
             [kernel.query :as q]))
 
+;; ── Operation Constructors ─────────────────────────────────────────────────────
+
+(defn create-block-op
+  "Build a :create-node operation for a block.
+
+   Args:
+     id: Block ID
+     text: Block text content
+
+   Returns:
+     {:op :create-node ...} map"
+  [id text]
+  {:op :create-node
+   :id id
+   :type :block
+   :props {:text text}})
+
+(defn place-op
+  "Build a :place operation.
+
+   Args:
+     id: Block ID to place
+     under: Parent ID
+     at: Position anchor (:first, :last, {:after id}, etc.)
+
+   Returns:
+     {:op :place ...} map"
+  [id under at]
+  {:op :place
+   :id id
+   :under under
+   :at at})
+
 ;; ── Smart Backspace ────────────────────────────────────────────────────────────
 
 (defn smart-backspace
@@ -96,23 +129,12 @@
     (:ops
       (script/run db
         [;; Step 1: Create all blocks (static, can be done upfront)
-         (mapv (fn [line-text id]
-                 {:op :create-node
-                  :id id
-                  :type :block
-                  :props {:text line-text}})
-               lines
-               new-ids)
+         (mapv create-block-op new-ids lines)
 
          ;; Step 2: Place all blocks
          ;; Note: All blocks go to same parent/anchor
          ;; Later blocks push earlier ones forward
-         (mapv (fn [id]
-                 {:op :place
-                  :id id
-                  :under under
-                  :at at})
-               new-ids)
+         (mapv #(place-op % under at) new-ids)
 
          ;; Step 3: Navigate to first new block
          (fn [_db-after-place]
@@ -160,16 +182,10 @@
     (:ops
       (script/run db
         [;; Step 1: Create block
-         {:op :create-node
-          :id new-id
-          :type :block
-          :props {:text initial-text}}
+         (create-block-op new-id initial-text)
 
          ;; Step 2: Place block
-         {:op :place
-          :id new-id
-          :under under
-          :at at}
+         (place-op new-id under at)
 
          ;; Step 3: Focus new block for editing
          (fn [_db-after-create]
