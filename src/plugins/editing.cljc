@@ -7,6 +7,7 @@
             [kernel.constants :as const]
             [kernel.query :as q]
             [utils.text :as text]
+            [utils.intent-helpers :as helpers]
             [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -225,13 +226,12 @@
                                            before (subs text 0 cursor-pos)
                                            after (subs text cursor-pos)
                                            parent (get-in db [:derived :parent-of block-id])
-                                           new-id (str "block-" (random-uuid))]
+                                           new-id (helpers/make-new-block-id)]
                                        (when parent
                                          {:ops [{:op :update-node :id block-id :props {:text before}}
                                                 {:op :create-node :id new-id :type :block :props {:text after}}
                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
-                                          :session-updates {:ui {:editing-block-id new-id
-                                                                 :cursor-position 0}}})))})
+                                          :session-updates (helpers/make-cursor-update new-id 0)})))})
 
 (intent/register-intent! :delete-forward
                          {:doc "Handle Delete key (forward delete).
