@@ -63,6 +63,51 @@
         _ (.setDate date (inc (.getDate date)))]
     (journal-title date)))
 
+;; ── Page Reference Formatting ────────────────────────────────────────────────
+
+(defn page-ref
+  "Format a date as a page reference string like [[Dec 10, 2025]].
+
+   Note: Uses simplified format WITHOUT ordinal suffix for compatibility
+   with slash command autocomplete. Journal titles use ordinal format."
+  ([]
+   (page-ref (js/Date.)))
+  ([date]
+   (let [month (format-month date)
+         day (.getDate date)
+         year (.getFullYear date)]
+     (str "[[" month " " day ", " year "]]"))))
+
+(defn today-page-ref
+  "Get today's date as a page reference [[MMM d, yyyy]]."
+  []
+  (page-ref))
+
+(defn yesterday-page-ref
+  "Get yesterday's date as a page reference [[MMM d, yyyy]]."
+  []
+  (let [date (js/Date.)
+        _ (.setDate date (dec (.getDate date)))]
+    (page-ref date)))
+
+(defn tomorrow-page-ref
+  "Get tomorrow's date as a page reference [[MMM d, yyyy]]."
+  []
+  (let [date (js/Date.)
+        _ (.setDate date (inc (.getDate date)))]
+    (page-ref date)))
+
+;; ── Time Formatting ──────────────────────────────────────────────────────────
+
+(defn current-time
+  "Get current time in HH:MM format."
+  []
+  (let [d (js/Date.)
+        hours (.getHours d)
+        minutes (.getMinutes d)
+        pad #(if (< % 10) (str "0" %) (str %))]
+    (str (pad hours) ":" (pad minutes))))
+
 ;; ── Journal Detection ────────────────────────────────────────────────────────
 
 (def ^:private month-pattern
