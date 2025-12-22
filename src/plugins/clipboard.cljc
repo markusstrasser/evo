@@ -15,7 +15,8 @@
             [kernel.constants :as const]
             [kernel.navigation :as nav]
             [kernel.query :as q]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [medley.core :as m]))
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 
@@ -67,20 +68,20 @@
                         (mapcat #(collect-block-tree db % 0))
                         vec)
         ;; Normalize depths to start at 0
-        min-depth (if (seq all-blocks)
-                    (apply min (map :depth all-blocks))
-                    0)
+        min-depth (when (seq all-blocks)
+                    (apply min (map :depth all-blocks)))
+        normalize-depth #(- % (or min-depth 0))
         ;; Build markdown text
         markdown (->> all-blocks
                       (map (fn [{:keys [id depth]}]
-                             (str (indent-string (- depth min-depth))
+                             (str (indent-string (normalize-depth depth))
                                   "- "
                                   (q/block-text db id))))
                       (str/join "\n"))
         ;; Build block data for internal format
         block-data (mapv (fn [{:keys [id depth]}]
                            {:id id
-                            :depth (- depth min-depth)
+                            :depth (normalize-depth depth)
                             :text (q/block-text db id)})
                          all-blocks)]
     {:text markdown
@@ -94,12 +95,10 @@
    For depth 0: always use parent-id (top-level in paste context).
    For depth > 0: use the block at depth-1 from depth-map, or fallback to parent-id."
   [depth depth-map parent-id]
-  (let [parent-depth (dec depth)]
-    (if (neg? parent-depth)
-      parent-id
-      (if-let [parent-entry (get depth-map parent-depth)]
-        (:id parent-entry)
-        parent-id))))
+  (if (zero? depth)
+    parent-id
+    (or (get-in depth-map [(dec depth) :id])
+        parent-id)))
 
 (defn- resolve-sibling
   "Find the sibling block to place after, if any.
@@ -130,10 +129,9 @@
    Records the new block at its depth, then removes all entries for depths
    greater than the current depth (they're no longer valid siblings)."
   [depth-map depth block-id parent-id]
-  (-> depth-map
-      (assoc depth {:id block-id :parent parent-id})
-      ;; Clear entries deeper than current depth
-      (as-> m (reduce dissoc m (filter #(> % depth) (keys m))))))
+  (->> depth-map
+       (m/filter-keys #(<= % depth))
+       (#(assoc % depth {:id block-id :parent parent-id}))))
 
 (defn- make-block-ops
   "Create kernel operations for a single block.
@@ -177,21 +175,19 @@
 (defn- normalize-depths
   "Normalize parsed block depths to be sequential (0, 1, 2...).
    Closes gaps like [0, 2, 4] → [0, 1, 2].
-   
+
    This handles cases where whitespace parsing produces non-sequential depths:
    - 4 spaces parsed as depth 2 (instead of depth 1)
    - Mixed tabs/spaces creating gaps"
   [parsed-blocks]
-  (if (empty? parsed-blocks)
-    parsed-blocks
-    (let [;; Get unique depths in sorted order
-          unique-depths (->> parsed-blocks
+  (when (seq parsed-blocks)
+    (let [;; Get unique depths in sorted order, then map to sequential indexes
+          depth-mapping (->> parsed-blocks
                              (map :depth)
                              distinct
                              sort
-                             vec)
-          ;; Map each raw depth to its normalized index
-          depth-mapping (zipmap unique-depths (range))]
+                             (m/indexed)
+                             (into {} (map (fn [[idx depth]] [depth idx]))))]
       (mapv #(update % :depth depth-mapping) parsed-blocks))))
 
 (defn- parse-markdown-blocks
@@ -286,13 +282,14 @@
   [before pasted _after]
   (let [paragraphs (split-by-blank-lines pasted)
         first-para (first paragraphs)
-        remaining (rest paragraphs)]
+        remaining (rest paragraphs)
+        final-text (if (seq remaining)
+                     (last remaining)
+                     (str before first-para))]
     {:first-text (str before first-para)
      :remaining (mapv (fn [para] {:depth 0 :text (str/trim para)}) remaining)
      :first-depth 0  ;; Current block is at depth 0, so siblings chain after it
-     :final-cursor (count (str/trim (if (seq remaining)
-                                       (last remaining)
-                                       (str before first-para))))}))
+     :final-cursor (count (str/trim final-text))}))
 
 (defn- paste-strategy-markdown
   "Markdown blocks: parse hierarchy, first block merges with before/after."
@@ -328,9 +325,8 @@
    - :remaining - vector of {:depth :text} maps for new blocks
    - :final-cursor - cursor position in final block
    - :first-depth - (optional) depth of first block for clipboard format"
-  [block-id parent strategy]
-  (let [{:keys [first-text remaining final-cursor first-depth]} strategy
-        update-op {:op :update-node
+  [block-id parent {:keys [first-text remaining final-cursor first-depth]}]
+  (let [update-op {:op :update-node
                    :id block-id
                    :props {:text first-text}}
         {:keys [ops last-block-id]} (blocks-to-ops remaining parent block-id first-depth)
@@ -370,13 +366,15 @@
                           (fn [db _session {:keys [block-id cursor-pos selection-end pasted-text clipboard-blocks]}]
                             (let [current-text (q/block-text db block-id)
                                   sel-end (or selection-end cursor-pos)
-                                  before (subs current-text 0 cursor-pos)
-                                  after (subs current-text sel-end)
+                                  [before after] [(subs current-text 0 cursor-pos)
+                                                  (subs current-text sel-end)]
                                   selection (when (not= cursor-pos sel-end)
                                               (subs current-text cursor-pos sel-end))
                                   parent (get-in db [:derived :parent-of block-id])
-                                  pasted-url? (url? pasted-text)
-                                  selection-url? (url? selection)
+                                  [pasted-url? selection-url?] [(url? pasted-text) (url? selection)]
+                                  smart-url? (and selection
+                                                  (or (and pasted-url? (not selection-url?))
+                                                      (and selection-url? (not pasted-url?))))
 
                                   ;; Determine paste strategy based on content
                                   strategy (cond
@@ -385,9 +383,7 @@
                                              (paste-strategy-clipboard-blocks before clipboard-blocks after cursor-pos)
 
                                              ;; Smart URL paste (selection + URL)
-                                             (and selection
-                                                  (or (and pasted-url? (not selection-url?))
-                                                      (and selection-url? (not pasted-url?))))
+                                             smart-url?
                                              (paste-strategy-url-link before after cursor-pos selection pasted-url? pasted-text)
 
                                              ;; Blank lines → paragraph split
@@ -438,13 +434,12 @@
                                                        (seq selection) (vec selection)
                                                        editing-id [editing-id]
                                                        :else [])]
-                                       (if (seq block-ids)
+                                       (when (seq block-ids)
                                          ;; Always use blocks-to-markdown to include children
                                          ;; Single leaf blocks will still produce simple text
                                          (let [{:keys [text blocks]} (blocks-to-markdown db block-ids)]
                                            {:session-updates {:ui {:clipboard-text text
-                                                                   :clipboard-blocks blocks}}})
-                                         {:session-updates {}})))})
+                                                                   :clipboard-blocks blocks}}}))))})
 
 (intent/register-intent! :cut-block
                          {:doc "Cut single block (copy + move to trash)."
@@ -481,13 +476,11 @@
                                                        (seq selection) (vec selection)
                                                        editing-id [editing-id]
                                                        :else [])]
-                                       (if (seq block-ids)
+                                       (when (seq block-ids)
                                          ;; Always use blocks-to-markdown to include children
                                          (let [{:keys [text blocks]} (blocks-to-markdown db block-ids)
                                                ;; Find the topmost block (earliest in DOM order)
-                                               first-block-id (->> block-ids
-                                                                   (sort-by #(get-in db [:derived :pre %] 0))
-                                                                   first)
+                                               first-block-id (apply min-key #(get-in db [:derived :pre %] 0) block-ids)
                                                ;; Get previous block in visible order (Logseq parity)
                                                prev-block-id (nav/prev-visible-block db session first-block-id)
                                                ;; Only delete root blocks (those whose parents aren't selected)
@@ -500,21 +493,21 @@
                                                                    :id id
                                                                    :under const/root-trash
                                                                    :at :last})
-                                                                root-ids)]
+                                                                root-ids)
+                                               selection-update (if prev-block-id
+                                                                  ;; Select previous block (Logseq parity)
+                                                                  {:nodes #{prev-block-id}
+                                                                   :focus prev-block-id
+                                                                   :anchor prev-block-id}
+                                                                  ;; No previous block - clear selection
+                                                                  {:nodes #{}
+                                                                   :focus nil
+                                                                   :anchor nil})]
                                            {:ops delete-ops
                                             :session-updates {:ui {:clipboard-text text
                                                                    :clipboard-blocks blocks
                                                                    :editing-block-id nil}
-                                                              :selection (if prev-block-id
-                                                                           ;; Select previous block (Logseq parity)
-                                                                           {:nodes #{prev-block-id}
-                                                                            :focus prev-block-id
-                                                                            :anchor prev-block-id}
-                                                                           ;; No previous block - clear selection
-                                                                           {:nodes #{}
-                                                                            :focus nil
-                                                                            :anchor nil})}})
-                                         {:session-updates {}})))})
+                                                              :selection selection-update}}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds
