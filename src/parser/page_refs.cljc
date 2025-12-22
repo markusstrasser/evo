@@ -21,8 +21,7 @@
      => ([\"[[Projects]]\" \"Projects\"] [\"[[Tasks]]\" \"Tasks\"])"
   [text]
   (when text
-    (mapv (fn [[full-match page-name]] [full-match page-name])
-          (re-seq page-ref-pattern text))))
+    (vec (re-seq page-ref-pattern text))))
 
 (defn parse-refs
   "Parse text and return set of referenced page names.
@@ -47,24 +46,21 @@
          {:type :text :value \" now\"}]"
   [text]
   (when text
-    (let [matches (extract-refs text)]
-      (loop [remaining text
-             matches-left matches
-             result []
-             offset 0]
-        (if-let [[full-match page-name] (first matches-left)]
-          (let [idx (.indexOf remaining full-match)
-                before (subs remaining 0 idx)
-                after (subs remaining (+ idx (count full-match)))]
-            (recur after
-                   (rest matches-left)
-                   (cond-> result
-                     (not (empty? before)) (conj {:type :text :value before})
-                     true (conj {:type :page-ref :page page-name}))
-                   (+ offset idx (count full-match))))
-          ;; No more matches - add remaining text if any
-          (cond-> result
-            (not (empty? remaining)) (conj {:type :text :value remaining})))))))
+    (let [matches (extract-refs text)
+          {:keys [result remaining]}
+          (reduce
+            (fn [{:keys [remaining result]} [full-match page-name]]
+              (let [idx (.indexOf remaining full-match)
+                    before (subs remaining 0 idx)
+                    after (subs remaining (+ idx (count full-match)))
+                    result' (cond-> result
+                              (seq before) (conj {:type :text :value before})
+                              true (conj {:type :page-ref :page page-name}))]
+                {:remaining after :result result'}))
+            {:remaining text :result []}
+            matches)]
+      (cond-> result
+        (seq remaining) (conj {:type :text :value remaining})))))
 
 (defn normalize-page-name
   "Normalize page name to canonical form for lookups.
