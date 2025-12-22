@@ -8,6 +8,16 @@
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
+(defn- count-leading-spaces
+  "Count leading spaces in a string."
+  [s]
+  (count (take-while #(= % \space) s)))
+
+(defn- count-trailing-spaces
+  "Count trailing spaces in a string."
+  [s]
+  (count (take-while #(= % \space) (reverse s))))
+
 (defn- trim-selection
   "Trim leading/trailing whitespace from a selection, adjusting positions.
    Returns {:start :end} with adjusted indices pointing to non-whitespace content.
@@ -18,11 +28,8 @@
    Logseq parity: Prevents formatting from wrapping whitespace."
   [text start end]
   (let [selected (subs text start end)
-        ;; Count leading whitespace
-        leading-ws (count (take-while #(= % \space) selected))
-        ;; Count trailing whitespace (reverse, count, careful of empty)
-        trailing-ws (count (take-while #(= % \space) (reverse selected)))
-        ;; Adjust positions
+        leading-ws (count-leading-spaces selected)
+        trailing-ws (count-trailing-spaces selected)
         new-start (+ start leading-ws)
         new-end (- end trailing-ws)]
     ;; Guard against invalid range (all whitespace selection)
@@ -30,28 +37,58 @@
       {:start start :end end} ; Keep original if all whitespace
       {:start new-start :end new-end})))
 
-(defn- toggle-text-range
-  "Pure function: wraps or unwraps a substring with markers.
-   If text is already wrapped with the marker, unwraps it.
-   Otherwise, wraps it."
+(defn- wrapped-with-marker?
+  "Check if text is wrapped with the given marker on both sides."
+  [text marker]
+  (let [marker-len (count marker)]
+    (and (>= (count text) (* 2 marker-len))
+         (= marker (subs text 0 marker-len))
+         (= marker (subs text (- (count text) marker-len))))))
+
+(defn- unwrap-from-marker
+  "Remove marker from both sides of text and return updated document with new selection.
+
+   Example: unwrap-from-marker {:text 'hello **world** today'
+                                 :start 6 :end 15 :marker '**'}
+            → {:text 'hello world today'
+               :selection-start 6
+               :selection-end 11}"
   [{:keys [text start end marker]}]
   (let [prefix (subs text 0 start)
         selected (subs text start end)
         suffix (subs text end)
         marker-len (count marker)
-        already-wrapped? (and (>= (count selected) (* 2 marker-len))
-                              (= marker (subs selected 0 marker-len))
-                              (= marker (subs selected (- (count selected) marker-len))))]
-    (if already-wrapped?
-      ;; UNWRAP
-      (let [unwrapped-text (subs selected marker-len (- (count selected) marker-len))]
-        {:text (str prefix unwrapped-text suffix)
-         :selection-start start
-         :selection-end (- end (* 2 marker-len))})
-      ;; WRAP
-      {:text (str prefix marker selected marker suffix)
-       :selection-start (+ start marker-len)
-       :selection-end (+ end marker-len)})))
+        unwrapped-text (subs selected marker-len (- (count selected) marker-len))]
+    {:text (str prefix unwrapped-text suffix)
+     :selection-start start
+     :selection-end (- end (* 2 marker-len))}))
+
+(defn- wrap-with-marker
+  "Add marker to both sides of selected text and return updated document with new selection.
+
+   Example: wrap-with-marker {:text 'hello world today'
+                               :start 6 :end 11 :marker '**'}
+            → {:text 'hello **world** today'
+               :selection-start 8
+               :selection-end 13}"
+  [{:keys [text start end marker]}]
+  (let [prefix (subs text 0 start)
+        selected (subs text start end)
+        suffix (subs text end)
+        marker-len (count marker)]
+    {:text (str prefix marker selected marker suffix)
+     :selection-start (+ start marker-len)
+     :selection-end (+ end marker-len)}))
+
+(defn- toggle-text-range
+  "Pure function: wraps or unwraps a substring with markers.
+   If text is already wrapped with the marker, unwraps it.
+   Otherwise, wraps it."
+  [{:keys [text start end marker] :as args}]
+  (let [selected (subs text start end)]
+    (if (wrapped-with-marker? selected marker)
+      (unwrap-from-marker args)
+      (wrap-with-marker args))))
 
 (intent/register-intent! :format-selection
                          {:doc "Format selected text with markdown markers (bold, italic).
