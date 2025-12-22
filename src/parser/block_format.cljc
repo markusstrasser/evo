@@ -11,6 +11,12 @@
    In view mode, renders with semantic HTML; in edit mode, shows raw markdown."
   (:require [clojure.string :as str]))
 
+;; Regex patterns for block format detection
+(def ^:private tweet-pattern #"^\{\{tweet\s+(.*?)\}\}$")
+(def ^:private video-pattern #"^\{\{video\s+(.*?)\}\}$")
+(def ^:private heading-pattern #"^(#{1,6}) ")
+(def ^:private quote-prefix "> ")
+
 (defn parse
   "Parse text to detect formatting prefix.
 
@@ -19,39 +25,38 @@
             :content \"text after prefix\"
             :url \"embed URL\" (for tweet/video)}"
   [text]
-  (cond
-    ;; Tweet embed: {{tweet URL}}
-    (re-find #"^\{\{tweet\s+(.*?)\}\}$" (or text ""))
-    (let [[_ url] (re-find #"^\{\{tweet\s+(.*?)\}\}$" text)]
-      {:format :tweet
-       :level nil
-       :url (str/trim url)
-       :content text})
+  (let [safe-text (or text "")
+        ;; Format matchers: try each in order, return first match
+        try-match
+        (fn [[pattern-fn result-fn]]
+          (when-let [match (pattern-fn safe-text)]
+            (result-fn match)))]
 
-    ;; Video embed: {{video URL}}
-    (re-find #"^\{\{video\s+(.*?)\}\}$" (or text ""))
-    (let [[_ url] (re-find #"^\{\{video\s+(.*?)\}\}$" text)]
-      {:format :video
-       :level nil
-       :url (str/trim url)
-       :content text})
+    (or (some try-match
+              [[#(re-find tweet-pattern %)
+                (fn [match] {:format :tweet
+                             :level nil
+                             :url (str/trim (second match))
+                             :content safe-text})]
 
-    ;; Quote: > followed by space
-    (str/starts-with? (or text "") "> ")
-    {:format :quote
-     :level nil
-     :content (subs text 2)}
+               [#(re-find video-pattern %)
+                (fn [match] {:format :video
+                             :level nil
+                             :url (str/trim (second match))
+                             :content safe-text})]
 
-    ;; Heading: match #+ followed by space
-    (re-find #"^(#{1,6}) " (or text ""))
-    (let [[match hashes] (re-find #"^(#{1,6}) " text)
-          heading-level (count hashes)]
-      {:format :heading
-       :level heading-level
-       :content (subs text (count match))})
+               [#(str/starts-with? % quote-prefix)
+                (fn [_] {:format :quote
+                         :level nil
+                         :content (subs safe-text (count quote-prefix))})]
 
-    ;; Plain text
-    :else
-    {:format :plain
-     :level nil
-     :content text}))
+               [#(re-find heading-pattern %)
+                (fn [match]
+                  (let [[full-match hashes] match]
+                    {:format :heading
+                     :level (count hashes)
+                     :content (subs safe-text (count full-match))}))]])
+
+        {:format :plain
+         :level nil
+         :content safe-text})))
