@@ -24,30 +24,50 @@
    ["*" :italic]
    ["_" :italic]])
 
-(defn- find-next-marker
-  "Find the next opening marker in text starting at pos.
-   Returns {:marker m :type t :start-pos n} or nil."
+(defn- find-marker-at
+  "Check if any marker starts at pos. Returns [marker type] or nil."
   [text pos]
-  (let [remaining (subs text pos)]
-    (->> markers
-         (keep (fn [[marker type]]
-                 (let [idx (str/index-of remaining marker)]
-                   (when idx
-                     {:marker marker
-                      :type type
-                      :start-pos (+ pos idx)}))))
-         (sort-by :start-pos)
-         first)))
+  (when (< pos (count text))
+    (some (fn [[marker type]]
+            (let [end-pos (+ pos (count marker))]
+              (when (and (<= end-pos (count text))
+                         (= marker (subs text pos end-pos)))
+                [marker type])))
+          markers)))
 
-(defn- find-closing-marker
-  "Find closing marker after open-pos.
-   Returns end position (exclusive of marker) or nil."
-  [text marker open-pos]
-  (let [content-start (+ open-pos (count marker))
-        remaining (subs text content-start)
-        close-idx (str/index-of remaining marker)]
-    (when (and close-idx (pos? close-idx)) ; Must have content between markers
-      (+ content-start close-idx (count marker)))))
+(defn- find-closing
+  "Find closing marker. Returns position after closing marker, or nil."
+  [text marker start-pos]
+  (let [content-start (+ start-pos (count marker))
+        close-idx (str/index-of text marker content-start)]
+    (when (and close-idx (< content-start close-idx))  ; Must have content
+      (+ close-idx (count marker)))))
+
+(defn- scan-next-marker
+  "Scan forward to find next marker. Returns {:marker m :type t :pos p} or nil."
+  [text start-pos]
+  (loop [pos start-pos]
+    (when (< pos (count text))
+      (if-let [[marker type] (find-marker-at text pos)]
+        {:marker marker :type type :pos pos}
+        (recur (inc pos))))))
+
+(defn- add-text-if-nonempty
+  "Add text segment if range is non-empty."
+  [segments text start end]
+  (if (< start end)
+    (conj segments {:type :text :value (subs text start end)})
+    segments))
+
+(defn- try-complete-format
+  "Try to complete a format region. Returns {:end-pos n :segment {...}} or nil."
+  [text pos marker type]
+  (when-let [close-pos (find-closing text marker pos)]
+    (let [content-start (+ pos (count marker))
+          content-end (- close-pos (count marker))
+          content (subs text content-start content-end)]
+      {:end-pos close-pos
+       :segment {:type type :value content}})))
 
 (defn split-with-formatting
   "Split text into segments with inline formatting.
@@ -64,32 +84,27 @@
   (if (or (nil? text) (str/blank? text))
     [{:type :text :value (or text "")}]
     (loop [pos 0
-           result []]
+           segments []]
       (if (>= pos (count text))
-        (if (empty? result)
+        ;; End of text - return segments or default to plain text
+        (if (empty? segments)
           [{:type :text :value text}]
-          result)
-        (if-let [{:keys [marker type start-pos]} (find-next-marker text pos)]
-          (if-let [end-pos (find-closing-marker text marker start-pos)]
-            ;; Found complete formatted section
-            (let [content-start (+ start-pos (count marker))
-                  content-end (- end-pos (count marker))
-                  content (subs text content-start content-end)
-                  ;; Add text before marker if any
-                  before-text (when (> start-pos pos)
-                                {:type :text :value (subs text pos start-pos)})
-                  ;; Add formatted segment
-                  formatted {:type type :value content}]
-              (recur end-pos
-                     (cond-> result
-                       before-text (conj before-text)
-                       true (conj formatted))))
-            ;; No closing marker - treat as plain text up to next potential match
-            (let [next-pos (+ start-pos (count marker))]
+          segments)
+        ;; Look for next marker
+        (if-let [{mtype :type mmarker :marker mpos :pos} (scan-next-marker text pos)]
+          ;; Try to complete the format region
+          (if-let [{:keys [end-pos segment]} (try-complete-format text mpos mmarker mtype)]
+            ;; Complete region - add any text before marker, then formatted segment
+            (recur end-pos
+                   (-> segments
+                       (add-text-if-nonempty text pos mpos)
+                       (conj segment)))
+            ;; Unclosed marker - treat as text and continue after it
+            (let [next-pos (+ mpos (count mmarker))]
               (recur next-pos
-                     (conj result {:type :text :value (subs text pos next-pos)}))))
+                     (add-text-if-nonempty segments text pos next-pos))))
           ;; No more markers - add remaining text
-          (conj result {:type :text :value (subs text pos)}))))))
+          (add-text-if-nonempty segments text pos (count text)))))))
 
 (defn has-formatting?
   "Quick check if text contains any inline formatting markers."
