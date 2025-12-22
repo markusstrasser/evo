@@ -10,7 +10,8 @@
    - Tree: queries on :derived indexes and :children-by-parent
    - Pages: queries for page operations"
   (:require [kernel.navigation :as nav]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [medley.core :as m]))
 
 ;; ── Selection Queries (Session-based after Phases 4-5) ────────────────────────
 ;; These functions now query session state instead of DB.
@@ -221,16 +222,10 @@
    Walks up the parent chain until finding a node with :type :page.
    Returns nil if block is at doc root level (no page ancestor)."
   [db block-id]
-  (loop [current block-id]
-    (let [parent (parent-of db current)]
-      (cond
-        ;; Reached root or no parent - no page ancestor
-        (or (nil? parent)
-            (keyword? parent)) nil
-        ;; Parent is a page - found it
-        (= :page (get-in db [:nodes parent :type])) parent
-        ;; Keep walking up
-        :else (recur parent)))))
+  (->> (iterate #(parent-of db %) block-id)
+       (rest) ;; Skip the block itself
+       (take-while #(and (some? %) (not (keyword? %))))
+       (m/find-first #(= :page (get-in db [:nodes % :type])))))
 
 (defn prev-sibling
   "Get previous sibling ID of a node, or nil if first/none."
@@ -363,12 +358,9 @@
   (let [pre (get-in db [:derived :doc/pre])
         id-by-pre (get-in db [:derived :doc/id-by-pre])]
     (when (and (contains? pre a) (contains? pre b))
-      (let [a-idx (get pre a)
-            b-idx (get pre b)
-            [start end] (if (<= a-idx b-idx) [a-idx b-idx] [b-idx a-idx])]
+      (let [[start end] (sort [(get pre a) (get pre b)])]
         (->> (range start (inc end))
-             (map id-by-pre)
-             (remove nil?)
+             (keep id-by-pre)
              set)))))
 
 (defn visible-range
@@ -391,8 +383,8 @@
   (let [visible (visible-blocks db session)
         a-idx (.indexOf visible a)
         b-idx (.indexOf visible b)]
-    (if (and (>= a-idx 0) (>= b-idx 0))
-      (let [[start end] (if (<= a-idx b-idx) [a-idx b-idx] [b-idx a-idx])]
+    (if (and (not= a-idx -1) (not= b-idx -1))
+      (let [[start end] (sort [a-idx b-idx])]
         (set (subvec visible start (inc end))))
       #{})))
 
@@ -417,14 +409,8 @@
 
    Used by navigation and selection plugins to respect page boundaries."
   [db session block-a block-b]
-  (let [active-page (current-page session)]
-    (or
-     ;; Not page-scoped mode - allow all navigation
-     (nil? active-page)
-     ;; Check if both blocks belong to the same page
-     (let [page-a (page-of db block-a)
-           page-b (page-of db block-b)]
-       (= page-a page-b)))))
+  (or (nil? (current-page session))
+      (= (page-of db block-a) (page-of db block-b))))
 
 (defn all-pages
   "Get list of all page IDs (direct children of :doc root)."
@@ -444,22 +430,17 @@
   (when page-name
     (let [normalize (comp str/lower-case str/trim)
           normalized-name (normalize page-name)]
-      (some (fn [page-id]
-              (when (= normalized-name (normalize (page-title db page-id)))
-                page-id))
-            (all-pages db)))))
+      (->> (all-pages db)
+           (m/find-first #(= normalized-name (normalize (page-title db %))))))))
 
 (defn page-empty?
   "Check if a page has no meaningful content.
    A page is empty if all its child blocks have blank/empty text.
    Returns true if page has no children or all children are blank."
   [db page-id]
-  (let [child-ids (children db page-id)]
-    (or (empty? child-ids)
-        (every? (fn [bid]
-                  (let [text (block-text db bid)]
-                    (or (nil? text) (str/blank? text))))
-                child-ids))))
+  (->> (children db page-id)
+       (every? (comp (some-fn nil? str/blank?)
+                     #(block-text db %)))))
 
 (defn tombstone?
   "Check if a node is marked as a tombstone (permanently deleted)."
@@ -470,7 +451,7 @@
   "Get list of all page IDs in trash (excludes tombstoned nodes)."
   [db]
   (->> (children db :trash)
-       (remove #(tombstone? db %))))
+       (remove (partial tombstone? db))))
 
 (defn trashed-at
   "Get the timestamp when a page was trashed, or nil if not set."
@@ -492,25 +473,18 @@
 (defn page-block-count
   "Count total blocks under a page (recursive, all descendants)."
   [db page-id]
-  (letfn [(count-descendants [node-id]
-            (let [child-ids (children db node-id)]
-              (+ (count child-ids)
-                 (reduce + 0 (map count-descendants child-ids)))))]
-    (count-descendants page-id)))
+  (count (descendants-of db page-id)))
 
 (defn page-word-count
   "Count total words across all blocks under a page."
   [db page-id]
   (letfn [(count-words [text]
-            (if (or (nil? text) (str/blank? text))
+            (if (str/blank? text)
               0
-              (count (str/split (str/trim text) #"\s+"))))
-          (sum-descendants [node-id]
-            (let [text (block-text db node-id)
-                  child-ids (children db node-id)]
-              (+ (count-words text)
-                 (reduce + 0 (map sum-descendants child-ids)))))]
-    (sum-descendants page-id)))
+              (count (str/split (str/trim text) #"\s+"))))]
+    (->> (cons page-id (descendants-of db page-id))
+         (map (comp count-words #(block-text db %)))
+         (reduce + 0))))
 
 (defn page-metadata
   "Get all metadata for a page in one call.
@@ -518,15 +492,15 @@
   [db page-id favorites-set]
   (let [title (page-title db page-id)
         created (created-at db page-id)
-        updated (updated-at db page-id)]
+        journal? (boolean
+                  (some #(re-matches % title)
+                        [#"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}"
+                         #"\d{4}-\d{2}-\d{2}"]))]
     {:id page-id
      :title title
      :created-at created
-     :updated-at (or updated created)  ; Fall back to created if never updated
+     :updated-at (or (updated-at db page-id) created)
      :block-count (page-block-count db page-id)
      :word-count (page-word-count db page-id)
      :favorite? (contains? favorites-set page-id)
-     :journal? (boolean
-                (and title
-                     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-                         (re-matches #"\d{4}-\d{2}-\d{2}" title))))}))
+     :journal? journal?}))
