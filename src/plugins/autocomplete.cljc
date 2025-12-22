@@ -16,6 +16,7 @@
             [kernel.query :as q]
             [utils.fuzzy-search :as fuzzy]
             [clojure.string :as str]
+            [medley.core :as medley]
             #?(:cljs [utils.journal :as journal])))
 
 ;; Sentinel for DCE prevention
@@ -48,36 +49,37 @@
 
 ;; ── Page Ref Implementation ───────────────────────────────────────────────────
 
+(defn- valid-page-title?
+  "Check if title is non-empty and not a placeholder."
+  [title]
+  (and title
+       (not (str/blank? title))
+       (not= title "Untitled")))
+
+(defn- has-exact-match?
+  "Check if query exactly matches any page title (case-insensitive)."
+  [pages query]
+  (let [query-lower (str/lower-case (or query ""))]
+    (some #(= (str/lower-case (:title %)) query-lower) pages)))
+
 (defmethod search-items :page-ref
   [db {:keys [query]}]
-  (let [pages (get-in db [:children-by-parent :doc] [])
-        page-data (->> pages
+  (let [page-data (->> (get-in db [:children-by-parent :doc] [])
                        (map (fn [id]
                               {:id id
                                :title (get-in db [:nodes id :props :title])
                                :type :existing}))
-                       ;; Filter out untitled/blank pages
-                       (filter (fn [{:keys [title]}]
-                                 (and title
-                                      (not (str/blank? title))
-                                      (not= title "Untitled")))))
-        ;; Filter existing pages
+                       (filter (comp valid-page-title? :title)))
         filtered (if (str/blank? query)
                    (take 10 page-data)
                    (fuzzy/fuzzy-filter page-data query :title 10))
-        ;; Check if query exactly matches an existing page title (case-insensitive)
-        query-lower (str/lower-case (or query ""))
-        exact-match? (some #(= (str/lower-case (:title %)) query-lower) filtered)
-        ;; Add "Create new page" option if query is non-empty and no exact match
         create-option (when (and (not (str/blank? query))
-                                 (not exact-match?))
+                                 (not (has-exact-match? filtered query)))
                         {:id :new
                          :title query
                          :type :create-new})]
-    ;; Put create option at end
-    (if create-option
-      (conj (vec filtered) create-option)
-      filtered)))
+    (cond-> filtered
+      create-option (conj create-option))))
 
 (defmethod insert-text :page-ref
   [_db {:keys [item]}]
@@ -258,6 +260,21 @@
                                                     :selected 0
                                                     :items (vec items)}}}}))})
 
+(defn- calculate-replacement-range
+  "Calculate start and end positions for text replacement."
+  [trigger-pos trigger-length query source-type]
+  (let [start-pos (- trigger-pos trigger-length)
+        closing-chars (if (= source-type :page-ref) 2 0)
+        end-pos (+ trigger-pos (count query) closing-chars)]
+    [start-pos end-pos]))
+
+(defn- replace-text-segment
+  "Replace text segment between start and end with insert string."
+  [text start-pos end-pos insert-str]
+  (str (subs text 0 start-pos)
+       insert-str
+       (subs text (min end-pos (count text)))))
+
 (intent/register-intent! :autocomplete/select
                          {:doc "Select current autocomplete item and insert.
 
@@ -277,32 +294,18 @@
                             (let [autocomplete (get-in session [:ui :autocomplete])
                                   {:keys [type block-id trigger-pos trigger-length query selected items]} autocomplete
                                   item (get items selected)
-                                  ;; Use buffer text (injected by executor) since we're editing
-                                  ;; Fall back to DB text if buffer not available
-                                  buffer-text (get-in intent [:pending-buffer :text])
-                                  db-text (q/block-text db block-id)
-                                  text (or buffer-text db-text)
-                                  ;; Default trigger-length for backward compat
+                                  text (or (get-in intent [:pending-buffer :text])
+                                           (q/block-text db block-id))
                                   trig-len (or trigger-length 2)]
                               (when (and autocomplete item text)
-                                (let [;; Calculate what to replace: from trigger start to end of query
-                                      ;; trigger-pos is AFTER trigger chars, so go back by trigger-length
-                                      start-pos (- trigger-pos trig-len)
-                                      ;; End is trigger-pos + query length (for page-ref, also skip closing ]])
-                                      end-pos (+ trigger-pos (count query)
-                                                 (if (= type :page-ref) 2 0))
+                                (let [[start-pos end-pos] (calculate-replacement-range trigger-pos trig-len query type)
                                       insert-str (insert-text db {:type type :item item :query query})
-                                      new-text (str (subs text 0 start-pos)
-                                                    insert-str
-                                                    (subs text (min end-pos (count text))))
-                                      ;; For commands, apply item's backward-pos if set
+                                      new-text (replace-text-segment text start-pos end-pos insert-str)
                                       item-backward (get item :backward-pos 0)
                                       new-cursor (- (+ start-pos (count insert-str)) item-backward)]
                                   {:ops [{:op :update-node
                                           :id block-id
                                           :props {:text new-text}}]
-                                   ;; Exit edit mode to force DOM sync from DB
-                                   ;; User can click to re-enter if needed
                                    :session-updates
                                    {:ui {:autocomplete nil
                                          :editing-block-id nil
@@ -338,10 +341,8 @@
                             (let [autocomplete (get-in session [:ui :autocomplete])
                                   {:keys [selected items]} autocomplete
                                   max-idx (max 0 (dec (count items)))
-                                  new-idx (case direction
-                                            :up (max 0 (dec selected))
-                                            :down (min max-idx (inc selected))
-                                            selected)]
+                                  delta (case direction :up -1 :down 1 0)
+                                  new-idx (-> selected (+ delta) (max 0) (min max-idx))]
                               {:session-updates
                                {:ui {:autocomplete {:selected new-idx}}}}))})
 
@@ -353,7 +354,7 @@
       str/lower-case
       (str/replace #"\s+" "-")
       (str/replace #"[^a-z0-9-]" "")
-      (str "-" (rand-int 10000)))) ; Add random suffix for uniqueness
+      (str "-" (rand-int 10000))))
 
 (intent/register-intent! :page/create
                          {:doc "Create a new page and optionally navigate to it.
