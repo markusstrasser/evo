@@ -27,6 +27,31 @@
     {:prev-id-of (into {} (map (fn [[curr prev-sib _]] [curr prev-sib]) prev-next))
      :next-id-of (into {} (map (fn [[curr _ next-sib]] [curr next-sib]) prev-next))}))
 
+(defn- indexed->id-map
+  "Build id->index map from indexed sequence.
+   Takes output of medley.core/indexed: [[0 id1] [1 id2] ...]
+   Returns: {id1 0, id2 1, ...}"
+  [indexed-ids]
+  (into {} (map (fn [[idx id]] [id idx]) indexed-ids)))
+
+(defn- traverse-tree
+  "Perform DFS traversal collecting pre-order and post-order sequences.
+   Returns {:pre-order [ids...] :post-order [ids...]}."
+  [children-by-parent roots]
+  (letfn [(visit [acc id]
+            (let [acc' (update acc :pre-order conj id)
+                  children (get children-by-parent id [])
+                  acc'' (reduce visit acc' children)]
+              (update acc'' :post-order conj id)))]
+
+    (reduce
+      (fn [acc root]
+        (if (contains? children-by-parent root)
+          (visit acc root)
+          acc))
+      {:pre-order [] :post-order []}
+      roots)))
+
 (defn- compute-traversal
   "Compute pre-order and post-order traversal indexes.
 
@@ -35,33 +60,12 @@
    - :post     - map of id->index in post-order traversal
    - :id-by-pre - map of index->id for pre-order lookup"
   [children-by-parent roots]
-  (letfn [(visit-node [state id]
-            (let [state-with-pre (update state :pre-order conj id)
-                  children (get children-by-parent id [])
-                  state-with-children (reduce visit-node state-with-pre children)]
-              (update state-with-children :post-order conj id)))]
-
-    (let [{:keys [pre-order post-order]}
-          (reduce (fn [state root]
-                    (if (contains? children-by-parent root)
-                      (visit-node state root)
-                      state))
-                  {:pre-order [] :post-order []}
-                  roots)
-
-          id->pre-idx (->> pre-order
-                           m/indexed
-                           (map (fn [[idx id]] [id idx]))
-                           (into {}))
-          id->post-idx (->> post-order
-                            m/indexed
-                            (map (fn [[idx id]] [id idx]))
-                            (into {}))
-          pre-idx->id (into {} (m/indexed pre-order))]
-
-      {:pre id->pre-idx
-       :post id->post-idx
-       :id-by-pre pre-idx->id})))
+  (let [{:keys [pre-order post-order]} (traverse-tree children-by-parent roots)
+        indexed-pre (m/indexed pre-order)
+        indexed-post (m/indexed post-order)]
+    {:pre (indexed->id-map indexed-pre)
+     :post (indexed->id-map indexed-post)
+     :id-by-pre (into {} indexed-pre)}))
 
 (defn- under-doc-root?
   "Check if a node ID is under the :doc root by walking up parent chain."
