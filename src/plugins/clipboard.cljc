@@ -88,6 +88,72 @@
 
 ;; ── Markdown Parsing ──────────────────────────────────────────────────────────
 
+(defn- resolve-parent
+  "Find the parent block for a block at the given depth.
+
+   For depth 0: always use parent-id (top-level in paste context).
+   For depth > 0: use the block at depth-1 from depth-map, or fallback to parent-id."
+  [depth depth-map parent-id]
+  (let [parent-depth (dec depth)]
+    (if (neg? parent-depth)
+      parent-id
+      (if-let [parent-entry (get depth-map parent-depth)]
+        (:id parent-entry)
+        parent-id))))
+
+(defn- resolve-sibling
+  "Find the sibling block to place after, if any.
+
+   Returns the ID of the last block at the same depth with the same parent,
+   or nil if no such sibling exists.
+
+   Special case: For depth 0 when first-block-depth is 0, use after-id
+   (handles case where first block merged with editing block)."
+  [depth actual-parent depth-map first-block-depth after-id]
+  (let [sibling-entry (get depth-map depth)]
+    (cond
+      ;; Same depth AND same parent = sibling
+      (and sibling-entry (= (:parent sibling-entry) actual-parent))
+      (:id sibling-entry)
+
+      ;; Depth 0 with no sibling in depth-map, but we have after-id
+      ;; This handles the case where first block went to editing block
+      (and (zero? depth) (= first-block-depth 0))
+      after-id
+
+      ;; No sibling found
+      :else nil)))
+
+(defn- update-depth-map
+  "Update depth-map with the new block, clearing stale deeper entries.
+
+   Records the new block at its depth, then removes all entries for depths
+   greater than the current depth (they're no longer valid siblings)."
+  [depth-map depth block-id parent-id]
+  (-> depth-map
+      (assoc depth {:id block-id :parent parent-id})
+      ;; Clear entries deeper than current depth
+      (as-> m (reduce dissoc m (filter #(> % depth) (keys m))))))
+
+(defn- make-block-ops
+  "Create kernel operations for a single block.
+
+   Returns [create-op place-op] where:
+   - create-op creates the block with given text
+   - place-op positions it under parent, after sibling (if any)"
+  [block-id text parent-id place-after]
+  (let [create-op {:op :create-node
+                   :id block-id
+                   :type :block
+                   :props {:text text}}
+        place-op {:op :place
+                  :id block-id
+                  :under parent-id
+                  :at (if place-after
+                        {:after place-after}
+                        :first)}]
+    [create-op place-op]))
+
 (defn- markdown-blocks?
   "Check if text looks like markdown block list.
    Matches lines starting with optional whitespace + '- ' or '* ' or '+ '."
@@ -149,15 +215,17 @@
 
 (defn- blocks-to-ops
   "Convert parsed blocks into kernel operations.
-   
-   Uses a map to track the last block at each depth level.
-   When placing a block at depth N:
-   - Parent is the last block at depth N-1 (or parent-id if N=0)
-   - Place after the last sibling at depth N (if any under same parent)
 
-   Optional first-block-depth: when the first parsed block was placed into an 
-   existing block (the editing block), pass its depth here so children can 
-   find their parent. The after-id block will be registered at this depth.
+   Algorithm:
+   - Maintains a depth-map tracking the last block ID at each depth level
+   - For each block at depth N:
+     * Parent is the block at depth N-1 (or parent-id if N=0)
+     * Sibling is the last block at depth N with the same parent
+     * Clear depth-map entries deeper than N (no longer valid)
+
+   Optional first-block-depth: when the first parsed block was merged into an
+   existing block (the editing block), pass its depth here so subsequent children
+   can find their parent. The after-id block will be registered at this depth.
 
    Returns {:ops [...] :last-block-id string}"
   ([parsed-blocks parent-id after-id]
@@ -165,67 +233,33 @@
   ([parsed-blocks parent-id after-id first-block-depth]
    (if (empty? parsed-blocks)
      {:ops [] :last-block-id after-id}
-     (loop [blocks parsed-blocks
-            ops []
-            ;; Map from depth -> {:id block-id :parent parent-id}
-            ;; If first-block-depth provided, after-id is registered at that depth
-            depth-map (cond-> {}
-                        first-block-depth (assoc first-block-depth {:id after-id :parent parent-id}))
-            last-id after-id]
-       (if (empty? blocks)
-         {:ops ops :last-block-id last-id}
-         (let [{:keys [depth text]} (first blocks)
-               new-id (str "block-" (random-uuid))
+     (let [initial-depth-map (cond-> {}
+                               first-block-depth (assoc first-block-depth
+                                                        {:id after-id :parent parent-id}))]
+       (loop [remaining-blocks parsed-blocks
+              ops []
+              depth-map initial-depth-map
+              last-id after-id]
+         (if (empty? remaining-blocks)
+           {:ops ops :last-block-id last-id}
+           (let [{:keys [depth text]} (first remaining-blocks)
+                 new-id (str "block-" (random-uuid))
 
-               ;; Find parent: 
-               ;; - For depth 0: always use parent-id (they're top-level in paste context)
-               ;; - For depth > 0: use the block at depth-1, or fallback to parent-id
-               parent-depth (dec depth)
-               actual-parent (if (neg? parent-depth)
-                               parent-id
-                               (if-let [parent-entry (get depth-map parent-depth)]
-                                 (:id parent-entry)
-                                 parent-id))
+                 ;; Resolve parent and sibling for placement
+                 actual-parent (resolve-parent depth depth-map parent-id)
+                 place-after (resolve-sibling depth actual-parent depth-map
+                                              first-block-depth after-id)
 
-               ;; Find sibling: last block at same depth WITH same parent
-               sibling-entry (get depth-map depth)
-               place-after (cond
-                             ;; Same depth AND same parent = sibling
-                             (and sibling-entry (= (:parent sibling-entry) actual-parent))
-                             (:id sibling-entry)
+                 ;; Create operations for this block
+                 [create-op place-op] (make-block-ops new-id text actual-parent place-after)
 
-                             ;; Depth 0 with no sibling in depth-map, but we have after-id
-                             ;; This handles the case where first block went to editing block
-                             (and (zero? depth) (= first-block-depth 0))
-                             after-id
+                 ;; Update depth map and continue
+                 new-depth-map (update-depth-map depth-map depth new-id actual-parent)]
 
-                             ;; No sibling found
-                             :else nil)
-
-               create-op {:op :create-node
-                          :id new-id
-                          :type :block
-                          :props {:text text}}
-
-               place-op {:op :place
-                         :id new-id
-                         :under actual-parent
-                         :at (if place-after
-                               {:after place-after}
-                               :first)}
-
-               ;; Update depth map: record this block at its depth
-               ;; Also clear deeper depths (they're no longer valid siblings)
-               new-depth-map (-> depth-map
-                                 (assoc depth {:id new-id :parent actual-parent})
-                                 ;; Clear entries deeper than current
-                                 (as-> m (reduce dissoc m
-                                                 (filter #(> % depth) (keys m)))))]
-
-           (recur (rest blocks)
-                  (conj ops create-op place-op)
-                  new-depth-map
-                  new-id)))))))
+             (recur (rest remaining-blocks)
+                    (conj ops create-op place-op)
+                    new-depth-map
+                    new-id))))))))
 
 ;; ── Paste Strategy Helpers ────────────────────────────────────────────────────
 
@@ -238,7 +272,7 @@
 
 (defn- paste-strategy-url-link
   "Smart URL paste: creates markdown link [label](url)."
-  [before after cursor-pos selection pasted-url? pasted-text]
+  [before after _cursor-pos selection pasted-url? pasted-text]
   (let [[label url-text] (if pasted-url?
                            [selection pasted-text]
                            [pasted-text selection])
@@ -249,7 +283,7 @@
 
 (defn- paste-strategy-blank-lines
   "Blank line split: paragraphs become sibling blocks."
-  [before pasted after]
+  [before pasted _after]
   (let [paragraphs (split-by-blank-lines pasted)
         first-para (first paragraphs)
         remaining (rest paragraphs)]
