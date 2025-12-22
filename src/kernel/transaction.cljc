@@ -107,12 +107,13 @@
   [ops]
   (reduce
    (fn [acc op]
-     (if-let [prev (peek acc)]
-       (if (and (= :update-node (:op op) (:op prev))
-                (= (:id op) (:id prev)))
-         (conj (pop acc) (update prev :props ops/deep-merge (:props op)))
-         (conj acc op))
-       [op]))
+     (let [prev (peek acc)
+           same-update? (and (= :update-node (:op op) (:op prev))
+                             (= (:id op) (:id prev)))]
+       (cond
+         (nil? prev) [op]
+         same-update? (conj (pop acc) (update prev :props ops/deep-merge (:props op)))
+         :else (conj acc op))))
    []
    ops))
 
@@ -185,11 +186,10 @@
   "Build parent-of map from children-by-parent.
    Returns map of {child-id parent-id}."
   [children-by-parent]
-  (reduce-kv
-   (fn [m parent kids]
-     (reduce #(assoc %1 %2 parent) m kids))
-   {}
-   children-by-parent))
+  (into {}
+        (for [[parent kids] children-by-parent
+              kid kids]
+          [kid parent])))
 
 (defn- descendant-of-fresh?
   "Check if potential-descendant is a descendant of potential-ancestor.
@@ -250,7 +250,7 @@
   "Validate :create-node operation."
   [db op op-index]
   (let [{:keys [id]} op]
-    (m/remove-vals nil? [(check-node-not-exists db op op-index id)])))
+    (keep identity [(check-node-not-exists db op op-index id)])))
 
 (defn- check-node-exists
   "Validate that node exists. Returns issue if not found, nil otherwise."
@@ -280,23 +280,23 @@
   (let [{:keys [id under at]} op
         node-exists? (contains? (:nodes db) id)
         parent-valid? (db/valid-parent? db under)]
-    (->> [(check-node-exists db op op-index id)
-          (check-parent-valid db op op-index under)
-          ;; Only validate anchor if node exists (otherwise anchor check is moot)
-          (when node-exists?
-            (validate-anchor db op op-index under at id))
-          ;; Only check for cycles if both node and parent exist
-          (when (and node-exists? parent-valid?)
-            (check-no-cycle db op op-index id under))]
-         (remove nil?)
-         flatten
-         vec)))
+    (into []
+          (comp cat
+                (remove nil?))
+          [[(check-node-exists db op op-index id)]
+           [(check-parent-valid db op op-index under)]
+           ;; Only validate anchor if node exists (otherwise anchor check is moot)
+           (when node-exists?
+             (validate-anchor db op op-index under at id))
+           ;; Only check for cycles if both node and parent exist
+           (when (and node-exists? parent-valid?)
+             [(check-no-cycle db op op-index id under)])])))
 
 (defn- validate-update-node
   "Validate :update-node operation."
   [db op op-index]
   (let [{:keys [id]} op]
-    (m/remove-vals nil? [(check-node-exists db op op-index id)])))
+    (keep identity [(check-node-exists db op op-index id)])))
 
 (defn- validate-op
   "Validate a single operation. Returns vector of issues.
@@ -307,18 +307,17 @@
 
    Each validator returns a vector of issues (empty if valid)."
   [db op op-index]
-  (let [schema-issues (when-not (schema/valid-op? op)
-                        [(make-issue op op-index :invalid-schema
-                                     (str "Operation does not match schema: " (schema/explain-op op)))])
-
-        op-issues (case (:op op)
-                    :create-node (validate-create-node db op op-index)
-                    :place (validate-place db op op-index)
-                    :update-node (validate-update-node db op op-index)
-                    [(make-issue op op-index :unknown-op
-                                 (str "Unknown operation: " (:op op)))])]
-
-    (vec (concat schema-issues op-issues))))
+  (into []
+        (comp cat)
+        [(when-not (schema/valid-op? op)
+           [(make-issue op op-index :invalid-schema
+                        (str "Operation does not match schema: " (schema/explain-op op)))])
+         (case (:op op)
+           :create-node (validate-create-node db op op-index)
+           :place (validate-place db op op-index)
+           :update-node (validate-update-node db op op-index)
+           [(make-issue op op-index :unknown-op
+                        (str "Unknown operation: " (:op op)))])]))
 
 (defn- apply-op
   "Apply a single operation to the database."
