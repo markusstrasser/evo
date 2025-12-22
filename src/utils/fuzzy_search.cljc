@@ -5,6 +5,17 @@
    No external dependencies - just string operations."
   (:require [clojure.string :as str]))
 
+;; ── Scoring Constants ─────────────────────────────────────────────────────────
+
+(def ^:private score-exact 1000)
+(def ^:private score-prefix-base 100)
+(def ^:private score-prefix-length-bonus 50)
+(def ^:private score-substring-base 50)
+(def ^:private score-substring-position-bonus 20)
+(def ^:private score-fuzzy-base 10)
+(def ^:private score-fuzzy-density-multiplier 10)
+(def ^:private score-empty-query 50)
+
 (defn normalize
   "Normalize string for comparison: lowercase and trim."
   [s]
@@ -50,21 +61,22 @@
   (let [h (normalize haystack)
         n (normalize needle)]
     (cond
-      (str/blank? n) 50 ; Empty query matches everything moderately
+      (str/blank? n)
+      score-empty-query
 
       (= h n)
-      1000 ; Exact match
+      score-exact
 
       (str/starts-with? h n)
-      (+ 100 (- 50 (count h))) ; Prefix match, shorter strings rank higher
+      (+ score-prefix-base (- score-prefix-length-bonus (count h)))
 
       (str/includes? h n)
       (let [idx (str/index-of h n)]
-        (+ 50 (- 20 idx))) ; Substring match, earlier position ranks higher
+        (+ score-substring-base (- score-substring-position-bonus idx)))
 
       (contains-chars? h n)
       (let [density (/ (count n) (count h))]
-        (+ 10 (* 10 density))) ; Fuzzy match, denser matches rank higher
+        (+ score-fuzzy-base (* score-fuzzy-density-multiplier density)))
 
       :else 0)))
 
@@ -92,10 +104,10 @@
    (if (str/blank? query)
      (take limit items)
      (->> items
-          (map (fn [item]
-                 {:item item
-                  :score (match-score (key-fn item) query)}))
-          (filter #(pos? (:score %)))
+          (keep (fn [item]
+                  (let [score (match-score (key-fn item) query)]
+                    (when (pos? score)
+                      {:item item :score score}))))
           (sort-by :score >)
           (take limit)
           (map :item)))))
@@ -124,14 +136,16 @@
 
       ;; Fuzzy match - highlight individual characters
       (contains-chars? h n)
-      (loop [h-idx 0
-             n-idx 0
-             ranges []]
-        (cond
-          (>= n-idx (count n)) ranges
-          (>= h-idx (count h)) ranges
-          (= (nth h h-idx) (nth n n-idx))
-          (recur (inc h-idx) (inc n-idx) (conj ranges [h-idx (inc h-idx)]))
-          :else (recur (inc h-idx) n-idx ranges)))
+      (let [h-len (count h)
+            n-len (count n)]
+        (loop [h-idx 0
+               n-idx 0
+               ranges []]
+          (cond
+            (>= n-idx n-len) ranges
+            (>= h-idx h-len) ranges
+            (= (nth h h-idx) (nth n n-idx))
+            (recur (inc h-idx) (inc n-idx) (conj ranges [h-idx (inc h-idx)]))
+            :else (recur (inc h-idx) n-idx ranges))))
 
       :else [])))
