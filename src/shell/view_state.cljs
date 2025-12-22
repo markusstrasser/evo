@@ -15,7 +15,8 @@
    View state is intentionally NOT reactive (plain atom):
    - Replicant uses explicit render calls, not reactive subscriptions
    - UI updates are triggered by explicit (d/render!) calls
-   - This keeps the mental model simple and predictable")
+   - This keeps the mental model simple and predictable"
+  (:require [utils.collection :as coll]))
 
 ;; ── View State Atom ─────────────────────────────────────────────────────────
 ;; Holds UI state that TRIGGERS re-renders when changed.
@@ -70,38 +71,6 @@
 ;; Example: {"block-123" "Hello world"}
 
 (defonce !buffer (atom {}))
-
-;; ── Navigation Index Helpers ──────────────────────────────────────────────────
-;; Shared helpers for list navigation (autocomplete, quick-switcher, history).
-;; Defined early so they can be used throughout the file.
-
-(defn- navigate-index
-  "Calculate new index after navigation in given direction.
-   Bounds result to [0, max-idx].
-
-   Examples:
-     (navigate-index :up 5 10)      ;=> 4
-     (navigate-index :down 5 10)    ;=> 6
-     (navigate-index :up 0 10)      ;=> 0  (can't go below 0)
-     (navigate-index :down 9 10)    ;=> 9  (can't exceed max-idx)"
-  [direction current-idx max-idx]
-  (let [delta (case direction :up -1 :down 1 0)
-        new-idx (+ current-idx delta)]
-    (max 0 (min new-idx max-idx))))
-
-(defn- cap-vector
-  "Cap vector at max-size by dropping oldest entries (from start).
-   Uses subvec when possible for clarity.
-
-   Examples:
-     (cap-vector [1 2 3 4 5] 3)     ;=> [3 4 5]
-     (cap-vector [1 2] 5)           ;=> [1 2]
-     (cap-vector [] 5)              ;=> []"
-  [v max-size]
-  (let [size (count v)]
-    (if (> size max-size)
-      (subvec v (- size max-size))
-      v)))
 
 (defn- can-navigate-back?
   "Check if we can navigate backwards (index > 0)."
@@ -458,7 +427,7 @@
   [direction]
   (let [{:keys [selected items]} (autocomplete)
         max-idx (max 0 (dec (count items)))
-        new-idx (navigate-index direction selected max-idx)]
+        new-idx (coll/navigate-index direction selected max-idx)]
     (swap-view-state! assoc-in [:ui :autocomplete :selected] new-idx)))
 
 ;; ── Quick Switcher (Cmd+K) ────────────────────────────────────────────────────
@@ -505,7 +474,7 @@
   [direction result-count]
   (let [{:keys [selected-idx]} (quick-switcher)
         max-idx (max 0 (dec result-count))
-        new-idx (navigate-index direction selected-idx max-idx)]
+        new-idx (coll/navigate-index direction selected-idx max-idx)]
     (swap-view-state! assoc-in [:ui :quick-switcher :selected-idx] new-idx)))
 
 ;; ── Debug Helpers ─────────────────────────────────────────────────────────────
@@ -714,7 +683,7 @@
       (when-not (some #{page-id} current-recents)
         (swap-view-state! update-in [:ui :recents]
                           (fn [recent-list]
-                            (cap-vector (conj (vec recent-list) page-id) max-recents)))
+                            (coll/cap-vector (conj (vec recent-list) page-id) max-recents)))
         (persist-recents!)))))
 
 (defn clear-recents!
@@ -801,7 +770,7 @@
                          truncated
                          (conj truncated new-page-id))
               ;; Cap at max-history (drop oldest)
-              capped-hist (cap-vector new-hist max-history)
+              capped-hist (coll/cap-vector new-hist max-history)
               ;; Calculate new index
               new-idx (dec (count capped-hist))]
           (swap-view-state! assoc-in [:ui :history] capped-hist)

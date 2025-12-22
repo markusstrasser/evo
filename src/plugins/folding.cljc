@@ -11,7 +11,8 @@
    - Zoom in: focus on a block (make it rendering root)
    - Zoom out: return to parent context"
   (:require [kernel.intent :as intent]
-            [kernel.constants :as const]))
+            [kernel.constants :as const]
+            [utils.collection :as coll]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
@@ -42,23 +43,6 @@
   [db block-id]
   (let [children (get-in db [:children-by-parent block-id] [])]
     (into children (mapcat #(all-descendant-ids db %) children))))
-
-(defn- toggle-set-membership
-  "Toggle membership of item in set. Returns new set."
-  [s item]
-  (if (contains? s item)
-    (disj s item)
-    (conj s item)))
-
-(defn- remove-all
-  "Remove all items from set. More efficient than (apply disj ...)."
-  [s items]
-  (reduce disj s items))
-
-(defn- add-all
-  "Add all items to set. More efficient than (apply conj ...)."
-  [s items]
-  (reduce conj s items))
 
 ;; ── Query API (Public) ────────────────────────────────────────────────────────
 
@@ -102,7 +86,7 @@
                                        {:session-updates
                                         {:ui {:folded (-> session
                                                           folded-set
-                                                          (toggle-set-membership block-id))}}}))})
+                                                          (coll/toggle-membership block-id))}}}))})
 
 (intent/register-intent! :expand-all
                          {:doc "Recursively expand a block and all descendants."
@@ -114,7 +98,7 @@
                                          {:session-updates
                                           {:ui {:folded (-> session
                                                             folded-set
-                                                            (remove-all all-ids))}}})))})
+                                                            (coll/remove-all all-ids))}}})))})
 
 (intent/register-intent! :collapse
                          {:doc "Collapse a block (hide children)."
@@ -141,8 +125,8 @@
                                              current-folded (folded-set session)
                                              all-collapsed? (every? current-folded all-ids)
                                              new-folded (if all-collapsed?
-                                                          (remove-all current-folded all-ids)
-                                                          (add-all current-folded all-ids))]
+                                                          (coll/remove-all current-folded all-ids)
+                                                          (coll/add-all current-folded all-ids))]
                                          {:session-updates {:ui {:folded new-folded}}})))})
 
 (intent/register-intent! :toggle-all-folds
@@ -154,9 +138,9 @@
                                            current-folded (folded-set session)
                                            any-folded? (some current-folded all-ids)
                                            new-folded (if any-folded?
-                                                        (remove-all current-folded all-ids)
-                                                        (add-all current-folded
-                                                                 (get-in db [:children-by-parent root-id])))]
+                                                        (coll/remove-all current-folded all-ids)
+                                                        (coll/add-all current-folded
+                                                                      (get-in db [:children-by-parent root-id])))]
                                        {:session-updates {:ui {:folded new-folded}}}))})
 
 ;; ── Zoom Intents ──────────────────────────────────────────────────────────────
