@@ -15,7 +15,8 @@
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
             [utils.fuzzy-search :as fuzzy]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            #?(:cljs [utils.journal :as journal])))
 
 ;; Sentinel for DCE prevention
 
@@ -88,50 +89,6 @@
 
 ;; ── Slash Command Implementation ─────────────────────────────────────────────
 
-(defn- format-date
-  "Format a date as a page reference string like [[Dec 10, 2025]]"
-  [date-obj]
-  #?(:cljs
-     (let [months ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
-                   "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
-           month (nth months (.getMonth date-obj))
-           day (.getDate date-obj)
-           year (.getFullYear date-obj)]
-       (str "[[" month " " day ", " year "]]"))
-     :clj
-     (do
-       (assert date-obj "date-obj required") ; Silence unused binding warning
-       (str "[[" (java.time.LocalDate/now) "]]"))))
-
-(defn- get-today []
-  #?(:cljs (js/Date.) :clj (java.util.Date.)))
-
-(defn- get-tomorrow []
-  #?(:cljs
-     (let [d (js/Date.)]
-       (.setDate d (inc (.getDate d)))
-       d)
-     :clj
-     (java.util.Date.)))
-
-(defn- get-yesterday []
-  #?(:cljs
-     (let [d (js/Date.)]
-       (.setDate d (dec (.getDate d)))
-       d)
-     :clj
-     (java.util.Date.)))
-
-(defn- get-current-time []
-  #?(:cljs
-     (let [d (js/Date.)
-           hours (.getHours d)
-           minutes (.getMinutes d)
-           pad #(if (< % 10) (str "0" %) (str %))]
-       (str (pad hours) ":" (pad minutes)))
-     :clj
-     "00:00"))
-
 (def ^:private slash-commands
   "Registry of slash commands.
    Each command: {:id :keyword :name \"Display Name\" :description \"...\" :icon \"emoji\"
@@ -141,35 +98,40 @@
     :description "[[Dec 10, 2025]]"
     :icon "📅"
     :category "Date & Time"
-    :insert-fn #(format-date (get-today))}
+    :insert-fn #?(:cljs journal/today-page-ref
+                  :clj (constantly "[[today]]"))}
 
    {:id :tomorrow
     :name "Tomorrow"
     :description "[[Dec 11, 2025]]"
     :icon "📆"
     :category "Date & Time"
-    :insert-fn #(format-date (get-tomorrow))}
+    :insert-fn #?(:cljs journal/tomorrow-page-ref
+                  :clj (constantly "[[tomorrow]]"))}
 
    {:id :yesterday
     :name "Yesterday"
     :description "[[Dec 9, 2025]]"
     :icon "📆"
     :category "Date & Time"
-    :insert-fn #(format-date (get-yesterday))}
+    :insert-fn #?(:cljs journal/yesterday-page-ref
+                  :clj (constantly "[[yesterday]]"))}
 
    {:id :current-time
     :name "Time"
     :description "HH:MM"
     :icon "🕐"
     :category "Date & Time"
-    :insert-fn get-current-time}
+    :insert-fn #?(:cljs journal/current-time
+                  :clj (constantly "00:00"))}
 
    {:id :date-picker
     :name "Date picker"
     :description "Calendar"
     :icon "📅"
     :category "Date & Time"
-    :insert-fn #(format-date (get-today))}  ; TODO: Show actual date picker
+    :insert-fn #?(:cljs journal/today-page-ref
+                  :clj (constantly "[[today]]"))}  ; TODO: Show actual date picker
 
    {:id :tweet
     :name "Tweet"
