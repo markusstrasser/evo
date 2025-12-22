@@ -239,38 +239,55 @@
                          :anchor-bad)
                        (str "Invalid anchor: " (pr-str at)))])))))
 
+(defn- check-node-not-exists
+  "Validate that node doesn't already exist. Returns issue if duplicate found, nil otherwise."
+  [db op op-index id]
+  (when (contains? (:nodes db) id)
+    (make-issue op op-index :duplicate-create
+                (str "Node " id " already exists"))))
+
 (defn- validate-create-node
   "Validate :create-node operation."
   [db op op-index]
   (let [{:keys [id]} op]
-    (if (contains? (:nodes db) id)
-      [(make-issue op op-index :duplicate-create
-                   (str "Node " id " already exists"))]
-      [])))
+    (m/remove-vals nil? [(check-node-not-exists db op op-index id)])))
+
+(defn- check-node-exists
+  "Validate that node exists. Returns issue if not found, nil otherwise."
+  [db op op-index id]
+  (when-not (contains? (:nodes db) id)
+    (make-issue op op-index :node-not-found
+                (str "Node " id " does not exist"))))
+
+(defn- check-parent-valid
+  "Validate that parent is valid. Returns issue if invalid, nil otherwise."
+  [db op op-index under]
+  (when-not (db/valid-parent? db under)
+    (make-issue op op-index :parent-not-found
+                (str "Parent " under " does not exist"))))
+
+(defn- check-no-cycle
+  "Validate that placement doesn't create cycle. Returns issue if cycle detected, nil otherwise."
+  [db op op-index id under]
+  (when (would-create-cycle? db id under)
+    (make-issue op op-index :cycle-detected
+                (str "Cannot place " id " under " under " - would create cycle"))))
 
 (defn- validate-place
-  "Validate :place operation."
+  "Validate :place operation.
+   Checks node existence, parent validity, anchor validity, and cycle prevention."
   [db op op-index]
   (let [{:keys [id under at]} op
         node-exists? (contains? (:nodes db) id)
         parent-valid? (db/valid-parent? db under)]
-    (->> [(when-not node-exists?
-            (make-issue op op-index :node-not-found
-                        (str "Node " id " does not exist")))
-
-          (when-not parent-valid?
-            (make-issue op op-index :parent-not-found
-                        (str "Parent " under " does not exist")))
-
+    (->> [(check-node-exists db op op-index id)
+          (check-parent-valid db op op-index under)
           ;; Only validate anchor if node exists (otherwise anchor check is moot)
           (when node-exists?
             (validate-anchor db op op-index under at id))
-
           ;; Only check for cycles if both node and parent exist
-          (when (and node-exists? parent-valid?
-                     (would-create-cycle? db id under))
-            (make-issue op op-index :cycle-detected
-                        (str "Cannot place " id " under " under " - would create cycle")))]
+          (when (and node-exists? parent-valid?)
+            (check-no-cycle db op op-index id under))]
          (remove nil?)
          flatten
          vec)))
@@ -279,10 +296,7 @@
   "Validate :update-node operation."
   [db op op-index]
   (let [{:keys [id]} op]
-    (if (contains? (:nodes db) id)
-      []
-      [(make-issue op op-index :node-not-found
-                   (str "Node " id " does not exist"))])))
+    (m/remove-vals nil? [(check-node-exists db op op-index id)])))
 
 (defn- validate-op
   "Validate a single operation. Returns vector of issues.
