@@ -68,6 +68,42 @@
        (not (str/blank? title))
        (not= title "Untitled")))
 
+(defn- build-page-metadata
+  "Build metadata map for a page ID.
+
+   Returns map with :id, :title, :journal?, :is-today?, :has-content?, :favorite?, :valid?
+   Used for both active and trashed pages."
+  [db pid today favorites-set]
+  (let [title (q/page-title db pid)
+        date (parse-journal-date title)]
+    {:id pid
+     :title title
+     :journal? (journal-page? title)
+     :is-today? (= date today)
+     :has-content? (has-content? db pid)
+     :favorite? (contains? favorites-set pid)
+     :valid? (valid-page? title)}))
+
+(defn- build-trashed-metadata
+  "Build metadata for trashed page.
+
+   Returns map with :id, :title, :trashed-at or nil if invalid."
+  [db pid]
+  (let [title (q/page-title db pid)]
+    (when (valid-page? title)
+      {:id pid
+       :title title
+       :trashed-at (q/trashed-at db pid)})))
+
+(defn- lookup-pages-in-order
+  "Given a sequence of page IDs and a collection of page metadata,
+   return metadata in the order specified by IDs.
+
+   Filters out pages not found in metadata collection."
+  [page-ids pages-with-meta]
+  (let [id->page (into {} (map (juxt :id identity)) pages-with-meta)]
+    (keep id->page page-ids)))
+
 ;; ── Icons (inline SVG for crisp rendering) ───────────────────────────────────
 
 (defn- Icon
@@ -306,49 +342,30 @@
         today (today-iso)
         sidebar-width (vs/sidebar-width)
 
-        ;; Build page metadata, filtering invalid pages
+        ;; Build and filter valid pages
         pages-with-meta (->> all-pages
-                             (map (fn [pid]
-                                    (let [title (q/page-title db pid)
-                                          date (parse-journal-date title)]
-                                      {:id pid
-                                       :title title
-                                       :journal? (journal-page? title)
-                                       :is-today? (= date today)
-                                       :has-content? (has-content? db pid)
-                                       :favorite? (contains? favorites-set pid)
-                                       :valid? (valid-page? title)})))
+                             (map #(build-page-metadata db % today favorites-set))
                              (filter :valid?))
 
-        ;; Separate journals from regular pages
-        all-journal-pages (filter :journal? pages-with-meta)
-        regular-pages (remove :journal? pages-with-meta)
+        ;; Categorize by journal vs regular
+        journals (filter :journal? pages-with-meta)
+        regular (remove :journal? pages-with-meta)
 
         ;; Filter journals: only show today OR those with content (Logseq parity)
-        visible-journal-pages (filter #(or (:is-today? %) (:has-content? %)) all-journal-pages)
+        visible-journal-pages (filter #(or (:is-today? %) (:has-content? %)) journals)
 
         ;; Group regular pages by type (LOGSEQ: recents exclude journals)
-        favorites (->> regular-pages
+        favorites (->> regular
                        (filter :favorite?)
                        (sort-by :title))
-        recents (->> recents-list
-                     (keep (fn [pid]
-                             (some #(when (= (:id %) pid) %) regular-pages)))
-                     (remove :favorite?) ; Don't duplicate favorites
+
+        recents (->> (lookup-pages-in-order recents-list regular)
+                     (remove :favorite?)
                      (take 10))
 
-        ;; Trashed pages for Trashbin section (filter out invalid/Untitled)
+        ;; Trashed pages with consistent validation
         trashed-pages (->> (q/trashed-pages db)
-                           (keep (fn [pid]
-                                   (let [title (q/page-title db pid)
-                                         trashed-at (q/trashed-at db pid)]
-                                     ;; Only show valid pages with real titles
-                                     (when (and title
-                                                (not (str/blank? title))
-                                                (not= title "Untitled"))
-                                       {:id pid
-                                        :title title
-                                        :trashed-at trashed-at}))))
+                           (keep #(build-trashed-metadata db %))
                            (sort-by (fn [p] (or (:trashed-at p) 0)) >))
 
         ;; Resize handle event handlers
@@ -427,8 +444,8 @@
                       (on-intent {:type :open-all-pages-view}))}}
        [:span.nav-icon (Icon {:icon-name :file :size 16})]
        [:span.nav-label "All Pages"]
-       (when (seq regular-pages)
-         [:span.nav-count (count regular-pages)])]]
+       (when (seq regular)
+         [:span.nav-count (count regular)])]]
 
      ;; Favorites section
      (when (seq favorites)
