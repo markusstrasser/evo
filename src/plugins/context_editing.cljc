@@ -14,6 +14,7 @@
             [kernel.constants :as const]
             [kernel.query :as q]
             [utils.text-context :as ctx]
+            [utils.intent-helpers :as helpers]
             #?(:clj [clojure.string :as str]
                :cljs [clojure.string :as str])))
 
@@ -290,30 +291,7 @@
      :new-id (str "block-" (random-uuid))
      :code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)}))
 
-(defn- make-split-result
-  "Build standard split result with ops and session updates.
-
-   Options:
-   - :current-text - update current block text (nil = no update)
-   - :new-text - text for new block
-   - :placement - where to place new block (:after :before :first-child)
-   - :editing-block-id - which block to edit after split
-   - :cursor-position - cursor position in edited block"
-  [{:keys [block-id parent new-id]}
-   {:keys [current-text new-text placement editing-block-id cursor-position]}]
-  (let [update-op (when current-text
-                    [{:op :update-node :id block-id :props {:text current-text}}])
-        create-op {:op :create-node :id new-id :type :block :props {:text new-text}}
-        place-op {:op :place
-                  :id new-id
-                  :under (if (= placement :first-child) block-id parent)
-                  :at (case placement
-                        :after {:after block-id}
-                        :before {:before block-id}
-                        :first-child :first)}]
-    {:ops (concat update-op [create-op place-op])
-     :session-updates {:ui {:editing-block-id editing-block-id
-                            :cursor-position cursor-position}}}))
+;; make-split-result moved to utils.intent-helpers
 
 (defn- split-in-code-block
   "Handle Enter inside code fence - insert newline without splitting."
@@ -328,11 +306,11 @@
 
 (defn- split-with-list-increment
   "Split numbered list, incrementing the number for new block."
-  [{:keys [block-id parent new-id before after] :as ctx}]
+  [{:keys [parent new-id before after] :as ctx}]
   (when parent
     (when-let [num-value (extract-list-number before)]
       (let [prefix (str (inc num-value) ". ")]
-        (make-split-result
+        (helpers/make-split-result
          ctx
          {:current-text before
           :new-text (str prefix (str/triml after))
@@ -344,7 +322,7 @@
   "Split checkbox block, continuing pattern in new block."
   [{:keys [parent] :as ctx}]
   (when parent
-    (make-split-result
+    (helpers/make-split-result
      ctx
      {:current-text (:before ctx)
       :new-text (str "[ ] " (str/triml (:after ctx)))
@@ -355,7 +333,7 @@
 (defn- split-at-position-zero
   "Create empty block above current, keep cursor on current."
   [{:keys [block-id] :as ctx}]
-  (make-split-result
+  (helpers/make-split-result
    ctx
    {:new-text ""
     :placement :before
@@ -365,7 +343,7 @@
 (defn- split-at-end-with-children
   "Create first child when splitting at end of block with expanded children."
   [ctx]
-  (make-split-result
+  (helpers/make-split-result
    ctx
    {:new-text ""
     :placement :first-child
@@ -375,7 +353,7 @@
 (defn- split-at-end
   "Create sibling below when splitting at end of block."
   [ctx]
-  (make-split-result
+  (helpers/make-split-result
    ctx
    {:new-text ""
     :placement :after
@@ -385,7 +363,7 @@
 (defn- split-normal
   "Standard split - update current, create new with trimmed text."
   [ctx]
-  (make-split-result
+  (helpers/make-split-result
    ctx
    {:current-text (:before ctx)
     :new-text (str/triml (:after ctx))
@@ -458,57 +436,26 @@
 
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
 
-;; Shared operations helpers
-
-(defn- make-new-block-id
-  "Generate a new block ID."
-  []
-  (str "block-" (random-uuid)))
-
-(defn- split-text-at
-  "Split text at cursor position, returning [before after]."
-  [text cursor-pos]
-  [(subs text 0 cursor-pos) (subs text cursor-pos)])
-
-(defn- make-split-ops
-  "Create standard split operations: update current, create new, place new.
-
-   Args:
-     block-id: Current block ID
-     parent: Parent ID for placement
-     before: Text for current block
-     after: Text for new block
-     new-id: ID for new block (or nil to generate)
-
-   Returns:
-     Vector of [ops new-block-id] for operation chaining."
-  [block-id parent before after new-id]
-  (let [new-id (or new-id (make-new-block-id))]
-    [[{:op :update-node :id block-id :props {:text before}}
-      {:op :create-node :id new-id :type :block :props {:text after}}
-      {:op :place :id new-id :under parent :at {:after block-id}}]
-     new-id]))
-
-(defn- make-cursor-update
-  "Create cursor position update for new block."
-  [block-id cursor-pos]
-  {:ui {:editing-block-id block-id
-        :cursor-position cursor-pos}})
+;; Shared helpers now in utils.intent-helpers:
+;; - helpers/split-text-at
+;; - helpers/make-split-ops
+;; - helpers/make-cursor-update
+;; - helpers/make-new-block-id
 
 ;; Context-specific handlers
 
 (defn- handle-markup-enter
   "Exit markup by moving cursor after closing marker."
   [_db _session {:keys [block-id]} context]
-  {:session-updates (make-cursor-update block-id (:end context))})
+  {:session-updates (helpers/make-cursor-update block-id (:end context))})
 
 (defn- handle-code-block-enter
   "Insert newline within code block (don't split)."
-  [_db _session {:keys [block-id cursor-pos] :as intent} _context]
-  (let [text (get-block-text _db block-id intent)
+  [db _session {:keys [block-id cursor-pos] :as intent} _context]
+  (let [text (get-block-text db block-id intent)
         new-text (str (subs text 0 cursor-pos) "\n" (subs text cursor-pos))]
     {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-     :session-updates (make-cursor-update block-id (inc cursor-pos))}))
+     :session-updates (helpers/make-cursor-update block-id (inc cursor-pos))}))
 
 (defn- handle-page-ref-enter
   "Navigate to page (TODO: implement navigation)."
@@ -523,15 +470,15 @@
     [{:op :update-node :id block-id :props {:text ""}}]
     ;; Checkbox with content - continue pattern
     (let [text (get-block-text db block-id intent)
-          [before after] (split-text-at text cursor-pos)
+          [before after] (helpers/split-text-at text cursor-pos)
           parent (get-in db [:derived :parent-of block-id])
-          new-id (make-new-block-id)
+          new-id (helpers/make-new-block-id)
           new-text (str "- [ ] " after)]
       (when parent
         {:ops [{:op :update-node :id block-id :props {:text before}}
                {:op :create-node :id new-id :type :block :props {:text new-text}}
                {:op :place :id new-id :under parent :at {:after block-id}}]
-         :session-updates (make-cursor-update new-id 6)}))))
+         :session-updates (helpers/make-cursor-update new-id 6)}))))
 
 (defn- handle-empty-list-enter
   "Handle empty list item: unformat and create peer block (Logseq parity).
@@ -542,7 +489,7 @@
   [db _session {:keys [block-id]} _context]
   (let [parent (get-in db [:derived :parent-of block-id])
         grandparent (when parent (get-in db [:derived :parent-of parent]))
-        new-id (make-new-block-id)
+        new-id (helpers/make-new-block-id)
         ;; DEBUG: Verify grandparent→parent relationship (only logs errors)
         _ #?(:cljs
              (when ^boolean goog.DEBUG
@@ -564,44 +511,44 @@
       {:ops [{:op :update-node :id block-id :props {:text ""}}
              {:op :create-node :id new-id :type :block :props {:text ""}}
              {:op :place :id new-id :under grandparent :at {:after parent}}]
-       :session-updates (make-cursor-update new-id 0)}
+       :session-updates (helpers/make-cursor-update new-id 0)}
       ;; Top-level: unformat + create sibling
       (when parent
         {:ops [{:op :update-node :id block-id :props {:text ""}}
                {:op :create-node :id new-id :type :block :props {:text ""}}
                {:op :place :id new-id :under parent :at {:after block-id}}]
-         :session-updates (make-cursor-update new-id 0)}))))
+         :session-updates (helpers/make-cursor-update new-id 0)}))))
 
 (defn- handle-numbered-list-enter
   "Handle numbered list: increment number, split at cursor."
   [db _session {:keys [block-id cursor-pos] :as intent} context]
   (let [text (get-block-text db block-id intent)
-        [before after] (split-text-at text cursor-pos)
+        [before after] (helpers/split-text-at text cursor-pos)
         parent (get-in db [:derived :parent-of block-id])
         new-number (inc (:number context))
         prefix (str new-number ". ")
         new-text (str prefix after)
-        new-id (make-new-block-id)]
+        new-id (helpers/make-new-block-id)]
     (when parent
       {:ops [{:op :update-node :id block-id :props {:text before}}
              {:op :create-node :id new-id :type :block :props {:text new-text}}
              {:op :place :id new-id :under parent :at {:after block-id}}]
-       :session-updates (make-cursor-update new-id (count prefix))})))
+       :session-updates (helpers/make-cursor-update new-id (count prefix))})))
 
 (defn- handle-simple-list-enter
   "Handle simple list (-, *, +): continue with same marker."
   [db _session {:keys [block-id cursor-pos] :as intent} context]
   (let [text (get-block-text db block-id intent)
-        [before after] (split-text-at text cursor-pos)
+        [before after] (helpers/split-text-at text cursor-pos)
         parent (get-in db [:derived :parent-of block-id])
         marker (:marker context)
         new-text (str marker after)
-        new-id (make-new-block-id)]
+        new-id (helpers/make-new-block-id)]
     (when parent
       {:ops [{:op :update-node :id block-id :props {:text before}}
              {:op :create-node :id new-id :type :block :props {:text new-text}}
              {:op :place :id new-id :under parent :at {:after block-id}}]
-       :session-updates (make-cursor-update new-id (count marker))})))
+       :session-updates (helpers/make-cursor-update new-id (count marker))})))
 
 (defn- handle-list-item-enter
   "Handle list item: delegate to empty/numbered/simple handlers."
@@ -621,30 +568,30 @@
    - Otherwise: normal split (trim whitespace from new block)"
   [db session {:keys [block-id cursor-pos] :as intent} _context]
   (let [text (get-block-text db block-id intent)
-        [before after] (split-text-at text cursor-pos)
+        [before after] (helpers/split-text-at text cursor-pos)
         parent (get-in db [:derived :parent-of block-id])
-        new-id (make-new-block-id)]
+        new-id (helpers/make-new-block-id)]
     (when parent
       (cond
         ;; Enter at position 0 → create block above
         (zero? cursor-pos)
         {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
                {:op :place :id new-id :under parent :at {:before block-id}}]
-         :session-updates (make-cursor-update block-id 0)}
+         :session-updates (helpers/make-cursor-update block-id 0)}
 
         ;; Cursor at end + expanded children → first child
         (and (empty? after)
              (has-expanded-children? db session block-id))
         {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
                {:op :place :id new-id :under block-id :at :first}]
-         :session-updates (make-cursor-update new-id 0)}
+         :session-updates (helpers/make-cursor-update new-id 0)}
 
         ;; Normal split - trim whitespace from new block
         :else
         {:ops [{:op :update-node :id block-id :props {:text before}}
                {:op :create-node :id new-id :type :block :props {:text (str/triml after)}}
                {:op :place :id new-id :under parent :at {:after block-id}}]
-         :session-updates (make-cursor-update new-id 0)}))))
+         :session-updates (helpers/make-cursor-update new-id 0)}))))
 
 ;; Handler dispatch map
 (def ^:private context-handlers
