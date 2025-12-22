@@ -13,7 +13,8 @@
             [kernel.query :as q]
             [kernel.constants :as const]
             [medley.core :as m]
-            [utils.text-context :as ctx]))
+            [utils.text-context :as ctx]
+            #?(:cljs [utils.journal :as journal])))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
@@ -284,18 +285,21 @@
 (defn- today-journal-title
   "Get today's journal title in human format (Dec 14th, 2025)."
   []
-  (let [months ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
-        now #?(:clj (java.util.Date.) :cljs (js/Date.))
-        day #?(:clj (.getDate now) :cljs (.getDate now))
-        month #?(:clj (.getMonth now) :cljs (.getMonth now))
-        year #?(:clj (+ 1900 (.getYear now)) :cljs (.getFullYear now))
-        suffix (cond
-                 (#{11 12 13} (mod day 100)) "th"
-                 (= 1 (mod day 10)) "st"
-                 (= 2 (mod day 10)) "nd"
-                 (= 3 (mod day 10)) "rd"
-                 :else "th")]
-    (str (nth months month) " " day suffix ", " year)))
+  #?(:cljs (journal/today-title)
+     :clj
+     ;; CLJ fallback for tests (uses java.util.Date)
+     (let [months ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
+           now (java.util.Date.)
+           day (.getDate now)
+           month (.getMonth now)
+           year (+ 1900 (.getYear now))
+           suffix (cond
+                    (#{11 12 13} (mod day 100)) "th"
+                    (= 1 (mod day 10)) "st"
+                    (= 2 (mod day 10)) "nd"
+                    (= 3 (mod day 10)) "rd"
+                    :else "th")]
+       (str (nth months month) " " day suffix ", " year))))
 
 (defn- handle-auto-trash-empty-page
   "Auto-trash a page if it's empty and has no backlinks.
