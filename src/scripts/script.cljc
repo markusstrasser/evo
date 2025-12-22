@@ -109,7 +109,7 @@
     (let [result (step db)]
       (if (sequential? result)
         ;; Function returned multiple steps, compile each
-        (vec (mapcat (partial step->ops db) result))
+        (into [] (mapcat (partial step->ops db)) result)
         ;; Function returned single step, compile it
         (step->ops db result)))
 
@@ -126,7 +126,7 @@
     (:ops (intent/apply-intent db {} step))
 
     (intents? step)
-    (vec (mapcat #(:ops (intent/apply-intent db {} %)) step))
+    (into [] (mapcat #(:ops (intent/apply-intent db {} %))) step)
 
     :else
     (throw (ex-info "Unknown step form"
@@ -253,24 +253,22 @@
                                   :trace trace
                                   :hint "Check :trace for execution history"})))
 
-             ;; 4. Apply ops to scratch DB
-             scratch-db' (reduce #'tx/apply-op scratch-db normalized-ops)
+             ;; 4. Apply ops and derive indexes on scratch DB
+             scratch-db' (-> scratch-db
+                             (as-> db (reduce #'tx/apply-op db normalized-ops))
+                             db/derive-indexes)
 
-             ;; 5. Derive indexes on scratch DB
-             scratch-db'' (db/derive-indexes scratch-db')
-
-             ;; 6. Record trace entry (for debugging)
+             ;; 5. Record trace entry (for debugging)
              trace-entry {:step step
                           :step-index step-count
                           :ops normalized-ops
-                          :db-after scratch-db''}
-             trace' (conj trace trace-entry)]
+                          :db-after scratch-db'}]
 
          ;; Recurse: Continue with remaining steps
-         (recur scratch-db''
-                (subvec remaining 1)
+         (recur scratch-db'
+                (rest remaining)
                 (into accumulated-ops normalized-ops)
-                trace'
+                (conj trace trace-entry)
                 (inc step-count)))))))
 
 ;; ── Public API ─────────────────────────────────────────────────────────────────
