@@ -71,6 +71,55 @@
 
 (defonce !buffer (atom {}))
 
+;; ── Navigation Index Helpers ──────────────────────────────────────────────────
+;; Shared helpers for list navigation (autocomplete, quick-switcher, history).
+;; Defined early so they can be used throughout the file.
+
+(defn- navigate-index
+  "Calculate new index after navigation in given direction.
+   Bounds result to [0, max-idx].
+
+   Examples:
+     (navigate-index :up 5 10)      ;=> 4
+     (navigate-index :down 5 10)    ;=> 6
+     (navigate-index :up 0 10)      ;=> 0  (can't go below 0)
+     (navigate-index :down 9 10)    ;=> 9  (can't exceed max-idx)"
+  [direction current-idx max-idx]
+  (let [delta (case direction :up -1 :down 1 0)
+        new-idx (+ current-idx delta)]
+    (max 0 (min new-idx max-idx))))
+
+(defn- cap-vector
+  "Cap vector at max-size by dropping oldest entries (from start).
+   Uses subvec when possible for clarity.
+
+   Examples:
+     (cap-vector [1 2 3 4 5] 3)     ;=> [3 4 5]
+     (cap-vector [1 2] 5)           ;=> [1 2]
+     (cap-vector [] 5)              ;=> []"
+  [v max-size]
+  (let [size (count v)]
+    (if (> size max-size)
+      (subvec v (- size max-size))
+      v)))
+
+(defn- can-navigate-back?
+  "Check if we can navigate backwards (index > 0)."
+  [idx]
+  (> idx 0))
+
+(defn- can-navigate-forward?
+  "Check if we can navigate forwards (index < last)."
+  [idx coll]
+  (and (>= idx 0) (< idx (dec (count coll)))))
+
+(defn- can-navigate?
+  "Check if navigation is possible in the given direction (:back or :forward)."
+  [direction idx history-vec]
+  (case direction
+    :back (can-navigate-back? idx)
+    :forward (can-navigate-forward? idx history-vec)))
+
 ;; ── Public API ────────────────────────────────────────────────────────────────
 
 (defn get-view-state
@@ -409,10 +458,7 @@
   [direction]
   (let [{:keys [selected items]} (autocomplete)
         max-idx (max 0 (dec (count items)))
-        new-idx (case direction
-                  :up (max 0 (dec selected))
-                  :down (min max-idx (inc selected))
-                  selected)]
+        new-idx (navigate-index direction selected max-idx)]
     (swap-view-state! assoc-in [:ui :autocomplete :selected] new-idx)))
 
 ;; ── Quick Switcher (Cmd+K) ────────────────────────────────────────────────────
@@ -459,10 +505,7 @@
   [direction result-count]
   (let [{:keys [selected-idx]} (quick-switcher)
         max-idx (max 0 (dec result-count))
-        new-idx (case direction
-                  :up (max 0 (dec selected-idx))
-                  :down (min max-idx (inc selected-idx))
-                  selected-idx)]
+        new-idx (navigate-index direction selected-idx max-idx)]
     (swap-view-state! assoc-in [:ui :quick-switcher :selected-idx] new-idx)))
 
 ;; ── Debug Helpers ─────────────────────────────────────────────────────────────
@@ -564,21 +607,7 @@
 (def ^:const max-recents 15)
 (def ^:const max-history 50)
 
-;; ── Shared Navigation Helpers ─────────────────────────────────────────────────
-
-(defn- cap-vector
-  "Cap vector at max-size by dropping oldest entries from the front."
-  [v max-size]
-  (if (> (count v) max-size)
-    (vec (drop (- (count v) max-size) v))
-    v))
-
-(defn- can-navigate?
-  "Check if navigation is possible in the given direction (:back or :forward)."
-  [direction idx history-vec]
-  (case direction
-    :back (> idx 0)
-    :forward (and (>= idx 0) (< idx (dec (count history-vec))))))
+;; ── History Navigation Helpers ────────────────────────────────────────────────
 
 (defn- navigate-at-index!
   "Generic navigation: update index by delta, return page at new index or nil."
