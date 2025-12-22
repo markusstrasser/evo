@@ -215,6 +215,50 @@
              :type :page-ref
              :page-name inner-text))))
 
+(defn- line-index-at-position
+  "Find which line index contains the given character position.
+   Returns nil if position is beyond text bounds."
+  [lines pos]
+  (loop [idx 0
+         char-pos 0]
+    (if (>= idx (count lines))
+      nil
+      (let [line-len (count (nth lines idx))
+            line-end (+ char-pos line-len)]
+        (if (<= char-pos pos line-end)
+          idx
+          (recur (inc idx) (inc line-end))))))) ; +1 for \n
+
+(defn- cumulative-position
+  "Calculate cumulative character position up to (but not including) the given line index.
+   Accounts for newline characters between lines."
+  [lines target-idx]
+  (loop [idx 0
+         pos 0]
+    (if (= idx target-idx)
+      pos
+      (recur (inc idx) (+ pos (count (nth lines idx)) 1)))))
+
+(defn- find-code-fence-backward
+  "Search backward from start-idx to find a line starting with ```
+   Returns the line index or nil if not found."
+  [lines start-idx]
+  (loop [idx start-idx]
+    (when (>= idx 0)
+      (if (str/starts-with? (nth lines idx) "```")
+        idx
+        (recur (dec idx))))))
+
+(defn- find-code-fence-forward
+  "Search forward from start-idx to find a line starting with ```
+   Returns the line index or nil if not found."
+  [lines start-idx]
+  (loop [idx start-idx]
+    (when (< idx (count lines))
+      (if (str/starts-with? (nth lines idx) "```")
+        idx
+        (recur (inc idx))))))
+
 (defn detect-code-block-at-cursor
   "Detect if cursor is inside ```code block```.
 
@@ -224,47 +268,17 @@
      => {:type :code-block :lang 'clojure' :start 0 :end 24}"
   [text cursor-pos]
   (let [lines (str/split text #"\n")
-        ;; Find which line contains cursor
-        cursor-line-idx (loop [idx 0
-                               pos 0]
-                          (if (>= idx (count lines))
-                            nil
-                            (let [line-len (count (nth lines idx))
-                                  line-end (+ pos line-len)]
-                              (if (<= pos cursor-pos line-end)
-                                idx
-                                (recur (inc idx) (inc line-end)))))) ; +1 for \n
-
-        ;; Search backwards for opening ```
-        open-idx (when cursor-line-idx
-                   (loop [idx cursor-line-idx]
-                     (when (>= idx 0)
-                       (if (str/starts-with? (nth lines idx) "```")
-                         idx
-                         (recur (dec idx))))))
-
-        ;; Search forwards for closing ```
-        close-idx (when cursor-line-idx
-                    (loop [idx (inc cursor-line-idx)]
-                      (when (< idx (count lines))
-                        (if (str/starts-with? (nth lines idx) "```")
-                          idx
-                          (recur (inc idx))))))]
+        cursor-line-idx (line-index-at-position lines cursor-pos)
+        open-idx (when cursor-line-idx (find-code-fence-backward lines cursor-line-idx))
+        close-idx (when cursor-line-idx (find-code-fence-forward lines (inc cursor-line-idx)))]
 
     (when (and open-idx close-idx)
       (let [open-line (nth lines open-idx)
             lang (str/trim (subs open-line 3)) ; Extract language after ```
-            ;; Calculate positions
-            start-pos (loop [idx 0 pos 0]
-                        (if (= idx open-idx)
-                          pos
-                          (recur (inc idx) (+ pos (count (nth lines idx)) 1))))
-            end-pos (loop [idx 0 pos 0]
-                      (if (= idx (inc close-idx))
-                        (dec pos) ; Don't include final newline
-                        (recur (inc idx) (+ pos (count (nth lines idx)) 1))))]
+            start-pos (cumulative-position lines open-idx)
+            end-pos (dec (cumulative-position lines (inc close-idx)))] ; Don't include final newline
         {:type :code-block
-         :lang (if (str/blank? lang) nil lang)
+         :lang (when-not (str/blank? lang) lang)
          :start start-pos
          :end end-pos
          :inner-start (+ start-pos (count open-line) 1)
