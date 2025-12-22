@@ -15,8 +15,7 @@
    ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props."
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
-            [kernel.query :as q]
-            [kernel.navigation :as nav]))
+            [kernel.query :as q]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
@@ -119,43 +118,57 @@
      :anchor first-or-last
      :direction direction}))
 
+(defn- make-selection-props
+  "Unified result constructor for selection state.
+   All calculator functions return this canonical shape."
+  [{:keys [nodes focus anchor direction]}]
+  {:nodes nodes
+   :focus focus
+   :anchor anchor
+   :direction direction})
+
 (defn- calc-first-extend
   "Handle first Shift+Arrow: set direction and anchor."
   [{:keys [nodes focus]} direction next-block]
   (when next-block
-    {:nodes (conj nodes next-block)
-     :focus next-block
-     :anchor focus
-     :direction direction}))
+    (make-selection-props
+      {:nodes (conj nodes next-block)
+       :focus next-block
+       :anchor focus
+       :direction direction})))
 
 (defn- calc-contract-selection
-  "Remove trailing block when moving opposite to current direction."
-  [db session {:keys [nodes focus anchor direction]} contracting-direction next-block]
+  "Remove trailing block when moving opposite to current direction.
+
+   reverse-nav-fn: Function to navigate opposite to current direction
+                   (injected dependency for testability)."
+  [reverse-nav-fn {:keys [nodes focus anchor direction]} contracting-direction next-block]
   (if (> (count nodes) 1)
     ;; Remove current focus, move toward anchor
     (let [new-nodes (disj nodes focus)
-          new-focus (case direction
-                      :next (q/visible-prev-block db session focus)
-                      :prev (q/visible-next-block db session focus))]
-      {:nodes new-nodes
-       :focus (or new-focus anchor)
-       :anchor anchor
-       :direction direction})
+          new-focus (reverse-nav-fn focus)]
+      (make-selection-props
+        {:nodes new-nodes
+         :focus (or new-focus anchor)
+         :anchor anchor
+         :direction direction}))
     ;; Only anchor remains → flip direction and start extending
     (when next-block
-      {:nodes #{anchor next-block}
-       :focus next-block
-       :anchor anchor
-       :direction contracting-direction})))
+      (make-selection-props
+        {:nodes #{anchor next-block}
+         :focus next-block
+         :anchor anchor
+         :direction contracting-direction}))))
 
 (defn- calc-expand-selection
   "Add next block when extending in same direction."
   [{:keys [nodes anchor direction]} next-block]
   (when next-block
-    {:nodes (conj nodes next-block)
-     :focus next-block
-     :anchor anchor
-     :direction direction}))
+    (make-selection-props
+      {:nodes (conj nodes next-block)
+       :focus next-block
+       :anchor anchor
+       :direction direction})))
 
 (defn- calc-extend-navigate-props
   "Calculate props for incremental selection extension.
@@ -168,7 +181,12 @@
   [db session {:keys [focus direction] :as state} nav-direction]
   (let [contracting? (and direction (not= direction nav-direction))
         next-block (when focus
-                     (next-selectable-block db session focus nav-direction))]
+                     (next-selectable-block db session focus nav-direction))
+        ;; Extract reverse-navigation logic for dependency injection
+        reverse-nav (fn [id]
+                      (case direction
+                        :next (q/visible-prev-block db session id)
+                        :prev (q/visible-next-block db session id)))]
     (cond
       ;; No focus → start fresh selection
       (nil? focus)
@@ -180,7 +198,7 @@
 
       ;; Contracting (opposite direction) → remove trailing block
       contracting?
-      (calc-contract-selection db session state nav-direction next-block)
+      (calc-contract-selection reverse-nav state nav-direction next-block)
 
       ;; Extending (same direction) → add next block
       :else
