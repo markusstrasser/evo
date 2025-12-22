@@ -127,6 +127,116 @@
   (when (str/starts-with? line "trashed-at:: ")
     (js/parseInt (subs line 13) 10)))
 
+(defn- parse-header-line
+  "Parse a single header line, returning a map with the property key and value.
+   Returns nil if line is not a recognized header property."
+  [line]
+  (cond
+    (str/starts-with? line "title:: ")
+    {:key :title :value (subs line 8)}
+
+    (str/starts-with? line "created-at:: ")
+    {:key :created-at :value (js/parseInt (subs line 13) 10)}
+
+    (str/starts-with? line "updated-at:: ")
+    {:key :updated-at :value (js/parseInt (subs line 13) 10)}
+
+    (str/starts-with? line "trashed-at:: ")
+    {:key :trashed-at :value (js/parseInt (subs line 13) 10)}
+
+    :else nil))
+
+(defn- parse-markdown-header
+  "Extract header properties and content lines from markdown.
+   Returns {:title :created-at :updated-at :trashed-at :content-lines}."
+  [lines]
+  (loop [remaining lines
+         metadata {}]
+    (if-let [line (first remaining)]
+      (if-let [{:keys [key value]} (parse-header-line line)]
+        (recur (rest remaining) (assoc metadata key value))
+        ;; First non-header line - done with header
+        {:title (get metadata :title "Untitled")
+         :created-at (:created-at metadata)
+         :updated-at (:updated-at metadata)
+         :trashed-at (:trashed-at metadata)
+         :content-lines remaining})
+      ;; No more lines - header-only file
+      {:title (get metadata :title "Untitled")
+       :created-at (:created-at metadata)
+       :updated-at (:updated-at metadata)
+       :trashed-at (:trashed-at metadata)
+       :content-lines []})))
+
+(defn- build-page-props
+  "Build page props map with timestamps, using frontmatter or file-modified fallback."
+  [title created-at updated-at trashed-at file-modified]
+  (cond-> {:title title}
+    trashed-at (assoc :trashed-at trashed-at)
+    (or created-at file-modified)
+    (assoc :created-at (or created-at file-modified))
+    (or updated-at file-modified)
+    (assoc :updated-at (or updated-at file-modified))))
+
+(defn- process-bullet-line
+  "Process a bullet line, creating ops and updating state.
+   Returns updated state map."
+  [state page-id line]
+  (let [{:keys [ops counter parent-stack]} state
+        depth (parse-indent-level line)
+        text (strip-bullet line)
+        block-id (str page-id "-b" (inc counter))
+        parent-id (get parent-stack depth page-id)]
+    {:ops (-> ops
+              (conj {:op :create-node :id block-id :type :block :props {:text text}})
+              (conj {:op :place :id block-id :under parent-id :at :last}))
+     :counter (inc counter)
+     :parent-stack (assoc parent-stack (inc depth) block-id)
+     :last-block-id block-id
+     :last-block-text text}))
+
+(defn- process-continuation-line
+  "Process a continuation line, appending to last block.
+   Returns updated state map."
+  [state trimmed]
+  (let [{:keys [ops last-block-id last-block-text]} state
+        new-text (str last-block-text "\n" trimmed)]
+    (assoc state
+           :ops (mapv (fn [op]
+                        (if (and (= (:op op) :create-node)
+                                 (= (:id op) last-block-id))
+                          (assoc-in op [:props :text] new-text)
+                          op))
+                      ops)
+           :last-block-text new-text)))
+
+(defn- is-bullet-line?
+  "Check if line contains a bullet marker."
+  [line]
+  (str/includes? line "- "))
+
+(defn- is-continuation-line?
+  "Check if line is a continuation (indented, non-blank, no bullet, has previous block)."
+  [trimmed last-block-id]
+  (and (not (str/starts-with? trimmed "-"))
+       (not (str/blank? trimmed))
+       last-block-id))
+
+(defn- process-content-line
+  "Process a single content line, returning updated state."
+  [state page-id line]
+  (let [trimmed (str/triml line)
+        {:keys [last-block-id]} state]
+    (cond
+      (is-bullet-line? line)
+      (process-bullet-line state page-id line)
+
+      (is-continuation-line? trimmed last-block-id)
+      (process-continuation-line state trimmed)
+
+      :else
+      state)))
+
 (defn markdown->ops
   "Parse Logseq-style markdown into kernel ops.
 
@@ -140,93 +250,29 @@
   (let [lines (str/split-lines markdown)
         ;; Parse header properties (title::, timestamps, trashed-at::)
         {:keys [title created-at updated-at trashed-at content-lines]}
-        (loop [lines lines
-               title nil
-               created-at nil
-               updated-at nil
-               trashed-at nil]
-          (if (empty? lines)
-            {:title (or title "Untitled")
-             :created-at created-at
-             :updated-at updated-at
-             :trashed-at trashed-at
-             :content-lines []}
-            (let [line (first lines)]
-              (cond
-                (str/starts-with? line "title:: ")
-                (recur (rest lines) (subs line 8) created-at updated-at trashed-at)
-
-                (str/starts-with? line "created-at:: ")
-                (recur (rest lines) title (js/parseInt (subs line 13) 10) updated-at trashed-at)
-
-                (str/starts-with? line "updated-at:: ")
-                (recur (rest lines) title created-at (js/parseInt (subs line 13) 10) trashed-at)
-
-                (str/starts-with? line "trashed-at:: ")
-                (recur (rest lines) title created-at updated-at (js/parseInt (subs line 13) 10))
-
-                :else
-                {:title (or title "Untitled")
-                 :created-at created-at
-                 :updated-at updated-at
-                 :trashed-at trashed-at
-                 :content-lines lines}))))
+        (parse-markdown-header lines)
 
         ;; Determine root based on trashed state
         root (if trashed-at :trash :doc)
 
         ;; Page props: frontmatter timestamps take priority, file-modified is fallback
-        page-props (cond-> {:title title}
-                     trashed-at (assoc :trashed-at trashed-at)
-                     ;; Use frontmatter timestamps if present, else fall back to file-modified
-                     (or created-at file-modified)
-                     (assoc :created-at (or created-at file-modified))
-                     (or updated-at file-modified)
-                     (assoc :updated-at (or updated-at file-modified)))
+        page-props (build-page-props title created-at updated-at trashed-at file-modified)
 
-        ops (atom [{:op :create-node :id page-id :type :page :props page-props}
-                   {:op :place :id page-id :under root :at :last}])
-        counter (atom 0)
-        parent-stack (atom {0 page-id})
-        ;; Track last block for continuation lines
-        last-block-id (atom nil)
-        last-block-text (atom nil)]
+        ;; Initial state: page ops and empty block tracking
+        initial-state {:ops [{:op :create-node :id page-id :type :page :props page-props}
+                             {:op :place :id page-id :under root :at :last}]
+                       :counter 0
+                       :parent-stack {0 page-id}
+                       :last-block-id nil
+                       :last-block-text nil}
 
-    (doseq [line content-lines]
-      (let [has-bullet? (str/includes? line "- ")
-            trimmed (str/triml line)
-            ;; Continuation line: indented but no bullet at start
-            is-continuation? (and (not (str/starts-with? trimmed "-"))
-                                  (not (str/blank? trimmed))
-                                  @last-block-id)]
-        (cond
-          ;; Regular bullet line - new block
-          has-bullet?
-          (let [depth (parse-indent-level line)
-                text (strip-bullet line)
-                block-id (str page-id "-b" (swap! counter inc))
-                parent-id (or (get @parent-stack depth) page-id)]
-            (swap! ops conj {:op :create-node :id block-id :type :block :props {:text text}})
-            (swap! ops conj {:op :place :id block-id :under parent-id :at :last})
-            (swap! parent-stack assoc (inc depth) block-id)
-            ;; Track for potential continuation
-            (reset! last-block-id block-id)
-            (reset! last-block-text text))
+        ;; Process all content lines through state transformation
+        final-state (reduce (fn [state line]
+                              (process-content-line state page-id line))
+                            initial-state
+                            content-lines)]
 
-          ;; Continuation line - append to last block with newline
-          is-continuation?
-          (let [new-text (str @last-block-text "\n" trimmed)]
-            (reset! last-block-text new-text)
-            ;; Update the create-node op for this block
-            (swap! ops (fn [current-ops]
-                         (mapv (fn [op]
-                                 (if (and (= (:op op) :create-node)
-                                          (= (:id op) @last-block-id))
-                                   (assoc-in op [:props :text] new-text)
-                                   op))
-                               current-ops)))))))
-
-    @ops))
+    (:ops final-state)))
 
 ;; ── File System Access API ───────────────────────────────────────────────────
 
