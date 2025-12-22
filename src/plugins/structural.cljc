@@ -1,17 +1,15 @@
 (ns plugins.structural
-  "REFACTORED: Structural-edit and movement intent compiler → core ops.
+  "Structural-edit and movement intent compiler → core ops.
 
-   Improvements:
+   Includes:
    - Symmetric indent/outdent operations using shared validation
    - Extracted common tree-traversal patterns
-   - Using medley utilities for cleaner data transformations
    - DRY multi-select logic"
   (:require [kernel.intent :as intent]
             [kernel.constants :as const]
             [kernel.query :as q]
             [kernel.position :as pos]
-            [kernel.db :as db]
-            [medley.core :as m]))
+            [kernel.db :as db]))
 
 ;; ── Shared Validation & Tree Navigation ──────────────────────────────────────
 
@@ -285,86 +283,75 @@
                :new-parent parent-next
                :anchor :first})))))))
 
-(defn- move-selected-up-ops
-  "Move selected nodes up one sibling position.
-   Implements 'climb out' semantics at boundaries."
-  [db session]
+(defn- move-selected-ops
+  "Unified helper for moving selected nodes up or down one sibling position.
+   Implements 'climb out' (up) and 'descend into' (down) semantics at boundaries.
+
+   Direction-specific behavior:
+   - :up: Uses first target, checks prev sibling, may climb to grandparent
+   - :down: Uses last target, checks next sibling, may descend into parent's next sibling"
+  [db session direction]
   (let [raw-targets (active-targets db session)
         targets (filter-top-level-targets db raw-targets)
-        first-id (first targets)
         parent (same-parent? db targets)
-        consecutive? (consecutive-siblings? db targets)
-        prev (when first-id (q/prev-sibling db first-id))
-        before-prev (when prev (q/prev-sibling db prev))]
+        consecutive? (consecutive-siblings? db targets)]
 
     (cond
+      ;; Early exits: empty or non-consecutive
       (empty? targets)
       []
 
       (and parent (not consecutive?))
       []
 
-      ;; Normal case: has previous sibling
-      (and parent prev)
-      (intent/intent->ops db session
-                          {:type :move
-                           :selection targets
-                           :parent parent
-                           :anchor (if before-prev {:after before-prev} :first)})
+      ;; Direction-specific logic
+      :else
+      (let [;; Select boundary ID and sibling based on direction
+            boundary-id (case direction :up (first targets) :down (last targets))
+            adjacent-sib (case direction
+                           :up (when boundary-id (q/prev-sibling db boundary-id))
+                           :down (when boundary-id (get-in db [:derived :next-id-of boundary-id])))]
 
-      ;; Climb case: first child with no prev sibling
-      (and parent (not prev) first-id)
-      (let [{:keys [valid? new-parent anchor]}
-            (can-climb-or-descend? db session targets :climb)]
-        (if valid?
-          (intent/intent->ops db session
-                              {:type :move
-                               :selection targets
-                               :parent new-parent
-                               :anchor anchor})
-          []))
+        (cond
+          ;; Normal case: has adjacent sibling to swap with
+          (and parent adjacent-sib)
+          (let [anchor (case direction
+                         :up (if-let [before-prev (q/prev-sibling db adjacent-sib)]
+                               {:after before-prev}
+                               :first)
+                         :down {:after adjacent-sib})]
+            (intent/intent->ops db session
+                                {:type :move
+                                 :selection targets
+                                 :parent parent
+                                 :anchor anchor}))
 
-      :else [])))
+          ;; Boundary case: no adjacent sibling, try climb/descend
+          (and parent (not adjacent-sib) boundary-id)
+          (let [boundary-direction (case direction :up :climb :down :descend)
+                {:keys [valid? new-parent anchor]}
+                (can-climb-or-descend? db session targets boundary-direction)]
+            (if valid?
+              (intent/intent->ops db session
+                                  {:type :move
+                                   :selection targets
+                                   :parent new-parent
+                                   :anchor anchor})
+              []))
+
+          :else [])))))
+
+(defn- move-selected-up-ops
+  "Move selected nodes up one sibling position.
+   Implements 'climb out' semantics at boundaries."
+  [db session]
+  (move-selected-ops db session :up))
 
 (defn- move-selected-down-ops
   "Move selected nodes down one sibling position.
    Implements 'descend into' semantics at boundaries."
   [db session]
-  (let [raw-targets (active-targets db session)
-        targets (filter-top-level-targets db raw-targets)
-        last-id (last targets)
-        parent (same-parent? db targets)
-        consecutive? (consecutive-siblings? db targets)
-        next-sib (when last-id (get-in db [:derived :next-id-of last-id]))]
-
-    (cond
-      (empty? targets)
-      []
-
-      (and parent (not consecutive?))
-      []
-
-      ;; Normal case: has next sibling
-      (and parent next-sib)
-      (intent/intent->ops db session
-                          {:type :move
-                           :selection targets
-                           :parent parent
-                           :anchor {:after next-sib}})
-
-      ;; Descend case: last child with no next sibling
-      (and parent (not next-sib) last-id)
-      (let [{:keys [valid? new-parent anchor]}
-            (can-climb-or-descend? db session targets :descend)]
-        (if valid?
-          (intent/intent->ops db session
-                              {:type :move
-                               :selection targets
-                               :parent new-parent
-                               :anchor anchor})
-          []))
-
-      :else [])))
+  (move-selected-ops db session :down))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
