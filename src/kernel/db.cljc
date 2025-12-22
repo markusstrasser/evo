@@ -70,12 +70,12 @@
 (defn- under-doc-root?
   "Check if a node ID is under the :doc root by walking up parent chain."
   [parent-of id]
-  (loop [current id]
-    (cond
-      (= current const/root-doc) true
-      (keyword? current) false ; reached a different root
-      (nil? current) false ; no parent found
-      :else (recur (get parent-of current)))))
+  (->> (iterate #(get parent-of %) id)
+       (take-while some?)
+       (some #(cond
+                (= % const/root-doc) true
+                (keyword? %) false)) ; reached a different root
+       boolean))
 
 (defn- filter-doc-traversal
   "Derive doc-only traversal from all-roots traversal by filtering."
@@ -255,12 +255,12 @@
   [db potential-ancestor potential-descendant]
   (let [parent-of (get-in db [:derived :parent-of])
         roots (set (:roots db))]
-    (loop [current potential-descendant]
-      (cond
-        (nil? current) false
-        (= current potential-ancestor) true
-        (contains? roots current) false
-        :else (recur (get parent-of current))))))
+    (->> (iterate #(get parent-of %) potential-descendant)
+         (take-while some?)
+         (drop-while #(not (or (= % potential-ancestor)
+                               (contains? roots %))))
+         first
+         (= potential-ancestor))))
 
 (defn validate
   "Validate database invariants. Returns {:ok? bool :errors [...]}.
