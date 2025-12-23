@@ -19,6 +19,11 @@
             [medley.core :as medley]
             #?(:cljs [utils.journal :as journal])))
 
+;; ── Result Limits ─────────────────────────────────────────────────────────────
+
+(def ^:private page-ref-result-limit 10)
+(def ^:private command-result-limit 15)
+
 ;; Sentinel for DCE prevention
 
 ;; ── Multimethod Protocol ──────────────────────────────────────────────────────
@@ -71,8 +76,8 @@
                                :type :existing}))
                        (filter (comp valid-page-title? :title)))
         filtered (if (str/blank? query)
-                   (take 10 page-data)
-                   (fuzzy/fuzzy-filter page-data query :title 10))
+                   (take page-ref-result-limit page-data)
+                   (fuzzy/fuzzy-filter page-data query :title page-ref-result-limit))
         create-option (when (and (not (str/blank? query))
                                  (not (has-exact-match? filtered query)))
                         {:id :new
@@ -133,7 +138,7 @@
     :icon "📅"
     :category "Date & Time"
     :insert-fn #?(:cljs journal/today-page-ref
-                  :clj (constantly "[[today]]"))}  ; TODO: Show actual date picker
+                  :clj (constantly "[[today]]"))}
 
    {:id :tweet
     :name "Tweet"
@@ -191,7 +196,7 @@
   [_db {:keys [query]}]
   (if (str/blank? query)
     slash-commands
-    (fuzzy/fuzzy-filter slash-commands query :name 15)))
+    (fuzzy/fuzzy-filter slash-commands query :name command-result-limit)))
 
 (defmethod insert-text :command
   [_db {:keys [item]}]
