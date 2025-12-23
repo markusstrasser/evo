@@ -489,23 +489,7 @@
   [db _session {:keys [block-id]} _context]
   (let [parent (get-in db [:derived :parent-of block-id])
         grandparent (when parent (get-in db [:derived :parent-of parent]))
-        new-id (helpers/make-new-block-id)
-        ;; DEBUG: Verify grandparent→parent relationship (only logs errors)
-        _ #?(:cljs
-             (when ^boolean goog.DEBUG
-               (when grandparent
-                 (let [children-of-gp (get-in db [:children-by-parent grandparent] [])
-                       parent-in-children? (some #{parent} children-of-gp)]
-                   (when-not parent-in-children?
-                     (js/console.error
-                      "🚨 GRANDPARENT MISMATCH!"
-                      "\nblock-id:" block-id
-                      "\nparent:" parent
-                      "\ngrandparent:" grandparent
-                      "\nchildren of grandparent:" (pr-str children-of-gp)
-                      "\nparent NOT in grandparent's children!"
-                      "\nThis will cause :anchor-not-sibling validation error!")))))
-             :clj nil)]
+        new-id (helpers/make-new-block-id)]
     (if grandparent
       ;; Has grandparent: unformat + create peer after parent
       {:ops [{:op :update-node :id block-id :props {:text ""}}

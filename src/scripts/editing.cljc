@@ -84,11 +84,7 @@
          ;; Try to find previous sibling, fall back to parent
          (when-let [target-id (or (q/prev-sibling db-after-delete id)
                                   (q/parent-of db-after-delete id))]
-           ;; Return intents for selection + cursor positioning
-           [{:type :select :ids [target-id]}
-            ;; TODO: Add cursor positioning intent when available
-            ;; {:type :cursor-move :id target-id :where :end}
-            ]))])))
+           [{:type :select :ids [target-id]}]))])))
 
 ;; ── Paste Multi-Line ───────────────────────────────────────────────────────────
 
