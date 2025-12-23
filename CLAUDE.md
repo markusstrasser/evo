@@ -107,7 +107,6 @@ src/parser/          # Page refs
 src/components/      # Replicant UI components
 resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
 resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
-resources/seed-data.edn # Editor seed data (load via shell.demo_data)
 dev/spec_registry.cljc  # FR loader + validation
 dev/test_scanner.cljc   # Test verification coverage scanner
 ```
