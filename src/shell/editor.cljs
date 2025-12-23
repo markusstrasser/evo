@@ -52,24 +52,15 @@
 
 ;; ── State atom ────────────────────────────────────────────────────────────────
 
-(defn- test-mode?
-  "Check if running in E2E test mode"
-  []
-  (let [search (.-search js/location)
-        has-param (and search (>= (.indexOf search "test=true") 0))]
-    (boolean has-param)))
-
-(defn- devtools-enabled?
-  "Check if devtools UI should be shown (via ?devtools query param)"
-  []
+(defn- query-param?
+  "Check if URL contains a query param substring."
+  [param]
   (let [search (.-search js/location)]
-    (boolean (and search (>= (.indexOf search "devtools") 0)))))
+    (boolean (and search (>= (.indexOf search param) 0)))))
 
-(defn- specs-mode?
-  "Check if spec viewer should be shown (via ?specs query param)"
-  []
-  (let [search (.-search js/location)]
-    (boolean (and search (>= (.indexOf search "specs") 0)))))
+(defn- test-mode? [] (query-param? "test=true"))
+(defn- devtools-enabled? [] (query-param? "devtools"))
+(defn- specs-mode? [] (query-param? "specs"))
 
 ;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
