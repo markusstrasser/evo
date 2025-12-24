@@ -542,6 +542,6 @@ bb help                    # Show all available tasks
 
 Key task categories:
 - Quality Gates: `lint`, `check`, `test`
-- E2E Testing: `e2e`, `e2e-watch`, `e2e-debug`, `e2e-a11y`
+- E2E Testing: `e2e`, `e2e:watch`, `e2e:debug`, `e2e:a11y`
 - Cache Management: `clean`, `index`
 - Development: `dev`, `repl-health`

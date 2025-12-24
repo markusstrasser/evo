@@ -111,22 +111,22 @@
   e2e {:doc "Run Playwright E2E tests"
        :task (shell "npx playwright test")}
 
-  e2e-watch {:doc "Run E2E tests in watch mode (UI)"
+  e2e:watch {:doc "Run E2E tests in watch mode (UI)"
              :task (shell "npx playwright test --ui")}
 
-  e2e-debug {:doc "Run E2E tests with debugger"
+  e2e:debug {:doc "Run E2E tests with debugger"
              :task (shell "npx playwright test --debug")}
 
-  e2e-headed {:doc "Run E2E tests with visible browser"
+  e2e:headed {:doc "Run E2E tests with visible browser"
               :task (shell "npx playwright test --headed")}
 
-  e2e-report {:doc "Open last E2E test report"
+  e2e:report {:doc "Open last E2E test report"
               :task (shell "npx playwright show-report")}
 
-  e2e-visual {:doc "Run visual regression tests with Percy"
+  e2e:visual {:doc "Run visual regression tests with Percy"
               :task (shell "npx percy exec -- npx playwright test visual")}
 
-  e2e-a11y {:doc "Run accessibility tests only"
+  e2e:a11y {:doc "Run accessibility tests only"
             :task (shell "npx playwright test accessibility")}
 
   test:e2e {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
@@ -198,13 +198,13 @@
                 (println "  bb test:int        - Integration tests\n")
                 (println "E2E Testing:")
                 (println "  bb e2e             - Run Playwright E2E tests")
-                (println "  bb e2e-watch       - Watch mode (UI)")
-                (println "  bb e2e-debug       - Debug mode")
-                (println "  bb e2e-headed      - Visible browser")
+                (println "  bb e2e:watch       - Watch mode (UI)")
+                (println "  bb e2e:debug       - Debug mode")
+                (println "  bb e2e:headed      - Visible browser")
                 (println "  bb test:e2e <ID>   - Filter Playwright by scenario")
-                (println "  bb e2e-report      - Open test report")
-                (println "  bb e2e-visual      - Visual regression (Percy)")
-                (println "  bb e2e-a11y        - Accessibility tests\n")
+                (println "  bb e2e:report      - Open test report")
+                (println "  bb e2e:visual      - Visual regression (Percy)")
+                (println "  bb e2e:a11y        - Accessibility tests\n")
                 (println "Architecture Analysis:")
                 (println "  bb arch:summary           - Namespace overview")
                 (println "  bb arch:summary-detailed  - With function signatures")
