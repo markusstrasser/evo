@@ -81,9 +81,6 @@
   arch:summary {:doc "Namespace-level architecture overview"
                 :task (shell "bb scripts/arch-summary.clj")}
 
-  arch:summary-detailed {:doc "Detailed architecture with function signatures"
-                         :task (shell "bb scripts/arch-summary-detailed.clj")}
-
   arch:complexity {:doc "Complexity analysis (use -f for functions, -d for detailed)"
                    :task (let [args (str/join " " *command-line-args*)]
                            (shell (str "bb scripts/complexity.clj " args)))}
@@ -95,14 +92,14 @@
                   :task (shell "bb scripts/data-flow.clj")}
 
   arch:call-graph {:doc "Call graph analysis with critical paths"
-                   :task (shell "bb scripts/call-graph-detailed.clj")}
+                   :task (shell "bb scripts/call-graph.clj")}
 
   arch:lens {:doc "Generate combined architectural lens (all views)"
              :task (do
                      (println "Generating architectural lens...")
-                     (shell "bb scripts/arch-summary-detailed.clj > /tmp/arch-1.md")
+                     (shell "bb scripts/arch-summary.clj > /tmp/arch-1.md")
                      (shell "bb scripts/complexity.clj --functions --detailed > /tmp/arch-2.md")
-                     (shell "bb scripts/call-graph-detailed.clj > /tmp/arch-3.md")
+                     (shell "bb scripts/call-graph.clj > /tmp/arch-3.md")
                      (shell "bb scripts/data-flow.clj > /tmp/arch-4.md")
                      (shell "cat /tmp/arch-1.md /tmp/arch-2.md /tmp/arch-3.md /tmp/arch-4.md > arch-lens.md")
                      (println "✅ Lens saved to: arch-lens.md"))}
@@ -207,7 +204,6 @@
                 (println "  bb e2e:a11y        - Accessibility tests\n")
                 (println "Architecture Analysis:")
                 (println "  bb arch:summary           - Namespace overview")
-                (println "  bb arch:summary-detailed  - With function signatures")
                 (println "  bb arch:complexity        - Namespace complexity")
                 (println "  bb arch:complexity -f     - Function-level")
                 (println "  bb arch:complexity -f -d  - Detailed with operations")

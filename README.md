@@ -61,7 +61,6 @@ docs/               # Architecture notes, rendering/dispatch reference, testing 
 
 **Key docs & data**:
 - `docs/DX_INDEX.md` - Entry point for all documentation
-- `resources/seed-data.edn` - Seed operations for the Blocks UI demo
 - `CLAUDE.md` - Agent instructions and tooling index
 - `VISION.md` - Product philosophy and architectural direction
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant/Nexus event handling reference
