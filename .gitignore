@@ -58,6 +58,7 @@ pom.xml.asc
 *.jar
 *.log
 .shadow-cljs
+.cljs_node_repl
 .idea
 .lein-*
 .nrepl-*
