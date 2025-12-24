@@ -1,11 +1,11 @@
 {:paths ["src" "test" "dev" "agent" "resources"]
  :deps
- {no.cjohansen/replicant {:mvn/version "2025.06.21"}
-  no.cjohansen/nexus {:mvn/version "2025.10.2"}
-  org.clojure/clojurescript {:mvn/version "1.12.42"}
+ {no.cjohansen/replicant {:mvn/version "2025.12.1"}
+  no.cjohansen/nexus {:mvn/version "2025.11.1"}
+  org.clojure/clojurescript {:mvn/version "1.12.134"}
   metosin/malli {:mvn/version "0.20.0"}
   org.clojure/core.match {:mvn/version "1.1.0"}
-  thheller/shadow-cljs {:mvn/version "3.2.1"}
+  thheller/shadow-cljs {:mvn/version "3.3.4"}
   medley/medley {:mvn/version "1.4.0"}
 
   binaryage/devtools {:mvn/version "1.0.7"}
@@ -32,7 +32,7 @@
 
            ;; MCP dev-diagnostics server (minimal deps)
            :mcp {:extra-paths ["mcp" "dev"]
-                 :extra-deps {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.13.0"}
+                 :extra-deps {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.17.0"}
                               org.clojure/data.json {:mvn/version "2.5.1"}
                               org.slf4j/slf4j-simple {:mvn/version "2.1.0-alpha1"}}
                  :main-opts ["-m" "servers.dev-diagnostics"]}
@@ -45,7 +45,7 @@
 
            ;; Test utilities (fipp for pretty printing in CLJ)
            :test {:extra-paths ["test"]
-                  :extra-deps {fipp/fipp {:mvn/version "0.6.26"}}}}}
+                  :extra-deps {fipp/fipp {:mvn/version "0.6.29"}}}}}
 
 
 
