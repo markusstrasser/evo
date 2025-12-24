@@ -18,7 +18,6 @@
     "format:js": "biome format --write .",
     "lint:fr": "bb fr-audit",
     "lint:fr-coverage": "bb lint:fr-tests",
-    "lint:scenarios": "bb lint:scenarios",
     "lint:e2e-keyboard": "node scripts/lint-e2e-keyboard.js",
     "test": "bb test",
     "test:unit": "bb test",
