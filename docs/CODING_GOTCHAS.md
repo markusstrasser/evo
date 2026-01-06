@@ -29,11 +29,8 @@ rg "def root-" src/kernel/constants.cljc
 
 ### Session State is Separate from DB
 
-❌ **Wrong (outdated):**
-```clojure
-;; Session state no longer lives in DB nodes!
-(get-in db [:nodes "session/ui" :props :editing-block-id])
-```
+Session state lives in a separate atom (`shell/view-state.cljs`), not in DB nodes.
+DB only contains persistent document graph.
 
 ✅ **Correct:**
 ```clojure
@@ -44,9 +41,6 @@ rg "def root-" src/kernel/constants.cljc
 (q/selection session)
 (q/folded? session "block-id")
 ```
-
-**Why:** Session state moved to separate atom (`shell/view-state.cljs`).
-DB only contains persistent document graph.
 
 **Handler signature:**
 ```clojure

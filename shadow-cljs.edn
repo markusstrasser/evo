@@ -6,11 +6,7 @@
 
  :nrepl {:port 55449}
  :builds
- {:frontend
-  {:target :browser
-   :modules {:main {:init-fn shell.main/main}}}
-
-  :blocks-ui
+ {:blocks-ui
   {:target :browser
    :output-dir "public/js/blocks-ui"
    :asset-path "/js/blocks-ui"
