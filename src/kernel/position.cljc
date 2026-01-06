@@ -41,17 +41,6 @@
                    :available-siblings kids
                    :suggest {:replace-anchor :at-end}})))
 
-#_{:clj-kondo/ignore [:unused-private-var]} ; Scaffolded for future use
-(defn- throw-out-of-bounds
-  "Throw consistent error for out-of-bounds index."
-  [idx n parent-id]
-  (throw (ex-info "Anchor index out of bounds"
-                  {:reason ::oob
-                   :idx idx
-                   :n n
-                   :parent-id parent-id
-                   :suggest {:replace-anchor :at-end}})))
-
 (defn- resolve-anchor-core
   "Core anchor resolution logic. Shared by both ->index and resolve-insert-index.
 

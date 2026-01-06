@@ -1,8 +1,28 @@
 # Logseq Desktop Behavior Spec (macOS)
 
-Canonical, implementation-agnostic description of the Logseq desktop “feel” (macOS build 0.10.x). Every statement below comes from observing and reading upstream Logseq; use it as the ground truth before mapping behavior into another client.
+Canonical, implementation-agnostic description of the Logseq desktop "feel" (macOS build 0.10.x). Every statement below comes from observing and reading upstream Logseq; use it as the ground truth before mapping behavior into another client.
 
 _Last verification:_ 2025‑12‑12 against `~/Projects/best/logseq` (main). Re-run the walkthrough any time upstream changes.
+
+---
+
+## Table of Contents
+
+- [Related Documents](#related-documents)
+- [1. Objective & Scope](#1-objective--scope)
+- [2. Observation Workflow](#2-observation-workflow)
+- [3. Behavior Themes](#3-behavior-themes)
+- [5. macOS Keymap Coverage](#5-macos-keymap-coverage-extracted-from-modulesshortcutconfigcljs)
+- [0. Behavior Map & References](#0-behavior-map--references)
+- [1. Global Interaction Model](#1-global-interaction-model)
+- [2. Cursor Placement & Navigation](#2-cursor-placement--navigation)
+- [3. Text Selection Rules](#3-text-selection-rules)
+- [4. Editing Actions](#4-editing-actions)
+- [5. Structural Editing](#5-structural-editing)
+- [6. Fold & Zoom Constraints](#6-fold--zoom-constraints)
+- [7. Additional Interaction Patterns](#7-additional-interaction-patterns)
+- [8. Extensibility & Hooks Architecture](#8-extensibility--hooks-architecture)
+- [9. Summary Checklist](#9-summary-checklist-behavioral)
 
 ---
 

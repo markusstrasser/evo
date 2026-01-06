@@ -199,28 +199,6 @@
                (partition 2 1)
                (every? (fn [[a b]] (= b (inc a)))))))))
 
-#_{:clj-kondo/ignore [:unused-private-var]}
-(defn- collect-right-siblings
-  "Collect all right siblings of a node in document order."
-  [db id]
-  (->> id
-       (iterate #(q/next-sibling db %))
-       (drop 1)  ; Skip the node itself
-       (take-while some?)
-       vec))
-
-#_{:clj-kondo/ignore [:unused-private-var]}
-(defn- consolidate-to-consecutive
-  "Fill gaps in non-consecutive selection to make it consecutive.
-   LOGSEQ PARITY: Consolidates to full range from first to last selected sibling."
-  [db ids]
-  (when-let [parent (same-parent? db ids)]
-    (let [children (get-in db [:children-by-parent parent] [])
-          id-set (set ids)
-          indices (keep-indexed (fn [idx child] (when (id-set child) idx)) children)
-          [min-idx max-idx] ((juxt #(apply min %) #(apply max %)) indices)]
-      (vec (subvec children min-idx (inc max-idx))))))
-
 ;; ── Movement/Climbing Operations ──────────────────────────────────────────────
 
 (defn- can-climb-or-descend?

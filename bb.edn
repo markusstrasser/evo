@@ -97,11 +97,13 @@
   arch:lens {:doc "Generate combined architectural lens (all views)"
              :task (do
                      (println "Generating architectural lens...")
-                     (shell "bb scripts/arch-summary.clj > /tmp/arch-1.md")
-                     (shell "bb scripts/complexity.clj --functions --detailed > /tmp/arch-2.md")
-                     (shell "bb scripts/call-graph.clj > /tmp/arch-3.md")
-                     (shell "bb scripts/data-flow.clj > /tmp/arch-4.md")
-                     (shell "cat /tmp/arch-1.md /tmp/arch-2.md /tmp/arch-3.md /tmp/arch-4.md > arch-lens.md")
+                     (let [tmpdir (str (fs/create-temp-dir {:prefix "arch-lens-"}))]
+                       (shell (str "bb scripts/arch-summary.clj > " tmpdir "/1.md"))
+                       (shell (str "bb scripts/complexity.clj --functions --detailed > " tmpdir "/2.md"))
+                       (shell (str "bb scripts/call-graph.clj > " tmpdir "/3.md"))
+                       (shell (str "bb scripts/data-flow.clj > " tmpdir "/4.md"))
+                       (shell (str "cat " tmpdir "/1.md " tmpdir "/2.md " tmpdir "/3.md " tmpdir "/4.md > arch-lens.md"))
+                       (fs/delete-tree tmpdir))
                      (println "✅ Lens saved to: arch-lens.md"))}
 
    ;; E2E Testing with Playwright
@@ -119,12 +121,6 @@
 
   e2e:report {:doc "Open last E2E test report"
               :task (shell "npx playwright show-report")}
-
-  e2e:visual {:doc "Run visual regression tests with Percy"
-              :task (shell "npx percy exec -- npx playwright test visual")}
-
-  e2e:a11y {:doc "Run accessibility tests only"
-            :task (shell "npx playwright test accessibility")}
 
   test:e2e {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
             :task (let [scenario (first *command-line-args*)
@@ -199,9 +195,7 @@
                 (println "  bb e2e:debug       - Debug mode")
                 (println "  bb e2e:headed      - Visible browser")
                 (println "  bb test:e2e <ID>   - Filter Playwright by scenario")
-                (println "  bb e2e:report      - Open test report")
-                (println "  bb e2e:visual      - Visual regression (Percy)")
-                (println "  bb e2e:a11y        - Accessibility tests\n")
+                (println "  bb e2e:report      - Open test report\n")
                 (println "Architecture Analysis:")
                 (println "  bb arch:summary           - Namespace overview")
                 (println "  bb arch:complexity        - Namespace complexity")

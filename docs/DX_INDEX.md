@@ -21,18 +21,7 @@ npm start        # Clean + watch CLJS + watch CSS
 | `README.md` | Project quick start + constraints |
 | `VISION.md` | Product north star |
 | `CLAUDE.md` | AI agent guidance |
-
----
-
-## Machine-Readable Truth
-
-| File | Purpose |
-|------|---------|
-| **`resources/specs.edn`** | Functional Requirements registry (44 FRs with priority, status, tags) |
-| **`resources/failure_modes.edn`** | Known bugs/anti-patterns with symptoms, fixes, tests |
-| **`docs/logseq_behaviors.md`** | Behavior triads: keymap → intent → scenario |
-
-Tests cite FR IDs via `^{:fr/ids #{:fr.nav/...}}` metadata. CI enforces coverage with `bb lint:fr-tests --strict`.
+| `logseq_behaviors.md` | Behavior triads: keymap → intent → scenario |
 
 ---
 
@@ -68,18 +57,3 @@ bb e2e     # E2E tests
 bb check   # Quality gate
 ```
 
----
-
-```edn
-{:orientation ["README.md" "VISION.md" "CLAUDE.md"]
- :registries ["resources/specs.edn"
-              "resources/failure_modes.edn"
-              "docs/logseq_behaviors.md"]
- :specs ["docs/STRUCTURAL_EDITING.md"
-         "docs/LOGSEQ_UI_FEATURES.md"
-         "docs/LOGSEQ_SPEC.md"]
- :implementation ["docs/RENDERING_AND_DISPATCH.md"
-                  "docs/LOGSEQ_PARITY_EVO.md"
-                  "docs/CODING_GOTCHAS.md"]
- :testing ["docs/TESTING.md"]}
-```

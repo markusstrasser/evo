@@ -12,83 +12,10 @@
             [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
-            [medley.core :as m]
             [utils.text-context :as ctx]
             #?(:cljs [utils.journal :as journal])))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-
-;; ── Internal Helpers ──────────────────────────────────────────────────────────
-
-(defn- extract-page-refs
-  "Extract all [[page]] references from text.
-   Returns a set of page names (as found in text, preserving case)."
-  [text]
-  (when text
-    (let [pattern #"\[\[([^\]]+)\]\]"]
-      (->> (re-seq pattern text)
-           (map second)
-           set))))
-
-(defn- find-page-ancestor
-  "Walk up parent chain to find the page containing a block.
-   Returns nil if block is in trash or orphaned (no page ancestor)."
-  [db block-id]
-  (let [parent-of (get-in db [:derived :parent-of])
-        nodes (:nodes db)]
-    (loop [id block-id]
-      (when-let [parent (get parent-of id)]
-        (cond
-          ;; Reached doc root or trash - no page ancestor
-          (#{:doc :trash} parent) nil
-          ;; Found a page - return it
-          (= :page (get-in nodes [parent :type])) parent
-          ;; Keep traversing up
-          :else (recur parent))))))
-
-(defn- refs-match-target?
-  "Check if block's page refs include the target page (case-insensitive)."
-  [text target-lower]
-  (when-let [refs (extract-page-refs text)]
-    (let [refs-lower (set (map str/lower-case refs))]
-      (contains? refs-lower target-lower))))
-
-(defn- build-backlink
-  "Build backlink map for a block referencing the target page.
-   Returns nil if block is on the target page itself (self-reference)."
-  [db block-id text target-lower]
-  (when-let [page-id (find-page-ancestor db block-id)]
-    (let [page-title (q/page-title db page-id)]
-      (when-not (= (str/lower-case (or page-title "")) target-lower)
-        {:block-id block-id
-         :block-text text
-         :page-id page-id
-         :page-title page-title}))))
-
-(defn find-backlinks
-  "DEPRECATED: Use plugins.backlinks-index/get-backlinks for O(1) lookup.
-
-   Find all blocks that reference a given page (O(n) scan).
-
-   Returns a list of maps:
-   {:block-id \"...\"
-    :block-text \"...\"
-    :page-id \"...\"
-    :page-title \"...\"}
-
-   Searches all blocks in the DB for [[target-page]] references.
-   Excludes:
-   - Blocks in trash (no valid page ancestor)
-   - Self-references (blocks on the target page itself)"
-  [db target-page]
-  (when target-page
-    (let [target-lower (str/lower-case target-page)]
-      (->> (:nodes db)
-           (m/filter-vals #(= :block (:type %)))
-           (keep (fn [[block-id node]]
-                   (let [text (get-in node [:props :text] "")]
-                     (when (refs-match-target? text target-lower)
-                       (build-backlink db block-id text target-lower)))))))))
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
