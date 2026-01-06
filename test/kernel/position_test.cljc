@@ -1,4 +1,4 @@
-(ns core.position-test
+(ns kernel.position-test
   (:require [clojure.test :refer [deftest is testing]]
             [kernel.position :as pos]))
 
