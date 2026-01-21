@@ -17,6 +17,7 @@
             [utils.cursor-boundaries :as bounds]
             [utils.dom :as dom]
             [utils.html-to-markdown :as html-md]
+            [utils.image :as img-util]
             [shell.view-state :as vs]
             [shell.storage :as storage]
             [clojure.string :as str]))
@@ -1124,8 +1125,17 @@
 (defn- upload-and-insert-images!
   "Upload image files to assets folder and create image blocks.
 
+   Processing pipeline:
+   1. Fix EXIF orientation (auto-rotate camera photos)
+   2. Extract dimensions (for aspect ratio preservation)
+   3. Generate content-hash filename (deduplication)
+   4. Write to assets folder
+   5. Create :image blocks with path, alt, width, height
+
    Creates separate :image blocks for each uploaded file, inserted after
-   the current block. Focus moves to the last inserted image."
+   the current block. Focus moves to the last inserted image.
+
+   Shows upload progress via toast notifications."
   [files _target _cursor-pos block-id on-intent]
   (js/console.log "📷 upload-and-insert-images! called"
                   (clj->js {:fileCount (count files)
@@ -1133,35 +1143,61 @@
   (when (seq files)
     (if-not (storage/has-folder?)
       ;; No folder open - show helpful message
-      (js/alert "Please open a folder first to save images.\n\nClick '📂 Open Folder' in the sidebar.")
+      (vs/show-notification! "Open a folder first to save images"
+                             {:type :warning :timeout 4000})
       ;; Folder open - proceed with upload
-      (do
-        (js/console.log "📷 Starting upload of" (count files) "files")
+      (let [file-count (count files)
+            upload-msg (if (= 1 file-count)
+                         "Uploading image..."
+                         (str "Uploading " file-count " images..."))]
+        (js/console.log "📷 Starting upload of" file-count "files")
+        ;; Show upload progress notification (long timeout)
+        (vs/show-notification! upload-msg {:type :info :timeout 30000})
         (-> (js/Promise.all
              (to-array
               (map (fn [file]
-                     ;; Use content-hash for deduplication
-                     (-> (storage/generate-asset-filename-with-hash (.-name file) file)
-                         (.then (fn [filename]
-                                  (js/console.log "📷 Writing asset:" filename)
-                                  (-> (storage/write-asset! filename file)
-                                      (.then (fn [path]
-                                               (js/console.log "📷 Asset written, path:" path)
-                                               (when path
-                                                 {:path path :alt (.-name file)}))))))))
+                     ;; 1. Process image (EXIF fix + dimensions)
+                     (-> (img-util/process-image-for-upload file)
+                         (.then (fn [{:keys [blob width height]}]
+                                  (js/console.log "📷 Processed image:" (.-name file)
+                                                  "dimensions:" width "x" height)
+                                  ;; 2. Generate hash-based filename
+                                  (-> (storage/generate-asset-filename-with-hash (.-name file) blob)
+                                      (.then (fn [filename]
+                                               (js/console.log "📷 Writing asset:" filename)
+                                               ;; 3. Write to storage
+                                               (-> (storage/write-asset! filename blob)
+                                                   (.then (fn [path]
+                                                            (js/console.log "📷 Asset written, path:" path)
+                                                            (when path
+                                                              {:path path
+                                                               :alt (.-name file)
+                                                               :width width
+                                                               :height height})))))))))))
                    files)))
             (.then (fn [image-data-js]
                      (let [images (->> (js->clj image-data-js :keywordize-keys true)
-                                       (filter some?))]
+                                       (filter some?))
+                           success-count (count images)]
                        (js/console.log "📷 All assets written, images:" (pr-str images))
-                       (when (seq images)
-                         ;; Fire intent to create image blocks
-                         (js/console.log "📷 Firing intent :insert-image-blocks")
-                         (on-intent {:type :insert-image-blocks
-                                     :after-id block-id
-                                     :images (vec images)})))))
+                       ;; Show success notification
+                       (if (pos? success-count)
+                         (do
+                           (vs/show-notification!
+                            (if (= 1 success-count)
+                              "Image uploaded"
+                              (str success-count " images uploaded"))
+                            {:type :success :timeout 2000})
+                           ;; Fire intent to create image blocks
+                           (js/console.log "📷 Firing intent :insert-image-blocks")
+                           (on-intent {:type :insert-image-blocks
+                                       :after-id block-id
+                                       :images (vec images)}))
+                         ;; All uploads failed
+                         (vs/show-notification! "Upload failed" {:type :error :timeout 3000})))))
             (.catch (fn [err]
-                      (js/console.error "📷 Failed to upload images:" err))))))))
+                      (js/console.error "📷 Failed to upload images:" err)
+                      (vs/show-notification! "Upload failed" {:type :error :timeout 3000}))))))))
 
 ;; ── Content Mode Helpers ──────────────────────────────────────────────────────
 
@@ -1539,6 +1575,7 @@
         ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
         block-classes (cond-> ["block"]
                         (= block-type :image) (conj "image-block")
+                        (= block-type :embed) (conj "embed-block")
                         is-focused (conj "focused")
                         is-selected (conj "selected")
                         is-editing (conj "editing")
@@ -1580,9 +1617,24 @@
 
         ;; Content: delegate to block-type-specific helpers
         content (case block-type
-                  :image (image/ImageBlock {:path (get props :path)
+                  :image (image/ImageBlock {:block-id block-id
+                                            :path (get props :path)
                                             :alt (get props :alt)
-                                            :is-focused is-focused})
+                                            :width (get props :width)
+                                            :height (get props :height)
+                                            :display-width (get props :display-width)
+                                            :is-focused is-focused
+                                            :on-intent on-intent})
+                  ;; Embed block: video, tweet, etc.
+                  :embed (let [url (get props :url)
+                               embed-type (get props :embed-type)]
+                           (case embed-type
+                             :twitter (tweet-embed {:block-id block-id :url url :is-focused is-focused
+                                                    :on-intent on-intent :db db})
+                             (:youtube :vimeo) (video-embed {:block-id block-id :url url :is-focused is-focused
+                                                              :on-intent on-intent :db db})
+                             ;; Fallback: just show URL as link
+                             [:a.embed-fallback {:href url :target "_blank" :rel "noopener noreferrer"} url]))
                   ;; Default: text block with edit/view modes
                   (if is-editing
                     (edit-content {:block-id block-id :text text :on-intent on-intent :db db})

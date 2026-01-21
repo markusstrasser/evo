@@ -68,6 +68,7 @@
    Handles block types:
    - :block (default): Text content with bullet
    - :image: Image markdown ![alt](path)
+   - :embed: Embed syntax {{video url}} or {{tweet url}}
 
    Multiline text blocks (from Shift+Enter) are formatted as:
    - first line
@@ -85,6 +86,17 @@
                 (let [path (get props :path "")
                       alt (get props :alt "")]
                   [(str indent "- ![" alt "](" path ")")])
+
+                ;; Embed block: serialize as {{type url}} syntax
+                :embed
+                (let [url (get props :url "")
+                      embed-type (get props :embed-type :video)
+                      type-name (case embed-type
+                                  :twitter "tweet"
+                                  :youtube "video"
+                                  :vimeo "video"
+                                  "video")]
+                  [(str indent "- {{" type-name " " url "}}")])
 
                 ;; Default text block
                 (let [text (get props :text "")
@@ -202,9 +214,27 @@
     {:alt (nth match 1)
      :path (nth match 2)}))
 
+(def ^:private embed-line-pattern
+  "Regex to match embed syntax: {{type url}}
+   Supports: {{video url}}, {{tweet url}}"
+  #"^\{\{(video|tweet)\s+([^}]+)\}\}$")
+
+(defn- parse-embed-line
+  "Parse an embed line. Returns {:embed-type :url} or nil if not an embed line."
+  [text]
+  (when-let [match (re-matches embed-line-pattern text)]
+    (let [type-str (nth match 1)
+          url (str/trim (nth match 2))]
+      {:embed-type (case type-str
+                     "tweet" :twitter
+                     "video" :youtube  ;; Default video to :youtube, could be refined
+                     :youtube)
+       :url url})))
+
 (defn- process-bullet-line
   "Process a bullet line, creating ops and updating state.
    Detects image-only lines and creates :image blocks accordingly.
+   Detects embed syntax and creates :embed blocks accordingly.
    Returns updated state map."
   [state page-id line]
   (let [{:keys [ops counter parent-stack]} state
@@ -212,11 +242,17 @@
         text (strip-bullet line)
         block-id (str page-id "-b" (inc counter))
         parent-id (get parent-stack depth page-id)
-        ;; Check if this is an image-only line
+        ;; Check if this is a special block type
         image-data (parse-image-line text)
-        create-op (if image-data
+        embed-data (when-not image-data (parse-embed-line text))
+        create-op (cond
+                    image-data
                     {:op :create-node :id block-id :type :image
                      :props {:path (:path image-data) :alt (:alt image-data)}}
+                    embed-data
+                    {:op :create-node :id block-id :type :embed
+                     :props {:url (:url embed-data) :embed-type (:embed-type embed-data)}}
+                    :else
                     {:op :create-node :id block-id :type :block :props {:text text}})]
     {:ops (-> ops
               (conj create-op)
