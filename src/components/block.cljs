@@ -10,7 +10,6 @@
             [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
             [parser.inline-format :as inline-format]
-            [parser.images :as images]
             [components.page-ref :as page-ref]
             [components.image :as image]
             [components.autocomplete :as autocomplete]
@@ -1080,35 +1079,28 @@
     (let [result (text-segment->hiccup text)]
       (if (seq? result) (vec result) [result]))))
 
-(defn- render-text-segment-with-images
-  "Render a plain text segment, parsing out any images and inline formatting.
-   Returns vector of hiccup elements."
-  [text on-intent]
-  (if (images/image? text)
-    ;; Has images - parse them out
-    (->> (images/split-with-images text)
-         (mapcat (fn [{:keys [type value alt path]}]
-                   (case type
-                     :text (render-text-with-inline-formatting value)
-                     :image [(image/Image {:path path
-                                           :alt alt
-                                           :on-intent on-intent})]))))
-    ;; No images - handle inline formatting + newlines
-    (render-text-with-inline-formatting text)))
+(defn- render-text-segment
+  "Render a plain text segment with inline formatting.
+   Returns vector of hiccup elements.
+
+   Note: Images are now block-level only (:image block type).
+   Inline image markdown in text is rendered as literal text."
+  [text _on-intent]
+  (render-text-with-inline-formatting text))
 
 (defn- render-text-with-page-refs
-  "Render text with [[page-refs]] and ![images] as components.
+  "Render text with [[page-refs]] as components.
 
    Uses canonical parser from parser.page-refs for links.
-   Uses parser.images for image markdown.
    Handles newlines (converts to [:br]).
+   Note: Images are block-level only - inline markdown shows as literal text.
    Returns hiccup children for a span container."
   [db text on-intent]
   (when text
     (->> (page-refs/split-with-refs text)
          (mapcat (fn [{:keys [type value page]}]
                    (case type
-                     :text (render-text-segment-with-images value on-intent)
+                     :text (render-text-segment value on-intent)
                      :page-ref [(page-ref/PageRef {:db db
                                                    :page-name page
                                                    :on-intent on-intent})]))))))
@@ -1130,27 +1122,21 @@
          (filter image-file?))))
 
 (defn- upload-and-insert-images!
-  "Upload image files to assets folder and insert markdown at cursor.
-   
-   Works in two modes:
-   - Paste mode (target exists): Updates DOM directly for responsiveness
-   - Drop mode (target nil, current-text provided): Updates via intent only"
-  [files target cursor-pos block-id on-intent & [current-text-override]]
+  "Upload image files to assets folder and create image blocks.
+
+   Creates separate :image blocks for each uploaded file, inserted after
+   the current block. Focus moves to the last inserted image."
+  [files _target _cursor-pos block-id on-intent]
   (js/console.log "📷 upload-and-insert-images! called"
                   (clj->js {:fileCount (count files)
-                            :hasTarget (some? target)
-                            :cursorPos cursor-pos
-                            :blockId block-id
-                            :hasOnIntent (fn? on-intent)}))
+                            :blockId block-id}))
   (when (seq files)
     (if-not (storage/has-folder?)
       ;; No folder open - show helpful message
       (js/alert "Please open a folder first to save images.\n\nClick '📂 Open Folder' in the sidebar.")
       ;; Folder open - proceed with upload
-      (let [current-text (or current-text-override
-                             (when target (.-textContent target))
-                             "")]
-        (js/console.log "📷 Starting upload, current-text:" current-text)
+      (do
+        (js/console.log "📷 Starting upload of" (count files) "files")
         (-> (js/Promise.all
              (to-array
               (map (fn [file]
@@ -1162,28 +1148,18 @@
                                       (.then (fn [path]
                                                (js/console.log "📷 Asset written, path:" path)
                                                (when path
-                                                 (str "![" (.-name file) "](" path ")")))))))))
+                                                 {:path path :alt (.-name file)}))))))))
                    files)))
-            (.then (fn [markdown-links]
-                     (js/console.log "📷 All assets written, markdown-links:" (pr-str markdown-links))
-                     (let [valid-links (filter some? (js->clj markdown-links))
-                           combined-markdown (str/join " " valid-links)]
-                       (js/console.log "📷 Combined markdown:" combined-markdown)
-                       (when (seq valid-links)
-                         (let [before (subs current-text 0 cursor-pos)
-                               after (subs current-text cursor-pos)
-                               new-text (str before combined-markdown after)
-                               new-cursor-pos (+ cursor-pos (count combined-markdown))]
-                           (js/console.log "📷 New text:" new-text)
-                           ;; Update DOM if we have a target (paste mode)
-                           (when target
-                             (js/console.log "📷 Updating DOM (paste mode)")
-                             (apply-edit! target block-id new-text new-cursor-pos))
-                           ;; Always update DB via intent
-                           (js/console.log "📷 Firing intent :update-content")
-                           (on-intent {:type :update-content
-                                       :block-id block-id
-                                       :text new-text}))))))
+            (.then (fn [image-data-js]
+                     (let [images (->> (js->clj image-data-js :keywordize-keys true)
+                                       (filter some?))]
+                       (js/console.log "📷 All assets written, images:" (pr-str images))
+                       (when (seq images)
+                         ;; Fire intent to create image blocks
+                         (js/console.log "📷 Firing intent :insert-image-blocks")
+                         (on-intent {:type :insert-image-blocks
+                                     :after-id block-id
+                                     :images (vec images)})))))
             (.catch (fn [err]
                       (js/console.error "📷 Failed to upload images:" err))))))))
 
@@ -1543,11 +1519,18 @@
 
    ARCHITECTURE:
    - View mode: Pure controlled rendering from DB
-   - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input"
+   - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input
+
+   BLOCK TYPES:
+   - :block - Text content (default)
+   - :image - Single image (renders ImageBlock component)"
   [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent]
     :or {is-focused false is-selected false is-editing false is-folded false}}]
-  (let [children (get-in db [:children-by-parent block-id] [])
-        text (get-in db [:nodes block-id :props :text] "")
+  (let [node (get-in db [:nodes block-id])
+        block-type (get node :type :block)
+        props (get node :props {})
+        children (get-in db [:children-by-parent block-id] [])
+        text (get props :text "")
 
         ;; Drag visual feedback
         drop-style (drop-zone-style block-id)
@@ -1555,6 +1538,7 @@
 
         ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
         block-classes (cond-> ["block"]
+                        (= block-type :image) (conj "image-block")
                         is-focused (conj "focused")
                         is-selected (conj "selected")
                         is-editing (conj "editing")
@@ -1594,14 +1578,20 @@
                                    (on-intent {:type :toggle-subtree :block-id block-id})
                                    (on-intent {:type :toggle-fold :block-id block-id}))))}}]
 
-        ;; Content: delegate to mode-specific helpers
-        content (if is-editing
-                  (edit-content {:block-id block-id :text text :on-intent on-intent :db db})
-                  (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db}))
+        ;; Content: delegate to block-type-specific helpers
+        content (case block-type
+                  :image (image/ImageBlock {:path (get props :path)
+                                            :alt (get props :alt)
+                                            :is-focused is-focused})
+                  ;; Default: text block with edit/view modes
+                  (if is-editing
+                    (edit-content {:block-id block-id :text text :on-intent on-intent :db db})
+                    (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db})))
 
-        ;; Autocomplete popup - only show when editing this block and autocomplete is active for it
+        ;; Autocomplete popup - only show when editing text blocks
         autocomplete-state (vs/autocomplete)
-        show-autocomplete? (and is-editing
+        show-autocomplete? (and (= block-type :block)
+                                is-editing
                                 autocomplete-state
                                 (= (:block-id autocomplete-state) block-id))
 
