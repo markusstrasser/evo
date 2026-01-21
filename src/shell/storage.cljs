@@ -64,22 +64,35 @@
 (defn- block->markdown
   "Convert a single block and its children to markdown lines.
    Returns vector of lines with proper indentation.
-   
-   Multiline blocks (from Shift+Enter) are formatted as:
+
+   Handles block types:
+   - :block (default): Text content with bullet
+   - :image: Image markdown ![alt](path)
+
+   Multiline text blocks (from Shift+Enter) are formatted as:
    - first line
      continuation line
      another continuation"
   [db block-id depth]
-  (let [text (get-in db [:nodes block-id :props :text] "")
+  (let [node (get-in db [:nodes block-id])
+        block-type (get node :type :block)
+        props (get node :props {})
         children (get-in db [:children-by-parent block-id] [])
         indent (apply str (repeat (* depth 2) " "))
-        ;; Split text on newlines for multiline support
-        text-lines (str/split-lines text)
-        ;; First line gets bullet, continuation lines get extra indent (no bullet)
-        first-line (str indent "- " (first text-lines))
-        continuation-indent (str indent "  ") ;; 2 extra spaces to align with text after "- "
-        continuation-lines (map #(str continuation-indent %) (rest text-lines))
-        lines (into [first-line] continuation-lines)]
+        lines (case block-type
+                ;; Image block: serialize as markdown image syntax
+                :image
+                (let [path (get props :path "")
+                      alt (get props :alt "")]
+                  [(str indent "- ![" alt "](" path ")")])
+
+                ;; Default text block
+                (let [text (get props :text "")
+                      text-lines (str/split-lines text)
+                      first-line (str indent "- " (first text-lines))
+                      continuation-indent (str indent "  ")
+                      continuation-lines (map #(str continuation-indent %) (rest text-lines))]
+                  (into [first-line] continuation-lines)))]
     (into lines
           (mapcat #(block->markdown db % (inc depth)) children))))
 
@@ -178,17 +191,35 @@
     (or updated-at file-modified)
     (assoc :updated-at (or updated-at file-modified))))
 
+(def ^:private image-line-pattern
+  "Regex to match image-only content: ![alt](path)"
+  #"^!\[([^\]]*)\]\(([^)]+)\)$")
+
+(defn- parse-image-line
+  "Parse an image-only line. Returns {:alt :path} or nil if not an image line."
+  [text]
+  (when-let [match (re-matches image-line-pattern text)]
+    {:alt (nth match 1)
+     :path (nth match 2)}))
+
 (defn- process-bullet-line
   "Process a bullet line, creating ops and updating state.
+   Detects image-only lines and creates :image blocks accordingly.
    Returns updated state map."
   [state page-id line]
   (let [{:keys [ops counter parent-stack]} state
         depth (parse-indent-level line)
         text (strip-bullet line)
         block-id (str page-id "-b" (inc counter))
-        parent-id (get parent-stack depth page-id)]
+        parent-id (get parent-stack depth page-id)
+        ;; Check if this is an image-only line
+        image-data (parse-image-line text)
+        create-op (if image-data
+                    {:op :create-node :id block-id :type :image
+                     :props {:path (:path image-data) :alt (:alt image-data)}}
+                    {:op :create-node :id block-id :type :block :props {:text text}})]
     {:ops (-> ops
-              (conj {:op :create-node :id block-id :type :block :props {:text text}})
+              (conj create-op)
               (conj {:op :place :id block-id :under parent-id :at :last}))
      :counter (inc counter)
      :parent-stack (assoc parent-stack (inc depth) block-id)

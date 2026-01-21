@@ -1105,6 +1105,59 @@
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
+     Block-Level Images (Image Blocks)
+     Single image per block - replaces inline image pattern
+     ───────────────────────────────────────────────────────────────────────── */
+
+  /* Image block container */
+  .block.image-block {
+    padding: var(--space-1) 0;
+  }
+
+  .image-block-content {
+    display: flex;
+    align-items: flex-start;
+    padding: var(--space-1) 0;
+  }
+
+  .image-block-content.focused {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
+
+  .block-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+    display: block;
+
+    /* Subtle shadow for depth */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+    /* Smooth loading transition */
+    opacity: 1;
+    transition: opacity 0.2s ease;
+
+    /* Constrain large images */
+    max-height: 500px;
+    object-fit: contain;
+  }
+
+  /* Loading state - hidden until src is set */
+  .block-image:not([src]) {
+    opacity: 0;
+    height: 0;
+    margin: 0;
+  }
+
+  /* Selected image block */
+  .block.image-block.selected .block-image {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
      Tweet Embed
      ───────────────────────────────────────────────────────────────────────── */
   .tweet-embed {

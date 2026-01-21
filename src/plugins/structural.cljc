@@ -407,6 +407,49 @@
                :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
                                  :ui {:editing-block-id block-id :cursor-position 0}}})})
 
+(intent/register-intent! :insert-image-blocks
+  {:doc "Insert one or more image blocks after a reference block.
+         Each image gets its own block of type :image with :path and :alt props.
+         Focus moves to the last inserted image block."
+   :spec [:map [:type [:= :insert-image-blocks]]
+          [:after-id :string]
+          [:images [:vector [:map [:path :string] [:alt {:optional true} :string]]]]]
+   :handler (fn [db _session {:keys [after-id images]}]
+              (when (seq images)
+                (let [parent (q/parent-of db after-id)
+                      ;; Generate IDs and ops for each image
+                      image-data (map-indexed
+                                  (fn [idx {:keys [path alt]}]
+                                    {:id (str "img-" (random-uuid))
+                                     :path path
+                                     :alt (or alt "")
+                                     :idx idx})
+                                  images)
+                      ;; Create ops: create each image node, then place in order
+                      create-ops (mapv (fn [{:keys [id path alt]}]
+                                         {:op :create-node
+                                          :id id
+                                          :type :image
+                                          :props {:path path :alt alt}})
+                                       image-data)
+                      ;; Place first after reference, rest after each other
+                      place-ops (loop [remaining image-data
+                                       prev-id after-id
+                                       result []]
+                                  (if (empty? remaining)
+                                    result
+                                    (let [{:keys [id]} (first remaining)]
+                                      (recur (rest remaining)
+                                             id
+                                             (conj result {:op :place
+                                                          :id id
+                                                          :under parent
+                                                          :at {:after prev-id}})))))
+                      last-id (:id (last image-data))]
+                  {:ops (into create-ops place-ops)
+                   :session-updates {:selection {:nodes #{last-id} :focus last-id :anchor last-id}
+                                     :ui {:editing-block-id nil}}})))})
+
 ;; ── Multi-Select Intent Handlers ──────────────────────────────────────────────
 
 (intent/register-intent! :delete-selected
