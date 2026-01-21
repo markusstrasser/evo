@@ -45,6 +45,7 @@
             [components.spec-viewer :as spec-viewer]
             [components.quick-switcher :as quick-switcher]
             [components.notification :as notification]
+            [components.lightbox :as lightbox]
             [components.journals :as journals]
             [components.all-pages :as all-pages]
             [utils.journal :as journal]
@@ -201,6 +202,10 @@
    (see components/block.cljs handle-arrow-up/down) using cursor row detection,
    NOT here. The block component dispatches :navigate-with-cursor-memory intents."
   [e]
+  ;; Lightbox intercepts Escape when visible
+  (when (lightbox/handle-keydown e)
+    (.preventDefault e))
+
   ;; Skip if another handler already handled this event (e.g., Block component)
   (when-not (.-defaultPrevented e)
     (let [event (keymap/parse-dom-event e)
@@ -767,7 +772,10 @@
        (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent}))
 
      ;; Toast notification (uses Popover API for top-layer rendering)
-     (notification/Notification)]))
+     (notification/Notification)
+
+     ;; Lightbox overlay for fullscreen image viewing
+     (lightbox/Lightbox)]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
