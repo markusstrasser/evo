@@ -409,28 +409,40 @@
 
 (intent/register-intent! :insert-image-blocks
   {:doc "Insert one or more image blocks after a reference block.
-         Each image gets its own block of type :image with :path and :alt props.
+         Each image gets its own block of type :image with props:
+         - :path - Asset path (required)
+         - :alt - Alt text (optional)
+         - :width - Original image width (optional)
+         - :height - Original image height (optional)
          Focus moves to the last inserted image block."
    :spec [:map [:type [:= :insert-image-blocks]]
           [:after-id :string]
-          [:images [:vector [:map [:path :string] [:alt {:optional true} :string]]]]]
+          [:images [:vector [:map
+                             [:path :string]
+                             [:alt {:optional true} :string]
+                             [:width {:optional true} :int]
+                             [:height {:optional true} :int]]]]]
    :handler (fn [db _session {:keys [after-id images]}]
               (when (seq images)
                 (let [parent (q/parent-of db after-id)
                       ;; Generate IDs and ops for each image
                       image-data (map-indexed
-                                  (fn [idx {:keys [path alt]}]
+                                  (fn [idx {:keys [path alt width height]}]
                                     {:id (str "img-" (random-uuid))
                                      :path path
                                      :alt (or alt "")
+                                     :width width
+                                     :height height
                                      :idx idx})
                                   images)
                       ;; Create ops: create each image node, then place in order
-                      create-ops (mapv (fn [{:keys [id path alt]}]
+                      create-ops (mapv (fn [{:keys [id path alt width height]}]
                                          {:op :create-node
                                           :id id
                                           :type :image
-                                          :props {:path path :alt alt}})
+                                          :props (cond-> {:path path :alt alt}
+                                                   width (assoc :width width)
+                                                   height (assoc :height height))})
                                        image-data)
                       ;; Place first after reference, rest after each other
                       place-ops (loop [remaining image-data

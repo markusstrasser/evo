@@ -153,6 +153,15 @@
                                        (when (not= current-text text)
                                          [{:op :update-node :id block-id :props {:text text}}])))})
 
+(intent/register-intent! :resize-image
+                         {:doc "Update image block display width from resize operation."
+                          :spec [:map [:type [:= :resize-image]] [:block-id :string] [:width :int]]
+                          :handler (fn [db _session {:keys [block-id width]}]
+                                     (let [current-width (get-in db [:nodes block-id :props :display-width])]
+                                       ;; Only emit op if width changed
+                                       (when (not= current-width width)
+                                         [{:op :update-node :id block-id :props {:display-width width}}])))})
+
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
                                 LOGSEQ PARITY: Does NOT create a new block, just adds \\n to text.
