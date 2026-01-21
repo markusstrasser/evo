@@ -11,27 +11,14 @@
    - Zoom in: focus on a block (make it rendering root)
    - Zoom out: return to parent context"
   (:require [kernel.intent :as intent]
+            [kernel.query :as q]
             [kernel.constants :as const]
             [utils.collection :as coll]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
-
-(defn- folded-set
-  "Get the set of folded block IDs from session state."
-  [session]
-  (get-in session [:ui :folded] #{}))
-
-(defn- zoom-stack
-  "Get the zoom navigation stack from session state."
-  [session]
-  (get-in session [:ui :zoom-stack] []))
-
-(defn- zoom-root
-  "Get the current zoom root (rendering root block ID)."
-  [session]
-  (get-in session [:ui :zoom-root]))
+;; NOTE: folded-set, zoom-stack, zoom-root moved to kernel.query (canonical source)
 
 (defn- has-children?
   "Check if a block has children."
@@ -51,7 +38,7 @@
    Takes session (not db) since fold state is ephemeral.
    db param kept for API consistency with other predicates."
   [_db session block-id]
-  (contains? (folded-set session) block-id))
+  (contains? (q/folded-set session) block-id))
 
 (defn collapsible?
   "Check if a block can be collapsed (has children and not already folded)."
@@ -68,7 +55,7 @@
 (defn zoom-level
   "Get current zoom level (0 = root, 1+ = zoomed in)."
   [session]
-  (count (zoom-stack session)))
+  (count (q/zoom-stack session)))
 
 (defn in-zoom?
   "Check if currently zoomed into a block."
@@ -85,7 +72,7 @@
                                      (when (has-children? db block-id)
                                        {:session-updates
                                         {:ui {:folded (-> session
-                                                          folded-set
+                                                          q/folded-set
                                                           (coll/toggle-membership block-id))}}}))})
 
 (intent/register-intent! :expand-all
@@ -97,7 +84,7 @@
                                        (let [all-ids (cons block-id (all-descendant-ids db block-id))]
                                          {:session-updates
                                           {:ui {:folded (-> session
-                                                            folded-set
+                                                            q/folded-set
                                                             (coll/remove-all all-ids))}}})))})
 
 (intent/register-intent! :collapse
@@ -108,7 +95,7 @@
                                      (when (has-children? db block-id)
                                        {:session-updates
                                         {:ui {:folded (-> session
-                                                          folded-set
+                                                          q/folded-set
                                                           (conj block-id))}}}))})
 
 (intent/register-intent! :toggle-subtree
@@ -122,7 +109,7 @@
                           :handler (fn [db session {:keys [block-id]}]
                                      (when (has-children? db block-id)
                                        (let [all-ids (cons block-id (all-descendant-ids db block-id))
-                                             current-folded (folded-set session)
+                                             current-folded (q/folded-set session)
                                              all-collapsed? (every? current-folded all-ids)
                                              new-folded (if all-collapsed?
                                                           (coll/remove-all current-folded all-ids)
@@ -135,7 +122,7 @@
                           :fr/ids #{:fr.fold/expand-collapse-all}
                           :handler (fn [db session {:keys [root-id]}]
                                      (let [all-ids (all-descendant-ids db root-id)
-                                           current-folded (folded-set session)
+                                           current-folded (q/folded-set session)
                                            any-folded? (some current-folded all-ids)
                                            new-folded (if any-folded?
                                                         (coll/remove-all current-folded all-ids)
@@ -151,10 +138,10 @@
                           :fr/ids #{:fr.zoom/focus-subtree}
                           :handler (fn [db session {:keys [block-id]}]
                                      (when (has-children? db block-id)
-                                       (let [current-root (or (zoom-root session) const/root-doc)]
+                                       (let [current-root (or (q/zoom-root session) const/root-doc)]
                                          {:session-updates
                                           {:ui {:zoom-stack (-> session
-                                                                zoom-stack
+                                                                q/zoom-stack
                                                                 (conj {:block-id current-root}))
                                                 :zoom-root block-id}}})))})
 
@@ -163,7 +150,7 @@
                           :spec [:map [:type [:= :zoom-out]]]
                           :fr/ids #{:fr.zoom/restore-scope}
                           :handler (fn [_db session _intent]
-                                     (let [current-stack (zoom-stack session)]
+                                     (let [current-stack (q/zoom-stack session)]
                                        (when (seq current-stack)
                                          (let [new-root (-> current-stack peek :block-id (or const/root-doc))]
                                            {:session-updates
@@ -175,7 +162,7 @@
                           :spec [:map [:type [:= :zoom-to]] [:block-id :string]]
                           :fr/ids #{:fr.zoom/focus-subtree}
                           :handler (fn [_db session {:keys [block-id]}]
-                                     (let [current-stack (zoom-stack session)
+                                     (let [current-stack (q/zoom-stack session)
                                            target-idx (first (keep-indexed
                                                               (fn [i level]
                                                                 (when (= (:block-id level) block-id) i))

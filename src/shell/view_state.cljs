@@ -15,7 +15,70 @@
    View state is intentionally NOT reactive (plain atom):
    - Replicant uses explicit render calls, not reactive subscriptions
    - UI updates are triggered by explicit (d/render!) calls
-   - This keeps the mental model simple and predictable"
+   - This keeps the mental model simple and predictable
+
+   ═══════════════════════════════════════════════════════════════════════════════
+   TABLE OF CONTENTS
+   ═══════════════════════════════════════════════════════════════════════════════
+
+   ATOMS & CORE (lines ~40-120)
+     !view-state, !buffer, default-view-state
+     get-view-state, swap-view-state!, reset-view-state!
+
+   QUERY HELPERS (lines ~120-180)
+     editing-block-id, cursor-position, folded, zoom-root, current-page
+     selection-nodes, focus-id, sidebar-visible?, hotkeys-visible?
+     journals-view?, editing-page-title?
+
+   MUTATION API (lines ~180-240)
+     set-cursor-position!, clear-cursor-position!, set-current-page!
+     merge-view-state-updates!
+
+   BUFFER API (lines ~240-310)
+     buffer-set!, buffer-clear!, buffer-text
+     keep-edit-on-blur?, document-view?
+     toggle-sidebar!, toggle-hotkeys!, toggle-journals-view!
+
+   DRAG STATE (lines ~310-375)
+     drag-start!, drag-end!, drag-over!
+     dragging-ids, drop-target, dragging?
+     keep-edit-on-blur!
+
+   AUTOCOMPLETE (lines ~375-435)
+     autocomplete, autocomplete-active?, autocomplete-show!
+     autocomplete-update!, autocomplete-dismiss!, autocomplete-navigate!
+
+   QUICK SWITCHER (lines ~435-480)
+     quick-switcher, quick-switcher-visible?, quick-switcher-open!
+     quick-switcher-close!, quick-switcher-toggle!
+     quick-switcher-set-query!, quick-switcher-navigate!
+
+   CLIPBOARD & DEBUG (lines ~480-515)
+     dump-view-state, clipboard-blocks, clipboard-text
+     clear-clipboard!, clear-view-state!
+
+   NOTIFICATIONS (lines ~515-570)
+     notification, dismiss-notification!, show-notification!
+
+   PERSISTENCE (lines ~570-620)
+     load-persisted-state!, save-to-storage!, load-from-storage
+
+   FAVORITES (lines ~620-660)
+     favorites, favorite?, toggle-favorite!, add-favorite!, remove-favorite!
+
+   RECENTS (lines ~660-695)
+     recents, add-to-recents!, clear-recents!
+
+   HISTORY NAVIGATION (lines ~695-795)
+     history, history-index, can-go-back?, can-go-forward?
+     push-history!, navigate-back!, navigate-forward!, clear-history!
+
+   SIDEBAR (lines ~795-860)
+     sidebar-width, set-sidebar-width!
+     section-collapsed?, toggle-section-collapsed!
+     queue-auto-trash-check!, take-auto-trash-queue!
+
+   ═══════════════════════════════════════════════════════════════════════════════"
   (:require [utils.collection :as coll]))
 
 ;; ── View State Atom ─────────────────────────────────────────────────────────

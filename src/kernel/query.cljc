@@ -4,18 +4,44 @@
    Single source of truth for all DB reads. Use these instead of direct
    get-in calls to ensure consistent data access patterns.
 
-   Split by domain:
-   - Selection: queries on session/selection node (undoable)
-   - Edit/Cursor: queries on :ui map (ephemeral, not in history)
-   - Tree: queries on :derived indexes and :children-by-parent
-   - Pages: queries for page operations"
+   ═══════════════════════════════════════════════════════════════════════════════
+   FUNCTION SIGNATURES - CRITICAL
+   ═══════════════════════════════════════════════════════════════════════════════
+
+   ClojureScript doesn't check arity at compile time - passing wrong args
+   silently uses the wrong value as a parameter, causing mysterious nil returns.
+
+   SIGNATURE CATEGORIES:
+
+   SESSION-ONLY [session] - Ephemeral UI state queries:
+     selection-state, selection, focus, anchor, selected?, selection-count,
+     has-selection?, editing-block-id, editing?, cursor-state, cursor-position,
+     cursor-first-row?, cursor-last-row?, folded-set, folded?, zoom-stack,
+     zoom-root, current-page, active-outline-root, zoom-level, in-zoom?
+
+   DB-ONLY [db ...] - Persistent document graph queries:
+     parent-of, page-of, prev-sibling, next-sibling, index-of, children,
+     descendants-of, doc-range, block-text, all-pages, page-title,
+     find-page-by-name, page-empty?, tombstone?, trashed-pages, trashed-at,
+     created-at, updated-at, page-block-count, page-word-count, page-metadata,
+     next-block-dom-order, first-block-dom-order, last-block-dom-order
+
+   BOTH [db session ...] - Combined queries (always db first!):
+     visible-blocks, visible-next-block, visible-prev-block, visible-range,
+     visible-children, same-page?
+
+   NAMING CONVENTION:
+   - visible-* prefix = requires session for fold/zoom/page visibility
+   - No prefix = check signature category above
+
+   ═══════════════════════════════════════════════════════════════════════════════"
   (:require [kernel.navigation :as nav]
             [clojure.string :as str]
             [medley.core :as m]))
 
-;; ── Selection Queries (Session-based after Phases 4-5) ────────────────────────
-;; These functions now query session state instead of DB.
-;; Tests must pass session explicitly.
+;; ── Selection Queries ─────────────────────────────────────────────────────────
+;; SIGNATURE: [session] or [session id] - Session-only, no db parameter
+;; These functions query ephemeral selection state from session atom.
 
 (defn selection-state
   "Returns the selection state map from session.
@@ -77,7 +103,8 @@
   [session]
   (pos? (selection-count session)))
 
-;; ── Edit/Cursor Queries (Session-based after Phases 4-5) ──────────────────────
+;; ── Edit/Cursor Queries ───────────────────────────────────────────────────────
+;; SIGNATURE: [session] or [session block-id] - Session-only, no db parameter
 
 (defn editing-block-id
   "Get currently editing block ID (nil if not editing).
@@ -130,7 +157,8 @@
   [session block-id]
   (get-in session [:ui :cursor block-id :last-row?] false))
 
-;; ── Fold/Zoom Queries (Session-based after Phases 4-5) ────────────────────────
+;; ── Fold/Zoom Queries ─────────────────────────────────────────────────────────
+;; SIGNATURE: [session] or [session block-id] - Session-only, no db parameter
 
 (defn folded-set
   "Get the set of folded block IDs.
@@ -211,6 +239,7 @@
   (pos? (zoom-level session)))
 
 ;; ── Tree Queries (Derived Indexes) ────────────────────────────────────────────
+;; SIGNATURE: [db id] or [db] - DB-only, no session parameter
 
 (defn parent-of
   "Get parent ID of a node (returns keyword root or string node ID)."
@@ -263,6 +292,10 @@
     (->> (tree-seq (comp seq get-children) get-children parent)
          (rest) ;; Remove the parent itself
          vec)))
+
+;; ── Visibility Queries (Require Session) ─────────────────────────────────────
+;; SIGNATURE: [db session ...] - Both parameters required, db first!
+;; These functions combine tree structure (db) with visibility state (session).
 
 (defn visible-blocks
   "Get all visible blocks in DOM/visual order (pre-order traversal).
@@ -389,6 +422,7 @@
       #{})))
 
 ;; ── Block Text & Page Queries ─────────────────────────────────────────────────
+;; SIGNATURE: [db ...] - DB-only (except same-page? which needs session)
 
 (defn block-text
   "Get text content of a block, or empty string if not found.
@@ -459,6 +493,7 @@
   (get-in db [:nodes page-id :props :trashed-at]))
 
 ;; ── Page Metadata Queries ─────────────────────────────────────────────────────
+;; SIGNATURE: [db ...] - DB-only, no session parameter
 
 (defn created-at
   "Get the creation timestamp of a node (page or block)."

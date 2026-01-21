@@ -15,7 +15,9 @@
       "WebSearch",
       "Bash(tree:*)",
       "Read(//private/tmp/codex-responses/**)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
