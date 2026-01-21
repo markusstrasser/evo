@@ -27,6 +27,50 @@
   (when (and text (not (str/blank? text)))
     (boolean (re-matches #"^(https?://|www\.)[^\s]+$" (str/trim text)))))
 
+;; ── Smart URL Detection ─────────────────────────────────────────────────────────
+
+(defn- youtube-url?
+  "Check if URL is a YouTube video."
+  [url]
+  (when url
+    (boolean (re-find #"(?i)(youtube\.com/(watch|embed|v|shorts)|youtu\.be/)" url))))
+
+(defn- vimeo-url?
+  "Check if URL is a Vimeo video."
+  [url]
+  (when url
+    (boolean (re-find #"(?i)vimeo\.com/" url))))
+
+(defn- twitter-url?
+  "Check if URL is a Twitter/X tweet."
+  [url]
+  (when url
+    (boolean (re-find #"(?i)(twitter\.com|x\.com)/[^/]+/status/" url))))
+
+(defn- image-url?
+  "Check if URL points to an image."
+  [url]
+  (when url
+    (boolean (re-find #"(?i)\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?|$)" url))))
+
+(defn- embeddable-url?
+  "Check if URL is an embeddable media type (video, tweet, etc.)."
+  [url]
+  (or (youtube-url? url)
+      (vimeo-url? url)
+      (twitter-url? url)))
+
+(defn- classify-url
+  "Classify a URL into its media type.
+   Returns :youtube, :vimeo, :twitter, :image, or nil for regular URLs."
+  [url]
+  (cond
+    (youtube-url? url) :youtube
+    (vimeo-url? url) :vimeo
+    (twitter-url? url) :twitter
+    (image-url? url) :image
+    :else nil))
+
 (defn- split-by-blank-lines
   "Split text by blank lines (two or more newlines).
    Returns vector of paragraphs (strings)."
@@ -317,6 +361,14 @@
                      (count (:text (last remaining)))
                      (+ cursor-pos (count (:text first-block))))}))
 
+(defn- paste-strategy-embed-url
+  "Embeddable URL: create an :embed block for the URL.
+   Returns :embed-block info that will be handled specially."
+  [url url-type block-id]
+  {:embed-block {:url (str/trim url)
+                 :embed-type url-type
+                 :after-id block-id}})
+
 (defn- apply-paste-strategy
   "Apply paste strategy: update current block + create remaining blocks.
 
@@ -344,6 +396,7 @@
          0. If clipboard-blocks provided → use internal format (preserves exact hierarchy)
          0.5 Smart URL paste: If selection + URL pasted → [selection](URL)
                               If URL selected + text pasted → [text](URL)
+         0.6 Embed URL paste: If pasting YouTube/Vimeo/Twitter URL into empty block → :embed block
          1. If has blank lines (\\n\\n) → split into sibling blocks (preserves raw text)
          2. If text looks like markdown blocks → parse as hierarchy
          3. Otherwise → inline paste
@@ -375,6 +428,13 @@
                                   smart-url? (and selection
                                                   (or (and pasted-url? (not selection-url?))
                                                       (and selection-url? (not pasted-url?))))
+                                  ;; Check for embeddable URL on empty/nearly-empty block
+                                  trimmed-paste (str/trim pasted-text)
+                                  url-type (when (and pasted-url?
+                                                      (str/blank? before)
+                                                      (str/blank? after)
+                                                      (not selection))
+                                             (classify-url trimmed-paste))
 
                                   ;; Determine paste strategy based on content
                                   strategy (cond
@@ -385,6 +445,10 @@
                                              ;; Smart URL paste (selection + URL)
                                              smart-url?
                                              (paste-strategy-url-link before after cursor-pos selection pasted-url? pasted-text)
+
+                                             ;; Embeddable URL on empty block → create :embed block
+                                             url-type
+                                             (paste-strategy-embed-url trimmed-paste url-type block-id)
 
                                              ;; Blank lines → paragraph split
                                              (has-blank-lines? pasted-text)
@@ -398,7 +462,24 @@
                                              :else
                                              (paste-strategy-inline before pasted-text after cursor-pos))]
 
-                              (apply-paste-strategy block-id parent strategy)))})
+                              ;; Handle embed-block strategy specially
+                              (if-let [{:keys [url embed-type after-id]} (:embed-block strategy)]
+                                ;; Create an :embed block
+                                (let [new-id (str "block-" (random-uuid))]
+                                  {:ops [{:op :create-node
+                                          :id new-id
+                                          :type :embed
+                                          :props {:url url :embed-type embed-type}}
+                                         {:op :place
+                                          :id new-id
+                                          :under parent
+                                          :at {:after after-id}}]
+                                   :session-updates {:ui {:editing-block-id nil}
+                                                     :selection {:nodes #{new-id}
+                                                                 :focus new-id
+                                                                 :anchor new-id}}})
+                                ;; Normal paste strategy
+                                (apply-paste-strategy block-id parent strategy))))})
 
 (intent/register-intent! :copy-block
                          {:doc "Copy single block content to clipboard."
