@@ -5,12 +5,20 @@
    - Local asset images (../assets/...) via blob URLs
    - External URLs (https://...) directly
    - Loading states and error fallbacks
+   - Resize handles for block-level images
+   - Lightbox view on click
 
    Used for:
    - Block-level images (:image block type)
    - Inline images in text (legacy, being phased out)"
   (:require [clojure.string :as str]
-            [shell.storage :as storage]))
+            [shell.storage :as storage]
+            [components.lightbox :as lightbox]))
+
+;; ── Resize State ─────────────────────────────────────────────────────────────
+;; Track active resize operation
+
+(defonce !resize-state (atom nil))
 
 ;; Cache of path -> blob URL for local assets.
 ;; Avoids re-fetching the same asset multiple times.
@@ -120,17 +128,120 @@
                   :error (fn [e]
                            (set! (.. e -target -style -display) "none"))}}])))
 
+;; ── Resize Handlers ──────────────────────────────────────────────────────────
+
+;; Forward declarations for event handlers
+(declare handle-resize-move handle-resize-end)
+
+(defn- start-resize!
+  "Begin resize operation. Captures initial state."
+  [e block-id current-width aspect-ratio on-intent]
+  (.preventDefault e)
+  (.stopPropagation e)
+  (let [start-x (.-clientX e)]
+    (reset! !resize-state
+            {:block-id block-id
+             :start-x start-x
+             :start-width (or current-width 400)
+             :aspect-ratio aspect-ratio
+             :on-intent on-intent})
+    ;; Add body class for cursor
+    (.. js/document -body -classList (add "resizing-image"))
+    ;; Add global listeners
+    (js/document.addEventListener "mousemove" handle-resize-move)
+    (js/document.addEventListener "mouseup" handle-resize-end)))
+
+(defn- handle-resize-move
+  "Handle mouse move during resize."
+  [e]
+  (when-let [{:keys [block-id start-x start-width]} @!resize-state]
+    (let [delta (- (.-clientX e) start-x)
+          new-width (max 100 (min 1200 (+ start-width delta)))]
+      ;; Update element directly for smooth feedback
+      (when-let [el (js/document.querySelector (str "[data-block-id=\"" block-id "\"] .block-image"))]
+        (set! (.. el -style -width) (str new-width "px"))))))
+
+(defn- handle-resize-end
+  "Complete resize operation. Fire intent to persist."
+  [_e]
+  (when-let [{:keys [block-id start-x start-width on-intent]} @!resize-state]
+    (let [el (js/document.querySelector (str "[data-block-id=\"" block-id "\"] .block-image"))
+          final-width (if el
+                        (js/parseInt (.. el -style -width) 10)
+                        start-width)]
+      ;; Fire intent to persist new width
+      (when (and on-intent (not= final-width start-width))
+        (on-intent {:type :resize-image
+                    :block-id block-id
+                    :width final-width})))
+    ;; Cleanup
+    (reset! !resize-state nil)
+    (.. js/document -body -classList (remove "resizing-image"))
+    (js/document.removeEventListener "mousemove" handle-resize-move)
+    (js/document.removeEventListener "mouseup" handle-resize-end)))
+
+;; ── ImageBlock Component ─────────────────────────────────────────────────────
+
 (defn ImageBlock
-  "Render content for an :image block type.
+  "Render content for an :image block type with resize handles.
 
    Props:
+   - block-id: Block ID for resize intent
    - path: Image path from block props
    - alt: Alt text from block props
-   - is-focused: Whether block has focus"
-  [{:keys [path alt is-focused]}]
-  [:div.image-block-content
-   {:class (when is-focused "focused")}
-   (Image {:path path :alt alt :block-level? true})])
+   - width: Original image width (for aspect ratio)
+   - height: Original image height (for aspect ratio)
+   - display-width: User-set display width (nil = auto)
+   - is-focused: Whether block has focus
+   - on-intent: Intent handler for resize operations"
+  [{:keys [block-id path alt width height display-width is-focused on-intent]}]
+  (let [aspect-ratio (when (and width height (pos? height))
+                       (/ width height))
+        ;; Style based on display-width or auto
+        img-style (when display-width
+                    {:width (str display-width "px")
+                     :height "auto"})]
+    [:div.image-block-content
+     {:class (when is-focused "focused")}
+     ;; Image with optional fixed width
+     [:img.block-image
+      {:replicant/key (str "img-" (hash path))
+       :src (or (get @!url-cache path)
+                (when (external-url? path) path))
+       :alt (if (str/blank? alt) "Image" alt)
+       :loading "lazy"
+       :style img-style
+       :data-asset-path path
+       :replicant/on-render
+       (fn [_el _]
+         (when-not (or (external-url? path) (get @!url-cache path))
+           (resolve-asset-url
+            path
+            (fn [url]
+              (when url
+                (when-let [el (js/document.querySelector
+                               (str "img[data-asset-path=\"" path "\"]"))]
+                  (when (str/blank? (.-src el))
+                    (set! (.-src el) url))))))))
+       :on {:load (fn [e]
+                    (set! (.. e -target -style -display) ""))
+            :error (fn [e]
+                     (set! (.. e -target -style -display) "none"))
+            :click (fn [e]
+                     (.stopPropagation e)
+                     ;; Open lightbox with current image
+                     (let [img-el (.-target e)
+                           src (.-src img-el)]
+                       (when (and src (not (str/blank? src)))
+                         (lightbox/show! {:src src :alt alt}))))}}]
+     ;; Resize handle (right edge)
+     (when is-focused
+       [:div.image-resize-handle
+        {:on {:mousedown (fn [e]
+                           (start-resize! e block-id
+                                         (or display-width width 400)
+                                         aspect-ratio
+                                         on-intent))}}])]))
 
 (defn clear-url-cache!
   "Clear the blob URL cache. Call when folder changes."
