@@ -10,6 +10,7 @@
             [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
             [parser.inline-format :as inline-format]
+            [parser.images :as images]
             [components.page-ref :as page-ref]
             [components.image :as image]
             [components.autocomplete :as autocomplete]
@@ -1081,20 +1082,30 @@
       (if (seq? result) (vec result) [result]))))
 
 (defn- render-text-segment
-  "Render a plain text segment with inline formatting.
+  "Render a plain text segment with inline formatting and images.
    Returns vector of hiccup elements.
 
-   Note: Images are now block-level only (:image block type).
-   Inline image markdown in text is rendered as literal text."
+   Parses:
+   - ![alt](url) → inline images
+   - **bold**, __italic__, etc → inline formatting"
   [text _on-intent]
-  (render-text-with-inline-formatting text))
+  (if (images/image? text)
+    ;; Text has inline images - split and render each segment
+    (->> (images/split-with-images text)
+         (mapcat (fn [{:keys [type value alt path]}]
+                   (case type
+                     :text (render-text-with-inline-formatting value)
+                     :image [(image/Image {:path path
+                                           :alt alt
+                                           :block-level? false})]))))
+    ;; No images - just inline formatting
+    (render-text-with-inline-formatting text)))
 
 (defn- render-text-with-page-refs
   "Render text with [[page-refs]] as components.
 
    Uses canonical parser from parser.page-refs for links.
    Handles newlines (converts to [:br]).
-   Note: Images are block-level only - inline markdown shows as literal text.
    Returns hiccup children for a span container."
   [db text on-intent]
   (when text
