@@ -323,10 +323,9 @@
         image-files (get-image-files files)]
     ;; FILE DROP: If dropping image files, upload them and insert markdown
     (if (seq image-files)
-      (let [text (get-in db [:nodes block-id :props :text] "")]
-        ;; Insert images at end of current block's text
-        ;; Pass text as last arg since target is nil (drop mode)
-        (upload-and-insert-images! image-files nil (count text) block-id on-intent text)
+      (do
+        ;; Upload and create image blocks after this block
+        (upload-and-insert-images! image-files nil nil block-id on-intent)
         ;; Clear any drag state
         (vs/drag-end!))
 
@@ -1086,17 +1085,18 @@
    Returns vector of hiccup elements.
 
    Parses:
-   - ![alt](url) → inline images
+   - ![alt](url){width=N} → inline images with optional width
    - **bold**, __italic__, etc → inline formatting"
   [text _on-intent]
   (if (images/image? text)
     ;; Text has inline images - split and render each segment
     (->> (images/split-with-images text)
-         (mapcat (fn [{:keys [type value alt path]}]
+         (mapcat (fn [{:keys [type value alt path width]}]
                    (case type
                      :text (render-text-with-inline-formatting value)
                      :image [(image/Image {:path path
                                            :alt alt
+                                           :width width
                                            :block-level? false})]))))
     ;; No images - just inline formatting
     (render-text-with-inline-formatting text)))
@@ -1494,10 +1494,53 @@
      [:a.video-link {:href url :target "_blank" :rel "noopener noreferrer"}
       url]]))
 
+(defn- image-only-block?
+  "Check if text content is a single image with no other content.
+   Returns the parsed image data {:path :alt :width} or nil."
+  [text]
+  (when (and text (images/image? text))
+    (let [segments (images/split-with-images (str/trim text))]
+      ;; Image-only if there's exactly one segment and it's an image
+      (when (and (= 1 (count segments))
+                 (= :image (:type (first segments))))
+        (first segments)))))
+
+(defn- image-block-content
+  "Render an image-only block with resize handles when focused."
+  [{:keys [block-id text is-focused on-intent db]}]
+  (let [view-key (str block-id "-image")
+        {:keys [path alt width]} (image-only-block? text)
+        click-handler {:on {:click (fn [e]
+                                     (.stopPropagation e)
+                                     (cond
+                                       (.-shiftKey e)
+                                       (shift-click-select-range! db block-id on-intent)
+
+                                       is-focused
+                                       (on-intent {:type :enter-edit :block-id block-id})
+
+                                       :else
+                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+    [:div.image-block-content
+     (merge {:replicant/key view-key
+             :class (when is-focused "focused")}
+            click-handler)
+     ;; Image with optional fixed width
+     (image/Image {:path path
+                   :alt alt
+                   :width width
+                   :block-level? true})
+     ;; Resize handle (right edge) - only when focused
+     (when is-focused
+       [:div.image-resize-handle
+        {:on {:mousedown (fn [e]
+                           (image/start-resize! e block-id (or width 400) nil on-intent))}}])]))
+
 (defn- view-content
   "View mode content: controlled rendering from DB with page-ref support.
 
    Detects markdown formatting:
+   - ![alt](path){width=N}: renders as image-only block with resize handles
    - '> ' prefix: renders as blockquote
    - '# '-'###### ' prefix: renders as h1-h6
    - {{tweet URL}}: renders as tweet embed preview
@@ -1507,47 +1550,53 @@
    In view mode, the prefix is hidden and content is styled appropriately.
    In edit mode (edit-content), the raw markdown is shown."
   [{:keys [block-id text is-focused on-intent db]}]
-  (let [view-key (str block-id "-view")
-        {:keys [format level content url]} (block-format/parse text)]
+  ;; Check for image-only block first (special handling with resize)
+  (if (image-only-block? text)
+    (image-block-content {:block-id block-id :text text :is-focused is-focused
+                          :on-intent on-intent :db db})
 
-    ;; Special handling for embeds - they render their own container
-    (case format
-      :tweet (tweet-embed {:block-id block-id :url url :is-focused is-focused
-                           :on-intent on-intent :db db})
+    ;; Normal content rendering
+    (let [view-key (str block-id "-view")
+          {:keys [format level content url]} (block-format/parse text)]
 
-      :video (video-embed {:block-id block-id :url url :is-focused is-focused
-                           :on-intent on-intent :db db})
+      ;; Special handling for embeds - they render their own container
+      (case format
+        :tweet (tweet-embed {:block-id block-id :url url :is-focused is-focused
+                             :on-intent on-intent :db db})
 
-      ;; Default: quote, heading, or plain text
-      (let [container-tag (case format
-                            :quote :blockquote.block-content
-                            :heading (keyword (str "h" level ".block-content"))
-                            :span.block-content)
-            click-handler {:on {:click (fn [e]
-                                         (.stopPropagation e)
-                                         (cond
-                                           (.-shiftKey e)
-                                           (shift-click-select-range! db block-id on-intent)
+        :video (video-embed {:block-id block-id :url url :is-focused is-focused
+                             :on-intent on-intent :db db})
 
-                                           is-focused
-                                           (on-intent {:type :enter-edit :block-id block-id})
+        ;; Default: quote, heading, or plain text
+        (let [container-tag (case format
+                              :quote :blockquote.block-content
+                              :heading (keyword (str "h" level ".block-content"))
+                              :span.block-content)
+              click-handler {:on {:click (fn [e]
+                                           (.stopPropagation e)
+                                           (cond
+                                             (.-shiftKey e)
+                                             (shift-click-select-range! db block-id on-intent)
 
-                                           :else
-                                           (on-intent {:type :selection :mode :replace :ids block-id})))}}
-            ;; Render content; empty blocks get zero-width space for a11y tree visibility
-            rendered (render-text-with-page-refs db content on-intent)
-            children (if (seq rendered)
-                       rendered
-                       ["\u200B"]) ; ZWS makes block visible to a11y tree
-            ;; Check if content has math ($ or $$)
-            has-math? (and (string? content)
-                           (or (str/includes? content "$$")
-                               (re-find #"\$[^$]+\$" content)))
-            ;; Add on-render hook to typeset math when present
-            container-props (cond-> (merge {:replicant/key view-key} click-handler)
-                              has-math? (assoc :replicant/on-render
-                                               (fn [_] (typeset-math!))))]
-        (into [container-tag container-props] children)))))
+                                             is-focused
+                                             (on-intent {:type :enter-edit :block-id block-id})
+
+                                             :else
+                                             (on-intent {:type :selection :mode :replace :ids block-id})))}}
+              ;; Render content; empty blocks get zero-width space for a11y tree visibility
+              rendered (render-text-with-page-refs db content on-intent)
+              children (if (seq rendered)
+                         rendered
+                         ["\u200B"]) ; ZWS makes block visible to a11y tree
+              ;; Check if content has math ($ or $$)
+              has-math? (and (string? content)
+                             (or (str/includes? content "$$")
+                                 (re-find #"\$[^$]+\$" content)))
+              ;; Add on-render hook to typeset math when present
+              container-props (cond-> (merge {:replicant/key view-key} click-handler)
+                                has-math? (assoc :replicant/on-render
+                                                 (fn [_] (typeset-math!))))]
+          (into [container-tag container-props] children))))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1569,8 +1618,8 @@
    - Edit mode: Uncontrolled - browser owns text, syncs to buffer on input
 
    BLOCK TYPES:
-   - :block - Text content (default)
-   - :image - Single image (renders ImageBlock component)"
+   - :block - Text content (default), images use markdown ![alt](path){width=N}
+   - :embed - Video/tweet embeds"
   [{:keys [db block-id depth is-focused is-selected is-editing is-folded on-intent]
     :or {is-focused false is-selected false is-editing false is-folded false}}]
   (let [node (get-in db [:nodes block-id])
@@ -1585,7 +1634,6 @@
 
         ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
         block-classes (cond-> ["block"]
-                        (= block-type :image) (conj "image-block")
                         (= block-type :embed) (conj "embed-block")
                         is-focused (conj "focused")
                         is-selected (conj "selected")
@@ -1628,14 +1676,6 @@
 
         ;; Content: delegate to block-type-specific helpers
         content (case block-type
-                  :image (image/ImageBlock {:block-id block-id
-                                            :path (get props :path)
-                                            :alt (get props :alt)
-                                            :width (get props :width)
-                                            :height (get props :height)
-                                            :display-width (get props :display-width)
-                                            :is-focused is-focused
-                                            :on-intent on-intent})
                   ;; Embed block: video, tweet, etc.
                   :embed (let [url (get props :url)
                                embed-type (get props :embed-type)]

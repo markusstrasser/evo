@@ -9,7 +9,8 @@
             [kernel.constants :as const]
             [kernel.query :as q]
             [kernel.position :as pos]
-            [kernel.db :as db]))
+            [kernel.db :as db]
+            [parser.images :as images]))
 
 ;; ── Shared Validation & Tree Navigation ──────────────────────────────────────
 
@@ -409,12 +410,10 @@
 
 (intent/register-intent! :insert-image-blocks
   {:doc "Insert one or more image blocks after a reference block.
-         Each image gets its own block of type :image with props:
-         - :path - Asset path (required)
-         - :alt - Alt text (optional)
-         - :width - Original image width (optional)
-         - :height - Original image height (optional)
-         Focus moves to the last inserted image block."
+         Each image gets its own text block with markdown syntax:
+         ![alt](path){width=N}
+
+         Focus moves to the last inserted block in edit mode."
    :spec [:map [:type [:= :insert-image-blocks]]
           [:after-id :string]
           [:images [:vector [:map
@@ -425,24 +424,18 @@
    :handler (fn [db _session {:keys [after-id images]}]
               (when (seq images)
                 (let [parent (q/parent-of db after-id)
-                      ;; Generate IDs and ops for each image
-                      image-data (map-indexed
-                                  (fn [idx {:keys [path alt width height]}]
+                      ;; Generate IDs and markdown text for each image
+                      image-data (mapv
+                                  (fn [{:keys [path alt width _height]}]
                                     {:id (str "img-" (random-uuid))
-                                     :path path
-                                     :alt (or alt "")
-                                     :width width
-                                     :height height
-                                     :idx idx})
+                                     :text (images/format-image path (or alt "") width)})
                                   images)
-                      ;; Create ops: create each image node, then place in order
-                      create-ops (mapv (fn [{:keys [id path alt width height]}]
+                      ;; Create ops: text blocks with markdown
+                      create-ops (mapv (fn [{:keys [id text]}]
                                          {:op :create-node
                                           :id id
-                                          :type :image
-                                          :props (cond-> {:path path :alt alt}
-                                                   width (assoc :width width)
-                                                   height (assoc :height height))})
+                                          :type :block
+                                          :props {:text text}})
                                        image-data)
                       ;; Place first after reference, rest after each other
                       place-ops (loop [remaining image-data
@@ -457,10 +450,13 @@
                                                           :id id
                                                           :under parent
                                                           :at {:after prev-id}})))))
-                      last-id (:id (last image-data))]
+                      last-id (:id (last image-data))
+                      last-text (:text (last image-data))]
                   {:ops (into create-ops place-ops)
-                   :session-updates {:selection {:nodes #{last-id} :focus last-id :anchor last-id}
-                                     :ui {:editing-block-id nil}}})))})
+                   ;; Enter edit mode on last block, cursor at end
+                   :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
+                                     :ui {:editing-block-id last-id
+                                          :cursor-position (count last-text)}}})))})
 
 ;; ── Multi-Select Intent Handlers ──────────────────────────────────────────────
 

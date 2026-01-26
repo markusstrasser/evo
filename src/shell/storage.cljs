@@ -203,17 +203,6 @@
     (or updated-at file-modified)
     (assoc :updated-at (or updated-at file-modified))))
 
-(def ^:private image-line-pattern
-  "Regex to match image-only content: ![alt](path)"
-  #"^!\[([^\]]*)\]\(([^)]+)\)$")
-
-(defn- parse-image-line
-  "Parse an image-only line. Returns {:alt :path} or nil if not an image line."
-  [text]
-  (when-let [match (re-matches image-line-pattern text)]
-    {:alt (nth match 1)
-     :path (nth match 2)}))
-
 (def ^:private embed-line-pattern
   "Regex to match embed syntax: {{type url}}
    Supports: {{video url}}, {{tweet url}}"
@@ -233,8 +222,8 @@
 
 (defn- process-bullet-line
   "Process a bullet line, creating ops and updating state.
-   Detects image-only lines and creates :image blocks accordingly.
    Detects embed syntax and creates :embed blocks accordingly.
+   Images are stored as markdown text: ![alt](path){width=N}
    Returns updated state map."
   [state page-id line]
   (let [{:keys [ops counter parent-stack]} state
@@ -242,17 +231,12 @@
         text (strip-bullet line)
         block-id (str page-id "-b" (inc counter))
         parent-id (get parent-stack depth page-id)
-        ;; Check if this is a special block type
-        image-data (parse-image-line text)
-        embed-data (when-not image-data (parse-embed-line text))
-        create-op (cond
-                    image-data
-                    {:op :create-node :id block-id :type :image
-                     :props {:path (:path image-data) :alt (:alt image-data)}}
-                    embed-data
+        ;; Check if this is an embed block (video/tweet)
+        embed-data (parse-embed-line text)
+        create-op (if embed-data
                     {:op :create-node :id block-id :type :embed
                      :props {:url (:url embed-data) :embed-type (:embed-type embed-data)}}
-                    :else
+                    ;; Default: text block (including images as markdown)
                     {:op :create-node :id block-id :type :block :props {:text text}})]
     {:ops (-> ops
               (conj create-op)

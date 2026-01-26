@@ -8,6 +8,7 @@
             [kernel.query :as q]
             [utils.text :as text]
             [utils.intent-helpers :as helpers]
+            [parser.images :as images]
             [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -154,13 +155,15 @@
                                          [{:op :update-node :id block-id :props {:text text}}])))})
 
 (intent/register-intent! :resize-image
-                         {:doc "Update image block display width from resize operation."
+                         {:doc "Update image width in markdown text.
+                                Modifies the {width=N} attribute in ![alt](path){width=N} syntax."
                           :spec [:map [:type [:= :resize-image]] [:block-id :string] [:width :int]]
                           :handler (fn [db _session {:keys [block-id width]}]
-                                     (let [current-width (get-in db [:nodes block-id :props :display-width])]
-                                       ;; Only emit op if width changed
-                                       (when (not= current-width width)
-                                         [{:op :update-node :id block-id :props {:display-width width}}])))})
+                                     (let [text (q/block-text db block-id)
+                                           new-text (images/update-image-width text width)]
+                                       ;; Only emit op if text changed
+                                       (when (not= text new-text)
+                                         [{:op :update-node :id block-id :props {:text new-text}}])))})
 
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).
