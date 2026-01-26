@@ -22,6 +22,7 @@
             [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
+            [shell.url-sync :as url-sync]
             [utils.text-selection :as text-sel]
             [dev.tooling :as tooling]
             [debug-api]
@@ -76,10 +77,33 @@
          ;; Start in checking state - true until we know if folder exists
          :checking? true}))
 
+(defn- navigate-to-startup-page!
+  "Navigate to initial page based on URL param or default to today's journal.
+
+   Priority:
+   1. If ?page=PageName in URL, navigate to that page
+   2. Otherwise, open today's journal (creating if needed)"
+  []
+  (if-let [url-page-name (url-sync/get-page-from-url)]
+    ;; URL specifies a page - navigate there
+    (do
+      (js/console.log "🔗 Opening page from URL:" url-page-name)
+      (executor/apply-intent! !db
+                              {:type :navigate-to-page
+                               :page-name url-page-name}
+                              "URL"))
+    ;; No URL page - default to today's journal
+    (do
+      (js/console.log "📅 Opening today's journal:" (journal/today-title))
+      (executor/apply-intent! !db
+                              {:type :go-to-journal
+                               :journal-title (journal/today-title)}
+                              "STARTUP"))))
+
 (defn load-from-folder!
   "Load pages from the currently selected folder into DB.
    If folder is empty, starts with empty DB.
-   Always navigates to today's daily journal (creating if needed)."
+   Navigates to page from URL or today's journal."
   []
   (swap! !storage-status assoc :loading? true)
   (-> (storage/load-all-pages)
@@ -96,12 +120,8 @@
                  (do
                    (js/console.log "📂 Empty folder, starting fresh")
                    (reset! !db (-> (db/empty-db) (H/record)))))
-               ;; Always navigate to today's journal (creates if needed)
-               (js/console.log "📅 Opening today's journal:" (journal/today-title))
-               (executor/apply-intent! !db
-                                       {:type :go-to-journal
-                                        :journal-title (journal/today-title)}
-                                       "STARTUP")
+               ;; Navigate to startup page (URL param or today's journal)
+               (navigate-to-startup-page!)
                (swap! !storage-status assoc
                       :loading? false
                       :checking? false
@@ -160,6 +180,28 @@
   (add-watch !db :auto-save
              (fn [_ _ _ new-val]
                (schedule-save! new-val))))
+
+;; ── URL Sync (popstate handler for browser back/forward) ────────────────────
+
+(defn- handle-url-navigation
+  "Handle browser back/forward navigation (popstate).
+   Navigates to page specified in URL, or to journals view if none."
+  [page-name]
+  (if page-name
+    ;; Navigate to page from URL
+    (executor/apply-intent! !db
+                            {:type :navigate-to-page
+                             :page-name page-name}
+                            "POPSTATE")
+    ;; No page in URL - go to journals view
+    (executor/apply-intent! !db
+                            {:type :go-to-journal
+                             :journal-title (journal/today-title)}
+                            "POPSTATE")))
+
+(defonce _url-sync-init
+  (when-not (test-mode?)
+    (url-sync/init! handle-url-navigation)))
 
 ;; ── Intent dispatcher ─────────────────────────────────────────────────────────
 

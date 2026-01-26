@@ -7,6 +7,7 @@
             [kernel.db :as db]
             [shell.view-state :as vs]
             [shell.storage :as storage]
+            [shell.url-sync :as url-sync]
             [dev.tooling :as dev]))
 
 ;; ── Clipboard API ─────────────────────────────────────────────────────────────
@@ -115,6 +116,17 @@
   (when-let [old-title (get-in session-updates [:storage :delete-old-file])]
     (storage/delete-page-file! nil old-title)))
 
+(defn- sync-url-for-page!
+  "Update browser URL when page changes.
+
+   Syncs current page title to ?page= query param for deep linking.
+   Skips for back/forward navigation (popstate handles those)."
+  [db session-updates intent-type]
+  (let [new-page (get-in session-updates [:ui :current-page])
+        skip-sync? (#{:navigate-back :navigate-forward :url-navigate} intent-type)]
+    (when (and new-page (not skip-sync?))
+      (url-sync/sync-url-to-page! db new-page))))
+
 ;; ── Main Intent Application ───────────────────────────────────────────────────
 
 (defn apply-intent!
@@ -167,7 +179,10 @@
         (vs/merge-view-state-updates! session-updates))
 
       ;; Update navigation history and recents
-      (update-navigation-history! session-updates intent-type old-page))
+      (update-navigation-history! session-updates intent-type old-page)
+
+      ;; Sync URL to reflect current page (for deep linking)
+      (sync-url-for-page! db-after session-updates intent-type))
 
     ;; Handle clipboard operations
     (handle-clipboard-copy! session-updates intent-type)
