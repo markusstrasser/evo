@@ -88,12 +88,14 @@
    Props:
    - path: Image path (relative asset or URL)
    - alt: Alt text for accessibility
+   - width: Display width in pixels (optional)
    - block-level?: true for full-width block images, false for inline (default)"
-  [{:keys [path alt block-level?]}]
+  [{:keys [path alt width block-level?]}]
   (let [external? (external-url? path)
         cached-url (when-not external? (get @!url-cache path))
         src (cond external? path, cached-url cached-url, :else nil)
-        css-class (if block-level? "block-image" "inline-image")]
+        css-class (if block-level? "block-image" "inline-image")
+        style (when width {:width (str width "px") :height "auto"})]
 
     (if (or external? cached-url)
       ;; External or cached - render with src immediately
@@ -101,16 +103,22 @@
              :replicant/key (str "img-" (hash path))
              :src src
              :alt (if (str/blank? alt) "Image" alt)
+             :style style
              :loading "lazy"
              :on {:load (fn [e]
                           (set! (.. e -target -style -display) ""))
                   :error (fn [e]
-                           (set! (.. e -target -style -display) "none"))}}]
+                           (set! (.. e -target -style -display) "none"))
+                  :click (fn [e]
+                           (.stopPropagation e)
+                           (when (and src (not (str/blank? src)))
+                             (lightbox/show! {:src src :alt alt})))}}]
 
       ;; Local asset not cached - fetch and find element by data attribute
       [:img {:class css-class
              :replicant/key (str "img-" (hash path))
              :alt (if (str/blank? alt) "Image" alt)
+             :style style
              :loading "lazy"
              :data-asset-path path
              :replicant/on-render
@@ -126,14 +134,19 @@
              :on {:load (fn [e]
                           (set! (.. e -target -style -display) ""))
                   :error (fn [e]
-                           (set! (.. e -target -style -display) "none"))}}])))
+                           (set! (.. e -target -style -display) "none"))
+                  :click (fn [e]
+                           (.stopPropagation e)
+                           (let [img-src (.-src (.-target e))]
+                             (when (and img-src (not (str/blank? img-src)))
+                               (lightbox/show! {:src img-src :alt alt}))))}}])))
 
 ;; ── Resize Handlers ──────────────────────────────────────────────────────────
 
 ;; Forward declarations for event handlers
 (declare handle-resize-move handle-resize-end)
 
-(defn- start-resize!
+(defn start-resize!
   "Begin resize operation. Captures initial state."
   [e block-id current-width aspect-ratio on-intent]
   (.preventDefault e)
