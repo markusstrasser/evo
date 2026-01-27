@@ -13,6 +13,11 @@
     (is (re-find images/image-pattern "![A cat](../assets/cat.jpg)"))
     (is (re-find images/image-pattern "![](https://example.com/img.png)")))
 
+  (testing "pattern with width attribute"
+    (is (re-find images/image-pattern "![alt](path.png){width=400}"))
+    (is (re-find images/image-pattern "![](path.png){width=200}"))
+    (is (re-find images/image-pattern "![cat](cat.jpg){width=1024}")))
+
   (testing "non-matching patterns"
     (is (nil? (re-find images/image-pattern "regular text")))
     (is (nil? (re-find images/image-pattern "[not an image](link)")))
@@ -39,6 +44,10 @@
   (testing "extracts single image"
     (is (= [{:alt "cat" :path "cat.png"}]
            (images/extract-images "![cat](cat.png)"))))
+
+  (testing "extracts image with width"
+    (is (= [{:alt "cat" :path "cat.png" :width 400}]
+           (images/extract-images "![cat](cat.png){width=400}"))))
 
   (testing "extracts multiple images"
     (is (= [{:alt "first" :path "a.png"}
@@ -87,6 +96,16 @@
     (is (= [{:type :image :alt "only" :path "single.png"}]
            (images/split-with-images "![only](single.png)"))))
 
+  (testing "handles image with width"
+    (is (= [{:type :image :alt "cat" :path "cat.png" :width 200}]
+           (images/split-with-images "![cat](cat.png){width=200}"))))
+
+  (testing "handles mixed text and image with width"
+    (is (= [{:type :text :value "Before "}
+            {:type :image :alt "cat" :path "cat.png" :width 300}
+            {:type :text :value " after"}]
+           (images/split-with-images "Before ![cat](cat.png){width=300} after"))))
+
   (testing "handles nil and empty"
     (is (= [{:type :text :value nil}]
            (images/split-with-images nil)))
@@ -120,3 +139,35 @@
     (is (not (images/asset-path? "/absolute/path.png")))
     (is (not (images/asset-path? "relative/other/path.png")))
     (is (not (images/asset-path? nil)))))
+
+;; ── Format Image Tests ──────────────────────────────────────────────────────
+
+(deftest format-image-test
+  (testing "formats image without width"
+    (is (= "![A cat](cat.png)" (images/format-image "cat.png" "A cat" nil)))
+    (is (= "![](cat.png)" (images/format-image "cat.png" "" nil)))
+    (is (= "![](cat.png)" (images/format-image "cat.png")))
+    (is (= "![alt](cat.png)" (images/format-image "cat.png" "alt"))))
+
+  (testing "formats image with width"
+    (is (= "![](cat.png){width=400}" (images/format-image "cat.png" "" 400)))
+    (is (= "![cat](cat.png){width=200}" (images/format-image "cat.png" "cat" 200)))))
+
+;; ── Update Image Width Tests ────────────────────────────────────────────────
+
+(deftest update-image-width-test
+  (testing "adds width to image without one"
+    (is (= "![cat](cat.png){width=400}"
+           (images/update-image-width "![cat](cat.png)" 400))))
+
+  (testing "updates existing width"
+    (is (= "![cat](cat.png){width=400}"
+           (images/update-image-width "![cat](cat.png){width=200}" 400))))
+
+  (testing "removes width when nil"
+    (is (= "![cat](cat.png)"
+           (images/update-image-width "![cat](cat.png){width=200}" nil))))
+
+  (testing "returns non-image text unchanged"
+    (is (= "regular text" (images/update-image-width "regular text" 400)))
+    (is (= "" (images/update-image-width "" 400)))))
