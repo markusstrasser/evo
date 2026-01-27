@@ -1134,17 +1134,17 @@
          (filter image-file?))))
 
 (defn- upload-and-insert-images!
-  "Upload image files to assets folder and create image blocks.
+  "Upload image files to assets folder and insert as markdown image blocks.
 
    Processing pipeline:
    1. Fix EXIF orientation (auto-rotate camera photos)
    2. Extract dimensions (for aspect ratio preservation)
    3. Generate content-hash filename (deduplication)
    4. Write to assets folder
-   5. Create :image blocks with path, alt, width, height
+   5. Create text blocks with ![alt](path){width=N} markdown
 
-   Creates separate :image blocks for each uploaded file, inserted after
-   the current block. Focus moves to the last inserted image.
+   Creates separate blocks for each uploaded file, inserted after
+   the current block. Focus moves to the last inserted block in edit mode.
 
    Shows upload progress via toast notifications."
   [files _target _cursor-pos block-id on-intent]

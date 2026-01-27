@@ -66,8 +66,7 @@
    Returns vector of lines with proper indentation.
 
    Handles block types:
-   - :block (default): Text content with bullet
-   - :image: Image markdown ![alt](path)
+   - :block (default): Text content with bullet (images use ![alt](path){width=N} markdown)
    - :embed: Embed syntax {{video url}} or {{tweet url}}
 
    Multiline text blocks (from Shift+Enter) are formatted as:
@@ -81,12 +80,6 @@
         children (get-in db [:children-by-parent block-id] [])
         indent (apply str (repeat (* depth 2) " "))
         lines (case block-type
-                ;; Image block: serialize as markdown image syntax
-                :image
-                (let [path (get props :path "")
-                      alt (get props :alt "")]
-                  [(str indent "- ![" alt "](" path ")")])
-
                 ;; Embed block: serialize as {{type url}} syntax
                 :embed
                 (let [url (get props :url "")

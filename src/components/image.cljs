@@ -193,69 +193,6 @@
     (js/document.removeEventListener "mousemove" handle-resize-move)
     (js/document.removeEventListener "mouseup" handle-resize-end)))
 
-;; ── ImageBlock Component ─────────────────────────────────────────────────────
-
-(defn ImageBlock
-  "Render content for an :image block type with resize handles.
-
-   Props:
-   - block-id: Block ID for resize intent
-   - path: Image path from block props
-   - alt: Alt text from block props
-   - width: Original image width (for aspect ratio)
-   - height: Original image height (for aspect ratio)
-   - display-width: User-set display width (nil = auto)
-   - is-focused: Whether block has focus
-   - on-intent: Intent handler for resize operations"
-  [{:keys [block-id path alt width height display-width is-focused on-intent]}]
-  (let [aspect-ratio (when (and width height (pos? height))
-                       (/ width height))
-        ;; Style based on display-width or auto
-        img-style (when display-width
-                    {:width (str display-width "px")
-                     :height "auto"})]
-    [:div.image-block-content
-     {:class (when is-focused "focused")}
-     ;; Image with optional fixed width
-     [:img.block-image
-      {:replicant/key (str "img-" (hash path))
-       :src (or (get @!url-cache path)
-                (when (external-url? path) path))
-       :alt (if (str/blank? alt) "Image" alt)
-       :loading "lazy"
-       :style img-style
-       :data-asset-path path
-       :replicant/on-render
-       (fn [_el _]
-         (when-not (or (external-url? path) (get @!url-cache path))
-           (resolve-asset-url
-            path
-            (fn [url]
-              (when url
-                (when-let [el (js/document.querySelector
-                               (str "img[data-asset-path=\"" path "\"]"))]
-                  (when (str/blank? (.-src el))
-                    (set! (.-src el) url))))))))
-       :on {:load (fn [e]
-                    (set! (.. e -target -style -display) ""))
-            :error (fn [e]
-                     (set! (.. e -target -style -display) "none"))
-            :click (fn [e]
-                     (.stopPropagation e)
-                     ;; Open lightbox with current image
-                     (let [img-el (.-target e)
-                           src (.-src img-el)]
-                       (when (and src (not (str/blank? src)))
-                         (lightbox/show! {:src src :alt alt}))))}}]
-     ;; Resize handle (right edge)
-     (when is-focused
-       [:div.image-resize-handle
-        {:on {:mousedown (fn [e]
-                           (start-resize! e block-id
-                                         (or display-width width 400)
-                                         aspect-ratio
-                                         on-intent))}}])]))
-
 (defn clear-url-cache!
   "Clear the blob URL cache. Call when folder changes."
   []
