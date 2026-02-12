@@ -177,8 +177,7 @@
          "📋 Copy Last Diff"])]
 
      (if snapshot
-       (let [_current-page (vs/current-page) ; TODO: use for page-specific diff view
-             state-before (devtools/format-state-snapshot db-before)
+       (let [state-before (devtools/format-state-snapshot db-before)
              state-after (devtools/format-state-snapshot db-after)
              scrollable-code-style (assoc code-block-style
                                           :line-height "1.6"

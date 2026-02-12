@@ -315,8 +315,8 @@
     (when (not= norm-expected norm-actual)
       {:expected norm-expected
        :actual norm-actual
-       ;; TODO: Use editscript for detailed diff
-       :hint "Trees differ"})))
+       :expected-count (count (rest norm-expected))
+       :actual-count (count (rest norm-actual))})))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Utilities

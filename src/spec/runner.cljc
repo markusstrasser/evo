@@ -20,6 +20,7 @@
   (:require [spec.tree-dsl :as dsl]
             [spec.registry :as fr]
             [kernel.api :as api]
+            [kernel.db :as db]
             ;; Load plugins - these register intent handlers at load time
             ;; Required here so dispatch* can route to handlers
             [plugins.editing :as p-editing]
@@ -218,8 +219,8 @@
                          (session-matches? actual-session (:session expect))
                          true)
 
-           ;; TODO: invariant checking
-           invariants-ok? true
+           invariants-ok? (let [{:keys [ok?]} (db/validate actual-db)]
+                            ok?)
 
            pass? (and tree-ok? ops-ok? session-ok? invariants-ok?
                       (empty? (:issues result)))]

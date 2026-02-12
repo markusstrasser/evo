@@ -458,7 +458,7 @@
      :session-updates (helpers/make-cursor-update block-id (inc cursor-pos))}))
 
 (defn- handle-page-ref-enter
-  "Navigate to page (TODO: implement navigation)."
+  "Navigate to page referenced by the current block."
   [_db _session _intent context]
   {:session-updates {:ui {:navigate-to-page (:page-name context)}}})
 
