@@ -30,8 +30,7 @@
           ;; Step 2: Function sees result of step 1
           (fn [db-after-delete]
             (when-let [prev (get-in db-after-delete [:derived :prev-id-of id])]
-              [{:type :select :id prev}
-               {:type :cursor-move :id prev :where :end}]))])))
+              [{:type :select :id prev}]))])))
    ```
 
    READER GUIDE:

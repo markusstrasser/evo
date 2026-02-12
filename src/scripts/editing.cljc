@@ -135,10 +135,7 @@
          ;; Step 3: Navigate to first new block
          (fn [_db-after-place]
            (when-let [first-id (first new-ids)]
-             [{:type :select :ids [first-id]}
-              ;; TODO: Add cursor positioning when available
-              ;; {:type :cursor-move :id first-id :where :end}
-              ]))]))))
+             [{:type :select :ids [first-id]}]))]))))
 
 ;; ── Insert Block (Create + Focus) ─────────────────────────────────────────────
 
@@ -185,8 +182,4 @@
 
          ;; Step 3: Focus new block for editing
          (fn [_db-after-create]
-           [{:type :select :ids [new-id]}
-            ;; TODO: Add editing mode + cursor positioning
-            ;; {:type :start-editing :id new-id}
-            ;; {:type :cursor-move :id new-id :where :start}
-            ])]))))
+           [{:type :select :ids [new-id]}])]))))
