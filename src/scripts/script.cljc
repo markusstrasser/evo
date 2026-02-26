@@ -226,21 +226,18 @@
                                           :trace trace
                                           :cause e}))))
 
-             ;; 2. Normalize ops against current scratch DB
-             ;; This resolves anchors (:at :last → :at 3, etc.)
-             normalized-ops (#'tx/normalize-ops scratch-db raw-ops)
+             ;; 2-4. Normalize, validate, apply via public API
+             {:keys [db ops issues]}
+             (try
+               (tx/dry-run scratch-db raw-ops)
+               (catch #?(:clj Exception :cljs :default) e
+                 (throw (ex-info "dry-run failed during macro"
+                                 {:step step
+                                  :step-index step-count
+                                  :trace trace
+                                  :cause e}))))
 
-             ;; 3. Validate ops (throws on error)
-             ;; We only need the issues vector, not the intermediate DB
-             [_ issues] (try
-                          (#'tx/validate-ops scratch-db normalized-ops)
-                          (catch #?(:clj Exception :cljs :default) e
-                            (throw (ex-info "Validation failed during macro"
-                                            {:step step
-                                             :step-index step-count
-                                             :ops normalized-ops
-                                             :trace trace
-                                             :cause e}))))
+             normalized-ops ops
 
              ;; If validation found issues, abort with trace
              _ (when (seq issues)
@@ -252,12 +249,10 @@
                                   :trace trace
                                   :hint "Check :trace for execution history"})))
 
-             ;; 4. Apply ops and derive indexes on scratch DB
-             scratch-db' (-> scratch-db
-                             (as-> db (reduce #'tx/apply-op db normalized-ops))
-                             db/derive-indexes)
+             ;; 5. Derive indexes on the result for next step's queries
+             scratch-db' (db/derive-indexes db)
 
-             ;; 5. Record trace entry (for debugging)
+             ;; 6. Record trace entry (for debugging)
              trace-entry {:step step
                           :step-index step-count
                           :ops normalized-ops
