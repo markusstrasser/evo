@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "mcp-shadow-dual": {
-      "type": "local",
-      "enabled": true,
+      "type": "stdio",
       "command": "/opt/homebrew/bin/bash",
       "args": [
         "-c",
@@ -10,8 +9,7 @@
       ]
     },
     "tournament": {
-      "type": "local",
-      "enabled": true,
+      "type": "stdio",
       "command": "uv",
       "args": [
         "--directory",
@@ -27,8 +25,7 @@
       }
     },
     "context7": {
-      "type": "local",
-      "enabled": true,
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
@@ -37,24 +34,12 @@
     },
     "exa": {
       "type": "http",
-      "enabled": true,
-      "url": "https://mcp.exa.ai/mcp",
-      "headers": {}
+      "url": "https://mcp.exa.ai/mcp"
     },
-    "computer-use": {
-      "type": "local",
-      "enabled": true,
-      "command": "uv",
-      "args": [
-        "run",
-        "--project",
-        "/Users/alien/Projects/computer-use-mcp",
-        "--with",
-        "fastmcp",
-        "fastmcp",
-        "run",
-        "/Users/alien/Projects/computer-use-mcp/computer_use_mcp_server.py"
-      ]
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest"]
     }
   }
 }
