@@ -350,6 +350,25 @@
   [db ops]
   (reduce process-operation [db []] (m/indexed ops)))
 
+(defn dry-run
+  "Run ops through normalize → validate → apply without derive-indexes or trace.
+
+   Designed for scratch-DB simulation (e.g., scripts.script macro runner).
+   Caller is responsible for calling db/derive-indexes on the result if needed.
+
+   Args:
+     db - starting database
+     ops - vector of operations
+
+   Returns:
+     {:db new-db :ops normalized-ops :issues [...]}"
+  [db ops]
+  (let [normalized-ops (normalize-ops db ops)
+        [final-db issues] (validate-ops db normalized-ops)]
+    {:db final-db
+     :ops normalized-ops
+     :issues issues}))
+
 (defn interpret
   "Interpret a transaction sequence.
 
