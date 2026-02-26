@@ -257,3 +257,49 @@
           props (node-props-all db2 "a")]
       (is (= old-time (:created-at props)) "created-at unchanged")
       (is (> (:updated-at props) old-time) "updated-at should be refreshed"))))
+
+;; ── dry-run Tests ───────────────────────────────────────────────────────────
+
+(deftest test-dry-run-basic
+  (testing "dry-run normalizes, validates, and applies ops without derive-indexes"
+    (let [db (db/empty-db)
+          result (tx/dry-run db [(create-op "a" :block)
+                                 (place-op "a" :doc :last)])]
+      (is (map? result))
+      (is (empty? (:issues result)) "No issues for valid ops")
+      (is (contains? (:nodes (:db result)) "a") "Node created in result db")
+      ;; dry-run does NOT recompute derived indexes
+      (is (nil? (get-in (:db result) [:derived :parent-of "a"]))
+          "Derived indexes not recomputed by dry-run")
+      (is (= 2 (count (:ops result))) "Returns normalized ops"))))
+
+(deftest test-dry-run-validation-failure
+  (testing "dry-run returns issues for invalid ops"
+    (let [db (db/empty-db)
+          result (tx/dry-run db [(place-op "nonexistent" :doc :last)])]
+      (is (seq (:issues result)) "Should have validation issues")
+      (is (= db (:db result)) "DB unchanged on validation failure"))))
+
+(deftest test-dry-run-matches-interpret
+  (testing "dry-run + derive-indexes produces same tree structure as interpret"
+    (let [db (db/empty-db)
+          ops [(create-op "x" :block)
+               (place-op "x" :doc :last)
+               (update-op "x" {:text "hello"})]
+          dry-result (tx/dry-run db ops)
+          interpret-result (tx/interpret db ops)
+          derived-db (db/derive-indexes (:db dry-result))
+          ;; Compare structure, ignoring timestamps (which differ by ~1ms)
+          strip-ts (fn [nodes]
+                     (into {} (map (fn [[k v]]
+                                    [k (update v :props dissoc :created-at :updated-at)])
+                                   nodes)))]
+      (is (= (strip-ts (:nodes derived-db))
+             (strip-ts (:nodes (:db interpret-result))))
+          "Same nodes after derivation (ignoring timestamps)")
+      (is (= (:children-by-parent derived-db)
+             (:children-by-parent (:db interpret-result)))
+          "Same tree structure after derivation")
+      (is (= (:derived derived-db)
+             (:derived (:db interpret-result)))
+          "Same derived indexes after derivation"))))
