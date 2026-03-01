@@ -61,7 +61,7 @@ OUTPUT:
 REQUIREMENTS:
   - repomix (for directory scanning)
   - bat (for file reading, optional)
-  - gemini CLI (for AI processing)
+  - llmx CLI (for AI processing)
 EOF
 }
 
@@ -415,7 +415,7 @@ if [[ -f "$PROJECT_ROOT/.env" ]]; then
   set +a
 fi
 
-cat "$TEMP_PROMPT" | llmx --provider google --model "$GEMINI_MODEL" > "$OUTPUT_FILE" 2>&1
+cat "$TEMP_PROMPT" | llmx chat -m "$GEMINI_MODEL" > "$OUTPUT_FILE" 2>&1
 
 # Cleanup
 rm -f "$TEMP_CONTENT" "$TEMP_PROMPT"
