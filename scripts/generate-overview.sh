@@ -44,7 +44,7 @@ OPTIONS:
   -h, --help          Show this help message
   -o, --output PATH   Custom output path (overrides default naming)
   -p, --prompt TEXT   Additional focus/instructions appended to prompt
-  -m, --model MODEL   Gemini model to use (default: gemini/gemini-2.5-pro, fast: gemini/gemini-2.0-flash-exp)
+  -m, --model MODEL   Gemini model to use (default: gemini/gemini-3.1-pro-preview, fast: gemini/gemini-2.0-flash-exp)
 
 EXAMPLES:
   $0 --auto                              # Post-merge: generate all overviews
@@ -70,7 +70,7 @@ MODE=""
 TARGET=""
 OUTPUT_PATH=""
 APPEND_PROMPT=""
-GEMINI_MODEL="gemini/gemini-2.5-pro"
+GEMINI_MODEL="gemini/gemini-3.1-pro-preview"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -402,7 +402,7 @@ fi
 
 if [[ $PROMPT_TOKENS -gt $TOKEN_LIMIT ]]; then
   echo "⚠️  Warning: Prompt size (~${PROMPT_TOKENS} tokens) exceeds ${GEMINI_MODEL} limit (${TOKEN_LIMIT} tokens/min)" >&2
-  echo "   Consider using --model gemini-2.5-flash or reducing input size" >&2
+  echo "   Consider using --model gemini-3-flash-preview or reducing input size" >&2
 fi
 
 # Process with llmx (using google provider)
