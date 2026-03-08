@@ -94,7 +94,7 @@
    Args:
    - db: Current database (persistent document graph)
    - session: Current session state (ephemeral UI state) or nil for session-independent intents
-   - intent: Intent map (e.g., {:type :select :ids \"a\"})
+   - intent: Intent map (e.g., {:type :selection :mode :replace :ids [\"a\"]})
    - opts: Optional map with:
      - :history/enabled? - Set to false to disable history recording (default: true)
      - :state-machine/enforce? - Override *enforce-state-machine* (default: use dynamic var)
@@ -163,7 +163,7 @@
    Args:
    - db: Current database (persistent document graph)
    - session: Current session state (ephemeral UI state) or nil
-   - intent: Intent map (e.g., {:type :select :ids \"a\"})
+   - intent: Intent map (e.g., {:type :selection :mode :replace :ids [\"a\"]})
 
    Returns:
    - {:db new-db :issues [] :session-updates {...}} - On success

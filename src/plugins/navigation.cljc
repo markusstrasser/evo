@@ -7,6 +7,7 @@
             [kernel.query :as q]
             [kernel.navigation :as nav]
             [utils.text :as text]
+            [utils.intent-helpers :as helpers]
             [clojure.string :as str]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -116,8 +117,8 @@
                               (if-not target-id
                                 ;; No target block - stay in current block with cursor at boundary
                                 {:session-updates
-                                 {:ui {:editing-block-id current-block-id
-                                       :cursor-position (if (= direction :up) 0 (count current-text))}}}
+                                 (helpers/make-cursor-update current-block-id
+                                                             (if (= direction :up) 0 (count current-text)))}
 
                                 ;; Target exists - navigate to it
                                 (let [target-text (q/block-text db target-id)
@@ -130,11 +131,11 @@
 
                                   ;; Return session-updates (ephemeral UI state)
                                   {:session-updates
-                                   {:ui {:cursor-memory {:line-pos line-pos
-                                                         :last-block-id current-block-id
-                                                         :direction direction}
-                                         :editing-block-id target-id
-                                         :cursor-position cursor-at}}}))))})
+                                   (helpers/merge-session-updates
+                                    {:ui {:cursor-memory {:line-pos line-pos
+                                                          :last-block-id current-block-id
+                                                          :direction direction}}}
+                                    (helpers/make-cursor-update target-id cursor-at))}))))})
 
 (intent/register-intent! :navigate-to-adjacent
                          {:doc "Navigate to adjacent block (for left/right arrows at boundaries).
@@ -159,8 +160,7 @@
                                                    (count target-text)
                                                    cursor-position)]
                                   {:session-updates
-                                   {:ui {:editing-block-id target-id
-                                         :cursor-position actual-pos}}}))))})
+                                   (helpers/make-cursor-update target-id actual-pos)}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

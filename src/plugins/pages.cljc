@@ -12,6 +12,7 @@
             [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
+            [utils.intent-helpers :as helpers]
             [utils.text-context :as ctx]
             #?(:cljs [utils.journal :as journal])))
 
@@ -19,13 +20,21 @@
 
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
+(defn- page-view-update
+  "Canonical page-view session update builder."
+  [page-id {:keys [clear-editing? reset-zoom? journals-view? selection-id]}]
+  (helpers/merge-session-updates
+   {:ui {:current-page page-id
+         :journals-view? (boolean journals-view?)}}
+   (when clear-editing? (helpers/exit-edit-update))
+   (when reset-zoom? {:ui {:zoom-root nil}})
+   (when selection-id (helpers/select-only-update selection-id))))
+
 (defn- handle-switch-page
   "Switch to a specific page by ID.
    LOGSEQ PARITY: Clears zoom-root and exits journals view when switching pages."
   [_db _session {:keys [page-id]}]
-  {:session-updates {:ui {:current-page page-id
-                          :zoom-root nil
-                          :journals-view? false}}})
+  {:session-updates (page-view-update page-id {:reset-zoom? true})})
 
 (defn- navigate-or-create-page
   "Navigate to page by name, creating it if it doesn't exist.
@@ -34,9 +43,7 @@
   [db page-name]
   (if-let [page-id (q/find-page-by-name db page-name)]
     ;; Page exists - just navigate
-    {:session-updates {:ui {:current-page page-id
-                            :editing-block-id nil
-                            :journals-view? false}}}
+    {:session-updates (page-view-update page-id {:clear-editing? true})}
     ;; Page doesn't exist - create it and navigate
     (let [new-page-id (str "page-" (random-uuid))
           first-block-id (str "block-" (random-uuid))]
@@ -46,12 +53,9 @@
              {:op :place :id first-block-id :under new-page-id :at :last}]
        ;; BUGFIX: nodes must include focus block, otherwise state machine sees :idle
        ;; and blocks :enter-edit intent
-       :session-updates {:ui {:current-page new-page-id
-                              :editing-block-id nil
-                              :journals-view? false}
-                         :selection {:nodes #{first-block-id}
-                                     :focus first-block-id
-                                     :anchor first-block-id}}})))
+       :session-updates (page-view-update new-page-id
+                                          {:clear-editing? true
+                                           :selection-id first-block-id})})))
 
 (defn- handle-navigate-to-page
   "Navigate to page by name (from page ref click).
@@ -95,7 +99,7 @@
               {:op :update-node :id page-id :props {:trashed-at now}}])
        ;; If we deleted the current page, switch to another
        :session-updates (when deleting-current?
-                          {:ui {:current-page next-page}})})))
+                          (page-view-update next-page {}))})))
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
@@ -379,8 +383,10 @@
                                  [:block-id :string]
                                  [:cursor-pos :int]]
                           :handler
-                          (fn [db _session {:keys [block-id cursor-pos]}]
-                            (let [text (get-in db [:nodes block-id :props :text] "")
+                          (fn [db _session {:keys [block-id cursor-pos pending-buffer]}]
+                            (let [text (if (= (:block-id pending-buffer) block-id)
+                                         (:text pending-buffer)
+                                         (get-in db [:nodes block-id :props :text] ""))
                                   context (ctx/context-at-cursor text cursor-pos)]
                               (case (:type context)
                                 :page-ref (navigate-or-create-page db (:page-name context))

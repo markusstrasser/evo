@@ -120,8 +120,7 @@
          ;; Closing char and next char matches - skip over
                                 (and (contains? (set (vals pairs)) input-char)
                                      (= next-char input-char))
-                                {:session-updates {:ui {:editing-block-id block-id
-                                                        :cursor-position (inc cursor-pos)}}}
+                                {:session-updates (helpers/make-cursor-update block-id (inc cursor-pos))}
 
          ;; Opening char - insert both and position cursor between
                                 closing-char
@@ -132,8 +131,9 @@
                                   {:ops [{:op :update-node
                                           :id block-id
                                           :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position (+ cursor-pos (count input-char))}}})
+                                   :session-updates (helpers/make-cursor-update
+                                                     block-id
+                                                     (+ cursor-pos (count input-char)))})
 
          ;; Not a paired char - just insert
                                 :else
@@ -143,8 +143,9 @@
                                   {:ops [{:op :update-node
                                           :id block-id
                                           :props {:text new-text}}]
-                                   :session-updates {:ui {:editing-block-id block-id
-                                                          :cursor-position (+ cursor-pos (count input-char))}}}))))})
+                                   :session-updates (helpers/make-cursor-update
+                                                     block-id
+                                                     (+ cursor-pos (count input-char)))}))))})
 
 (intent/register-intent! :delete-with-pair-check
                          {:doc "Delete character, removing paired closing char if present.
@@ -189,8 +190,9 @@
                                     {:ops [{:op :update-node
                                             :id block-id
                                             :props {:text new-text}}]
-                                     :session-updates {:ui {:editing-block-id block-id
-                                                            :cursor-position (- cursor-pos open-len)}}})
+                                     :session-updates (helpers/make-cursor-update
+                                                       block-id
+                                                       (- cursor-pos open-len))})
 
            ;; Normal backspace - delete one char
                                   (let [new-text (str (subs text 0 (dec cursor-pos))
@@ -198,8 +200,9 @@
                                     {:ops [{:op :update-node
                                             :id block-id
                                             :props {:text new-text}}]
-                                     :session-updates {:ui {:editing-block-id block-id
-                                                            :cursor-position (dec cursor-pos)}}})))))})
+                                     :session-updates (helpers/make-cursor-update
+                                                       block-id
+                                                       (dec cursor-pos))})))))})
 
 ;; ── Merge Operations ──────────────────────────────────────────────────────────
 
@@ -261,8 +264,7 @@
                                          {:ops [{:op :update-node :id block-id :props {:text before}}
                                                 {:op :create-node :id new-id :type :block :props {:text new-text}}
                                                 {:op :place :id new-id :under parent :at {:after block-id}}]
-                                          :session-updates {:ui {:editing-block-id new-id
-                                                                 :cursor-position (count prefix)}}})))})
+                                          :session-updates (helpers/make-cursor-update new-id (count prefix))})))})
 
 ;; ── Checkbox Operations ───────────────────────────────────────────────────────
 
@@ -297,7 +299,7 @@
   "Handle Enter inside code fence - insert newline without splitting."
   [block-id cursor-pos {:keys [before after]}]
   {:ops [{:op :update-node :id block-id :props {:text (str before "\n" after)}}]
-   :session-updates {:ui {:cursor-position (inc cursor-pos)}}})
+   :session-updates (helpers/cursor-position-update (inc cursor-pos))})
 
 (defn- unformat-empty-marker
   "Remove empty list marker or checkbox, leaving plain empty block."
