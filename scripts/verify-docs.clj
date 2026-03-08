@@ -32,10 +32,10 @@
 
 (defn verify-file-exists
   "Check if a file path exists, return {:path path :exists? boolean}"
-  [base-dir path]
+  [dx-dir path]
   (let [full-path (if (str/starts-with? path "/")
                     path
-                    (str base-dir "/" path))
+                    (str (fs/normalize (fs/path dx-dir path))))
         exists? (fs/exists? full-path)]
     {:path path
      :full-path full-path
@@ -44,13 +44,14 @@
 (defn main []
   (let [base-dir (System/getProperty "user.dir")
         dx-index-path (str base-dir "/docs/DX_INDEX.md")
+        dx-dir (str (fs/parent dx-index-path))
 
         _ (when-not (fs/exists? dx-index-path)
             (println "ERROR: docs/DX_INDEX.md not found")
             (System/exit 1))
 
         referenced-files (parse-dx-index dx-index-path)
-        verification-results (map #(verify-file-exists base-dir %) referenced-files)
+        verification-results (map #(verify-file-exists dx-dir %) referenced-files)
         missing-files (filter #(not (:exists? %)) verification-results)]
 
     (println "Verifying documentation references in docs/DX_INDEX.md...\n")

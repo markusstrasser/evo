@@ -1,7 +1,6 @@
 {:paths ["src" "test" "dev" "agent" "resources"]
  :deps
  {no.cjohansen/replicant {:mvn/version "2025.12.1"}
-  no.cjohansen/nexus {:mvn/version "2025.11.1"}
   org.clojure/clojurescript {:mvn/version "1.12.134"}
   metosin/malli {:mvn/version "0.20.0"}
   org.clojure/core.match {:mvn/version "1.1.0"}
@@ -46,6 +45,5 @@
            ;; Test utilities (fipp for pretty printing in CLJ)
            :test {:extra-paths ["test"]
                   :extra-deps {fipp/fipp {:mvn/version "0.6.29"}}}}}
-
 
 

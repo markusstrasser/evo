@@ -34,7 +34,7 @@
     },
     "exa": {
       "type": "http",
-      "url": "https://mcp.exa.ai/mcp"
+      "url": "https://mcp.exa.ai/mcp?exaApiKey=bc29396d-741a-463a-b1e8-a947e26cf532&tools=web_search_exa,web_search_advanced_exa,crawling_exa,company_research_exa,people_search_exa,deep_researcher_start,deep_researcher_check"
     },
     "chrome-devtools": {
       "type": "stdio",
