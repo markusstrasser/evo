@@ -1,8 +1,8 @@
 (ns shell.executor
   "Shared runtime helpers for intent dispatch.
 
-   Extracted from nexus.cljs and blocks_ui.cljs to eliminate duplication.
-   Both files had near-identical intent application logic."
+   Extracted from the old shell dispatch surfaces so intent application logic
+   lives in one place."
   (:require [kernel.api :as api]
             [kernel.db :as db]
             [shell.view-state :as vs]
@@ -149,7 +149,7 @@
    Args:
      !db        - DB atom
      intent-map - The intent to dispatch
-     label      - Debug label for assert (e.g. \"NEXUS\" or \"DIRECT\")"
+     label      - Debug label for assert (e.g. \"DIRECT\" or \"KEYBOARD\")"
   [!db intent-map label]
   ;; UNDO/REDO: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
