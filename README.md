@@ -57,11 +57,15 @@ docs/               # Architecture notes, rendering/dispatch reference, testing 
 
 **For humans**: See `npm run` commands for dev workflow (lint, test, REPL health)
 
-**For agents**: See [CLAUDE.md](CLAUDE.md) for full context and tooling
+**For agents**: See [AGENTS.md](AGENTS.md) for the canonical repo guidance
+
+Generated `dev/overviews/AUTO-*.md` files are disposable orientation aids.
+Use this README, [docs/DX_INDEX.md](docs/DX_INDEX.md), and `AGENTS.md` as the
+actual source of truth.
 
 **Key docs & data**:
 - `docs/DX_INDEX.md` - Entry point for all documentation
-- `CLAUDE.md` - Agent instructions and tooling index
+- `AGENTS.md` - Agent instructions and tooling index
 - `VISION.md` - Product philosophy and architectural direction
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant/Nexus event handling reference
 

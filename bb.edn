@@ -158,6 +158,9 @@
   docs-overview {:doc "Generate AI architectural overview"
                  :task (shell "scripts/generate-overview.sh" (str/join " " *command-line-args*))}
 
+  repomix {:doc "Pack the repo into repomix-output.txt for long-context review"
+           :task (shell "repomix --style plain --output repomix-output.txt .")}
+
    ;; Development server
   dev {:doc "Start shadow-cljs dev server + watch"
        :task (shell "npx shadow-cljs watch :blocks-ui")}

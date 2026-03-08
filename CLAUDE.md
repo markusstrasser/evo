@@ -287,7 +287,7 @@ Always check `src/kernel/query.cljc` for the actual signature. ClojureScript won
 
 ### Keyboard & Selection
 - `shell.executor/apply-intent!` is the canonical runtime entrypoint. `shell.editor` composes the shell and routes app-global shortcuts through `shell.global-keyboard`.
-- `shell.global-keyboard` owns app-global shortcuts and non-editing selection policy. `components.block` owns contenteditable keyboard behavior. `shell.nexus` is optional compatibility/test adapter coverage only.
+- `shell.global-keyboard` owns app-global shortcuts and non-editing selection policy. `components.block` owns contenteditable keyboard behavior.
 - Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
 - For new behaviors, add Playwright coverage that asserts both DOM selection (`window.getSelection()`) and kernel selection state. Pure DB tests are not enough for cursor/selection bugs.
 

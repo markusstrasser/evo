@@ -132,7 +132,8 @@ CLAUDE.md
 
 # Large transcript files
 CLAUDE.md
-AGENTS.md
 *.transcript
 .claude/skills/skill-authoring
 test-screenshots/
+.mcp.json
+.model-review/

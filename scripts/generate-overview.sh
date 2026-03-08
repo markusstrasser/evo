@@ -57,6 +57,7 @@ EXAMPLES:
 OUTPUT:
   - Auto mode: dev/overviews/AUTO-*-OVERVIEW.md (gitignored)
   - Manual mode: timestamped file in current directory
+  - These overviews are orientation artifacts only, not canonical repo docs
 
 REQUIREMENTS:
   - repomix (for directory scanning)
