@@ -59,9 +59,9 @@ Features we intentionally don't implement. See `VISION.md` for philosophy.
 
 ## Implementation Guardrails
 
-1. **Single dispatcher rule** - Editing-context keys (Enter, ArrowUp/Down, Shift+Arrow) are owned by `src/components/block.cljs`. They dispatch Nexus actions with DOM facts (cursor rows, selection). Never bind these in `keymap/bindings_data.cljc` under `:editing`.
+1. **Single dispatcher rule** - Editing-context keys (Enter, ArrowUp/Down, Shift+Arrow) are owned by `src/components/block.cljs`. They dispatch intent maps with DOM facts (cursor rows, selection). Never bind these in `keymap/bindings_data.cljc` under `:editing`.
 
-2. **Nexus wiring** - DOM handlers route through `shell/nexus.cljs`. Components emit `[:editing/navigate-up payload]`. Gives deterministic instrumentation and one action per DOM event.
+2. **Runtime wiring** - Global non-editing keys route through `shell.global-keyboard`. Block-local editing keys stay in `src/components/block.cljs`. `shell.executor` is the canonical runtime for both paths.
 
 3. **Cursor guard** - Preserve `dataset.mounted` pattern so Replicant doesn't stomp browser selections. `on-mount` handles NEW elements, `on-render` only acts if `mounted` flag exists.
 

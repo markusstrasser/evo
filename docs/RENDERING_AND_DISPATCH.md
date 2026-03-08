@@ -1,10 +1,12 @@
 # Rendering & Dispatch Core
 
-This guide merges the former Replicant and Nexus references into a single stack document so contributors and AI agents can trace rendering data (hiccup) through the Nexus dispatcher without jumping across files. Use the anchors below to deep-link from specs and tests.
+This guide covers the shipped rendering/runtime path. In production, Evo
+flows through function-based Replicant handlers into `shell.editor`,
+`shell.global-keyboard`, `components.block`, and finally
+`shell.executor/apply-intent!`.
 
 ## Contents
 - [Replicant Rendering Primer](#replicant-rendering-primer)
-- [Nexus Dispatch System](#nexus-dispatch-system)
 - [Interoperation Notes](#interoperation-notes)
 
 ## Replicant Rendering Primer
@@ -23,7 +25,7 @@ This guide merges the former Replicant and Nexus references into a single stack 
 
 ## Event Handlers: Two Approaches
 
-> **Current Evo practice:** All production handlers are simple functions (see `components/block.cljs`). The data-driven pattern below is aspirational—use it only if you also wire the `set-dispatch!` plumbing.
+> **Current Evo practice:** All production handlers are simple functions (see `components/block.cljs`). Replicant also supports data-driven handlers, but Evo does not ship that mode.
 
 ### Function-Based (Simple, Direct)
 
@@ -36,12 +38,13 @@ This guide merges the former Replicant and Nexus references into a single stack 
 
 *Optional / not yet enabled in the shipped UI.*
 
-### Editing Keys: Single Dispatcher Rule
+### Editing Keys: Current Ownership
 
 - **While editing**, arrow keys (including Shift+Arrow) and Enter are handled entirely inside `components/block.cljs`. The component reads DOM cursor data and dispatches intents with the correct payload.
+- `shell.global-keyboard` handles app-global shortcuts and non-editing key resolution before forwarding intent maps into the shared runtime.
 - The global keymap (`keymap/bindings_data.cljc`) must not bind those keys in the `:editing` context; double-dispatch causes cursor jumps and selection glitches.
 - If you add a new editing shortcut, either wire it through the component or document why it is safe to keep it in the global handler (e.g., when it never needs DOM data).
-- All component handlers should call the Nexus dispatcher (`shell.nexus/dispatch!`). That keeps instrumentation/testing simple and ensures exactly one action per DOM event.
+- Production component handlers dispatch intent maps via their local function handlers.
 
 Event handlers as **data vectors** instead of functions:
 
@@ -303,16 +306,16 @@ Component Re-renders         <-- Replicant diffs & patches DOM
 
 **Why:** Component describes the event, plugin decides what ops to apply.
 
-### Pattern: Nexus Guards the Plugin Surface
+### Pattern: Adapters Guard the Plugin Surface
 
-- Treat Nexus actions as the only bridge from DOM context → kernel intents.
-- Actions collect DOM-only facts (cursor offsets, selection ranges, caret rows) and emit pure intent maps.
-- Plugins never touch the DOM—if an intent needs new context, introduce a Nexus action/placeholder instead of threading DOM refs through handlers.
-- When designing new features, ask “does this require DOM data?” → if yes, add a Nexus action; if no, go straight to an intent.
+- Treat the shell/component adapter layer as the bridge from DOM context → kernel intents.
+- Adapters collect DOM-only facts (cursor offsets, selection ranges, caret rows) and emit pure intent maps.
+- Plugins never touch the DOM. If an intent needs new context, add that context at the adapter boundary instead of threading DOM refs through handlers.
+- When designing new features, ask “does this require DOM data?” → if yes, keep it in `components.block` or `shell.global-keyboard`; if no, go straight to an intent.
 
 **Benefits:**
 - Keeps plugins pure and REPL-friendly.
-- Makes DOM contracts explicit (documented via `nexus.registry` placeholders).
+- Makes DOM contracts explicit without forcing all behavior through one adapter abstraction.
 - Enables third-party or automated plugin authors to reason about inputs without needing DOM APIs.
 
 ### Pattern: Lifecycle Hooks for DOM Interaction
@@ -798,32 +801,3 @@ Make sure `set-dispatch!` handles your handler type correctly.
 
 
 ---
-
-## Nexus Dispatch System
-
-Nexus is the action dispatch layer. For full documentation, see:
-- **Library docs**: [github.com/cjohansen/nexus](https://github.com/cjohansen/nexus)
-- **Clojars**: `no.cjohansen/nexus {:mvn/version "2025.10.2"}`
-
-### Evo-Specific Usage
-
-In Evo, Nexus is wired in `shell/nexus.cljs`:
-
-```clojure
-(require '[shell.nexus :as nexus])
-
-;; Dispatch an action
-(nexus/dispatch! [:editing/enter {:block-id "a"}])
-
-;; Actions are defined in shell/nexus.cljs with handlers that:
-;; 1. Translate action to intent
-;; 2. Call kernel.api/dispatch
-;; 3. Apply session-updates
-```
-
-Key patterns:
-- **Actions** = `[:namespace/action-name {:params}]`
-- **Handlers** return effects: `[[:effects/intent {...}]]`
-- **Effects** like `:effects/intent` dispatch to kernel
-
-See `shell/nexus.cljs` for the full action registry.

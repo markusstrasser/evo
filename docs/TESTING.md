@@ -37,7 +37,7 @@ Follow the [testing pyramid](https://kentcdodds.com/blog/static-vs-unit-vs-integ
 |-------|-------|---------|
 | Kernel/Core | ~30 | Transaction, schema, position, history |
 | Plugins | ~130 | Intent handlers (isolated, pure) |
-| Shell/Nexus | ~20 | Action purity, effect dispatch |
+| Shell/Adapters | ~20 | Global keyboard + shell dispatch wiring |
 | Integration | ~20 | Multi-step flows with session |
 | View | ~10 | Hiccup generation |
 | Macros | ~25 | Multi-step scripts |
@@ -122,13 +122,10 @@ Test flows that involve session state:
 Use [test.check](https://clojure.org/guides/test_check_beginner) for invariants:
 
 ```clojure
-(defspec all-nexus-actions-are-pure 50
-  (prop/for-all [action (gen/elements [:editing/navigate-up :editing/navigate-down ...])]
-    (let [state (sample-state)
-          payload {:block-id "a"}
-          result1 (nexus/handle-action state action payload)
-          result2 (nexus/handle-action state action payload)]
-      (= result1 result2))))
+(defspec navigate-intent-builder-remains-pure 50
+  (prop/for-all [cursor-pos gen/nat]
+    (= (helpers/navigate-with-cursor-memory-intent :up "a" "text" cursor-pos)
+       (helpers/navigate-with-cursor-memory-intent :up "a" "text" cursor-pos))))
 ```
 
 Good properties to test:
@@ -162,7 +159,7 @@ Tests must respect the state machine:
 test/
 ├── core/           # Kernel primitives (position, history)
 ├── plugins/        # Intent handlers (pure, isolated)
-├── shell/          # Nexus actions, effects
+├── shell/          # Shell-specific helpers and dispatch wiring
 ├── integration/    # Multi-layer flows with session
 ├── view/           # Hiccup generation tests
 ├── scripts/         # Multi-step scripts

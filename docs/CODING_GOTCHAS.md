@@ -362,8 +362,7 @@ This indicates `:derived :parent-of` doesn't match `:children-by-parent`.
 
 **Debug assertions are in place to detect corruption:**
 - `kernel/intent.cljc:apply-intent` - Checks BEFORE intent processing
-- `shell/editor.cljs:handle-intent` - Checks AFTER DB reset
-- `shell/nexus.cljs:dispatch-intent` - Checks AFTER Nexus dispatch
+- `shell.executor/apply-intent!` - Checks AFTER runtime dispatch
 
 **When triggered, you'll see:**
 ```
@@ -382,7 +381,7 @@ Inconsistency: {:mismatches [{:child "block-xxx" :expected-parent "task-1" :actu
 
 **If you reproduce the bug:**
 1. Check the console for 🚨 corruption messages
-2. The label tells you which dispatch path caused it
+2. The label tells you which runtime path caused it
 3. Stack trace shows the call chain
 4. Share the full console output for debugging
 
@@ -598,8 +597,9 @@ Computed by `kernel.db/derive-indexes` after every transaction:
 
 **Dispatch intent from component:**
 ```clojure
-(require '[shell.nexus :as nexus])
-(nexus/dispatch! [:editing/split {:block-id id :cursor-pos pos}])
+(on-intent {:type :context-aware-enter
+            :block-id id
+            :cursor-pos pos})
 ```
 
 **Create block and enter edit:**
