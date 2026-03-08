@@ -84,13 +84,13 @@ bb repl-health             # Run diagnostics (requires running REPL)
 ### AI-Assisted Development
 
 ```bash
-# Get bird's-eye view of codebase with Gemini 2.5 Pro
+# Get bird's-eye view of codebase with Gemini 3.1 Pro
 # Generate full src context and analyze with long-context LLM
 bb repomix                 # Creates repomix-output.txt with full codebase
-# Then share repomix-output.txt with Gemini 2.5 Pro for architectural analysis
+# Then share repomix-output.txt with Gemini 3.1 Pro for architectural analysis
 ```
 
-**Tip**: Use `bb repomix` + Gemini 2.5 Pro's 2M token context for high-level codebase understanding, architectural decisions, and pattern analysis.
+**Tip**: Use `bb repomix` + Gemini 3.1 Pro's 1M token context for high-level codebase understanding, architectural decisions, and pattern analysis.
 
 **Auto overview**: Every push generates `dev/overviews/AUTO-*.md` artifacts.
 Use them only for rough orientation; canonical repo truth lives in
@@ -351,24 +351,6 @@ This matches Logseq's one-step workflow for exiting nested list contexts.
 
 **Implementation**: `plugins.context-editing/context-aware-enter` handles the `:list-item` context, emitting `:update-node` (to clear marker) + `:create-node` + `:place` operations when content is blank.
 
-### Replicant Keys
-
-**Always use `:replicant/key`, never `:key`** for elements that conditionally render:
-
-```clojure
-;; ❌ WRONG - Replicant ignores :key
-(if editing?
-  [:span.edit {:key (str id "-edit")} ...]
-  [:span.view {:key (str id "-view")} ...])
-
-;; ✅ CORRECT - Replicant checks :replicant/key
-(if editing?
-  [:span.edit {:replicant/key (str id "-edit")} ...]
-  [:span.view {:replicant/key (str id "-view")} ...])
-```
-
-**Why**: Replicant's `reusable?` function only checks `:replicant/key` (not `:key`). Without proper keys, elements with the same tag name get reused instead of recreated, preventing lifecycle hooks from firing. See `docs/CODING_GOTCHAS.md`.
-
 ### Variable Shadowing
 
 Avoid shadowing core Clojure vars:
@@ -505,17 +487,13 @@ const db = await page.evaluate(() => window.DEBUG.state());
 
 ## Key Documentation
 
-- `docs/DX_INDEX.md` - Canonical doc map for humans + agents
-- `VISION.md` - Project philosophy and architectural ideas
-- `docs/STRUCTURAL_EDITING.md` - Core editor spec: state machine, navigation, selection, editing, structure ops
-- `docs/LOGSEQ_UI_FEATURES.md` - Logseq-specific UI: slash commands, sidebar, clipboard variants
-- `docs/LOGSEQ_SPEC.md` - Full Logseq reference with source links (both docs above derived from this)
-- `docs/RENDERING_AND_DISPATCH.md` - Replicant + dispatch/runtime reference (event handlers, lifecycle, adapter boundaries)
-- `docs/KEYBOARD_OWNERSHIP.md` - Canonical keyboard ownership matrix
-- `docs/LOGSEQ_BEHAVIOR_TRIADS.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
-- `docs/TESTING.md` - Testing commands, E2E helpers, patterns
-- `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
-- `dev/repl/init.cljc` - REPL utilities and initialization
+See `docs/DX_INDEX.md` for the full doc map with task routing. Key files:
+
+- `docs/GOALS.md` - Project mission, strategy, success metrics
+- `VISION.md` - Product philosophy and architectural ideas
+- `docs/STRUCTURAL_EDITING.md` - Core editor spec
+- `docs/CODING_GOTCHAS.md` - Common pitfalls
+- `dev/repl/init.cljc` - REPL utilities
 
 ## Design Constraints
 
