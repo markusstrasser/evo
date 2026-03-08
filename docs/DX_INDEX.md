@@ -23,9 +23,10 @@ npm start        # Clean + watch CLJS + watch CSS
 | Doc | Purpose |
 |-----|---------|
 | [README.md](../README.md) | Project quick start + constraints |
+| [GOALS.md](GOALS.md) | Project mission, strategy, success metrics |
 | [VISION.md](../VISION.md) | Product north star |
 | [AGENTS.md](../AGENTS.md) | Canonical agent guidance |
-| [logseq_behaviors.md](logseq_behaviors.md) | Behavior triads: keymap → intent → scenario |
+| [LOGSEQ_BEHAVIOR_TRIADS.md](LOGSEQ_BEHAVIOR_TRIADS.md) | Behavior triads: keymap → intent → scenario |
 
 ---
 
@@ -63,3 +64,27 @@ bb test    # Unit tests
 bb e2e     # E2E tests
 bb check   # Quality gate
 ```
+
+---
+
+## Data
+
+| File | Scope |
+|------|-------|
+| **[specs.edn](../resources/specs.edn)** | FR registry (44 functional requirements with scenarios) |
+| **[failure_modes.edn](../resources/failure_modes.edn)** | Known bugs/anti-patterns with symptoms and fixes |
+
+---
+
+## Task Routing
+
+What to read before acting on a task.
+
+| Task | Read first | Then |
+|------|-----------|------|
+| Implement navigation/editing intent | STRUCTURAL_EDITING.md | LOGSEQ_BEHAVIOR_TRIADS.md → RENDERING_AND_DISPATCH.md |
+| Debug cursor/focus bug | CODING_GOTCHAS.md | failure_modes.edn → cljs-ui-debugging skill |
+| Add keyboard shortcut | KEYBOARD_OWNERSHIP.md | keymap/bindings_data.cljc |
+| Understand transaction pipeline | CLAUDE.md §Architecture | kernel/transaction.cljc |
+| Write tests | TESTING.md | specs.edn (FR registry) |
+| Check Logseq parity | LOGSEQ_PARITY_EVO.md | LOGSEQ_SPEC.md |
