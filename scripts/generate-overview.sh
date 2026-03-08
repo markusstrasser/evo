@@ -44,7 +44,7 @@ OPTIONS:
   -h, --help          Show this help message
   -o, --output PATH   Custom output path (overrides default naming)
   -p, --prompt TEXT   Additional focus/instructions appended to prompt
-  -m, --model MODEL   Gemini model to use (default: gemini/gemini-3.1-pro-preview, fast: gemini/gemini-2.0-flash-exp)
+  -m, --model MODEL   Gemini model to use (default: gemini/gemini-3.1-pro-preview, fast: gemini/gemini-3-flash-preview)
 
 EXAMPLES:
   $0 --auto                              # Post-merge: generate all overviews
@@ -152,16 +152,19 @@ if [[ "$MODE" == "auto" ]]; then
   TEMP_DIR=$(mktemp -d)
 
   # Launch all three in parallel
-  echo "🔍 Starting AUTO-SOURCE-OVERVIEW.md..."
-  "$0" --source > "$TEMP_DIR/source.log" 2>&1 &
+  # Source/dev are mechanical → Flash. Project needs architectural reasoning → Pro.
+  FLASH_MODEL="gemini/gemini-3-flash-preview"
+
+  echo "🔍 Starting AUTO-SOURCE-OVERVIEW.md (Flash)..."
+  "$0" --source -m "$FLASH_MODEL" > "$TEMP_DIR/source.log" 2>&1 &
   PID_SOURCE=$!
 
-  echo "📂 Starting AUTO-PROJECT-OVERVIEW.md..."
+  echo "📂 Starting AUTO-PROJECT-OVERVIEW.md (Pro)..."
   "$0" --project > "$TEMP_DIR/project.log" 2>&1 &
   PID_PROJECT=$!
 
-  echo "🛠️  Starting AUTO-DEV-OVERVIEW.md..."
-  "$0" --dev > "$TEMP_DIR/dev.log" 2>&1 &
+  echo "🛠️  Starting AUTO-DEV-OVERVIEW.md (Flash)..."
+  "$0" --dev -m "$FLASH_MODEL" > "$TEMP_DIR/dev.log" 2>&1 &
   PID_DEV=$!
 
   echo ""
@@ -394,7 +397,7 @@ fi
 PROMPT_SIZE=$(wc -c < "$TEMP_PROMPT")
 PROMPT_TOKENS=$((PROMPT_SIZE / 4))  # Rough estimate: 1 token ≈ 4 chars
 
-# Gemini-2.5-flash limit: 1M tokens/min, Pro: 2M tokens/min
+# Gemini-3-flash limit: 1M tokens/min, Pro: 2M tokens/min
 if [[ "$GEMINI_MODEL" == *"flash"* || "$GEMINI_MODEL" == *"exp"* ]]; then
   TOKEN_LIMIT=1000000
 else
