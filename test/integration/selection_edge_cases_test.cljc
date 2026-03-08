@@ -213,7 +213,7 @@
                        (assoc-in [:ui :cursor-position] 5))
 
           ;; Simulate exit edit and extend selection down
-          ;; In real app, this is done by nexus action
+          ;; In real app, this is done by the block keydown handler + executor path
           session2 (-> session1
                        (assoc-in [:ui :editing-block-id] nil)
                        (assoc-in [:selection :nodes] #{"c" "d"})

@@ -113,6 +113,23 @@
       (is (= "b" (get-in session-updates [:ui :editing-block-id]))
           "Should preserve editing state on b"))))
 
+(deftest indent-selected-preserves-editing-while-unfolding-target
+  (testing "Indent keeps editing-block-id when it also unfolds the new parent"
+    (let [db (make-nested-tree)
+          session {:selection {:nodes #{} :focus nil :anchor nil}
+                   :ui {:editing-block-id "b"
+                        :folded #{"a"}}}
+          {:keys [ops session-updates]} (intent/apply-intent db session {:type :indent-selected})
+          result (tx/interpret db ops)]
+      (is (seq ops)
+          "Should generate indent operations")
+      (is (= "a" (get-in result [:db :derived :parent-of "b"]))
+          "b should become child of a")
+      (is (= "b" (get-in session-updates [:ui :editing-block-id]))
+          "Editing state should survive the unfold update")
+      (is (= #{} (get-in session-updates [:ui :folded]))
+          "Indent should unfold the collapsed target parent"))))
+
 (deftest indent-selected-no-previous-sibling
   (testing "Tab with no previous sibling should be no-op"
     (let [db (make-nested-tree)

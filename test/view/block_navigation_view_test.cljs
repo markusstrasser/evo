@@ -41,7 +41,7 @@
     ;; Note: data-block-id is now only on parent div.block (not .block-content)
     ;; to avoid Playwright strict mode violations. Parent block-id is accessible
     ;; via DOM traversal: element.closest('[data-block-id]')
-    (testing "Parent block has block-id wiring for Nexus dispatch"
+    (testing "Parent block has block-id wiring for DOM-to-intent adapters"
       (is (= "b" (vu/select-attribute hiccup :div.block :data-block-id))))
 
     (testing "Lifecycle hook present so cursor management can run"
