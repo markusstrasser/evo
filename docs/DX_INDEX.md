@@ -2,6 +2,10 @@
 
 Single landing page for humans and AI agents. Start here.
 
+Repo truth lives in this index, [README.md](../README.md), and
+[AGENTS.md](../AGENTS.md). Generated `dev/overviews/AUTO-*.md` files are
+orientation artifacts only and are not authoritative.
+
 ---
 
 ## Quick Start
@@ -18,10 +22,10 @@ npm start        # Clean + watch CLJS + watch CSS
 
 | Doc | Purpose |
 |-----|---------|
-| `README.md` | Project quick start + constraints |
-| `VISION.md` | Product north star |
-| `CLAUDE.md` | AI agent guidance |
-| `logseq_behaviors.md` | Behavior triads: keymap → intent → scenario |
+| [README.md](../README.md) | Project quick start + constraints |
+| [VISION.md](../VISION.md) | Product north star |
+| [AGENTS.md](../AGENTS.md) | Canonical agent guidance |
+| [logseq_behaviors.md](logseq_behaviors.md) | Behavior triads: keymap → intent → scenario |
 
 ---
 
@@ -39,9 +43,12 @@ npm start        # Clean + watch CLJS + watch CSS
 
 | Doc | Scope |
 |-----|-------|
-| **[RENDERING_AND_DISPATCH.md](RENDERING_AND_DISPATCH.md)** | Replicant + Nexus |
+| **[RENDERING_AND_DISPATCH.md](RENDERING_AND_DISPATCH.md)** | Replicant + runtime adapter boundaries |
+| **[KEYBOARD_OWNERSHIP.md](KEYBOARD_OWNERSHIP.md)** | Canonical keyboard ownership matrix |
+| **[DEPENDENCY_REVIEW.md](DEPENDENCY_REVIEW.md)** | Upstream package assessment: keep, narrow, bump, or remove |
 | **[LOGSEQ_PARITY_EVO.md](LOGSEQ_PARITY_EVO.md)** | Gaps + guardrails |
 | **[CODING_GOTCHAS.md](CODING_GOTCHAS.md)** | Common pitfalls |
+| **[ARCHITECTURE_UNIFICATION_PLAN.md](ARCHITECTURE_UNIFICATION_PLAN.md)** | Canonical execution plan for runtime, keyboard, session, and docs unification |
 
 ---
 
@@ -56,4 +63,3 @@ bb test    # Unit tests
 bb e2e     # E2E tests
 bb check   # Quality gate
 ```
-
