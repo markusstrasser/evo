@@ -14,7 +14,7 @@ Key characteristics:
 - AI-native design: LLMs generate operations, not DOM
 - Framework-agnostic core with thin UI adapters
 - Correctness over performance, simple over clever
-- Docs entrypoint: open `docs/DX_INDEX.md` → read `docs/STRUCTURAL_EDITING.md` (core editor spec) → skim `docs/LOGSEQ_UI_FEATURES.md` (Logseq-specific UI) → use triads in `docs/logseq_behaviors.md` when implementing.
+- Docs entrypoint: open `docs/DX_INDEX.md` → read `docs/STRUCTURAL_EDITING.md` (core editor spec) → skim `docs/LOGSEQ_UI_FEATURES.md` (Logseq-specific UI) → use triads in `docs/LOGSEQ_BEHAVIOR_TRIADS.md` when implementing.
 
 ## Essential Commands
 
@@ -245,7 +245,7 @@ Without proper `:replicant/key`, Replicant may reuse DOM elements when switching
 2. Component calls `(on-intent {:type :navigate-with-cursor-memory :direction :up ...})`.
 3. `handle-intent` routes directly through the kernel via `executor/apply-intent!`.
 
-All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` + `docs/logseq_behaviors.md` before touching keyboard logic.
+All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` + `docs/LOGSEQ_BEHAVIOR_TRIADS.md` before touching keyboard logic.
 
 ## Common Gotchas
 
@@ -512,7 +512,7 @@ const db = await page.evaluate(() => window.DEBUG.state());
 - `docs/LOGSEQ_SPEC.md` - Full Logseq reference with source links (both docs above derived from this)
 - `docs/RENDERING_AND_DISPATCH.md` - Replicant + dispatch/runtime reference (event handlers, lifecycle, adapter boundaries)
 - `docs/KEYBOARD_OWNERSHIP.md` - Canonical keyboard ownership matrix
-- `docs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
+- `docs/LOGSEQ_BEHAVIOR_TRIADS.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
 - `docs/TESTING.md` - Testing commands, E2E helpers, patterns
 - `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
 - `dev/repl/init.cljc` - REPL utilities and initialization

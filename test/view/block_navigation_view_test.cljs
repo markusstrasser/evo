@@ -30,7 +30,7 @@
 
 (deftest 
   scenario-nav-boundary-left-01-view
-  ;; Scenario ID matches docs/specs/logseq_behaviors.md
+  ;; Scenario ID matches docs/LOGSEQ_BEHAVIOR_TRIADS.md
   (let [db (nav-boundary-db)
         hiccup (render-block db "b" true) ; is-editing = true
         ;; Component uses .block-content for both edit and view modes

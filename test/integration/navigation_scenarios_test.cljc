@@ -1,5 +1,5 @@
 (ns integration.navigation-scenarios-test
-  "Integration-level scenarios wired to docs/specs/logseq_behaviors.md."
+  "Integration-level scenarios wired to docs/LOGSEQ_BEHAVIOR_TRIADS.md."
   (:require [clojure.test :refer [deftest testing is]]
             [kernel.db :as db]
             [kernel.intent :as intent]
@@ -17,7 +17,7 @@
     (:db (tx/interpret base ops))))
 
 (deftest scenario-nav-boundary-left-01
-  ;; Mirrors Scenario NAV-BOUNDARY-LEFT-01 in docs/specs/logseq_behaviors.md
+  ;; Mirrors Scenario NAV-BOUNDARY-LEFT-01 in docs/LOGSEQ_BEHAVIOR_TRIADS.md
   (let [db (nav-boundary-left-db)
         session {:ui {:folded #{}} :selection {:nodes #{} :focus nil :anchor nil}}
         {:keys [session-updates]} (intent/apply-intent db session {:type :navigate-to-adjacent
