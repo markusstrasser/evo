@@ -10,7 +10,8 @@
             [kernel.query :as q]
             [kernel.position :as pos]
             [kernel.db :as db]
-            [parser.images :as images]))
+            [parser.images :as images]
+            [utils.intent-helpers :as helpers]))
 
 ;; ── Shared Validation & Tree Navigation ──────────────────────────────────────
 
@@ -348,11 +349,12 @@
                 {:ops (delete-ops db session id)
                  :session-updates
                  (if new-focus
-                   {:selection {:nodes #{new-focus} :focus new-focus :anchor new-focus}
-                    :ui {:editing-block-id new-focus
-                         :cursor-position (if prev-block prev-text-len 0)}}
-                   {:selection {:nodes #{} :focus nil :anchor nil}
-                    :ui {:editing-block-id nil}})}))})
+                   (helpers/merge-session-updates
+                    (helpers/select-only-update new-focus)
+                    (helpers/make-cursor-update new-focus (if prev-block prev-text-len 0)))
+                   (helpers/merge-session-updates
+                    (helpers/clear-selection-update)
+                    (helpers/exit-edit-update)))}))})
 
 (intent/register-intent! :indent
   {:doc "Indent node under previous sibling. LOGSEQ PARITY: Expands collapsed target."
@@ -390,11 +392,10 @@
    :handler (fn [db _session _intent]
               (let [focus-id (q/focus db)
                     parent (q/parent-of db focus-id)
-                    new-id (str "block-" (random-uuid))]
+                    new-id (helpers/make-new-block-id)]
                 {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
                        {:op :place :id new-id :under parent :at {:after focus-id}}]
-                 :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
-                                   :ui {:editing-block-id new-id :cursor-position 0}}}))})
+                 :session-updates (helpers/enter-edit-update new-id 0)}))})
 
 (intent/register-intent! :create-block-in-page
   {:doc "Create new block directly under a page (for empty pages)."
@@ -405,8 +406,7 @@
    :handler (fn [_db _session {:keys [page-id block-id]}]
               {:ops [{:op :create-node :id block-id :type :block :props {:text ""}}
                      {:op :place :id block-id :under page-id :at :first}]
-               :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
-                                 :ui {:editing-block-id block-id :cursor-position 0}}})})
+               :session-updates (helpers/enter-edit-update block-id 0)})})
 
 (intent/register-intent! :insert-image-blocks
   {:doc "Insert one or more image blocks after a reference block.
@@ -454,9 +454,7 @@
                       last-text (:text (last image-data))]
                   {:ops (into create-ops place-ops)
                    ;; Enter edit mode on last block, cursor at end
-                   :session-updates {:selection {:nodes #{} :focus nil :anchor nil}
-                                     :ui {:editing-block-id last-id
-                                          :cursor-position (count last-text)}}})))})
+                   :session-updates (helpers/enter-edit-update last-id (count last-text))})))})
 
 ;; ── Multi-Select Intent Handlers ──────────────────────────────────────────────
 
@@ -481,10 +479,11 @@
                                     :else (recur (q/visible-next-block db session candidate)))))
                     new-focus (or prev-block safe-next)]
                 {:ops (vec (mapcat #(delete-ops db session %) targets))
-                 :session-updates {:selection {:nodes (if new-focus #{new-focus} #{})
-                                               :focus new-focus
-                                               :anchor new-focus}
-                                   :ui {:editing-block-id nil}}}))})
+                 :session-updates (helpers/merge-session-updates
+                                   (if new-focus
+                                     (helpers/select-only-update new-focus)
+                                     (helpers/clear-selection-update))
+                                   (helpers/exit-edit-update))}))})
 
 (intent/register-intent! :indent-selected
   {:doc "Indent all selected/editing nodes (Logseq parity).
@@ -509,7 +508,7 @@
                         unfold-updates (when unfold-target
                                          {:ui {:folded (disj (q/folded-set session) unfold-target)}})]
                     {:ops (or ops [])
-                     :session-updates (merge base-updates unfold-updates)}))))})
+                     :session-updates (helpers/merge-session-updates base-updates unfold-updates)}))))})
 
 (intent/register-intent! :outdent-selected
   {:doc "Outdent all selected/editing nodes (Logseq parity).

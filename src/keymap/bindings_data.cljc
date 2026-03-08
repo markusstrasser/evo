@@ -34,8 +34,8 @@
 
                  ;; NOTE: Enter/Shift+Enter are NOT bound in keymap
                  ;; They MUST be handled by Block component which provides correct cursor position context
-                 ;; Enter → context-aware block split/creation (dispatched via Nexus)
-                 ;; Shift+Enter → literal newline (dispatched via Nexus)
+                 ;; Enter → context-aware block split/creation (dispatched via on-intent)
+                 ;; Shift+Enter → literal newline (dispatched via on-intent)
 
                  ;; NOTE: Backspace/Delete are NOT bound here - handled by contenteditable + component logic
                  ;; Special cases (merge at position 0) are handled in the block editor component
@@ -67,14 +67,14 @@
                  ;; === Navigation within Editing (Arrow keys) ===
                  ;; NOTE: ArrowUp/ArrowDown are NOT bound in keymap
                  ;; They MUST be handled by Block component which detects cursor row position
-                 ;; and dispatches Nexus actions with proper context (text content, cursor offset)
+                 ;; and dispatches intent maps with proper context (text content, cursor offset)
                  ;;
                  ;; NOTE: ArrowLeft/Right are also NOT bound here
                  ;; Browser handles cursor movement within the block (default contenteditable behavior)
                  ;; Navigation to adjacent blocks (at cursor edges) is handled at component level
 
                  ;; === Cmd+A cycle (edit mode) ===
-                 ;; NOTE: Cmd+A in editing mode is handled specially in handle-global-keydown
+                 ;; NOTE: Cmd+A in editing mode is handled specially in shell.global-keyboard
                  ;; First press → browser select-all (not prevented)
                  ;; Second press (all selected) → dispatches :select-all-cycle with :from-editing? true
              ]

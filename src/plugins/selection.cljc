@@ -363,7 +363,7 @@
    3. Third press (block selected) → select parent
    4. Fourth press (parent/multiple selected) → select all visible
 
-   This intent handles steps 2-4. Step 1 is handled in handle-global-keydown
+   This intent handles steps 2-4. Step 1 is handled in shell.global-keyboard
    by allowing the browser's default Cmd+A behavior.
 
    The :from-editing? flag indicates we're transitioning from editing with

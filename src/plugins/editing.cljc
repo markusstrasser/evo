@@ -27,12 +27,10 @@
                                            cursor-pos (case cursor-at
                                                         :start 0
                                                         :end text-length
-                                                        ;; Default to end if not specified
+                                       ;; Default to end if not specified
                                                         text-length)]
                                        {:session-updates
-                                        {:selection {:nodes #{} :focus nil :anchor nil}
-                                         :ui {:editing-block-id block-id
-                                              :cursor-position cursor-pos}}}))})
+                                        (helpers/enter-edit-update block-id cursor-pos)}))})
 
 (intent/register-intent! :exit-edit
                          {:doc "Exit edit mode WITHOUT selecting block. Ephemeral - not in undo/redo history."
@@ -40,7 +38,7 @@
                           :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :exit-edit]]]
                           :handler (fn [_db _session _intent]
-                                     {:session-updates {:ui {:editing-block-id nil :cursor-position nil}}})})
+                                     {:session-updates (helpers/exit-edit-update)})})
 
 (intent/register-intent! :exit-edit-and-select
                          {:doc "Exit edit mode and select the block (Logseq parity).
@@ -51,10 +49,9 @@
                           :handler (fn [_db session _intent]
                                      (when-let [editing-block-id (get-in session [:ui :editing-block-id])]
                                        {:session-updates
-                                        {:ui {:editing-block-id nil :cursor-position nil}
-                                         :selection {:nodes #{editing-block-id}
-                                                     :focus editing-block-id
-                                                     :anchor editing-block-id}}}))})
+                                        (helpers/merge-session-updates
+                                         (helpers/exit-edit-update)
+                                         (helpers/select-only-update editing-block-id))}))})
 
 (intent/register-intent! :exit-edit-and-extend
                          {:doc "Exit edit mode and extend selection (Shift+Arrow boundary behavior).
@@ -77,13 +74,14 @@
                                                                    :anchor editing-block-id
                                                                    :direction direction}
                                                                   ;; At boundary - select only current block
-                                                                  {:nodes #{editing-block-id}
-                                                                   :focus editing-block-id
-                                                                   :anchor editing-block-id
-                                                                   :direction direction})]
+                                                                 {:nodes #{editing-block-id}
+                                                                  :focus editing-block-id
+                                                                  :anchor editing-block-id
+                                                                  :direction direction})]
                                          {:session-updates
-                                          {:ui {:editing-block-id nil :cursor-position nil}
-                                           :selection extended-selection}})))})
+                                          (helpers/merge-session-updates
+                                           (helpers/exit-edit-update)
+                                           {:selection extended-selection})})))})
 
 (intent/register-intent! :enter-edit-selected
                          {:doc "Enter edit mode in selected block (Logseq parity).
@@ -99,9 +97,7 @@
                                              text-length (count (get-in db [:nodes focused-block :props :text] ""))
                                              cursor-pos (if (= cursor-at :start) 0 text-length)]
                                          {:session-updates
-                                          {:selection {:nodes #{} :focus nil :anchor nil}
-                                           :ui {:editing-block-id focused-block
-                                                :cursor-position cursor-pos}}})))})
+                                          (helpers/enter-edit-update focused-block cursor-pos)})))})
 
 (intent/register-intent! :enter-edit-with-char
                          {:doc "Enter edit mode and append a character (type-to-edit).
@@ -122,16 +118,14 @@
                                            new-cursor-pos (count new-text)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates
-                                        {:selection {:nodes #{} :focus nil :anchor nil}
-                                         :ui {:editing-block-id block-id
-                                              :cursor-position new-cursor-pos}}}))})
+                                        (helpers/enter-edit-update block-id new-cursor-pos)}))})
 
 (intent/register-intent! :clear-cursor-position
                          {:doc "Clear cursor-position from session state. Used after applying cursor position to prevent reapplication."
                           :fr/ids #{:fr.nav/vertical-cursor-memory}
                           :spec [:map [:type [:= :clear-cursor-position]]]
                           :handler (fn [_db _session _intent]
-                                     {:session-updates {:ui {:cursor-position nil}}})})
+                                     {:session-updates (helpers/cursor-position-update nil)})})
 
 (intent/register-intent! :update-cursor-state
                          {:doc "Update cursor position state for boundary detection. Ephemeral - not in history."
@@ -178,8 +172,7 @@
                                            after (str/triml (subs text cursor-pos))
                                            new-text (str before "\n" after)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                        :session-updates {:ui {:editing-block-id block-id
-                                                               :cursor-position (inc cursor-pos)}}}))})
+                                        :session-updates (helpers/make-cursor-update block-id (inc cursor-pos))}))})
 
 (intent/register-intent! :merge-with-prev
                          {:doc "Merge block with previous sibling (or parent if first child).
@@ -225,8 +218,7 @@
                                                            curr-children)
                                                      ;; Move current block to trash
                                                      [{:op :place :id block-id :under const/root-trash :at :last}]))
-                                          :session-updates {:ui {:editing-block-id target-id
-                                                                 :cursor-position cursor-at}}})))})
+                                          :session-updates (helpers/make-cursor-update target-id cursor-at)})))})
 
 (intent/register-intent! :split-at-cursor
                          {:doc "Split block at cursor position into two blocks.
@@ -286,8 +278,7 @@
                                                                   {:op :place :id child-id :under block-id :at :last})
                                                                 target-children)
                                                            [{:op :place :id target-id :under const/root-trash :at :last}]))
-                                                :session-updates {:ui {:editing-block-id block-id
-                                                                       :cursor-position (count text)}}})))
+                                                :session-updates (helpers/make-cursor-update block-id (count text))})))
 
                                          ;; Middle of text - delete next character
                                          :else
@@ -295,8 +286,7 @@
                                                new-text (str (subs text 0 cursor-pos)
                                                              (subs text (+ cursor-pos next-char-len)))]
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                            :session-updates {:ui {:editing-block-id block-id
-                                                                   :cursor-position cursor-pos}}}))))})
+                                            :session-updates (helpers/make-cursor-update block-id cursor-pos)}))))})
 
 ;; ── Word Navigation Intents ──────────────────────────────────────────────────
 
@@ -314,7 +304,7 @@
                                            cursor-pos (get-in session [:ui :cursor-position])
                                            ;; Use find-word-end to stop at word boundary, not skip whitespace
                                            next-pos (text/find-word-end block-text (or cursor-pos 0))]
-                                       {:session-updates {:ui {:cursor-position next-pos}}}))})
+                                       {:session-updates (helpers/cursor-position-update next-pos)}))})
 
 (intent/register-intent! :move-cursor-backward-word
                          {:doc "Move cursor to start of previous word (Alt+B / Ctrl+Shift+B on Mac)."
@@ -327,7 +317,7 @@
                                            cursor-pos (get-in session [:ui :cursor-position])
                                            prev-pos (text/find-prev-word-boundary block-text (or cursor-pos 0))]
                                        (when prev-pos
-                                         {:session-updates {:ui {:cursor-position prev-pos}}})))})
+                                         {:session-updates (helpers/cursor-position-update prev-pos)})))})
 
 ;; ── Kill Commands (Emacs-style) ──────────────────────────────────────────────
 
@@ -341,7 +331,7 @@
                                  [:block-id :string]]
                           :handler (fn [_db _session {:keys [block-id]}]
                                      {:ops [{:op :update-node :id block-id :props {:text ""}}]
-                                      :session-updates {:ui {:cursor-position 0}}})})
+                                      :session-updates (helpers/cursor-position-update 0)})})
 
 (intent/register-intent! :kill-to-beginning
                          {:doc "Kill from cursor to beginning of block (Cmd+U).
@@ -357,8 +347,9 @@
                                            killed-text (subs block-text 0 cursor-pos)
                                            new-text (subs block-text cursor-pos)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                        :session-updates {:ui {:cursor-position 0
-                                                               :clipboard-text killed-text}}}))})
+                                        :session-updates (helpers/merge-session-updates
+                                                          (helpers/cursor-position-update 0)
+                                                          {:ui {:clipboard-text killed-text}})}))})
 
 (intent/register-intent! :kill-to-end
                          {:doc "Kill from cursor to end of block (Cmd+K).
@@ -413,8 +404,9 @@
                                                new-text (str (subs block-text 0 prev-pos)
                                                              (subs block-text cursor-pos))]
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                            :session-updates {:ui {:cursor-position prev-pos
-                                                                   :clipboard-text killed-text}}}))))})
+                                            :session-updates (helpers/merge-session-updates
+                                                              (helpers/cursor-position-update prev-pos)
+                                                              {:ui {:clipboard-text killed-text}})}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds

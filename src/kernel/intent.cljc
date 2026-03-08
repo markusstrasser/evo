@@ -19,7 +19,7 @@
      (apply-intent db session {:type :indent :id \"a\"})
 
      ;; Intent with session updates (selection, edit mode, etc.)
-     (apply-intent db session {:type :select :ids [\"a\" \"b\"]})"
+     (apply-intent db session {:type :selection :mode :replace :ids [\"a\" \"b\"]})"
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [malli.core :as m]
@@ -330,7 +330,7 @@
    - {:errors humanized-errors :explanation malli-explanation} if invalid
 
    Example:
-     (validate-intent-repl {:type :select :ids \"not-a-vector\"})
+     (validate-intent-repl {:type :selection :mode :replace :ids \"not-a-vector\"})
      ;=> {:errors {:ids [\"should be a vector\"]} :explanation {...}}"
   [{:keys [type] :as intent}]
   (if-let [{:keys [validator spec]} (get @!intents type)]
