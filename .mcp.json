@@ -8,22 +8,6 @@
         "clojure -X:mcp-shadow-dual"
       ]
     },
-    "tournament": {
-      "type": "stdio",
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/Users/alien/Projects/tournament-mcp",
-        "run",
-        "eval_server.py"
-      ],
-      "env": {
-        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
-        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}",
-        "GROQ_API_KEY": "${GROQ_API_KEY}",
-        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
-      }
-    },
     "context7": {
       "type": "stdio",
       "command": "npx",
@@ -40,6 +24,47 @@
       "type": "stdio",
       "command": "npx",
       "args": ["chrome-devtools-mcp@latest"]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "research": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/alien/Projects/papers-mcp",
+        "papers-mcp"
+      ],
+      "env": {
+        "S2_API_KEY": "${S2_API_KEY}"
+      }
+    },
+    "meta-knowledge": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/alien/Projects/meta",
+        "meta-mcp"
+      ]
+    },
+    "repo-tools": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/alien/Projects/meta",
+        "python3",
+        "scripts/repo_tools_mcp.py"
+      ]
     }
   }
 }
