@@ -92,7 +92,9 @@ bb repomix                 # Creates repomix-output.txt with full codebase
 
 **Tip**: Use `bb repomix` + Gemini 2.5 Pro's 2M token context for high-level codebase understanding, architectural decisions, and pattern analysis.
 
-**Auto overview**: Every push generates a `source-auto-overview*.md` artifact (check the workspace or CI run). Grab the latest version for a quick, human-readable summary before diving in.
+**Auto overview**: Every push generates `dev/overviews/AUTO-*.md` artifacts.
+Use them only for rough orientation; canonical repo truth lives in
+`README.md`, `docs/DX_INDEX.md`, and `AGENTS.md`.
 
 ## Architecture
 
@@ -184,30 +186,31 @@ Components never mutate state directly. They describe what happened via intents.
 For operations where step N depends on results of step N-1, use the **script pattern** (`src/scripts/`):
 
 ```clojure
-;; Problem: Delete block, then select previous block
+;; Problem: Create and place a block, then tell the caller which ID to focus
 ;; Single-pass plugins can't see intermediate state
 
 ;; Solution: Script simulates on scratch DB
 (ns scripts.editing
   (:require [scripts.script :as script]))
 
-(defn smart-backspace [db {:keys [id]}]
-  (:ops
-    (script/run db
-      [;; Step 1: Delete block
-       {:type :delete :id id}
-
-       ;; Step 2: Function sees result of step 1
-       (fn [db-after-delete]
-         (when-let [prev (get-in db-after-delete [:derived :prev-id-of id])]
-           [{:type :select :id prev}]))])))
+(defn insert-block [db {:keys [under at text]}]
+  (let [new-id (str (random-uuid))
+        result (script/run db
+                 [{:op :create-node
+                   :id new-id
+                   :type :block
+                   :props {:text (or text "")}}
+                  {:op :place :id new-id :under under :at at}])]
+    {:ops (:ops result)
+     :new-id new-id}))
 ```
 
 **How it works:**
 1. Run steps on scratch DB (throwaway copy)
 2. Each step sees real intermediate state
 3. Accumulate normalized ops
-4. Commit all ops atomically to real DB (one undo entry)
+4. Return structural facts the outer handler can use for session updates
+5. Commit all ops atomically to real DB (one undo entry)
 
 **When to use:**
 - Multi-step with dependencies (step 2 needs result of step 1)
@@ -283,7 +286,8 @@ All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` +
 Always check `src/kernel/query.cljc` for the actual signature. ClojureScript won't error on wrong arity - it will silently use wrong values as parameters, causing `null` returns.
 
 ### Keyboard & Selection
-- Use the Nexus dispatcher for **all** keyboard actions. Do not add new handlers directly to `handle-global-keydown` or components without routing through Nexus.
+- `shell.executor/apply-intent!` is the canonical runtime entrypoint. `shell.editor` composes the shell and routes app-global shortcuts through `shell.global-keyboard`.
+- `shell.global-keyboard` owns app-global shortcuts and non-editing selection policy. `components.block` owns contenteditable keyboard behavior. `shell.nexus` is optional compatibility/test adapter coverage only.
 - Editing-mode arrow keys live exclusively in `components/block.cljs`. Extending selection requires the mock-text boundary helpers—duplicate work elsewhere will cause cursor jumps.
 - For new behaviors, add Playwright coverage that asserts both DOM selection (`window.getSelection()`) and kernel selection state. Pure DB tests are not enough for cursor/selection bugs.
 
@@ -506,7 +510,8 @@ const db = await page.evaluate(() => window.DEBUG.state());
 - `docs/STRUCTURAL_EDITING.md` - Core editor spec: state machine, navigation, selection, editing, structure ops
 - `docs/LOGSEQ_UI_FEATURES.md` - Logseq-specific UI: slash commands, sidebar, clipboard variants
 - `docs/LOGSEQ_SPEC.md` - Full Logseq reference with source links (both docs above derived from this)
-- `docs/RENDERING_AND_DISPATCH.md` - Replicant + Nexus reference (event handlers, lifecycle, dispatch data)
+- `docs/RENDERING_AND_DISPATCH.md` - Replicant + dispatch/runtime reference (event handlers, lifecycle, adapter boundaries)
+- `docs/KEYBOARD_OWNERSHIP.md` - Canonical keyboard ownership matrix
 - `docs/logseq_behaviors.md` - Behavior triads (keymap slice, intent contract, scenario ledger)
 - `docs/TESTING.md` - Testing commands, E2E helpers, patterns
 - `docs/CODING_GOTCHAS.md` - Common pitfalls (constants, shadowing, IDs)
@@ -545,3 +550,55 @@ Key task categories:
 - E2E Testing: `e2e`, `e2e:watch`, `e2e:debug`, `e2e:a11y`
 - Cache Management: `clean`, `index`
 - Development: `dev`, `repl-health`
+
+## Constitution
+
+> **Human-protected.** Agent may propose changes but must not modify without explicit approval.
+
+### Generative Principle
+
+> Minimize the spec surface while maximizing kernel power — legible to both humans and LLMs.
+
+Every design decision, refactoring choice, and documentation edit should be evaluated against: "Does this make the kernel smaller, more correct, or more legible?" If none of the three, don't do it.
+
+### Project Mode: Extraction
+
+Evo is in **extraction mode**. The kernel (`src/kernel/`) is the valuable artifact. Agent work should trend toward:
+1. Separating kernel from shell/UI concerns
+2. Cleaning the kernel API surface (three-op primitives, transaction pipeline, derived indexes)
+3. Ensuring property tests and specs are self-contained with the kernel
+4. Removing dead code, consolidating redundant patterns
+
+Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure. Bug fixes and improvements to existing kernel code are welcome.
+
+### Principles
+
+1. **Kernel purity over feature breadth.** The kernel must have zero UI dependencies. Every import from `shell/`, `components/`, or `keymap/` in kernel code is a bug.
+2. **Three-op invariant.** All state changes reduce to `create-node`, `place`, `update-node`. If a new operation can't be expressed as a composition of these three, the design is wrong.
+3. **REPL-verifiable in 30 seconds.** Any kernel behavior must be demonstrable in the REPL with a fixture DB. If it requires a browser to test, it's not kernel — it's shell.
+4. **Specs are the product.** `resources/specs.edn`, `docs/STRUCTURAL_EDITING.md`, and the kernel source ARE the publishable artifacts. Keep them precise, correct, and self-contained.
+5. **Docs: facts not plans.** Keep documentation that states invariants, specs, and verified behaviors. Delete executed plans, stale proposals, and session artifacts. Git preserves history.
+6. **Tests travel with the kernel.** Property tests in `test/kernel/` and `test/scripts/` must work without shell, view, or component dependencies.
+7. **Commit freely.** Same auto-commit policy as other projects. Granular semantic commits after every logical change.
+
+### Autonomy Boundaries
+
+**Autonomous (do without asking):**
+- Commit after completing a logical change
+- Delete dead code, executed plans, stale docs
+- Refactor kernel internals for clarity
+- Fix bugs in existing code
+- Run quality gates (`bb check`, `bb test`)
+
+**Ask first:**
+- Adding new features or capabilities
+- Changing the three-op kernel API
+- Modifying `resources/specs.edn` (the FR registry)
+- Modifying this Constitution section
+- Modifying `docs/GOALS.md`
+
+### Known Limitations
+
+- No architectural enforcement of kernel/shell boundary — relies on convention and review
+- Test suite doesn't verify kernel independence (no build target for kernel-only)
+- Extraction readiness is not measurable yet — no metric for "how close to standalone"

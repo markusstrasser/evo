@@ -1,11 +1,15 @@
 # Goals
 
 > Human-owned. Agents may propose changes but must not modify without explicit approval.
-> Last revised: 2026-03-07
+> Last revised: 2026-03-08
 
 ## Mission
 
-Build the best-specified outliner kernel, extract it as a standalone library, and publish an interactive essay showcasing it. The outliner UI is a proving ground, not the product.
+Build the best-specified outliner kernel, extract it as a standalone library. The outliner UI is a proving ground, not the product.
+
+## Generative Principle
+
+> Minimize the spec surface while maximizing kernel power — legible to both humans and LLMs.
 
 ## Context: Why not PKM?
 
@@ -26,30 +30,37 @@ Evo's value is not as a PKM tool. It's as:
 
 ## Strategy
 
-### Phase 1: Kernel extraction (near-term)
+### Phase 1: Kernel extraction (triggered by need)
 - Extract `src/kernel/` as a standalone, publishable library
 - Clean API surface: three-op primitives, transaction pipeline, derived indexes
 - No UI dependencies, no shell, no Replicant
 - Property tests and spec travel with the kernel
+- **Trigger**: when another project needs the kernel, not on a calendar
 
-### Phase 2: Interactive essay (near-term)
-- Publish the outliner as a showcase of "the perfect spec for a text-line tree"
-- Interactive: readers can see the kernel, try operations, inspect state
-- The essay is the product — not the app
+### Phase 2: Kernel improvement + augmented features
+- If the kernel can be made smaller or more correct, do it
+- Interesting directions: multimodal support, augmented features beyond basic outlining
+- Interactive essay showcasing the kernel (human-driven, not agent work)
 
 ### Phase 3: Self-improving loop (exploration, highest interest)
 - AI observes interaction logs, proposes UI changes or new domain-specific UIs
-- Requires actually using the app to generate logs (bootstrap problem)
-- OR: feed it synthetic tasks / recorded sessions
-- This is the most interesting direction but needs the bootstrap solved
+- Bootstrap problem: not currently generating interaction data
+- May use the app more in the future; also exploring better ways to externalize preference data
 
 ## Deferred scope (explicitly not now)
 
 - **Universal adapter shells** (React/Svelte/Godot/TUI) — domain shapes representation, universality is a mirage
 - **LLVM-of-UI / MLIR thesis** — interesting metaphor, not a practical goal
-- **Logseq feature parity** — feature-complete enough (slash commands, sidebar, drag-drop all LOW)
+- **New Logseq feature parity** — feature-complete enough (slash commands, sidebar, drag-drop all LOW)
 - **Daily PKM use** — not happening; knowledge work happens in AI tools, Google Docs, voice memos
-- **Multimodal/visual experience capture** — interesting but better served by dedicated apps (Sublime, etc.)
+
+## Docs strategy
+
+- **Specs are invariant**: `STRUCTURAL_EDITING.md`, `LOGSEQ_SPEC.md`, logseq behavior triads — these are facts, keep them
+- **Logseq parity**: condense to a table/list referencing feature IDs in the authoritative spec
+- **Executed plans**: delete from working tree (git preserves history)
+- **Architecture docs**: keep only what's current and true — saves future agents from wasted exploration
+- **Discussion trail**: kernel evolution decisions are interesting; preserve in git history, not as cruft in working tree
 
 ## Belief tracker (separate project idea)
 
@@ -59,9 +70,9 @@ A flat list of strong beliefs / predictions. Causal graph optional. AI checks ag
 
 | Metric | Target | Horizon |
 |--------|--------|---------|
-| Kernel extracted as standalone lib | Published, usable without UI code | 3 months |
-| Interactive essay draft | Readable, interactive, showcases kernel | 6 months |
-| Architecture discussion trail | Key decisions preserved in git, cruft removed | Ongoing |
+| Kernel extractable | Can be used without UI code when needed | When triggered |
+| Kernel purity | Zero imports from shell/components/keymap | Ongoing |
+| Docs are facts not plans | No executed plans in working tree | Ongoing |
 
 ## Resource constraints
 
@@ -69,13 +80,7 @@ A flat list of strong beliefs / predictions. Causal graph optional. AI checks ag
 - Bursts of focused work, not steady allocation
 - AI agents do most of the implementation; human provides taste, direction, requirements
 
-## Architecture docs & discussion trail
-
-Architecture docs should be pruned: remove cruft, keep decisions that show the evolution of thinking. These are interesting *for the kernel* — how it evolved, what was tried, what was discarded. Git history preserves everything; the working tree should be clean.
-
-Look at `meta` project patterns for better taxonomy of architecture discussions.
-
 ## Exit conditions
 
-- If the kernel doesn't find external users or the essay doesn't generate interest, Evo becomes a archived reference project
+- If the kernel doesn't find use in another project, Evo becomes an archived reference project
 - If AI-generated UIs become the focus, Evo might pivot to being purely the substrate (kernel + AI loop, no manual UI)
