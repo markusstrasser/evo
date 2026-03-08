@@ -1,10 +1,10 @@
 (ns shell.editor
-  "Blocks UI demo - composition layer only.
+  "Blocks UI composition layer.
 
-   Demonstrates proper architecture:
-   - Plugins provide getters and extend intent multimethods
-   - Components use getters and dispatch intents
-   - App just composes components and routes intents"
+   Responsibilities:
+   - boot explicit startup surfaces (plugins, keymaps, storage, render)
+   - compose components and route intents through the shared executor
+   - keep DOM-global listeners and browser wiring at the shell edge"
   (:require [clojure.string :as str]
             [replicant.dom :as d]
             [kernel.db :as db]
@@ -17,29 +17,16 @@
             [components.devtools :as devtools]
             [components.backlinks :as backlinks]
             [dataspex.core :as dataspex]
-            [shell.nexus :as nexus]
+            [shell.dispatch-bridge :as dispatch-bridge]
             [shell.executor :as executor]
+            [shell.global-keyboard :as global-keyboard]
             [shell.storage :as storage]
             [shell.e2e-scenarios]
             [shell.view-state :as vs]
             [shell.url-sync :as url-sync]
             [utils.text-selection :as text-sel]
-            [dev.tooling :as tooling]
             [debug-api]
-            ;; Load all plugins to register intents
-            [plugins.selection]
-            [plugins.editing]
-            [plugins.clipboard]
-            [plugins.navigation]
-            [plugins.structural]
-            [plugins.folding]
-            [plugins.context-editing]
-            [plugins.text-formatting]
-            [plugins.autocomplete]
-            ;; Phase 3: [plugins.buffer] removed - buffer now purely in session
-            [plugins.pages]
-            [plugins.backlinks-index]
-            [keymap.core :as keymap]
+            [plugins.manifest :as plugins]
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
             [kernel.intent :as intent]
@@ -231,281 +218,6 @@
       (vs/keep-edit-on-blur!))
     ;; Use shared runtime for the actual dispatch
     (executor/apply-intent! !db intent-map "DIRECT")))
-
-;; ── Global keyboard shortcuts (Keymap Resolver) ───────────────────────────────
-
-(defn handle-global-keydown
-  "Global keyboard shortcuts via central keymap resolver.
-
-   Single source of truth: keymap/bindings.cljc registers all bindings.
-   This function just resolves key event → intent type → dispatch.
-
-   NOTE: Arrow key navigation at block boundaries is handled by the Block component
-   (see components/block.cljs handle-arrow-up/down) using cursor row detection,
-   NOT here. The block component dispatches :navigate-with-cursor-memory intents."
-  [e]
-  ;; Lightbox intercepts Escape when visible
-  (when (lightbox/handle-keydown e)
-    (.preventDefault e))
-
-  ;; Skip if another handler already handled this event (e.g., Block component)
-  (when-not (.-defaultPrevented e)
-    (let [event (keymap/parse-dom-event e)
-          db @!db
-          current-session (vs/get-view-state)
-          key (.-key e)
-          mod? (or (.-metaKey e) (.-ctrlKey e))
-          shift? (.-shiftKey e)
-          focus-id (vs/focus-id)
-          editing? (vs/editing-block-id)
-          idle? (and (nil? editing?) (nil? focus-id)) ; FR-Idle-01: True idle state
-          intent-type (keymap/resolve-intent-type event current-session)
-
-        ;; Editable element for text formatting
-          editable-el (when editing? (.-activeElement js/document))
-
-        ;; Printable character check for "start typing to edit" behavior
-          printable? (and (= 1 (.-length key))
-                          (not (:mod event))
-                          (not (:alt event))
-                          (not (contains? #{"Enter" "Escape" "Tab" "Backspace" "Delete"} key)))]
-
-      (cond
-      ;; FR-Idle-01: Idle guard - no accidental edits
-      ;; In true idle state (no block selected, no block editing), Enter/Backspace/Tab/etc are no-ops
-        (and idle?
-             intent-type
-             (contains? #{"Enter" "Backspace" "Delete" "Tab"} key))
-        nil ;; No-op in idle state
-
-      ;; FR-Idle-01: Guard Cmd+Enter in idle state
-        (and idle?
-             mod?
-             (= key "Enter"))
-        nil ;; No-op in idle state
-
-      ;; FR-Idle-01: Guard Shift+Enter in idle state
-        (and idle?
-             shift?
-             (= key "Enter"))
-        nil ;; No-op in idle state
-
-      ;; FR-Idle-02: Shift+Arrow in idle state selects first/last block (Logseq parity)
-      ;; Same behavior as plain Arrow - starts block selection
-        (and idle?
-             shift?
-             (contains? #{"ArrowUp" "ArrowDown"} key))
-        (let [visible-blocks (q/visible-blocks db current-session)
-              target-id (if (= key "ArrowUp")
-                          (last visible-blocks)
-                          (first visible-blocks))]
-          (when target-id
-            (.preventDefault e)
-            (handle-intent {:type :selection :mode :replace :ids target-id})))
-
-      ;; NOTE: Arrow key navigation removed - handled by Block component with cursor row detection
-
-      ;; Skip Shift+Arrow when editing - let Block component handle text selection
-      ;; (LOGSEQ_SPEC §3 Rule 3: Shift+Arrow extends text selection within block)
-        (and intent-type
-             editing?
-             shift?
-             (contains? #{"ArrowUp" "ArrowDown"} key)
-             (not mod?) ;; Only plain Shift+Arrow, not Cmd+Shift+Arrow (move blocks)
-             (not (.-altKey e)))
-        nil ;; Let event bubble to Block component
-
-      ;; CLIPBOARD: Cmd+V paste in non-editing mode (async clipboard read)
-      ;; When a block is focused but not being edited, paste replaces block content
-      ;; or creates new blocks from clipboard markdown
-        (and mod?
-             (= key "v")
-             (not shift?)
-             focus-id
-             (not editing?))
-        (do
-          (.preventDefault e)
-          ;; Async clipboard read - dispatch intent when data arrives
-          (-> (js/navigator.clipboard.readText)
-              (.then (fn [text]
-                       (when (and text (pos? (count text)))
-                         ;; Enter edit mode and paste at cursor 0
-                         ;; This triggers markdown parsing via :paste-text intent
-                         (handle-intent {:type :paste-text
-                                         :block-id focus-id
-                                         :cursor-pos 0
-                                         :selection-end (count (get-in db [:nodes focus-id :props :text] ""))
-                                         :pasted-text text}))))
-              (.catch (fn [err]
-                        (js/console.error "Clipboard read failed:" err)))))
-
-      ;; LOGSEQ_SPEC §7.2: Cmd+A cycle in editing mode
-      ;; First press → browser select-all (let event through)
-      ;; Second press (all text selected) → exit edit, select block
-        (and editing?
-             mod?
-             (= key "a")
-             (not shift?)
-             editable-el)
-        (try
-          (let [sel (.getSelection js/window)
-                text-length (count (.-textContent editable-el))
-              ;; Check if all text is already selected
-                all-selected? (and sel
-                                   (pos? (.-rangeCount sel))
-                                   (let [sel-text (str (.toString sel))]
-                                     (= (count sel-text) text-length)))]
-            (if all-selected?
-            ;; All text selected → exit edit and select block (step 2 of cycle)
-              (do (.preventDefault e)
-                  (handle-intent {:type :select-all-cycle
-                                  :from-editing? true
-                                  :block-id editing?}))
-            ;; Not all selected → let browser handle select-all (step 1)
-              nil))
-          (catch js/Error _
-          ;; On error, let browser handle
-            nil))
-
-      ;; Keymap-resolved intent
-        intent-type
-        (do (.preventDefault e)
-            (cond
-            ;; Undo/Redo - modify DB directly, not via operations
-            ;; Also restore session state (cursor, selection) for proper context
-              (= intent-type :undo)
-              (when-let [{:keys [db session]} (H/undo @!db (vs/get-view-state))]
-              ;; Restore session BEFORE db to ensure cursor is set before re-render
-                (when session
-                  (vs/merge-view-state-updates! session))
-                (reset! !db db)
-                (executor/assert-derived-fresh! db "after undo"))
-
-              (= intent-type :redo)
-              (when-let [{:keys [db session]} (H/redo @!db (vs/get-view-state))]
-              ;; Restore session BEFORE db to ensure cursor is set before re-render
-                (when session
-                  (vs/merge-view-state-updates! session))
-                (reset! !db db)
-                (executor/assert-derived-fresh! db "after redo"))
-
-            ;; All other intents - go through normal intent dispatch
-              :else
-              (let [;; Inject focused block-id for fold/zoom intents
-                    ;; Use editing block if no selection focus (supports fold while editing)
-                    effective-block-id (or focus-id editing?)
-                    intent-with-focus (if (and (map? intent-type)
-                                               (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-type))
-                                               effective-block-id)
-                                        (assoc intent-type :block-id effective-block-id)
-                                        intent-type)
-                  ;; Replace :editing-block-id placeholder with actual editing block ID
-                    intent-with-id (if (and (map? intent-with-focus)
-                                            (= (:block-id intent-with-focus) :editing-block-id)
-                                            editing?)
-                                     (assoc intent-with-focus :block-id editing?)
-                                     intent-with-focus)
-                  ;; Enrich format-selection intent with DOM selection data
-                    enriched-intent (cond
-                                    ;; Format-selection: get DOM selection range and sync text
-                                      (and (map? intent-with-id)
-                                           (= (:type intent-with-id) :format-selection)
-                                           editing?
-                                           editable-el)
-                                      (try
-                                        ;; Use text-selection utilities for correct offset calculation
-                                        (let [pos-info (text-sel/get-position editable-el)]
-                                          (when pos-info
-                                            (let [{:keys [position extent]} pos-info]
-                                              (when (pos? extent) ;; Only if there's actual selection
-                                                ;; Sync DOM text to DB first (text might only be in buffer)
-                                                (let [dom-text (.-textContent editable-el)]
-                                                  (handle-intent {:type :update-content
-                                                                  :block-id editing?
-                                                                  :text dom-text})
-                                                  ;; Return enriched intent with correct offsets
-                                                  (merge intent-with-id
-                                                         {:block-id editing?
-                                                          :start position
-                                                          :end (+ position extent)}))))))
-                                        (catch js/Error e
-                                          (js/console.error "Selection read failed:" e)
-                                          nil)) ;; Return nil if enrichment fails
-
-                                    ;; Follow-link-under-cursor: inject cursor position
-                                      (and (map? intent-with-id)
-                                           (= (:type intent-with-id) :follow-link-under-cursor)
-                                           (= (:cursor-pos intent-with-id) :cursor-pos)
-                                           editing?
-                                           editable-el)
-                                      (try
-                                        (let [sel (.getSelection js/window)]
-                                          (when sel
-                                            (let [cursor-pos (.-anchorOffset sel)]
-                                              (assoc intent-with-id :cursor-pos cursor-pos))))
-                                        (catch js/Error e
-                                          (js/console.error "Cursor position read failed:" e)
-                                          nil))
-
-                                    ;; Selection navigation: inject DOM fallback for cross-page nav in journals
-                                      (and (map? intent-with-id)
-                                           (= (:type intent-with-id) :selection)
-                                           (#{:next :prev :extend-next :extend-prev} (:mode intent-with-id))
-                                           (vs/journals-view?)
-                                           focus-id)
-                                      (let [direction (case (:mode intent-with-id)
-                                                        (:next :extend-next) :down
-                                                        (:prev :extend-prev) :up)
-                                            dom-fallback (block/get-adjacent-block-by-dom direction focus-id)]
-                                        (if dom-fallback
-                                          (assoc intent-with-id :dom-adjacent-id dom-fallback)
-                                          intent-with-id))
-
-                                    ;; Default: no enrichment needed
-                                      :else intent-with-id)
-                  ;; Structural operations during editing require text commit first
-                  ;; (to prevent losing uncommitted DOM text changes)
-                    structural-intent? (contains? #{:indent-selected :outdent-selected
-                                                    :move-selected-up :move-selected-down}
-                                                  (if (map? enriched-intent)
-                                                    (:type enriched-intent)
-                                                    enriched-intent))]
-                (when enriched-intent ;; Only dispatch if enrichment succeeded
-                ;; Commit text AND preserve cursor before structural operations while editing
-                  (when (and editing? structural-intent?)
-                  ;; Suppress blur FIRST to prevent focus loss during re-renders
-                    (vs/keep-edit-on-blur!)
-                  ;; Capture cursor position BEFORE any changes (will be saved after text commit)
-                    (let [sel (.getSelection js/window)
-                          saved-cursor-pos (when (and sel editable-el) (.-anchorOffset sel))
-                          buffer-text (vs/buffer-text editing?)
-                          dom-text (when editable-el (.-textContent editable-el))
-                          final-text (or buffer-text dom-text)]
-                    ;; Commit text first
-                      (when final-text
-                        (handle-intent {:type :update-content
-                                        :block-id editing?
-                                        :text final-text}))
-                    ;; Save cursor position AFTER text commit (on-render may have cleared it)
-                    ;; on-mount will read this and restore cursor position after block remounts
-                      (when saved-cursor-pos
-                        (vs/set-cursor-position! saved-cursor-pos))))
-                  (cond
-                ;; Map intent: use directly (with injected block-id if needed)
-                    (map? enriched-intent)
-                    (handle-intent enriched-intent)
-
-                ;; Keyword intent: wrap in :type
-                    :else
-                    (handle-intent {:type enriched-intent}))))))
-
-      ;; Printable character - Enter edit mode AND append character (Logseq-style "start typing")
-      ;; LOGSEQ PARITY §7.1: pressing any printable key instantly enters edit mode,
-      ;; appends that character, and positions the caret after it
-        (and printable? focus-id (not editing?))
-        (do
-          (.preventDefault e)
-          (handle-intent {:type :enter-edit-with-char :block-id focus-id :char key}))))))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -743,10 +455,7 @@
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
         journals-view? (vs/journals-view?)
-        quick-switcher-visible? (vs/quick-switcher-visible?)
-        ;; Navigation history state
-        can-go-back? (vs/can-go-back?)
-        can-go-forward? (vs/can-go-forward?)]
+        quick-switcher-visible? (vs/quick-switcher-visible?)]
     [:div.app
      ;; Sidebar for page navigation (toggleable via Cmd+B)
      ;; Always show sidebar - it has the folder picker
@@ -986,11 +695,11 @@
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) vs/!view-state)
 
-  ;; Initialize keyboard bindings (explicit, not side-effect)
-  (bindings/reload!)
+  ;; Initialize plugin/bootstrap surfaces explicitly.
+  (plugins/init!)
 
-  ;; Initialize Nexus action pipeline
-  (nexus/init!)
+  ;; Initialize keyboard bindings (explicit, not side-effect driven)
+  (bindings/reload!)
 
   ;; Initialize IME composition tracking for CJK/emoji input safety
   ;; Tracks compositionstart/compositionend at document level
@@ -1014,29 +723,16 @@
 
 ;; Note: Current page is set by load-from-folder! after storage check completes
 
-  ;; Enable lifecycle hooks + Nexus dispatch
+  ;; Enable lifecycle hooks and function-based DOM handlers.
   ;; CRITICAL: Lifecycle hooks must still fire for cursor placement
   (d/set-dispatch!
    (fn [event-data handler-data]
-     (cond
-       ;; Handle lifecycle hooks
-       (= :replicant.trigger/life-cycle (:replicant/trigger event-data))
-       (when (fn? handler-data)
-         (handler-data event-data))
-
-       ;; Handle DOM events via Nexus
-       (= :replicant.trigger/dom-event (:replicant/trigger event-data))
-       (cond
-         ;; Data-driven Nexus actions (preferred)
-         (vector? handler-data)
-         (nexus/dispatch! !db event-data handler-data)
-
-         ;; Legacy function-based handlers (temporary during migration)
-         (fn? handler-data)
-         (handler-data (:replicant/dom-event event-data))))))
+     (dispatch-bridge/dispatch-handler-data! event-data handler-data)))
 
   ;; Set up global keyboard listener (Cmd+Z, etc)
-  (.addEventListener js/document "keydown" handle-global-keydown)
+  (.addEventListener js/document "keydown"
+                     (fn [e]
+                       (global-keyboard/handle-keydown !db handle-intent e)))
 
   ;; Set up auto-render on state changes (DB, session, and storage status)
   ;; Uses request-render! to batch multiple changes into single render (prevents nested render warnings)
