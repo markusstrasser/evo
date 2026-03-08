@@ -5,13 +5,15 @@
    the result of step N-1.
 
    Examples:
-   - Smart Backspace: Delete block, then select previous block
-   - Paste Lines: Create multiple blocks, then navigate to first
-   - Insert Block: Create + place + focus in one action
+   - Smart Backspace: Delete block, then report the next structural target
+   - Paste Lines: Create multiple blocks, then report the first new ID
+   - Insert Block: Create + place, then report the new block ID
 
-   All scripts return operations for atomic commit via tx/interpret."
+   Scripts stay structural. They return ops plus structural facts that the
+   enclosing handler can use to compute session updates."
   (:require [clojure.string :as str]
             [scripts.script :as script]
+            [kernel.constants :as const]
             [kernel.query :as q]))
 
 ;; ── Operation Constructors ─────────────────────────────────────────────────────
@@ -47,44 +49,52 @@
    :under under
    :at at})
 
+(defn delete-block-op
+  "Build the structural delete op used by scripts.
+
+   Scripts do not compile the :delete intent because that would pull session
+   behavior into scratch execution. They emit the underlying structural op and
+   let the caller decide selection/editing updates."
+  [id]
+  {:op :place
+   :id id
+   :under const/root-trash
+   :at :last})
+
 ;; ── Smart Backspace ────────────────────────────────────────────────────────────
 
 (defn smart-backspace
-  "Delete empty block and navigate to previous block's end.
+  "Delete empty block and report which structural target should receive focus.
 
    Use Case:
    User presses backspace on empty block. We want:
    1. Delete the current block (move to trash)
-   2. Select the previous block (or parent if no prev)
-   3. Move cursor to end of selected block
+   2. Report the previous block (or parent if no prev) so the caller can focus it
 
    Why Macro:
-   Step 2 needs to query :prev-id-of AFTER the block is deleted,
-   because the derived indexes change after deletion.
+   The delete still runs through scratch execution so callers get one atomic
+   structural change bundle.
 
    Args:
      db: Current database
      opts: Map with :id (block to delete)
 
    Returns:
-     Vector of ops for atomic commit
+     {:ops [...] :target-id ...}
 
    Example:
-     (def ops (smart-backspace db {:id \"block-123\"}))
-     (tx/interpret db ops)  ; Apply all ops atomically"
+     (def result (smart-backspace db {:id \"block-123\"}))
+     (tx/interpret db (:ops result))  ; Apply structural ops atomically
+     (:target-id result)              ; Caller decides session updates"
   [db {:keys [id]}]
-  (:ops
-    (script/run db
-      [;; Step 1: Delete the block (move to trash)
-       {:type :delete :id id}
-
-       ;; Step 2: Query which block to select next
-       ;; This function sees the DB AFTER deletion
-       (fn [db-after-delete]
-         ;; Try to find previous sibling, fall back to parent
-         (when-let [target-id (or (q/prev-sibling db-after-delete id)
-                                  (q/parent-of db-after-delete id))]
-           [{:type :select :ids [target-id]}]))])))
+  (let [parent-id (q/parent-of db id)
+        target-id (or (q/prev-sibling db id)
+                      (when (string? parent-id) parent-id))
+        result (script/run db
+                           [;; Structural delete only; outer handler owns focus/selection.
+                            (delete-block-op id)])]
+    {:ops (:ops result)
+     :target-id target-id}))
 
 ;; ── Paste Multi-Line ───────────────────────────────────────────────────────────
 
@@ -96,11 +106,11 @@
    1. Split text into lines (pre-processing)
    2. Create one block per line
    3. Place all blocks in document
-   4. Navigate to first new block
+   4. Report the first new block so the caller can focus it
 
    Why Macro:
-   Step 4 needs to know which blocks were created in steps 2-3.
-   We generate IDs upfront so step 4 can reference them.
+   The script stages create/place ops together and returns the generated IDs so
+   session changes can be handled outside scratch execution.
 
    Args:
      db: Current database
@@ -110,48 +120,43 @@
        :at - Position anchor (:first, :last, {:after \"id\"}, etc.)
 
    Returns:
-     Vector of ops for atomic commit
+     {:ops [...] :new-ids [...] :first-id ...}
 
    Example:
-     (def ops (paste-lines db {:text \"Line 1\\nLine 2\\nLine 3\"
-                               :under \"parent-123\"
-                               :at :last}))
-     (tx/interpret db ops)"
+     (def result (paste-lines db {:text \"Line 1\\nLine 2\\nLine 3\"
+                                  :under \"parent-123\"
+                                  :at :last}))
+     (tx/interpret db (:ops result))
+     (:first-id result)"
   [db {:keys [text under at]}]
   (let [lines (remove empty? (str/split-lines text))
         ;; Generate IDs upfront (before macro runs)
         new-ids (repeatedly (count lines) #(str (random-uuid)))]
+    {:ops (:ops (script/run db
+                            [;; Step 1: Create all blocks (static, can be done upfront)
+                             (mapv create-block-op new-ids lines)
 
-    (:ops
-      (script/run db
-        [;; Step 1: Create all blocks (static, can be done upfront)
-         (mapv create-block-op new-ids lines)
-
-         ;; Step 2: Place all blocks
-         ;; Note: All blocks go to same parent/anchor
-         ;; Later blocks push earlier ones forward
-         (mapv #(place-op % under at) new-ids)
-
-         ;; Step 3: Navigate to first new block
-         (fn [_db-after-place]
-           (when-let [first-id (first new-ids)]
-             [{:type :select :ids [first-id]}]))]))))
+                             ;; Step 2: Place all blocks
+                             ;; Note: All blocks go to same parent/anchor.
+                             ;; Later blocks push earlier ones forward.
+                             (mapv #(place-op % under at) new-ids)]))
+     :new-ids (vec new-ids)
+     :first-id (first new-ids)}))
 
 ;; ── Insert Block (Create + Focus) ─────────────────────────────────────────────
 
 (defn insert-block
-  "Create a new block and immediately focus it for editing.
+  "Create a new block and report the new block ID for outer focus handling.
 
    Use Case:
    User presses Enter to create new block. We want:
    1. Create new block
    2. Place it in document
-   3. Select it
-   4. Move cursor to start for typing
+   3. Return the new block ID so the caller can enter edit mode
 
    Why Macro:
-   Steps 3-4 need the new block to exist in the DB.
-   We generate the ID upfront so all steps can reference it.
+   We generate the ID upfront so structural ops and follow-up session logic can
+   reference the same block.
 
    Args:
      db: Current database
@@ -161,25 +166,21 @@
        :text - Initial text (optional, default: \"\")
 
    Returns:
-     Vector of ops for atomic commit
+     {:ops [...] :new-id ...}
 
    Example:
-     (def ops (insert-block db {:under \"parent-123\"
-                                :at {:after \"block-456\"}
-                                :text \"\"}))
-     (tx/interpret db ops)"
+     (def result (insert-block db {:under \"parent-123\"
+                                   :at {:after \"block-456\"}
+                                   :text \"\"}))
+     (tx/interpret db (:ops result))
+     (:new-id result)"
   [db {:keys [under at text]}]
   (let [new-id (str (random-uuid))
         initial-text (or text "")]
+    {:ops (:ops (script/run db
+                            [;; Step 1: Create block
+                             (create-block-op new-id initial-text)
 
-    (:ops
-      (script/run db
-        [;; Step 1: Create block
-         (create-block-op new-id initial-text)
-
-         ;; Step 2: Place block
-         (place-op new-id under at)
-
-         ;; Step 3: Focus new block for editing
-         (fn [_db-after-create]
-           [{:type :select :ids [new-id]}])]))))
+                             ;; Step 2: Place block
+                             (place-op new-id under at)]))
+     :new-id new-id}))

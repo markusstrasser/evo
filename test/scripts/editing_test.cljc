@@ -43,7 +43,7 @@
     (let [db (sample-blocks-db)
 
           ;; Delete "d", should select "b" (prev sibling)
-          ops (edit/smart-backspace db {:id "d"})
+          {:keys [ops target-id]} (edit/smart-backspace db {:id "d"})
 
           ;; Commit to real DB
           result (tx/interpret db ops)]
@@ -55,8 +55,8 @@
       (is (= const/root-trash
              (get-in (:db result) [:derived :parent-of "d"])))
 
-      ;; TODO: Verify selection when :select intent is implemented
-      ;; For now, just verify ops were generated
+      ;; Structural script reports the next target; caller owns session updates
+      (is (= "b" target-id))
       (is (pos? (count ops))))))
 
 (deftest 
@@ -65,7 +65,7 @@
     (let [db (sample-blocks-db)
 
           ;; Delete "b" (first child of "a", has no prev sibling)
-          ops (edit/smart-backspace db {:id "b"})
+          {:keys [ops target-id]} (edit/smart-backspace db {:id "b"})
 
           result (tx/interpret db ops)]
 
@@ -76,7 +76,7 @@
       (is (= const/root-trash
              (get-in (:db result) [:derived :parent-of "b"])))
 
-      ;; TODO: Verify parent "a" is selected
+      (is (= "a" target-id))
       (is (pos? (count ops))))))
 
 (deftest 
@@ -85,7 +85,7 @@
     (let [db (sample-blocks-db)
 
           ;; Delete "c" (only child of "b")
-          ops (edit/smart-backspace db {:id "c"})
+          {:keys [ops target-id]} (edit/smart-backspace db {:id "c"})
 
           result (tx/interpret db ops)]
 
@@ -96,7 +96,8 @@
       (is (= const/root-trash
              (get-in (:db result) [:derived :parent-of "c"])))
 
-      ;; Parent "b" should be selected
+      ;; Structural target falls back to parent
+      (is (= "b" target-id))
       (is (pos? (count ops))))))
 
 ;; ── Paste Multi-Line ───────────────────────────────────────────────────────────
@@ -109,9 +110,9 @@
           text "Line 1\nLine 2\nLine 3"
 
           ;; Paste under "a" at last position
-          ops (edit/paste-lines db {:text text
-                                    :under "a"
-                                    :at :last})
+          {:keys [ops new-ids first-id]} (edit/paste-lines db {:text text
+                                                               :under "a"
+                                                               :at :last})
 
           result (tx/interpret db ops)]
 
@@ -124,11 +125,14 @@
         (is (= 5 (count children-a)))
 
         ;; Last 3 children are new blocks
-        (let [new-ids (take-last 3 children-a)]
+        (let [actual-new-ids (take-last 3 children-a)]
           ;; Verify they have correct text
-          (is (= "Line 1" (get-in (:db result) [:nodes (nth new-ids 0) :props :text])))
-          (is (= "Line 2" (get-in (:db result) [:nodes (nth new-ids 1) :props :text])))
-          (is (= "Line 3" (get-in (:db result) [:nodes (nth new-ids 2) :props :text]))))))))
+          (is (= "Line 1" (get-in (:db result) [:nodes (nth actual-new-ids 0) :props :text])))
+          (is (= "Line 2" (get-in (:db result) [:nodes (nth actual-new-ids 1) :props :text])))
+          (is (= "Line 3" (get-in (:db result) [:nodes (nth actual-new-ids 2) :props :text])))
+          (is (= (vec actual-new-ids) new-ids)))
+        (is (= (first new-ids) first-id))
+        (is (= 3 (count new-ids)))))))
 
 (deftest 
   test-paste-lines-single
@@ -137,9 +141,9 @@
 
           text "Single line"
 
-          ops (edit/paste-lines db {:text text
-                                    :under "a"
-                                    :at :first})
+          {:keys [ops first-id]} (edit/paste-lines db {:text text
+                                                       :under "a"
+                                                       :at :first})
 
           result (tx/interpret db ops)]
 
@@ -150,6 +154,7 @@
         (is (= 3 (count children-a)))  ; Originally [b, d] + 1 new
 
         ;; First child is new block
+        (is (= first-id (first children-a)))
         (is (= "Single line"
                (get-in (:db result) [:nodes (first children-a) :props :text])))))))
 
@@ -160,9 +165,9 @@
 
           text "\n\n\n"  ; All empty lines
 
-          ops (edit/paste-lines db {:text text
-                                    :under "a"
-                                    :at :last})
+          {:keys [ops new-ids first-id]} (edit/paste-lines db {:text text
+                                                               :under "a"
+                                                               :at :last})
 
           result (tx/interpret db ops)]
 
@@ -172,7 +177,8 @@
       ;; No new children (empty lines filtered)
       (let [children-a (get-in (:db result) [:children-by-parent "a"])]
         (is (= 2 (count children-a)))  ; Still just [b, d]
-        ))))
+        (is (= [] new-ids))
+        (is (nil? first-id))))))
 
 ;; ── Insert Block ───────────────────────────────────────────────────────────────
 
@@ -181,21 +187,21 @@
   (testing "Insert creates and places block"
     (let [db (sample-blocks-db)
 
-          ops (edit/insert-block db {:under "a"
-                                     :at :first
-                                     :text "New block"})
+          {:keys [ops new-id]} (edit/insert-block db {:under "a"
+                                                      :at :first
+                                                      :text "New block"})
 
           result (tx/interpret db ops)]
 
       (is (empty? (:issues result)))
 
       ;; New block created under "a" at first position
-      (let [children-a (get-in (:db result) [:children-by-parent "a"])
-            new-id (first children-a)]
+      (let [children-a (get-in (:db result) [:children-by-parent "a"])]
 
         (is (= 3 (count children-a)))  ; [new, b, d]
 
         ;; Verify new block properties
+        (is (= new-id (first children-a)))
         (is (= "New block"
                (get-in (:db result) [:nodes new-id :props :text])))))))
 
@@ -204,9 +210,9 @@
   (testing "Insert after specific block"
     (let [db (sample-blocks-db)
 
-          ops (edit/insert-block db {:under "a"
-                                     :at {:after "b"}
-                                     :text ""})
+          {:keys [ops new-id]} (edit/insert-block db {:under "a"
+                                                      :at {:after "b"}
+                                                      :text ""})
 
           result (tx/interpret db ops)]
 
@@ -217,6 +223,7 @@
         (is (= 3 (count children-a)))  ; [b, new, d]
 
         ;; Second child is new block
+        (is (= new-id (second children-a)))
         (is (= ""
                (get-in (:db result) [:nodes (second children-a) :props :text])))))))
 

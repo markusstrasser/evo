@@ -46,6 +46,18 @@
               {:op :update-node :id "b" :props {:text "2"}}]
              result)))))
 
+(deftest test-step->ops-rejects-intent-forms
+  (testing "Scripts reject intent-shaped steps"
+    (let [db (fix/sample-db)]
+      (is (thrown-with-msg?
+            #?(:clj Exception :cljs js/Error)
+            #"Unknown step form"
+            (script/step->ops db {:type :selection :mode :replace :ids ["a"]})))
+      (is (thrown-with-msg?
+            #?(:clj Exception :cljs js/Error)
+            #"Unknown step form"
+            (script/step->ops db [{:type :selection :mode :replace :ids ["a"]}]))))))
+
 ;; ── Macro Runner ───────────────────────────────────────────────────────────────
 
 (deftest test-run-empty-steps
@@ -141,7 +153,7 @@
 
       (is (thrown-with-msg?
             #?(:clj Exception :cljs js/Error)
-            #"Macro step failed validation"
+            #"Script step failed validation"
             (script/run db steps))))))
 
 (deftest test-run-max-steps-guard

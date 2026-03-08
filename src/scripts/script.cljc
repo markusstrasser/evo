@@ -1,14 +1,16 @@
 (ns scripts.script
-  "Macro script runner for multi-step operations.
+  "Script runner for multi-step structural operations.
 
    CONCEPT:
-   A macro simulates a sequence of steps on a scratch DB, collecting normalized
+   A script simulates a sequence of steps on a scratch DB, collecting normalized
    operations from each step. The accumulated ops are then committed to the real
    DB in a single atomic transaction.
 
    WHY:
-   Enables multi-step operations where step N needs to see the results of step N-1.
-   Example: Smart Backspace deletes a block, then queries which block to select next.
+   Enables multi-step structural operations where step N needs to see the
+   results of step N-1.
+   Example: Create a block, place it, then inspect the scratch DB to decide
+   which block ID an outer handler should focus.
 
    GUARANTEES:
    - Scratch DB simulation (safe experimentation)
@@ -21,31 +23,30 @@
    (ns scripts.editing
      (:require [scripts.script :as script]))
 
-   (defn smart-backspace [db {:keys [id]}]
-     (:ops
-       (script/run db
-         [;; Step 1: Delete block (emit intent)
-          {:type :delete :id id}
-
-          ;; Step 2: Function sees result of step 1
-          (fn [db-after-delete]
-            (when-let [prev (get-in db-after-delete [:derived :prev-id-of id])]
-              [{:type :select :id prev}]))])))
+   (defn insert-block [db {:keys [under at text]}]
+     (let [new-id (str (random-uuid))
+           result (script/run db
+                    [{:op :create-node
+                      :id new-id
+                      :type :block
+                      :props {:text (or text \"\")}}
+                     {:op :place :id new-id :under under :at at}])]
+       {:ops (:ops result)
+        :new-id new-id}))
    ```
 
    READER GUIDE:
-   1. step->ops: Convert various step types to ops
-   2. run: Main runner - loops through steps, accumulates ops
-   3. Safe guards: MAX-STEPS prevents infinite loops"
+   1. `step->ops`: Convert structural step forms to ops
+   2. `run`: Loop through steps and accumulate normalized ops
+   3. Safe guards: `MAX-STEPS` prevents infinite loops"
   (:require [kernel.transaction :as tx]
-            [kernel.intent :as intent]
             [kernel.db :as db]))
 
 ;; ── Configuration ──────────────────────────────────────────────────────────────
 
 (def ^:const MAX-STEPS
   "Hard limit on number of steps to prevent infinite loops.
-   Default: 64 steps should be more than enough for any reasonable macro."
+   Default: 64 steps should be more than enough for any reasonable script."
   64)
 
 ;; ── Step Type Predicates ───────────────────────────────────────────────────────
@@ -60,16 +61,6 @@
   [x]
   (and (sequential? x) (every? op? x)))
 
-(defn intent?
-  "Check if x is an intent (has :type key, no :op key)."
-  [x]
-  (and (map? x) (contains? x :type) (not (contains? x :op))))
-
-(defn intents?
-  "Check if x is a vector of intents."
-  [x]
-  (and (sequential? x) (every? intent? x)))
-
 ;; ── Step Compilation ───────────────────────────────────────────────────────────
 
 (defn step->ops
@@ -77,15 +68,12 @@
 
    A step can be:
    - nil: No-op, returns empty vector
-   - Function: Called with current DB, must return another step
+   - Function: Called with current DB, must return another structural step
    - Operation: Wrapped in vector
    - Vector of ops: Passed through
-   - Intent: Compiled via intent/apply-intent
-   - Vector of intents: Each compiled via intent/apply-intent
 
    This enables flexible step composition:
    - Static ops: [{:op :place ...}]
-   - Intents: {:type :delete :id \"a\"}
    - Conditional logic: (fn [db] (when (pred db) [{:op ...}]))
 
    Args:
@@ -118,20 +106,11 @@
     (ops? step)
     (vec step)
 
-    (intent? step)
-    ;; Macros run on scratch DB with empty session context
-    ;; Session-dependent handlers receive empty map to satisfy preconditions
-    ;; but will see no selection/editing state
-    (:ops (intent/apply-intent db {} step))
-
-    (intents? step)
-    (into [] (mapcat #(:ops (intent/apply-intent db {} %))) step)
-
     :else
     (throw (ex-info "Unknown step form"
                     {:step step
                      :type (type step)
-                     :hint "Step must be: nil, fn, op, [ops], intent, or [intents]"}))))
+                     :hint "Step must be: nil, fn, op, or [ops]"}))))
 
 ;; ── Normalization Idempotence ──────────────────────────────────────────────────
 ;;
@@ -147,7 +126,7 @@
 ;; ── Main Runner ────────────────────────────────────────────────────────────────
 
 (defn run
-  "Run a macro script on a scratch database.
+  "Run a structural script on a scratch database.
 
    Simulates a sequence of steps on a throwaway copy of the DB, collecting
    normalized operations from each step. Returns accumulated ops for atomic
@@ -169,7 +148,7 @@
 
    Args:
      db: Starting database (the REAL db, not modified)
-     steps: Vector of steps (ops, intents, or functions)
+     steps: Vector of steps (ops or functions returning structural steps)
      opts: Optional map with:
        :max-steps - Override MAX-STEPS limit (default: 64)
 
@@ -184,10 +163,11 @@
 
    Example:
      (def result (run db
-                   [{:type :delete :id \"b\"}
-                    (fn [db'] [{:type :select
-                                :id (get-in db' [:derived :prev-id-of \"b\"])}])]))
-     (:ops result)  ;=> [{:op :place ...} {:op :update-node ...}]
+                   [{:op :update-node :id \"b\" :props {:text \"updated\"}}
+                    (fn [db'] {:op :update-node
+                               :id \"b\"
+                               :props {:tag (get-in db' [:nodes \"b\" :props :text])}})]))
+     (:ops result)  ;=> [{:op :update-node ...} {:op :update-node ...}]
      (:trace result) ;=> [{:step {...} :ops [...] :db {...}} ...]"
   ([db steps]
    (run db steps {}))
@@ -201,7 +181,7 @@
 
      ;; Guard: Prevent infinite loops
      (when (> step-count max-steps)
-       (throw (ex-info "Macro exceeded max-steps limit"
+       (throw (ex-info "Script exceeded max-steps limit"
                        {:max-steps max-steps
                         :step-count step-count
                         :trace trace
@@ -231,7 +211,7 @@
              (try
                (tx/dry-run scratch-db raw-ops)
                (catch #?(:clj Exception :cljs :default) e
-                 (throw (ex-info "dry-run failed during macro"
+                 (throw (ex-info "dry-run failed during script"
                                  {:step step
                                   :step-index step-count
                                   :trace trace
@@ -241,7 +221,7 @@
 
              ;; If validation found issues, abort with trace
              _ (when (seq issues)
-                 (throw (ex-info "Macro step failed validation"
+                 (throw (ex-info "Script step failed validation"
                                  {:step step
                                   :step-index step-count
                                   :ops normalized-ops
@@ -268,7 +248,7 @@
 ;; ── Public API ─────────────────────────────────────────────────────────────────
 
 (defn run-ops
-  "Convenience: Run macro and return ops only (drop :db and :trace).
+  "Convenience: Run a script and return ops only (drop :db and :trace).
 
    Use when you don't need the scratch DB or trace for debugging.
 
