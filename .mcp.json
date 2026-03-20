@@ -55,16 +55,6 @@
         "/Users/alien/Projects/meta",
         "meta-mcp"
       ]
-    },
-    "repo-tools": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/alien/Projects/meta",
-        "python3",
-        "scripts/repo_tools_mcp.py"
-      ]
     }
   }
 }
