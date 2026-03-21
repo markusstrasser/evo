@@ -40,8 +40,8 @@
       "args": [
         "run",
         "--directory",
-        "/Users/alien/Projects/papers-mcp",
-        "papers-mcp"
+        "/Users/alien/Projects/research-mcp",
+        "research-mcp"
       ],
       "env": {
         "S2_API_KEY": "${S2_API_KEY}"
