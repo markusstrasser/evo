@@ -21,14 +21,17 @@
 ;; ── Intent Handlers ───────────────────────────────────────────────────────────
 
 (defn- page-view-update
-  "Canonical page-view session update builder."
+  "Canonical page-view session update builder.
+   Always clears stale selection unless a specific selection-id is provided."
   [page-id {:keys [clear-editing? reset-zoom? journals-view? selection-id]}]
   (helpers/merge-session-updates
    {:ui {:current-page page-id
          :journals-view? (boolean journals-view?)}}
    (when clear-editing? (helpers/exit-edit-update))
    (when reset-zoom? {:ui {:zoom-root nil}})
-   (when selection-id (helpers/select-only-update selection-id))))
+   (if selection-id
+     (helpers/select-only-update selection-id)
+     (helpers/clear-selection-update))))
 
 (defn- handle-switch-page
   "Switch to a specific page by ID.
