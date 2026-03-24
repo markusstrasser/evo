@@ -139,28 +139,26 @@
 
 (defn- DeleteButton
   "Delete button for removing a page."
-  [{:keys [page-id title db on-intent]}]
-  (let [descendants (q/descendants-of db page-id)]
-    [:button.delete-button
-     {:title "Delete page"
-      :on {:click (fn [e]
-                    (.preventDefault e)
-                    (.stopPropagation e)
-                    (when on-intent
-                      (on-intent {:type :delete-page :page-id page-id}))
-                    ;; Remove from favorites if favorited
-                    (vs/remove-favorite! page-id)
-                    (vs/show-notification!
-                     (str "Deleted \"" (or title "page") "\"")
-                     {:type :success
-                      :action {:label "Undo"
-                               :on-click (fn []
-                                           (when on-intent
-                                             (on-intent {:type :restore-page
-                                                         :page-id page-id
-                                                         :descendants descendants
-                                                         :switch-to? true})))}}))}}
-     (Icon {:icon-name :trash :size 12})]))
+  [{:keys [page-id title on-intent]}]
+  [:button.delete-button
+   {:title "Delete page"
+    :on {:click (fn [e]
+                  (.preventDefault e)
+                  (.stopPropagation e)
+                  (when on-intent
+                    (on-intent {:type :delete-page :page-id page-id}))
+                  ;; Remove from favorites if favorited
+                  (vs/remove-favorite! page-id)
+                  (vs/show-notification!
+                   (str "Deleted \"" (or title "page") "\"")
+                   {:type :success
+                    :action {:label "Undo"
+                             :on-click (fn []
+                                         (when on-intent
+                                           (on-intent {:type :restore-page
+                                                       :page-id page-id
+                                                       :switch-to? true})))}}))}}
+   (Icon {:icon-name :trash :size 12})])
 
 ;; ── Page Item ────────────────────────────────────────────────────────────────
 
@@ -182,7 +180,7 @@
    [:span.page-actions
     (when show-star?
       (StarButton {:page-id page-id :is-favorite? is-favorite?}))
-    (DeleteButton {:page-id page-id :title title :db db :on-intent on-intent})]])
+    (DeleteButton {:page-id page-id :title title :on-intent on-intent})]])
 
 ;; ── Trash Item ───────────────────────────────────────────────────────────────
 
