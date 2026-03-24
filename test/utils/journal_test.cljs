@@ -51,11 +51,11 @@
     (is (true? (journal/journal-page? "Jan 1st, 2024")))
     (is (true? (journal/journal-page? "Feb 2nd, 2025")))
     (is (true? (journal/journal-page? "Mar 3rd, 2023")))
-    (is (true? (journal/journal-page? "Apr 21st, 2022"))))
+    (is (true? (journal/journal-page? "Apr 21st, 2022")))
+    (is (true? (journal/journal-page? "2025-12-11"))))  ; ISO format
 
   (testing "invalid journal page titles"
     (is (false? (journal/journal-page? "My Notes")))
-    (is (false? (journal/journal-page? "2025-12-11"))) ; ISO format
     (is (false? (journal/journal-page? "December 11th, 2025"))) ; Full month
     (is (false? (journal/journal-page? "Dec 11, 2025"))) ; Missing ordinal
     (is (false? (journal/journal-page? "")))

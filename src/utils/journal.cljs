@@ -114,9 +114,10 @@
   "Check if a page title matches a journal date format.
    Matches 'MMM do, yyyy' (e.g., 'Dec 14th, 2025') and ISO 'YYYY-MM-DD'."
   [title]
-  (when title
-    (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-        (re-matches #"\d{4}-\d{2}-\d{2}" title))))
+  (boolean
+   (when title
+     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+         (re-matches #"\d{4}-\d{2}-\d{2}" title)))))
 
 (defn parse-journal-date
   "Parse journal title to sortable ISO date (YYYY-MM-DD).
