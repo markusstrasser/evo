@@ -12,6 +12,7 @@
                           :on-select #(dispatch [:autocomplete/select])
                           :on-dismiss #(dispatch [:autocomplete/dismiss])}]"
   (:require [plugins.autocomplete :as ac]
+            [utils.dom :as dom]
             [utils.fuzzy-search :as fuzzy]))
 
 ;; ── Positioning ───────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@
               (when is-command? "command-item")]
       :replicant/on-render (when selected?
                              (fn [{:replicant/keys [node]}]
-                               (.scrollIntoView node #js {:block "nearest"})))
+                               (dom/scroll-into-view! node)))
       :on {:click (fn [e]
                     (.preventDefault e)
                     (.stopPropagation e)
