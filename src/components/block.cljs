@@ -1418,6 +1418,7 @@
         view-key (str block-id "-tweet")
         click-handler {:on {:click (fn [e]
                                      (.stopPropagation e)
+                                     (.preventDefault e)
                                      (cond
                                        (.-shiftKey e)
                                        (shift-click-select-range! db block-id on-intent)
@@ -1429,11 +1430,8 @@
                                        (on-intent {:type :selection :mode :replace :ids block-id})))}}
         ;; Use cached author name if available, fallback to username
         display-name (or (:author-name cached) (str "@" username) "@unknown")]
-    [:a.tweet-embed
+    [:div.tweet-embed
      (merge {:replicant/key view-key
-             :href url
-             :target "_blank"
-             :rel "noopener noreferrer"
              ;; Fetch author info on mount
              :replicant/on-mount (fn [_node]
                                    (fetch-tweet-oembed! url nil))}
@@ -1447,7 +1445,9 @@
         (:error? cached) "Tweet unavailable"
         :else (str "Tweet #" tweet-id))]
      [:div.tweet-embed-footer
-      "Click to view on X →"]]))
+      [:a {:href url :target "_blank" :rel "noopener noreferrer"
+           :on {:click (fn [e] (.stopPropagation e))}}
+       "View on X →"]]]))
 
 (defn- video-embed
   "Render a video embed preview."
