@@ -127,10 +127,10 @@
                 path
                 (fn [url]
                   (when url
-                    (when-let [el (js/document.querySelector
-                                   (str "img[data-asset-path=\"" path "\"]"))]
+                    (doseq [el (array-seq (js/document.querySelectorAll
+                                           (str "img[data-asset-path=\"" path "\"]")))]
                       (when (str/blank? (.-src el))
-                        (set! (.-src el) url)))))))
+                        (set! (.-src el) url))))))))
              :on {:load (fn [e]
                           (set! (.. e -target -style -display) ""))
                   :error (fn [e]
