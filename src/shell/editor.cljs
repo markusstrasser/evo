@@ -17,6 +17,7 @@
             [components.devtools :as devtools]
             [components.backlinks :as backlinks]
             [dataspex.core :as dataspex]
+            [components.image :as image]
             [shell.dispatch-bridge :as dispatch-bridge]
             [shell.executor :as executor]
             [shell.global-keyboard :as global-keyboard]
@@ -129,6 +130,7 @@
   "Disconnect from the current folder and reset to empty state."
   []
   (storage/clear-folder!)
+  (image/clear-url-cache!)
   (swap! !storage-status assoc :folder-name nil)
   ;; Reset to empty DB (no demo data - user must pick folder or start fresh)
   (reset! !db (-> (db/empty-db) (H/record)))
