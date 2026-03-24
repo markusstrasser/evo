@@ -334,7 +334,8 @@
                                                    :extend-prev (calc-navigate-props db session state :prev true nav-opts)
                                                    :parent (let [selection (:nodes state)
                                                                  parents (set (keep #(q/parent-of db %) selection))]
-                                                             (when (= 1 (count parents))
+                                                             (when (and (= 1 (count parents))
+                                                                        (is-selectable-block? db (first parents)))
                                                                (calc-select-props (first parents))))
                                                    :all-siblings (when-let [current (:focus state)]
                                                                    (when-let [parent (q/parent-of db current)]
