@@ -389,8 +389,8 @@
   {:doc "Create new block after focus and immediately enter edit mode."
    :fr/ids #{:fr.struct/create-sibling}
    :spec [:map [:type [:= :create-and-enter-edit]]]
-   :handler (fn [db _session _intent]
-              (let [focus-id (q/focus db)
+   :handler (fn [db session _intent]
+              (let [focus-id (q/focus session)
                     parent (q/parent-of db focus-id)
                     new-id (helpers/make-new-block-id)]
                 {:ops [{:op :create-node :id new-id :type :block :props {:text ""}}
