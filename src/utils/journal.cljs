@@ -110,15 +110,31 @@
 
 ;; ── Journal Detection ────────────────────────────────────────────────────────
 
-(def ^:private month-pattern
-  "Regex pattern for month abbreviations."
-  "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)")
-
-(def ^:private journal-regex
-  "Regex to match journal page titles."
-  (re-pattern (str "^" month-pattern " \\d{1,2}(?:st|nd|rd|th), \\d{4}$")))
-
 (defn journal-page?
-  "Check if a page title matches the journal date format."
+  "Check if a page title matches a journal date format.
+   Matches 'MMM do, yyyy' (e.g., 'Dec 14th, 2025') and ISO 'YYYY-MM-DD'."
   [title]
-  (boolean (and title (re-matches journal-regex title))))
+  (when title
+    (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+        (re-matches #"\d{4}-\d{2}-\d{2}" title))))
+
+(defn parse-journal-date
+  "Parse journal title to sortable ISO date (YYYY-MM-DD).
+   Returns nil if not a valid journal format."
+  [title]
+  (when title
+    (cond
+      ;; ISO format: 2025-12-14
+      (re-matches #"\d{4}-\d{2}-\d{2}" title)
+      title
+
+      ;; Human format: Dec 14th, 2025 -> 2025-12-14
+      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+      (let [months {"Jan" "01" "Feb" "02" "Mar" "03" "Apr" "04"
+                    "May" "05" "Jun" "06" "Jul" "07" "Aug" "08"
+                    "Sep" "09" "Oct" "10" "Nov" "11" "Dec" "12"}
+            [_ mon day _ year] (re-matches #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th), (\d{4})" title)]
+        (when (and mon day year)
+          (str year "-" (months mon) "-" (when (< (count day) 2) "0") day)))
+
+      :else nil)))

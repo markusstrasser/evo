@@ -10,37 +10,8 @@
    Invalid pages (Untitled, blank) are filtered from display."
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
+            [utils.journal :as journal]
             [clojure.string :as str]))
-
-;; ── Helpers ──────────────────────────────────────────────────────────────────
-
-(defn- journal-page?
-  "Detect if a page title looks like a journal date.
-   Matches patterns like 'Dec 14th, 2025' or '2025-12-14'."
-  [title]
-  (when title
-    (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-        (re-matches #"\d{4}-\d{2}-\d{2}" title))))
-
-(defn- parse-journal-date
-  "Parse journal title to sortable ISO date (YYYY-MM-DD)."
-  [title]
-  (when title
-    (cond
-      ;; ISO format: 2025-12-14
-      (re-matches #"\d{4}-\d{2}-\d{2}" title)
-      title
-
-      ;; Human format: Dec 14th, 2025 -> 2025-12-14
-      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-      (let [months {"Jan" "01" "Feb" "02" "Mar" "03" "Apr" "04"
-                    "May" "05" "Jun" "06" "Jul" "07" "Aug" "08"
-                    "Sep" "09" "Oct" "10" "Nov" "11" "Dec" "12"}
-            [_ mon day _ year] (re-matches #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th), (\d{4})" title)]
-        (when (and mon day year)
-          (str year "-" (months mon) "-" (when (< (count day) 2) "0") day)))
-
-      :else nil)))
 
 (defn- today-iso
   "Get today's date in ISO format."
@@ -75,10 +46,10 @@
    Used for both active and trashed pages."
   [db pid today favorites-set]
   (let [title (q/page-title db pid)
-        date (parse-journal-date title)]
+        date (journal/parse-journal-date title)]
     {:id pid
      :title title
-     :journal? (journal-page? title)
+     :journal? (journal/journal-page? title)
      :is-today? (= date today)
      :has-content? (has-content? db pid)
      :favorite? (contains? favorites-set pid)
