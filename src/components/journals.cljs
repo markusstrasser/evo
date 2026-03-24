@@ -9,38 +9,8 @@
   (:require [kernel.query :as q]
             [shell.view-state :as vs]
             [components.block :as block]
+            [utils.journal :as journal]
             [clojure.string :as str]))
-
-;; ── Helpers ──────────────────────────────────────────────────────────────────
-
-(defn- journal-page?
-  "Detect if a page title looks like a journal date.
-   Matches patterns like 'Dec 14th, 2025' or '2025-12-14'."
-  [title]
-  (when title
-    (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-        (re-matches #"\d{4}-\d{2}-\d{2}" title))))
-
-(defn- parse-journal-date
-  "Parse journal title to sortable date value.
-   Returns nil if not a valid journal format."
-  [title]
-  (when title
-    (cond
-      ;; ISO format: 2025-12-14
-      (re-matches #"\d{4}-\d{2}-\d{2}" title)
-      title
-
-      ;; Human format: Dec 14th, 2025 -> 2025-12-14
-      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
-      (let [months {"Jan" "01" "Feb" "02" "Mar" "03" "Apr" "04"
-                    "May" "05" "Jun" "06" "Jul" "07" "Aug" "08"
-                    "Sep" "09" "Oct" "10" "Nov" "11" "Dec" "12"}
-            [_ mon day _ year] (re-matches #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th), (\d{4})" title)]
-        (when (and mon day year)
-          (str year "-" (months mon) "-" (when (< (count day) 2) "0") day)))
-
-      :else nil)))
 
 ;; ── Helpers for Content Detection ────────────────────────────────────────────
 
@@ -166,13 +136,13 @@
         existing-journals (->> all-pages
                                (map (fn [pid]
                                       (let [title (q/page-title db pid)
-                                            date (parse-journal-date title)]
+                                            date (journal/parse-journal-date title)]
                                         {:id pid
                                          :title title
                                          :date date
                                          :is-today? (= date today)
                                          :has-content? (has-content? db pid)})))
-                               (filter #(journal-page? (:title %))))
+                               (filter #(journal/journal-page? (:title %))))
         ;; Check if today's journal exists
         today-exists? (some :is-today? existing-journals)
         ;; Filter to visible journals (today or has content)
