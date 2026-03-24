@@ -79,27 +79,22 @@
           (mapcat #(collect-descendants db %) children))))
 
 (defn- handle-delete-page
-  "Delete a page and all its contents by moving to trash.
+  "Delete a page by moving to trash (subtree stays intact).
    If deleting the current page, switches to another page.
    Adds :trashed-at timestamp for 30-day cleanup."
   [db session {:keys [page-id]}]
   (when page-id
     (let [current-page-id (q/current-page session)
           pages (q/all-pages db)
-          ;; Get all child blocks to trash
-          descendants (collect-descendants db page-id)
           ;; Figure out which page to switch to if deleting current
           other-pages (remove #{page-id} pages)
           next-page (first other-pages)
           deleting-current? (= page-id current-page-id)
           ;; Add timestamp for 30-day cleanup
           now #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))]
-      {:ops (into
-             ;; Move all descendants to trash first
-             (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last}) descendants)
-             ;; Move page to trash and add timestamp
-             [{:op :place :id page-id :under const/root-trash :at :last}
-              {:op :update-node :id page-id :props {:trashed-at now}}])
+      {:ops [;; Move only page root to trash — descendants stay attached
+             {:op :place :id page-id :under const/root-trash :at :last}
+             {:op :update-node :id page-id :props {:trashed-at now}}]
        ;; If we deleted the current page, switch to another
        :session-updates (when deleting-current?
                           (page-view-update next-page {}))})))
@@ -183,26 +178,16 @@
                           :handler handle-rename-page})
 
 (defn- handle-restore-page
-  "Restore a page and its descendants from trash.
+  "Restore a page from trash (subtree comes along automatically).
 
-   Since delete flattens the tree (all descendants become direct trash children),
-   restore rebuilds a flat structure under the page. Deep nesting is lost.
-
-   Args:
-     page-id     - ID of page to restore
-     descendants - Optional list of descendant IDs to restore under the page"
-  [db _session {:keys [page-id descendants switch-to?]}]
+   Since delete preserves the subtree (descendants stay attached to the page),
+   restore only needs to move the page root back to :doc."
+  [db _session {:keys [page-id switch-to?]}]
   (when page-id
     (let [;; Verify page is actually in trash
           parent (get-in db [:derived :parent-of page-id])]
       (when (= parent const/root-trash)
-        {:ops (into
-               ;; Move page back to doc
-               [{:op :place :id page-id :under const/root-doc :at :last}]
-               ;; Move descendants back under page (flat - nested structure lost)
-               (when (seq descendants)
-                 (mapv (fn [id] {:op :place :id id :under page-id :at :last})
-                       descendants)))
+        {:ops [{:op :place :id page-id :under const/root-doc :at :last}]
          ;; Optionally switch to restored page
          :session-updates (when switch-to?
                             {:ui {:current-page page-id}})}))))
@@ -337,13 +322,10 @@
           all-nodes)))
 
 (defn- trash-ops-for-page
-  "Generate trash operations for a page and all descendants."
-  [db page-id now]
-  (let [descendants (collect-descendants db page-id)
-        place-ops (mapv (fn [id] {:op :place :id id :under const/root-trash :at :last})
-                        (conj descendants page-id))
-        timestamp-op {:op :update-node :id page-id :props {:trashed-at now}}]
-    (conj place-ops timestamp-op)))
+  "Generate trash operations for a page (subtree stays intact)."
+  [_db page-id now]
+  [{:op :place :id page-id :under const/root-trash :at :last}
+   {:op :update-node :id page-id :props {:trashed-at now}}])
 
 (defn- handle-scan-empty-pages
   "Scan all pages and clean up:
