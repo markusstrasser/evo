@@ -191,9 +191,10 @@
                                 (and session-editing-block-id
                                      (nil? editing-context))
                                 (assoc-in [:ui :editing-block-id] nil))
-              key (.-key e)
-              mod? (or (.-metaKey e) (.-ctrlKey e))
-              shift? (.-shiftKey e)
+              key-name (:key event)
+              mod? (:mod event)
+              shift? (:shift event)
+              alt (:alt event)
               focus-id (vs/focus-id)
               editing-block-id (when editing-context session-editing-block-id)
               idle? (idle-state? editing-block-id focus-id)
@@ -201,18 +202,18 @@
               editable-el (:editable-el editing-context)]
 
           (cond
-            (and idle? intent-type (contains? #{"Enter" "Backspace" "Delete" "Tab"} key))
+            (and idle? intent-type (contains? #{"Enter" "Backspace" "Delete" "Tab"} key-name))
             nil
 
-            (and idle? mod? (= key "Enter"))
+            (and idle? mod? (= key-name "Enter"))
             nil
 
-            (and idle? shift? (= key "Enter"))
+            (and idle? shift? (= key-name "Enter"))
             nil
 
-            (and idle? shift? (contains? #{"ArrowUp" "ArrowDown"} key))
+            (and idle? shift? (contains? #{"ArrowUp" "ArrowDown"} key-name))
             (let [visible-blocks (q/visible-blocks db current-session)
-                  target-id (if (= key "ArrowUp")
+                  target-id (if (= key-name "ArrowUp")
                               (last visible-blocks)
                               (first visible-blocks))]
               (when target-id
@@ -222,12 +223,12 @@
             (and intent-type
                  editing-block-id
                  shift?
-                 (contains? #{"ArrowUp" "ArrowDown"} key)
+                 (contains? #{"ArrowUp" "ArrowDown"} key-name)
                  (not mod?)
-                 (not (.-altKey e)))
+                 (not alt))
             nil
 
-            (and mod? (= key "v") (not shift?) focus-id (not editing-block-id))
+            (and mod? (= key-name "v") (not shift?) focus-id (not editing-block-id))
             (do
               (.preventDefault e)
               (-> (js/navigator.clipboard.readText)
@@ -241,7 +242,7 @@
                   (.catch (fn [err]
                             (js/console.error "Clipboard read failed:" err)))))
 
-            (and editing-block-id mod? (= key "a") (not shift?) editable-el)
+            (and editing-block-id mod? (= key-name "a") (not shift?) editable-el)
             (when (selection-all-text? editable-el)
               (.preventDefault e)
               (handle-intent {:type :select-all-cycle
