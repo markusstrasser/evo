@@ -164,13 +164,13 @@
           "Selection should stay at 'a' (doc1 is container, not selectable)"))))
 
 (deftest select-parent-test
-  (testing "Select parent of selected node"
+  (testing "No-op when parent is container (doc/page)"
     (let [db (build-doc)
           session (empty-session)
           session1 (apply-selection-intent db session {:type :selection :mode :replace :ids "b"})
           session' (apply-selection-intent db session1 {:type :selection :mode :parent})]
-      (is (= #{"doc1"} (q/selection session'))
-          "Selection should move to parent 'doc1'")))
+      (is (= #{"b"} (q/selection session'))
+          "Selection should remain unchanged when parent is a container")))
 
   (testing "No-op when multiple parents (invalid state)"
     (let [db (build-doc)
