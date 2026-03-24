@@ -15,6 +15,7 @@
   (:require [clojure.string :as str]
             [shell.view-state :as vs]
             [kernel.query :as q]
+            [utils.dom :as dom]
             [utils.fuzzy-search :as fuzzy]))
 
 ;; ── Search Logic ──────────────────────────────────────────────────────────────
@@ -132,7 +133,7 @@
    {:class (when selected? "selected")
     :replicant/on-render (when selected?
                            (fn [{:replicant/keys [node]}]
-                             (.scrollIntoView node #js {:block "nearest"})))
+                             (dom/scroll-into-view! node)))
     :on {:click on-click}}
    [:span.quick-switcher-icon "📄"]
    [:span.quick-switcher-title page-title]])
