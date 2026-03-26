@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PROTECTED_PATHS='resources/specs\\.edn|resources/failure_modes\\.edn|tests/fixtures/golden_' BLOCK_MSG='BLOCKED: Cannot modify specs.edn, failure_modes.edn, or golden fixtures without human approval.' ~/Projects/skills/hooks/pretool-data-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/alien/Projects/skills/hooks/postcommit-doc-staleness.sh",
+            "statusMessage": "Checking doc propagation..."
+          }
+        ]
+      }
+    ]
+  }
+}

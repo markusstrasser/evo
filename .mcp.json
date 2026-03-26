@@ -26,6 +26,7 @@
       "args": ["chrome-devtools-mcp@latest"]
     },
     "brave-search": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
@@ -36,6 +37,7 @@
       }
     },
     "research": {
+      "type": "stdio",
       "command": "uv",
       "args": [
         "run",
@@ -48,6 +50,7 @@
       }
     },
     "meta-knowledge": {
+      "type": "stdio",
       "command": "uv",
       "args": [
         "run",
@@ -55,6 +58,17 @@
         "/Users/alien/Projects/meta",
         "meta-mcp"
       ]
+    },
+    "firecrawl": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "firecrawl-mcp"
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": "fc-1d59de21d9424ace844da3884abe6191"
+      }
     }
   }
 }
