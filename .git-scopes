@@ -1,0 +1,12 @@
+kernel
+shell
+ui
+plugins
+keymap
+scripts
+parser
+tests
+e2e
+infra
+docs
+specs
