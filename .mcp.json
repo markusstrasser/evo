@@ -16,10 +16,6 @@
         "@upstash/context7-mcp"
       ]
     },
-    "exa": {
-      "type": "http",
-      "url": "https://mcp.exa.ai/mcp?exaApiKey=bc29396d-741a-463a-b1e8-a947e26cf532&tools=web_search_exa,web_search_advanced_exa,crawling_exa,company_research_exa,people_search_exa,deep_researcher_start,deep_researcher_check"
-    },
     "chrome-devtools": {
       "type": "stdio",
       "command": "npx",
@@ -34,40 +30,6 @@
       ],
       "env": {
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      }
-    },
-    "research": {
-      "type": "stdio",
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/alien/Projects/research-mcp",
-        "research-mcp"
-      ],
-      "env": {
-        "S2_API_KEY": "${S2_API_KEY}"
-      }
-    },
-    "meta-knowledge": {
-      "type": "stdio",
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/Users/alien/Projects/meta",
-        "meta-mcp"
-      ]
-    },
-    "firecrawl": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "firecrawl-mcp"
-      ],
-      "env": {
-        "FIRECRAWL_API_KEY": "fc-1d59de21d9424ace844da3884abe6191"
       }
     }
   }
