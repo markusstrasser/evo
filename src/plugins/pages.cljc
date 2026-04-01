@@ -187,10 +187,14 @@
     (let [;; Verify page is actually in trash
           parent (get-in db [:derived :parent-of page-id])]
       (when (= parent const/root-trash)
-        {:ops [{:op :place :id page-id :under const/root-doc :at :last}]
+        {:ops [{:op :place :id page-id :under const/root-doc :at :last}
+               ;; Clear trash metadata so persistence won't re-trash on reload.
+               {:op :update-node :id page-id :props {:trashed-at nil}}]
          ;; Optionally switch to restored page
          :session-updates (when switch-to?
-                            {:ui {:current-page page-id}})}))))
+                            (page-view-update page-id
+                                              {:clear-editing? true
+                                               :reset-zoom? true}))}))))
 
 (intent/register-intent! :restore-page
                          {:doc "Restore a page from trash (undo delete)"
