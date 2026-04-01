@@ -42,7 +42,8 @@ npm run build              # Clean + release blocks-ui + minified CSS
 # Unit tests (ClojureScript via shadow-cljs)
 bb test                    # Compile + run full suite (shadow :test)
 bb test:view               # Hiccup/view-only tests (<1s)
-bb test:int                # Render→action integration tests
+bb test:int                # All integration tests under test/integration
+bb test:kernel             # Kernel + script tests only
 bb test-watch              # Watch entire suite
 bb test-watch:view         # Watch view tier only
 bb test-watch:int          # Watch integration tier only
@@ -54,7 +55,9 @@ See `docs/TESTING.md` for testing philosophy and the buffer vs DB gap.
 
 ```bash
 bb lint                    # Run clj-kondo linter
-bb check                   # Lint + compile check (full quality gate)
+bb check                   # Lint + architecture verification + compile check
+bb check:kernel            # Kernel purity scan + kernel/script tests
+bb arch:verify             # Verify runtime/bootstrap docs stay aligned
 bb lint:specs              # Validate specs.edn schema (fast, no compile)
 bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fail on gaps)
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
@@ -577,6 +580,4 @@ Do NOT: add new outliner features, chase Logseq parity, or build speculative inf
 
 ### Known Limitations
 
-- No architectural enforcement of kernel/shell boundary — relies on convention and review
-- Test suite doesn't verify kernel independence (no build target for kernel-only)
 - Extraction readiness is not measurable yet — no metric for "how close to standalone"

@@ -69,9 +69,9 @@
   [{:point "shell.editor/handle-intent"
     :desc "Main intent dispatcher"
     :triggers "All user interactions"}
-   {:point "shell.nexus/dispatch-intent"
-    :desc "Nexus dispatcher"
-    :triggers "Keyboard, mouse, commands"}
+   {:point "shell.executor/apply-intent!"
+    :desc "Canonical runtime entrypoint"
+    :triggers "Intent dispatch from keyboard, mouse, and startup flows"}
    {:point "kernel.transaction/interpret"
     :desc "Operation interpreter"
     :triggers "All state changes"}
@@ -83,9 +83,9 @@
     :triggers "Every block render"}])
 
 (defn analyze-hot-paths []
-  [{:path "User keystroke → Block component → Nexus → Plugin → Transaction → Derive → Re-render"
+  [{:path "User keystroke → Block component → Executor → API dispatch → Plugin → Transaction → Derive → Re-render"
     :frequency "Every keystroke in edit mode"
-    :components ["components.block" "shell.nexus" "plugins.*" "kernel.transaction" "kernel.db"]}
+    :components ["components.block" "shell.executor" "kernel.api" "plugins.*" "kernel.transaction" "kernel.db"]}
    {:path "Selection change → Navigation plugin → Query → Update session → Re-render"
     :frequency "Every arrow key / click"
     :components ["plugins.navigation" "plugins.selection" "kernel.query" "shell.editor"]}
@@ -192,7 +192,7 @@
   (println)
   (println "### View Layer")
   (println "```")
-  (println "shell.editor → components.* → shell.nexus")
+  (println "shell.editor → components.* → shell.executor")
   (println "       ↓                              ↓")
   (println "  kernel.api                   kernel.derived-registry")
   (println "```"))

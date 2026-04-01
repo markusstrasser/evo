@@ -41,7 +41,7 @@ See [docs/DX_INDEX.md](docs/DX_INDEX.md) for full documentation.
 ```
 src/kernel/         # Pure kernel (db, ops, transaction, schema, errors)
 src/plugins/        # Intent handlers (navigation, editing, selection, etc.)
-src/shell/          # UI adapters, session state, Nexus dispatcher
+src/shell/          # UI adapters, session state, runtime wiring
 src/components/     # Replicant components (Block, PageRef, Sidebar)
 src/keymap/         # Keybinding definitions and dispatch
 src/scripts/         # Multi-step operation scripts
@@ -67,7 +67,7 @@ actual source of truth.
 - `docs/DX_INDEX.md` - Entry point for all documentation
 - `AGENTS.md` - Agent instructions and tooling index
 - `VISION.md` - Product philosophy and architectural direction
-- `docs/RENDERING_AND_DISPATCH.md` - Replicant/Nexus event handling reference
+- `docs/RENDERING_AND_DISPATCH.md` - Replicant + runtime adapter boundaries
 
 ## Core Concepts
 
@@ -80,8 +80,9 @@ actual source of truth.
 4. Re-derive indexes (children-by-parent, siblings, etc.)
 
 **Testing**:
-- View/unit tiers: `bb test:view` (hiccup) and `bb test:int` (render→action) for <1s feedback
+- View/unit tiers: `bb test:view` (hiccup) and `bb test:int` (all `test/integration/` namespaces) for <1s feedback
 - Full suite: `bb test` or `bb test-watch` when you need everything
+- Extraction harness: `bb check:kernel` verifies kernel boundaries and runs kernel/script tests
 - Browser flows: `bb e2e` / `bb test:e2e NAV-BOUNDARY-LEFT-01`
 - Spec coverage: `bb lint:fr-tests` (pass `-- --strict` once every test cites :fr/ids)
 

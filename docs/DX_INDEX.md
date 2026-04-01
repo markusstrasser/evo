@@ -49,7 +49,6 @@ npm start        # Clean + watch CLJS + watch CSS
 | **[DEPENDENCY_REVIEW.md](DEPENDENCY_REVIEW.md)** | Upstream package assessment: keep, narrow, bump, or remove |
 | **[LOGSEQ_PARITY_EVO.md](LOGSEQ_PARITY_EVO.md)** | Gaps + guardrails |
 | **[CODING_GOTCHAS.md](CODING_GOTCHAS.md)** | Common pitfalls |
-| **[ARCHITECTURE_UNIFICATION_PLAN.md](ARCHITECTURE_UNIFICATION_PLAN.md)** | Canonical execution plan for runtime, keyboard, session, and docs unification |
 
 ---
 
@@ -63,6 +62,7 @@ npm start        # Clean + watch CLJS + watch CSS
 bb test    # Unit tests
 bb e2e     # E2E tests
 bb check   # Quality gate
+bb check:kernel  # Kernel extraction harness
 ```
 
 ---

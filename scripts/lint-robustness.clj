@@ -19,7 +19,7 @@
     :message "Use constants for root IDs (e.g., const/doc-id) instead of keywords if possible, or ensure consistent usage."}
    {:id :direct-atom-mutation
     :regex #"\(swap!\s+!state"
-    :message "Direct atom mutation in UI components. Prefer dispatching intents via 'nexus'."}
+    :message "Direct atom mutation in UI components. Prefer dispatching intents via on-intent / shell.executor."}
    {:id :missing-map-key
     :regex #"\(for\s+\[.*\]\s+\["
     :message "Potential missing :key in list comprehension. Verify Replicant/React key usage."}])
