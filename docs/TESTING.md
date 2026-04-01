@@ -6,12 +6,14 @@
 # Unit tests (ClojureScript via shadow-cljs)
 bb test              # Compile + run full suite
 bb test:view         # View-only tests (<1s)
-bb test:int          # Integration tests
+bb test:int          # All integration tests under test/integration
+bb test:kernel       # Kernel + script tests only
 bb test-watch        # Watch entire suite
 bb test-watch:view   # Watch view tier only
 
 # Quality gates
-bb check             # Lint + compile check
+bb check             # Lint + architecture verification + compile check
+bb check:kernel      # Kernel purity scan + kernel/script tests
 bb lint              # clj-kondo linter
 ```
 

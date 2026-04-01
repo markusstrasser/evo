@@ -7,15 +7,18 @@
    3. Position cursor at end of text (default) or start if cursor-at: :start
 
    This is Logseq parity: Enter = edit selected block, NOT create new block."
-  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
-  (:require #?(:clj  [clojure.test :refer [deftest is testing]]
-               :cljs [cljs.test :refer [deftest is testing]])
+  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
+  (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
+               :cljs [cljs.test :refer [deftest is testing use-fixtures]])
+            [integration.fixtures :as fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.query :as q]
             ;; REQUIRED: Load plugin to register :enter-edit-selected intent
             [plugins.editing]))
+
+(use-fixtures :once fixtures/bootstrap-runtime)
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 

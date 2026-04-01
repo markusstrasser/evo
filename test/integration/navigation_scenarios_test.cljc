@@ -1,10 +1,13 @@
 (ns integration.navigation-scenarios-test
   "Integration-level scenarios wired to docs/LOGSEQ_BEHAVIOR_TRIADS.md."
-  (:require [clojure.test :refer [deftest testing is]]
+  (:require [clojure.test :refer [deftest testing is use-fixtures]]
+            [integration.fixtures :as fixtures]
             [kernel.db :as db]
             [kernel.intent :as intent]
             [kernel.transaction :as tx]
             [plugins.navigation])) ; ensure :navigate-to-adjacent is registered
+
+(use-fixtures :once fixtures/bootstrap-runtime)
 
 (def ^:private parent-text "Parent")
 

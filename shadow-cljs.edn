@@ -29,7 +29,12 @@
   :test-integration
   {:target :node-test
    :output-to "out/tests-integration.js"
-   :ns-regexp "^integration\\.navigation.*-test$"}
+   :ns-regexp "^integration\\..*-test$"}
+
+  :test-kernel
+  {:target :node-test
+   :output-to "out/tests-kernel.js"
+   :ns-regexp "^(kernel|scripts)\\..*-test$"}
 
   :test-specs
   {:target :node-test

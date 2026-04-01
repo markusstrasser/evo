@@ -2,13 +2,16 @@
   "Integration tests for core flows: selection, navigation, structural edits, history.
 
    Scenario-level tests that verify refactor-proof behaviors across the system."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [integration.fixtures :as fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]
             [kernel.query :as q]
             [kernel.constants :as const]
             [kernel.history :as H]))
+
+(use-fixtures :once fixtures/bootstrap-runtime)
 
 (defn empty-session
   "Create an empty session for testing."

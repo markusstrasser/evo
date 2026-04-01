@@ -16,9 +16,11 @@
   format:fix {:doc "Fix Clojure code formatting (cljfmt)"
               :task (shell "clojure -Sdeps '{:deps {cljfmt/cljfmt {:mvn/version \"0.9.2\"}}}' -M -m cljfmt.main fix src test dev")}
 
-  check {:doc "Lint + compile check (full quality gate)"
+  check {:doc "Lint + architecture verification + compile check"
          :task (do
                  (run 'lint)
+                 (run 'arch:verify)
+                 (shell "bb scripts/verify_kernel_boundaries.clj")
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
   test {:doc "Compile + run the full shadow-cljs test suite"
@@ -31,10 +33,20 @@
                      (shell "npx shadow-cljs compile :test-view")
                      (shell "node out/tests-view.js"))}
 
-  test:int {:doc "Render→action integration tests"
+  test:int {:doc "All integration tests under test/integration"
             :task (do
                     (shell "npx shadow-cljs compile :test-integration")
                     (shell "node out/tests-integration.js"))}
+
+  test:kernel {:doc "Run kernel + script tests only"
+               :task (do
+                       (shell "npx shadow-cljs compile :test-kernel")
+                       (shell "node out/tests-kernel.js"))}
+
+  check:kernel {:doc "Kernel purity scan + kernel/script tests"
+                :task (do
+                        (shell "bb scripts/verify_kernel_boundaries.clj")
+                        (run 'test:kernel))}
 
   test:specs {:doc "Run executable spec scenarios only"
               :task (do
@@ -47,7 +59,7 @@
   test-watch:view {:doc "Watch view tests"
                    :task (shell "npx shadow-cljs watch :test-view")}
 
-  test-watch:int {:doc "Watch integration tests"
+  test-watch:int {:doc "Watch all integration tests"
                   :task (shell "npx shadow-cljs watch :test-integration")}
 
   ;; FR Coverage (Spec-as-Database pattern)
@@ -93,6 +105,9 @@
 
   arch:call-graph {:doc "Call graph analysis with critical paths"
                    :task (shell "bb scripts/call-graph.clj")}
+
+  arch:verify {:doc "Verify live runtime/bootstrap docs stay aligned"
+               :task (shell "bb scripts/verify_architecture.clj")}
 
   arch:lens {:doc "Generate combined architectural lens (all views)"
              :task (do
@@ -188,10 +203,12 @@
                 (println "  bb lint            - Run clj-kondo linter")
                 (println "  bb format:check    - Check Clojure code formatting")
                 (println "  bb format:fix      - Fix Clojure code formatting")
-                (println "  bb check           - Lint + compile check")
+                (println "  bb check           - Lint + architecture verification + compile check")
+                (println "  bb check:kernel    - Kernel purity scan + kernel/script tests")
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
-                (println "  bb test:int        - Integration tests\n")
+                (println "  bb test:int        - All integration tests")
+                (println "  bb test:kernel     - Kernel + script tests only\n")
                 (println "E2E Testing:")
                 (println "  bb e2e             - Run Playwright E2E tests")
                 (println "  bb e2e:watch       - Watch mode (UI)")
@@ -207,6 +224,7 @@
                 (println "  bb arch:abstractions      - Protocols/multimethods")
                 (println "  bb arch:data-flow         - Data flow patterns")
                 (println "  bb arch:call-graph        - Call graph + hot paths")
+                (println "  bb arch:verify            - Verify live runtime/bootstrap docs")
                 (println "  bb arch:lens              - Combined lens → arch-lens.md\n")
                 (println "Cache & Index:")
                 (println "  bb clean           - Clear all caches")

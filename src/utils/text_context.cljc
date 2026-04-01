@@ -32,7 +32,10 @@
 
 ;; ── Helper Functions ──────────────────────────────────────────────────────────
 
-(defn- inc' "Increment, breaking type inference for nil-guarded values." [n] (inc n))
+(defn- inc-safe
+  "Increment, breaking type inference for nil-guarded values."
+  [n]
+  (inc n))
 
 (defn- find-line-start
   "Find start position of line containing cursor-pos."
@@ -277,7 +280,7 @@
     (when (and open-idx close-idx)
       (let [open-line (nth lines open-idx)
             close-line (nth lines close-idx)
-            after-close-idx (inc' close-idx)
+            after-close-idx (inc-safe close-idx)
             lang (str/trim (subs open-line 3))
             start-pos (cumulative-position lines open-idx)
             end-pos (dec (cumulative-position lines after-close-idx))]

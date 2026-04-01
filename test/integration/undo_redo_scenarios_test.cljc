@@ -6,14 +6,17 @@
    - Undo with folded blocks
    - Redo after navigation
    - History stack boundary conditions"
-  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
-  (:require #?(:clj  [clojure.test :refer [deftest is testing]]
-               :cljs [cljs.test :refer [deftest is testing]])
+  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
+  (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
+               :cljs [cljs.test :refer [deftest is testing use-fixtures]])
+            [integration.fixtures :as fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]
             [kernel.history :as history]
             [kernel.query :as q]))
+
+(use-fixtures :once fixtures/bootstrap-runtime)
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 
