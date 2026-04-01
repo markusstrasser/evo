@@ -94,6 +94,7 @@
 ;;              :current-page nil                ; Active page
 ;;              :editing-block-id nil            ; Block in edit mode
 ;;              :cursor-position nil             ; Cursor position for enter-edit
+;;              :lightbox nil                    ; Fullscreen image overlay state
 ;;              :keep-edit-on-blur false}        ; Prevent blur from exiting edit
 ;;  :sidebar   {:right []}}                      ; Right sidebar items
 ;;
@@ -108,6 +109,7 @@
         :current-page nil
         :editing-block-id nil
         :cursor-position nil
+        :lightbox nil
         :keep-edit-on-blur false
         :document-view? false
         :journals-view? true ; Show all journals stacked (newest first)
@@ -240,6 +242,16 @@
   []
   (get-in @!view-state [:ui :editing-page-title?] false))
 
+(defn lightbox
+  "Get the current lightbox image data, or nil when closed."
+  []
+  (get-in @!view-state [:ui :lightbox]))
+
+(defn lightbox-visible?
+  "Check if the fullscreen lightbox is currently open."
+  []
+  (some? (lightbox)))
+
 ;; ── View State Mutation API ─────────────────────────────────────────────────────
 
 (defn set-cursor-position!
@@ -258,6 +270,16 @@
   "Set the current active page."
   [page-id]
   (swap-view-state! assoc-in [:ui :current-page] page-id))
+
+(defn show-lightbox!
+  "Open the lightbox with image data {:src ... :alt ...}."
+  [{:keys [src alt]}]
+  (swap-view-state! assoc-in [:ui :lightbox] {:src src :alt alt}))
+
+(defn hide-lightbox!
+  "Close the lightbox."
+  []
+  (swap-view-state! assoc-in [:ui :lightbox] nil))
 
 (defn clear-pending-selection!
   "Clear pending selection state."
@@ -918,4 +940,3 @@
              (if (contains? collapsed-set section-key)
                (disj collapsed-set section-key)
                (conj collapsed-set section-key))))))
-

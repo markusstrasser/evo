@@ -11,25 +11,22 @@
 (defn show!
   "Open lightbox with given image."
   [{:keys [src alt]}]
-  (vs/swap-view-state! assoc :lightbox {:src src :alt alt})
-  ;; Add body class to prevent scrolling
-  (.. js/document -body -classList (add "lightbox-open")))
+  (vs/show-lightbox! {:src src :alt alt}))
 
 (defn hide!
   "Close lightbox."
   []
-  (vs/swap-view-state! dissoc :lightbox)
-  (.. js/document -body -classList (remove "lightbox-open")))
+  (vs/hide-lightbox!))
 
 (defn visible?
   "Check if lightbox is currently open."
   []
-  (some? (:lightbox (vs/get-view-state))))
+  (vs/lightbox-visible?))
 
 (defn current-image
   "Get current lightbox image data."
   []
-  (:lightbox (vs/get-view-state)))
+  (vs/lightbox))
 
 ;; ── Key Handler ──────────────────────────────────────────────────────────────
 
@@ -37,9 +34,9 @@
   "Handle keydown for lightbox. Returns true if handled."
   [e]
   (when (visible?)
-    (case (.-key e)
-      "Escape" (do (hide!) true)
-      false)))
+    (if (= "Escape" (.-key e))
+      (do (hide!) true)
+      true)))
 
 ;; ── Component ────────────────────────────────────────────────────────────────
 
@@ -49,7 +46,12 @@
   []
   (when-let [{:keys [src alt]} (current-image)]
     [:div.lightbox-overlay
-     {:on {:click (fn [e]
+     {:replicant/key "lightbox-overlay"
+      :replicant/on-mount (fn [_]
+                            (.. js/document -body -classList (add "lightbox-open")))
+      :replicant/on-unmount (fn [_]
+                              (.. js/document -body -classList (remove "lightbox-open")))
+      :on {:click (fn [e]
                     (when (= (.-target e) (.-currentTarget e))
                       (hide!)))}}
      [:div.lightbox-content
