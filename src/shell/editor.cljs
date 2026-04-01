@@ -93,6 +93,7 @@
    If folder is empty, starts with empty DB.
    Navigates to page from URL or today's journal."
   []
+  (lightbox/hide!)
   (swap! !storage-status assoc :loading? true)
   (-> (storage/load-all-pages)
       (.then (fn [ops]
@@ -129,6 +130,7 @@
 (defn clear-folder!
   "Disconnect from the current folder and reset to empty state."
   []
+  (lightbox/hide!)
   (storage/clear-folder!)
   (image/clear-url-cache!)
   (swap! !storage-status assoc :folder-name nil)
@@ -619,6 +621,12 @@
                              (get-in @!db [:nodes block-id :props :text] ""))
              :getDb (fn [] (clj->js @!db))
              :getSession (fn [] (clj->js (vs/get-view-state)))
+             :showLightbox (fn [src alt]
+                             (lightbox/show! {:src src :alt alt}))
+             :hideLightbox (fn []
+                             (lightbox/hide!))
+             :clearFolder (fn []
+                            (clear-folder!))
              ;; Transact raw ops (for test setup - creates blocks, places them, etc.)
              :transact (fn [ops-js]
                          (let [ops (js->clj ops-js :keywordize-keys true)
