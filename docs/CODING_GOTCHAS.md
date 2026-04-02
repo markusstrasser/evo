@@ -429,59 +429,25 @@ _Auto-generated from source. Run `bb lint:intents` to regenerate._
 
 Intents are dispatched via `api/dispatch`. Grouped by plugin:
 
-**Editing:**
+**Autocomplete:**
 | Intent | Description |
 |--------|-------------|
-| `:enter-edit` | Enter edit mode for a block. Ephemeral - not in un... |
-| `:exit-edit` | Exit edit mode WITHOUT selecting block. Ephemeral ... |
-| `:exit-edit-and-select` | Exit edit mode and select the block (Logseq parity... |
-| `:enter-edit-selected` | Enter edit mode in selected block at end of text (... |
-| `:enter-edit-with-char` | Enter edit mode and append a character (type-to-ed... |
-| `:clear-cursor-position` | Clear cursor-position from session state. Used aft... |
-| `:update-cursor-state` | Update cursor position state for boundary detectio... |
-| `:update-content` | Update block text content. |
-| `:insert-newline` | Insert a literal newline character at cursor posit... |
-| `:merge-with-prev` | Merge block with previous sibling, placing cursor ... |
-| `:split-at-cursor` | Split block at cursor position into two blocks. |
-| `:delete-forward` | Handle Delete key (forward delete). Behaviors: - H... |
-| `:move-cursor-forward-word` | Move cursor to start of next word (Alt+F / Ctrl+Sh... |
-| `:move-cursor-backward-word` | Move cursor to start of previous word (Alt+B / Ctr... |
-| `:clear-block-content` | Clear entire block content (Cmd+L). Sets text to e... |
-| `:kill-to-beginning` | Kill from cursor to beginning of block (Cmd+U). De... |
-| `:kill-to-end` | Kill from cursor to end of block (Cmd+K). Deletes ... |
-| `:kill-word-forward` | Kill next word (Cmd+Delete). Deletes from cursor t... |
-| `:kill-word-backward` | Kill previous word (Alt+Delete / Option+Delete on ... |
+| `:autocomplete/trigger` | Trigger autocomplete popup. Called when a trigger ... |
+| `:autocomplete/update` | Update autocomplete query and filter results. Call... |
+| `:autocomplete/select` | Select current autocomplete item and insert. Repla... |
+| `:autocomplete/dismiss` | Dismiss autocomplete without selecting. |
+| `:autocomplete/navigate` | Navigate selection in autocomplete list. direction... |
+| `:page/create` | Create a new page and optionally navigate to it. C... |
 
 
-**Navigation:**
+**Clipboard:**
 | Intent | Description |
 |--------|-------------|
-| `:navigate-with-cursor-memory` | Navigate to adjacent block, preserving cursor colu... |
-| `:navigate-to-adjacent` | Navigate to adjacent block (for left/right arrows ... |
-
-
-**Selection:**
-| Intent | Description |
-|--------|-------------|
-| `:selection` | Unified selection reducer with modes. Modes: - :re... |
-
-
-**Structure:**
-| Intent | Description |
-|--------|-------------|
-| `:delete` | Delete node by moving to :trash. |
-| `:indent` | Indent node under previous sibling. |
-| `:outdent` | Outdent node to be sibling of parent. |
-| `:create-and-place` | Create new block and place it under parent. |
-| `:create-and-enter-edit` | Create new block after focus and immediately enter... |
-| `:delete-selected` | Delete all selected nodes (or editing block if no ... |
-| `:indent-selected` | Indent all selected nodes (or editing block if no ... |
-| `:outdent-selected` | Outdent all selected nodes (or editing block if no... |
-| `:move-selected-up` | Move selected nodes up one sibling position. |
-| `:move-selected-down` | Move selected nodes down one sibling position. |
-| `:move` | Move selection to target parent at anchor position... |
-| `:move-block-up-while-editing` | Move current editing block up, preserving edit mod... |
-| `:move-block-down-while-editing` | Move current editing block down, preserving edit m... |
+| `:paste-text` | Paste text into editing block (Logseq parity). Det... |
+| `:copy-block` | Copy single block content to clipboard. |
+| `:copy-selected` | Copy selected blocks with hierarchy preservation. ... |
+| `:cut-block` | Cut single block (copy + move to trash). |
+| `:cut-selected` | Cut selected blocks with hierarchy preservation. L... |
 
 
 **Smart Editing:**
@@ -497,6 +463,32 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:context-aware-enter` | Handle Enter key with full context awareness. Uses... |
 
 
+**Editing:**
+| Intent | Description |
+|--------|-------------|
+| `:enter-edit` | Enter edit mode for a block. Ephemeral - not in un... |
+| `:exit-edit` | Exit edit mode WITHOUT selecting block. Ephemeral ... |
+| `:exit-edit-and-select` | Exit edit mode and select the block (Logseq parity... |
+| `:exit-edit-and-extend` | Exit edit mode and extend selection (Shift+Arrow b... |
+| `:enter-edit-selected` | Enter edit mode in selected block (Logseq parity).... |
+| `:enter-edit-with-char` | Enter edit mode and append a character (type-to-ed... |
+| `:clear-cursor-position` | Clear cursor-position from session state. Used aft... |
+| `:update-cursor-state` | Update cursor position state for boundary detectio... |
+| `:update-content` | Update block text content. Skips no-op updates for... |
+| `:resize-image` | Update image width in markdown text. Modifies the ... |
+| `:insert-newline` | Insert a literal newline character at cursor posit... |
+| `:merge-with-prev` | Merge block with previous sibling (or parent if fi... |
+| `:split-at-cursor` | Split block at cursor position into two blocks. LO... |
+| `:delete-forward` | Handle Delete key (forward delete). Behaviors: - H... |
+| `:move-cursor-forward-word` | Move cursor to end of current word (Alt+F / Ctrl+S... |
+| `:move-cursor-backward-word` | Move cursor to start of previous word (Alt+B / Ctr... |
+| `:clear-block-content` | Clear entire block content (Cmd+L). Sets text to e... |
+| `:kill-to-beginning` | Kill from cursor to beginning of block (Cmd+U). De... |
+| `:kill-to-end` | Kill from cursor to end of block (Cmd+K). Deletes ... |
+| `:kill-word-forward` | Kill next word (Cmd+Delete). Deletes from cursor t... |
+| `:kill-word-backward` | Kill previous word (Alt+Delete / Option+Delete on ... |
+
+
 **Folding:**
 | Intent | Description |
 |--------|-------------|
@@ -509,14 +501,71 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:zoom-out` | Zoom out to previous level. |
 | `:zoom-to` | Zoom to specific block in zoom stack (breadcrumb c... |
 | `:reset-zoom` | Reset zoom to root (clear zoom stack). |
+| `:toggle-doc-mode` | Toggle doc-mode (swap Enter/Shift+Enter behavior).... |
+| `:toggle-sidebar` | Toggle left sidebar (pages) visibility. Bound to C... |
+| `:toggle-hotkeys` | Toggle hotkeys reference panel visibility. Bound t... |
+| `:toggle-quick-switcher` | Toggle quick switcher (page search) visibility. Bo... |
 
 
-**Clipboard:**
+**Navigation:**
 | Intent | Description |
 |--------|-------------|
-| `:paste-text` | Paste text into editing block (Logseq parity). Beh... |
-| `:copy-block` | Copy block content to clipboard. Returns nil (actu... |
-| `:cut-block` | Cut block (copy + delete). Moves block to trash af... |
+| `:navigate-with-cursor-memory` | Navigate to adjacent block, preserving cursor colu... |
+| `:navigate-to-adjacent` | Navigate to adjacent block (for left/right arrows ... |
+
+
+**Pages:**
+| Intent | Description |
+|--------|-------------|
+| `:switch-page` | Switch to a specific page by ID |
+| `:navigate-to-page` | Navigate to page by name (from page ref) |
+| `:create-page` | Create a new page with given title |
+| `:delete-page` | Delete a page and all its contents |
+| `:rename-page` | Rename a page by updating its title |
+| `:restore-page` | Restore a page from trash (undo delete) |
+| `:auto-trash-empty-page` | Auto-trash an empty page with no backlinks (except... |
+| `:permanently-delete-page` | Permanently delete a page from trash |
+| `:scan-empty-pages` | Scan pages and clean up invalid/empty ones |
+| `:cleanup-old-trash` | Delete pages that have been in trash for more than... |
+| `:follow-link-under-cursor` | Follow link/reference under cursor (Cmd+O in Logse... |
+| `:go-to-journal` | Navigate to daily journal page, creating if needed... |
+| `:open-journals-view` | Open the journals view (all journals stacked). Pus... |
+| `:open-all-pages-view` | Open the all-pages view (page listing like Logseq)... |
+| `:navigate-back` | Navigate back in page history (Cmd+[). Returns to ... |
+| `:navigate-forward` | Navigate forward in page history (Cmd+]). Goes to ... |
+
+
+**Selection:**
+| Intent | Description |
+|--------|-------------|
+| `:selection` | Unified selection reducer with modes. Modes: - :re... |
+| `:select-all-cycle` | Cmd+A cycle behavior (Logseq parity). LOGSEQ_SPEC ... |
+
+
+**Structure:**
+| Intent | Description |
+|--------|-------------|
+| `:delete` | Delete node by moving to :trash. LOGSEQ PARITY: Fo... |
+| `:indent` | Indent node under previous sibling. LOGSEQ PARITY:... |
+| `:outdent` | Outdent node to be sibling of parent. |
+| `:create-and-place` | Create new block and place it under parent. |
+| `:create-and-enter-edit` | Create new block after focus and immediately enter... |
+| `:create-block-in-page` | Create new block directly under a page (for empty ... |
+| `:insert-image-blocks` | Insert one or more image blocks after a reference ... |
+| `:delete-selected` | Delete all selected nodes. LOGSEQ PARITY: Focus mo... |
+| `:indent-selected` | Indent all selected/editing nodes (Logseq parity).... |
+| `:outdent-selected` | Outdent all selected/editing nodes (Logseq parity)... |
+| `:move-selected-up` | Move selected nodes up one sibling position. |
+| `:move-selected-down` | Move selected nodes down one sibling position. |
+| `:move` | Move selection to target parent at anchor position... |
+| `:move-block-up-while-editing` | Move current editing block up, preserving edit mod... |
+| `:move-block-down-while-editing` | Move current editing block down, preserving edit m... |
+
+
+**Text Formatting:**
+| Intent | Description |
+|--------|-------------|
+| `:format-selection` | Format selected text with markdown markers (bold, ... |
 
 
 ---

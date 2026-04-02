@@ -26,10 +26,14 @@
   "Scan src/plugins/*.cljc and src/kernel/*.cljc for (intent/register-intent! :keyword ...)
    Returns a set of registered intent keywords."
   []
-  (let [plugin-files (fs/glob "src/plugins" "*.cljc")
-        kernel-files (fs/glob "src/kernel" "*.cljc")
+  (let [plugin-files (concat (fs/glob "src/plugins" "*.clj")
+                             (fs/glob "src/plugins" "*.cljc")
+                             (fs/glob "src/plugins" "*.cljs"))
+        kernel-files (concat (fs/glob "src/kernel" "*.clj")
+                             (fs/glob "src/kernel" "*.cljc")
+                             (fs/glob "src/kernel" "*.cljs"))
         all-files (concat plugin-files kernel-files)
-        pattern #"\(intent/register-intent!\s+:([a-z][a-z0-9-]*)"
+        pattern #"\(intent/register-intent!\s+:([a-z][a-z0-9-]*(?:/[a-z][a-z0-9-]*)?)"
         extract-from-file (fn [f]
                             (let [content (slurp (str f))
                                   matches (re-seq pattern content)]
