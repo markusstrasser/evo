@@ -134,6 +134,9 @@ CLAUDE.md
 CLAUDE.md
 *.transcript
 .claude/skills/skill-authoring
+.claude/checkpoint.md
+.claude/current-session-id
+.project-upgrade/
 test-screenshots/
 .mcp.json
 .model-review/
