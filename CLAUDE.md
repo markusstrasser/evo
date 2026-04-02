@@ -415,6 +415,13 @@ bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
 (intent/coverage-summary)  # High-level metrics
 ```
 
+### Explicit Harness Bootstrap
+
+Truthful isolated tiers must load their own fixtures.
+- Integration namespaces use `[harness.runtime-fixtures :as runtime-fixtures]` plus `(use-fixtures :once runtime-fixtures/bootstrap-runtime)`.
+- Kernel/script tests that inspect intent metadata use `[harness.intent-fixtures :as intent-fixtures]` and register only the minimal test intents they need.
+- Never rely on plugin registration or intent metadata leaking in from unrelated namespace load order.
+
 ### E2E Tests (Playwright)
 
 - Test actual browser behavior: cursor position, focus, keyboard navigation

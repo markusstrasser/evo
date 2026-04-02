@@ -10,7 +10,7 @@
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
   (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
                :cljs [cljs.test :refer [deftest is testing use-fixtures]])
-            [integration.fixtures :as fixtures]
+            [harness.runtime-fixtures :as runtime-fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
@@ -18,7 +18,7 @@
             ;; REQUIRED: Load plugin to register :enter-edit-selected intent
             [plugins.editing]))
 
-(use-fixtures :once fixtures/bootstrap-runtime)
+(use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 

@@ -4,12 +4,12 @@
    Tests verify: key sequence → intent dispatch → final state.
    Agent-friendly: minimal setup, clear assertions, red/green feedback."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [integration.fixtures :as fixtures]
+            [harness.runtime-fixtures :as runtime-fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]))
 
-(use-fixtures :once fixtures/bootstrap-runtime)
+(use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
 ;; ── Test Fixtures ─────────────────────────────────────────────────────────────
 
