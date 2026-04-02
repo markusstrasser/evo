@@ -4,34 +4,10 @@
    These are pure unit tests - no browser needed.
    Tests state transitions and intent validation against the state machine."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
-            [kernel.intent :as intent]
+            [harness.intent-fixtures :as intent-fixtures]
             [kernel.state-machine :as sm]))
 
-;; State-machine queries depend on registered intent metadata. Register the
-;; minimal intent set locally so these tests stay self-contained.
-(defn with-state-machine-intents [f]
-  (let [saved-intents @intent/!intents
-        saved-uncited @intent/!uncited-intents
-        register! (fn [kw & {:keys [allowed-states]}]
-                    (intent/register-intent!
-                     kw
-                     (cond-> {:doc (str kw " test intent")
-                              :handler (fn [_db _session _intent] [])}
-                       (some? allowed-states) (assoc :allowed-states allowed-states))))]
-    (reset! intent/!intents {})
-    (reset! intent/!uncited-intents #{})
-    (register! :selection)
-    (register! :enter-edit :allowed-states #{:selection})
-    (register! :navigate-with-cursor-memory :allowed-states #{:editing})
-    (register! :smart-split :allowed-states #{:editing})
-    (register! :exit-edit :allowed-states #{:editing})
-    (try
-      (f)
-      (finally
-        (reset! intent/!intents saved-intents)
-        (reset! intent/!uncited-intents saved-uncited)))))
-
-(use-fixtures :each with-state-machine-intents)
+(use-fixtures :each intent-fixtures/with-state-machine-intents)
 
 ;; ── Test Fixtures ────────────────────────────────────────────────────────────
 

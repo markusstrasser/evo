@@ -3,7 +3,7 @@
 
    Scenario-level tests that verify refactor-proof behaviors across the system."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [integration.fixtures :as fixtures]
+            [harness.runtime-fixtures :as runtime-fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]
@@ -11,7 +11,7 @@
             [kernel.constants :as const]
             [kernel.history :as H]))
 
-(use-fixtures :once fixtures/bootstrap-runtime)
+(use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
 (defn empty-session
   "Create an empty session for testing."

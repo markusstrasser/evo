@@ -15,6 +15,7 @@ bb test-watch:view   # Watch view tier only
 bb check             # Lint + architecture verification + compile check
 bb check:kernel      # Kernel purity scan + kernel/script tests
 bb lint              # clj-kondo linter
+bb test:verify-harness # Verify isolated integration/kernel bootstrap
 ```
 
 ---
@@ -117,6 +118,14 @@ Test flows that involve session state:
       (is (= #{"a"} (get-in session-updates [:selection :nodes]))))))
 ```
 
+## Harness Fixtures
+
+Truthful isolated tiers must bootstrap their own registries.
+
+- Integration namespaces use `[harness.runtime-fixtures :as runtime-fixtures]` plus `(use-fixtures :once runtime-fixtures/bootstrap-runtime)`.
+- Kernel/script tests that inspect intent metadata use `[harness.intent-fixtures :as intent-fixtures]` plus the smallest registry fixture they need.
+- Do not rely on plugin registration or intent metadata leaking in from unrelated namespace load order.
+
 ---
 
 ## Property-Based Testing
@@ -159,6 +168,7 @@ Tests must respect the state machine:
 
 ```
 test/
+├── harness/         # Shared bootstrap fixtures for isolated test tiers
 ├── core/           # Kernel primitives (position, history)
 ├── plugins/        # Intent handlers (pure, isolated)
 ├── shell/          # Shell-specific helpers and dispatch wiring
