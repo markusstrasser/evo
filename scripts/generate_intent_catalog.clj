@@ -8,24 +8,33 @@
          '[babashka.fs :as fs])
 
 (def intent-files
-  ["src/plugins/editing.cljc"
-   "src/plugins/navigation.cljc"
-   "src/plugins/selection.cljc"
-   "src/plugins/structural.cljc"
-   "src/plugins/context_editing.cljc"
-   "src/plugins/folding.cljc"
-   "src/plugins/zoom.cljc"
-   "src/plugins/clipboard.cljc"
-   "src/plugins/formatting.cljc"
-   "src/plugins/page_navigation.cljc"
-   "src/plugins/slash_commands.cljc"])
+  (->> (fs/glob "src/plugins" "*.cljc")
+       (map str)
+       sort))
+
+(def domain-labels
+  {"autocomplete.cljc" "Autocomplete"
+   "clipboard.cljc" "Clipboard"
+   "context_editing.cljc" "Smart Editing"
+   "editing.cljc" "Editing"
+   "folding.cljc" "Folding"
+   "navigation.cljc" "Navigation"
+   "pages.cljc" "Pages"
+   "selection.cljc" "Selection"
+   "structural.cljc" "Structure"
+   "text_formatting.cljc" "Text Formatting"})
+
+(defn titleize [s]
+  (->> (str/split s #"[_-]+")
+       (map str/capitalize)
+       (str/join " ")))
 
 (defn extract-intents [file-path]
   "Extract intent registrations from a file."
   (when (fs/exists? file-path)
     (let [content (slurp file-path)
           ;; Match register-intent! calls - capture intent keyword and first line of doc
-          pattern #"register-intent!\s+:([a-z-]+)\s+\{:doc\s+\"([^\"]*)"
+          pattern #"register-intent!\s+:([a-z][a-z0-9-]*(?:/[a-z][a-z0-9-]*)?)\s+\{:doc\s+\"([^\"]*)"
           matches (re-seq pattern content)]
       (for [[_ intent-name doc-first-line] matches]
         {:intent (keyword intent-name)
@@ -37,19 +46,10 @@
 
 (defn domain-from-file [path]
   (let [fname (fs/file-name path)]
-    (case fname
-      "editing.cljc" "Editing"
-      "navigation.cljc" "Navigation"
-      "selection.cljc" "Selection"
-      "struct.cljc" "Structure"
-      "context_editing.cljc" "Smart Editing"
-      "folding.cljc" "Folding"
-      "zoom.cljc" "Zoom"
-      "clipboard.cljc" "Clipboard"
-      "formatting.cljc" "Formatting"
-      "page_navigation.cljc" "Page Navigation"
-      "slash_commands.cljc" "Slash Commands"
-      "Other")))
+    (or (get domain-labels fname)
+        (-> fname
+            (str/replace #"\.cljc$" "")
+            titleize))))
 
 (defn generate-catalog []
   (let [all-intents (for [f intent-files
