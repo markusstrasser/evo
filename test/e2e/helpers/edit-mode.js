@@ -10,23 +10,14 @@
  * @returns {Promise<void>}
  */
 export async function selectPage(page, pageName = 'Projects') {
-  // Map display names to page IDs (demo data uses lowercase IDs)
-  const pageIdMap = {
-    'Projects': 'projects',
-    'Tasks': 'tasks',
-    'Notes': 'notes'
-  };
-  const pageId = pageIdMap[pageName] || pageName.toLowerCase();
-
-  // Use TEST_HELPERS.dispatchIntent to bypass UI
-  await page.evaluate((id) => {
+  // Use create-page so the helper works in both demo data and ?test=true mode.
+  await page.evaluate((name) => {
     if (window.TEST_HELPERS?.dispatchIntent) {
-      // Switch to the page
-      window.TEST_HELPERS.dispatchIntent({type: 'switch-page', 'page-id': id});
+      window.TEST_HELPERS.dispatchIntent({type: 'create-page', title: name});
     } else {
       console.error('TEST_HELPERS.dispatchIntent not found - is the app loaded?');
     }
-  }, pageId);
+  }, pageName);
 
   // Wait for blocks to appear - Playwright auto-waits (no sleep needed)
   await page.waitForSelector('[data-block-id]', { timeout: 5000 });

@@ -40,7 +40,7 @@ async function enterEditMode(page, blockLocator) {
 
 test.describe('Uncontrolled Editing Architecture', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html?test=true');
     await page.waitForSelector('[data-block-id]', { timeout: 10000 });
     // Wait for app to fully initialize (plugins loaded, etc.)
     await page.waitForTimeout(500);
@@ -133,8 +133,8 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await pressHome(page);
 
     // Arrow right to move cursor
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('ArrowRight');
+    await pressKeyOnContentEditable(page, 'ArrowRight');
+    await pressKeyOnContentEditable(page, 'ArrowRight');
 
     // Type to verify cursor position
     await page.keyboard.type('X');
