@@ -201,28 +201,6 @@ export async function countBlocks(page) {
 }
 
 /**
- * Create a new block with specified text.
- *
- * @param {import('@playwright/test').Page} page
- * @param {string} text - Text for the new block
- * @param {string} [parentId] - Parent block ID (optional, defaults to doc root)
- * @returns {Promise<string>} - The new block's ID
- */
-export async function createBlock(page, text, parentId = null) {
-  const newId = `test-block-${Date.now()}`;
-  await page.evaluate(({ id, content, parent }) => {
-    window.TEST_HELPERS?.dispatchIntent({
-      type: 'create-block',
-      id: id,
-      text: content,
-      parent: parent || ':doc'
-    });
-  }, { id: newId, content: text, parent: parentId });
-  await page.waitForTimeout(100);
-  return newId;
-}
-
-/**
  * Update block text content.
  *
  * Uses direct DB manipulation for test fixture setup.

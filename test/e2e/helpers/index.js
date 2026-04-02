@@ -44,7 +44,6 @@ export {
   getFirstBlockId,
   getBlockIdAt,
   countBlocks,
-  createBlock,
   updateBlockText,
   waitForBlocks,
   getAllBlocks
