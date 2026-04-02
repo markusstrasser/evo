@@ -11,12 +11,108 @@
       (str/split-lines out)
       [])))
 
+(defn all-test-files []
+  (->> (file-seq (io/file "test"))
+       (filter #(.isFile ^java.io.File %))
+       (map #(.getPath ^java.io.File %))
+       (filter #(or (re-find #"\.(clj|cljc|cljs)$" %)
+                    (re-find #"\.spec\.js$" %)))))
+
+(defn source-namespace [file-path]
+  (try
+    (some->> (slurp file-path)
+             (re-find #"(?m)^\(ns\s+([^\s\)]+)")
+             second)
+    (catch Exception _ nil)))
+
+(defn source-info [file-path]
+  (let [relative (-> file-path
+                     (str/replace #"^src/" "")
+                     (str/lower-case))
+        no-ext (str/replace relative #"\.[^.]+$" "")
+        parts (str/split no-ext #"/")
+        stem (last parts)
+        parent (when (> (count parts) 1)
+                 (nth parts (- (count parts) 2)))]
+    {:namespace (source-namespace file-path)
+     :stem stem
+     :parent parent}))
+
+(defn exact-mirror-candidates [file-path]
+  (let [base (-> file-path
+                 (str/replace #"^src/" "test/")
+                 (str/replace #"\.[^.]+$" "_test"))]
+    (for [ext [".clj" ".cljc" ".cljs"]
+          :let [candidate (str base ext)]
+          :when (.exists (io/file candidate))]
+      {:path candidate
+       :score 100
+       :reason "mirror-path match"})))
+
+(defn namespace-candidates [{:keys [namespace]} test-files]
+  (if-not namespace
+    []
+    (for [test-file test-files
+          :let [content (slurp test-file)]
+          :when (str/includes? content namespace)]
+      {:path test-file
+       :score 90
+       :reason (str "references namespace " namespace)})))
+
+(defn filename-score [{:keys [stem parent]} test-file]
+  (let [filename (-> test-file io/file .getName str/lower-case)
+        path-lower (str/lower-case test-file)
+        exact-names #{(str stem "_test.clj")
+                      (str stem "_test.cljc")
+                      (str stem "_test.cljs")
+                      (str stem "_test.js")
+                      (str stem ".spec.js")}]
+    (cond
+      (contains? exact-names filename) 80
+      (and parent
+           (str/includes? path-lower parent)
+           (str/includes? filename stem))
+      70
+      (and (>= (count stem) 4)
+           (str/includes? filename stem))
+      60
+      :else nil)))
+
+(defn filename-candidates [source test-files]
+  (for [test-file test-files
+        :let [score (filename-score source test-file)]
+        :when score]
+    {:path test-file
+     :score score
+     :reason "filename similarity"}))
+
+(defn merge-candidates [candidates]
+  (->> candidates
+       (reduce (fn [acc {:keys [path score reason]}]
+                 (update acc path
+                         (fn [existing]
+                           (if existing
+                             {:path path
+                              :score (max score (:score existing))
+                              :reasons (-> (:reasons existing)
+                                           (conj reason)
+                                           distinct
+                                           vec)}
+                             {:path path
+                              :score score
+                              :reasons [reason]}))))
+               {})
+       vals
+       (sort-by (juxt (comp - :score) :path))))
+
 (defn get-related-tests [file-path]
-  (let [test-path (str/replace file-path #"^src/" "test/")
-        test-path (str/replace test-path #"\.clj[sc]?$" "_test.cljc")]
-    (if (.exists (io/file test-path))
-      test-path
-      nil)))
+  (let [test-files (all-test-files)
+        source (source-info file-path)]
+    (->> (concat (exact-mirror-candidates file-path)
+                 (namespace-candidates source test-files)
+                 (filename-candidates source test-files))
+         merge-candidates
+         vec)))
 
 (defn analyze-complexity [file-path]
   ;; Simplified complexity analysis based on function-complexity.clj
@@ -58,9 +154,15 @@
 
   ;; 2. Related Tests
   (println "## 🧪 Testing")
-  (if-let [test-file (get-related-tests file-path)]
-    (println (str "✅ Test file found: `" test-file "`"))
-    (println "❌ No direct test file found (checked mirror path in `test/`)."))
+  (let [test-files (get-related-tests file-path)]
+    (if (seq test-files)
+      (do
+        (println (str "✅ Related tests found: " (count test-files)))
+        (doseq [{:keys [path reasons]} (take 10 test-files)]
+          (println (str "- `" path "` (" (str/join "; " reasons) ")")))
+        (when (> (count test-files) 10)
+          (println (str "... and " (- (count test-files) 10) " more."))))
+      (println "❌ No related tests found via namespace or filename heuristics.")))
   (println)
 
   ;; 3. Dependencies (via Kondo)
