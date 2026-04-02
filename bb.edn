@@ -20,6 +20,7 @@
          :task (do
                  (run 'lint)
                  (run 'arch:verify)
+                 (run 'test:verify-harness)
                  (shell "bb scripts/verify_kernel_boundaries.clj")
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
@@ -35,6 +36,7 @@
 
   test:int {:doc "All integration tests under test/integration"
             :task (do
+                    (run 'test:verify-harness)
                     (shell "npx shadow-cljs compile :test-integration")
                     (shell "node out/tests-integration.js"))}
 
@@ -43,8 +45,12 @@
                        (shell "npx shadow-cljs compile :test-kernel")
                        (shell "node out/tests-kernel.js"))}
 
+  test:verify-harness {:doc "Verify isolated test tiers declare explicit bootstrap fixtures"
+                       :task (shell "bb scripts/verify_test_harness.clj")}
+
   check:kernel {:doc "Kernel purity scan + kernel/script tests"
                 :task (do
+                        (run 'test:verify-harness)
                         (shell "bb scripts/verify_kernel_boundaries.clj")
                         (run 'test:kernel))}
 
@@ -64,10 +70,10 @@
 
   ;; FR Coverage (Spec-as-Database pattern)
   fr-audit {:doc "Audit FR implementation coverage (fails if critical FRs uncited)"
-            :task (shell "bb scripts/audit_ci.clj")}
+            :task (shell "clojure -M:scripts -m audit-ci")}
 
   fr-matrix {:doc "Generate FR coverage matrix (FR_MATRIX.md)"
-             :task (shell "bb scripts/gen_coverage.clj")}
+             :task (shell "clojure -M:scripts -m gen-coverage")}
 
   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
                      :task (shell "node scripts/lint-e2e-keyboard.js")}
@@ -208,7 +214,8 @@
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
                 (println "  bb test:int        - All integration tests")
-                (println "  bb test:kernel     - Kernel + script tests only\n")
+                (println "  bb test:kernel     - Kernel + script tests only")
+                (println "  bb test:verify-harness - Verify isolated test bootstrap\n")
                 (println "E2E Testing:")
                 (println "  bb e2e             - Run Playwright E2E tests")
                 (println "  bb e2e:watch       - Watch mode (UI)")

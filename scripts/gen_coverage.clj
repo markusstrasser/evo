@@ -1,24 +1,98 @@
-#!/usr/bin/env bb
+#!/usr/bin/env clojure
 
 (ns gen-coverage
   "Generate FR coverage matrix as Markdown table.
 
    Usage:
-     bb scripts/gen_coverage.clj           # Generate FR_MATRIX.md
-     bb scripts/gen_coverage.clj --stdout  # Print to stdout
+     bb fr-matrix                          # Generate FR_MATRIX.md
+     clojure -M:scripts -m gen-coverage --stdout
 
    Output: FR_MATRIX.md with:
    - Implementation status (intent citations)
-   - Verification status (test citations)
+   - Verification status (executable scenarios or explicit test citations)
    - Priority levels
    - Visual status indicators (🟢 🟡 🔴)"
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.set :as set]
+            [clojure.string :as str]
+            [kernel.intent :as intent]
+            [plugins.manifest :as plugins]
+            [spec.registry :as fr]))
 
-;; Load FR registry and intent coverage
-(load-file "dev/spec_registry.cljc")
-(load-file "src/kernel/intent.cljc")
-(load-file "dev/test_scanner.cljc")
+(defn- boot-runtime!
+  []
+  (fr/load-registry!)
+  (plugins/init!)
+  nil)
+
+(defn- clojure-test-file?
+  [file]
+  (and (.isFile ^java.io.File file)
+       (re-find #"\.(clj|cljc|cljs)$" (.getName ^java.io.File file))))
+
+(defn- extract-fr-ids-from-test-file
+  [file]
+  (let [content (slurp file)
+        matches (re-seq #":fr/ids\s+#\{([^}]+)\}" content)]
+    (->> matches
+         (mapcat (fn [[_ ids-str]]
+                   (re-seq #":[\\w./+-]+" ids-str)))
+         (map #(keyword (subs % 1)))
+         set)))
+
+(defn- statically-verified-frs
+  []
+  (let [test-files (->> (file-seq (io/file "test"))
+                        (filter clojure-test-file?))]
+    (->> test-files
+         (mapcat extract-fr-ids-from-test-file)
+         set)))
+
+(defn- scenario-verified-frs
+  []
+  (->> (fr/list-frs)
+       (filter fr/has-executable-scenarios?)
+       set))
+
+(defn- build-audit
+  []
+  (let [impl-audit (intent/audit-coverage)
+        implemented-frs (set (:cited-frs impl-audit))
+        verified-frs (set/union (scenario-verified-frs)
+                                (statically-verified-frs))]
+    (vec
+     (for [fr-id (sort (fr/list-frs))]
+       (let [fr-meta (fr/get-fr fr-id)
+             implemented? (contains? implemented-frs fr-id)
+             verified? (contains? verified-frs fr-id)
+             status (cond
+                      (and implemented? verified?) :complete
+                      implemented? :implemented-untested
+                      verified? :verified-unimplemented
+                      :else :missing)]
+         {:id fr-id
+          :desc (:desc fr-meta)
+          :priority (:priority fr-meta)
+          :implemented? implemented?
+          :verified? verified?
+          :status status})))))
+
+(defn- coverage-summary
+  [audit]
+  (let [total (count audit)
+        by-status (group-by :status audit)
+        complete-count (count (:complete by-status))
+        implemented-count (count (filter :implemented? audit))
+        verified-count (count (filter :verified? audit))
+        missing-count (count (:missing by-status))]
+    {:total-frs total
+     :complete complete-count
+     :implemented implemented-count
+     :verified verified-count
+     :missing missing-count
+     :complete-pct (if (zero? total) 100 (int (* 100 (/ complete-count total))))
+     :implementation-pct (if (zero? total) 100 (int (* 100 (/ implemented-count total))))
+     :verification-pct (if (zero? total) 100 (int (* 100 (/ verified-count total))))}))
 
 (defn status-emoji
   "Return emoji for FR status."
@@ -56,13 +130,8 @@
 (defn generate-coverage-matrix
   "Generate full coverage matrix as markdown string."
   []
-  (let [;; Require namespaces
-        _ (require '[spec.registry :as fr])
-        _ (require '[kernel.intent :as intent])
-
-        ;; Get full audit
-        audit (intent/full-audit)
-        summary (intent/coverage-summary)
+  (let [audit (build-audit)
+        summary (coverage-summary audit)
 
         ;; Sort by priority, then status
         priority-order {:critical 0 :high 1 :medium 2 :low 3}
@@ -110,15 +179,9 @@
         (println "✅ Generated FR_MATRIX.md")
         (println)
         (println "Summary:")
-        (let [summary (do
-                        (require '[kernel.intent :as intent])
-                        (intent/coverage-summary))]
+        (let [summary (coverage-summary (build-audit))]
           (println "  Total FRs:" (:total-frs summary))
           (println "  Complete:" (:complete summary) (str "(" (:complete-pct summary) "%)"))
           (println "  Implemented:" (:implemented summary) (str "(" (:implementation-pct summary) "%)"))
           (println "  Verified:" (:verified summary) (str "(" (:verification-pct summary) "%)"))
           (println "  Missing:" (:missing summary)))))))
-
-;; Run if executed as script
-(when (= *file* (System/getProperty "babashka.file"))
-  (apply -main *command-line-args*))

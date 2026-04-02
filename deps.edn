@@ -42,8 +42,10 @@
                              :exec-fn clojure-mcp.main/start-mcp-server
                              :exec-args {:port 55449}} ; shadow-cljs nREPL port from npm run dev
 
+           ;; Clojure script entrypoints under scripts/
+           :scripts {:extra-paths ["scripts"]}
+
            ;; Test utilities (fipp for pretty printing in CLJ)
            :test {:extra-paths ["test"]
                   :extra-deps {fipp/fipp {:mvn/version "0.6.29"}}}}}
-
 

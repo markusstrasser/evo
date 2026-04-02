@@ -1,10 +1,11 @@
-#!/usr/bin/env bb
+#!/usr/bin/env clojure
 
 (ns audit-ci
   "CI/CD ratchet check: Ensure critical FR coverage never drops below 100%.
 
    Usage:
-     bb scripts/audit_ci.clj
+     bb fr-audit
+     clojure -M:scripts -m audit-ci
 
    Exit codes:
      0 - All critical FRs covered
@@ -12,19 +13,21 @@
 
    This script prevents regression by failing CI if any CRITICAL FR loses
    its intent coverage. Non-critical FRs generate warnings but don't fail."
-  (:require [clojure.java.io :as io]))
+  (:require [kernel.intent :as intent]
+            [plugins.manifest :as plugins]
+            [spec.registry :as fr]))
 
-;; Load FR registry and intent coverage
-(load-file "dev/spec_registry.cljc")
-(load-file "src/kernel/intent.cljc")
+(defn- boot-runtime!
+  []
+  (fr/load-registry!)
+  (plugins/init!)
+  nil)
 
 (defn -main
   []
+  (boot-runtime!)
   (println "🔍 Auditing Critical FR Coverage...")
   (println)
-
-  (require '[spec.registry :as fr])
-  (require '[kernel.intent :as intent])
 
   (let [audit (intent/audit-coverage)
         critical-uncited (:critical-uncited audit)
@@ -67,7 +70,3 @@
     (println)
     (println "Coverage ratchet check passed!")
     (System/exit 0)))
-
-;; Run if executed as script
-(when (= *file* (System/getProperty "babashka.file"))
-  (-main))
