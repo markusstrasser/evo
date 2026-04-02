@@ -51,6 +51,25 @@
                 :else :unknown)))
        frequencies))
 
+(defn- entry->operation
+  "Normalize a tooling log entry into the legacy operation shape used by browser_guard.js."
+  [{:keys [intent timestamp hotkey] :as entry}]
+  (let [intent-type (cond
+                      (keyword? intent) intent
+                      (map? intent) (:type intent)
+                      :else nil)]
+    {:type (some-> intent-type name)
+     :timestamp timestamp
+     :hotkey hotkey
+     :intent intent
+     :summary (:summary entry)}))
+
+(defn operations
+  "Return dispatch log entries in the legacy operation shape expected by browser_guard.js."
+  []
+  (->> (tooling/get-log)
+       (mapv entry->operation)))
+
 ;; ─── Undo/Redo Stack Inspection ─────────────────────────────────────────────
 
 (defn undo-count
@@ -185,6 +204,7 @@
              :intentCounts (fn [] (clj->js (intent-counts)))
              :clearLog (fn [] (tooling/clear-log!) nil)
              :fullLog (fn [] (clj->js (tooling/get-log)))
+             :getOperations (fn [] (clj->js (operations)))
 
              ;; ─── Undo/Redo ────────────────────────────────────
              :undoCount (fn [] (undo-count @db-atom))
@@ -217,6 +237,8 @@
              :getDb (fn [] (clj->js @db-atom))
              :getSession (fn [] (clj->js (vs/get-view-state)))
              :blockText (fn [block-id]
-                          (get-in @db-atom [:nodes block-id :props :text]))})
+                          (get-in @db-atom [:nodes block-id :props :text]))
+             :getBlockText (fn [block-id]
+                             (get-in @db-atom [:nodes block-id :props :text]))})
 
   (js/console.log "🔍 DEBUG API installed. Try: window.DEBUG.snapshot()"))
