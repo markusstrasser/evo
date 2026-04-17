@@ -60,8 +60,6 @@
   [current-state]
   {:nodes #{} :focus (:focus current-state) :anchor nil :direction nil})
 
-;; NOTE: get-dom-nav-fn removed - now inline calls with session param
-
 (def ^:private container-types
   "Node types that are containers and should not be included in block selection."
   #{:doc :page})

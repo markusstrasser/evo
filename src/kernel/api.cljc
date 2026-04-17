@@ -67,10 +67,6 @@
          (catch Exception e
            (println "Warning: Failed to write journal:" (.getMessage e)))))))
 
-;; Phases 4 & 5: ephemeral-op? removed - session nodes no longer in DB
-;; All ops are now structural (affect document graph only)
-;; Ephemeral state (cursor, selection, fold, zoom, buffer) lives purely in shell.view-state
-
 ;; ── State Machine Configuration ─────────────────────────────────────────────
 
 (def ^:dynamic *enforce-state-machine*

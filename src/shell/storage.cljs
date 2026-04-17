@@ -133,18 +133,6 @@
       (subs trimmed 2)
       trimmed)))
 
-(defn- parse-title-line
-  "Extract title from 'title:: Value' line."
-  [line]
-  (when (str/starts-with? line "title:: ")
-    (subs line 8)))
-
-(defn- parse-trashed-at-line
-  "Extract trashed-at timestamp from 'trashed-at:: Value' line."
-  [line]
-  (when (str/starts-with? line "trashed-at:: ")
-    (js/parseInt (subs line 13) 10)))
-
 (defn- parse-header-line
   "Parse a single header line, returning a map with the property key and value.
    Returns nil if line is not a recognized header property."
