@@ -14,9 +14,14 @@
             },
             options: {
                 skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-                processHtmlClass: 'math',
-                // CRITICAL: Skip elements being edited (contenteditable)
-                // Without this, MathJax will process raw $...$ in edit mode and strip delimiters
+                // \bmath\b anchors the class name so math-ignore, math-block,
+                // math-inline, etc. do NOT substring-match and accidentally
+                // re-enable typesetting on an ignored ancestor. Explicit math
+                // spans carry class "math" (exact).
+                processHtmlClass: '\\bmath\\b',
+                // CRITICAL: Skip elements being edited (contenteditable) and
+                // view-mode block containers. Without this, MathJax will
+                // process raw $...$ in prose and strip delimiters.
                 ignoreHtmlClass: 'math-ignore'
             }
         };
