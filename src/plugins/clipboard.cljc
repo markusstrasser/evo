@@ -53,13 +53,6 @@
   (when url
     (boolean (re-find #"(?i)\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?|$)" url))))
 
-(defn- embeddable-url?
-  "Check if URL is an embeddable media type (video, tweet, etc.)."
-  [url]
-  (or (youtube-url? url)
-      (vimeo-url? url)
-      (twitter-url? url)))
-
 (defn- classify-url
   "Classify a URL into its media type.
    Returns :youtube, :vimeo, :twitter, :image, or nil for regular URLs."

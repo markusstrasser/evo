@@ -12,9 +12,6 @@
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
-;; NOTE: visible-in-context? removed - was dead code with bugs
-;; Visibility now computed in kernel/navigation.cljc with proper (db, session)
-
 (defn- get-prev-visible-block
   "Get the previous visible block in DOM order, respecting page boundaries.
 

@@ -275,18 +275,6 @@
       (Icon {:icon-name :folder-open :size 16})
       [:span (if loading? "Loading..." "Open Folder")]])])
 
-;; ── Navigation Item ──────────────────────────────────────────────────────────
-
-(defn- NavItem
-  "Single navigation item (like Journals link in Logseq)."
-  [{:keys [icon label on-click]}]
-  [:div.sidebar-nav-item
-   {:on {:click (fn [e]
-                  (.preventDefault e)
-                  (when on-click (on-click)))}}
-   [:span.nav-icon (Icon {:icon-name icon :size 16})]
-   [:span.nav-label label]])
-
 ;; ── Main Sidebar ─────────────────────────────────────────────────────────────
 
 (defn Sidebar
