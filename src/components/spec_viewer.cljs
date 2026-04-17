@@ -15,7 +15,7 @@
 
 (defonce !ui-state
   (atom {:selected-fr nil
-         :show-all? false ; false = only show FRs with executable scenarios
+         :show-all? true ; true = handbook view, false = intent-linked subset
          :show-dsl? false ; false = outline view, true = raw DSL syntax
          :search-query ""}))
 
@@ -61,6 +61,26 @@
                                 (str/includes? (str/lower-case desc-text) query)))))))
          sort
          vec)))
+
+(defn- safe-name [x]
+  (cond
+    (keyword? x) (name x)
+    (string? x) x
+    :else (str x)))
+
+(defn- executable-scenarios
+  [fr-data]
+  (into {}
+        (filter (fn [[_ scenario]] (fr/executable-scenario? scenario))
+                (:scenarios fr-data))))
+
+(defn- visible-scenario-count
+  [fr-ids]
+  (reduce
+   (fn [total fr-id]
+     (+ total (count (executable-scenarios (fr/get-fr fr-id)))))
+   0
+   fr-ids))
 
 (defn- ensure-valid-selection [state]
   (let [available-frs (visible-frs state)
@@ -152,7 +172,7 @@
                :font-size "14px"
                :background "#0f0f10"}
 
-   :sidebar {:width "280px"
+   :sidebar {:width "320px"
              :border-right "1px solid #2a2a2e"
              :overflow-y "auto"
              :background "#18181b"}
@@ -172,6 +192,16 @@
                   :color "#fafafa"
                   :font-size "12px"
                   :outline "none"}
+
+   :sidebar-kicker {:color "#71717a"
+                    :font-size "11px"
+                    :margin-top "6px"
+                    :line-height "1.5"}
+
+   :sidebar-help {:color "#71717a"
+                  :font-size "11px"
+                  :line-height "1.5"
+                  :margin-top "10px"}
 
    :sticky-header {:position "sticky"
                    :top "-24px"
@@ -201,6 +231,15 @@
              :color "#71717a"
              :margin-top "4px"
              :line-height "1.4"}
+
+   :fr-meta {:display "flex"
+             :align-items "center"
+             :gap "8px"
+             :flex-wrap "wrap"
+             :margin-top "8px"
+             :font-size "10px"
+             :color "#71717a"
+             :font-family "'IBM Plex Mono', monospace"}
 
    ;; Priority badges
    :priority-badge {:display "inline-block"
@@ -455,9 +494,6 @@
   "Render a scenario with row-aligned before/after diff view."
   [{:keys [scenario-id scenario]}]
   (let [{:keys [setup action expect]} scenario
-        safe-name (fn [x] (cond (keyword? x) (name x)
-                                (string? x) x
-                                :else (str x)))
         executable? (and setup action expect)]
     [:div {:style (:scenario-card styles)}
      ;; Header
@@ -631,11 +667,9 @@
         selected (:selected-fr state)
         show-all? (:show-all? state)
         search-query (:search-query state)
-        all-frs (fr/list-frs)
-        ;; Filter to only implemented FRs (cited by intents) unless show-all?
         implemented-set (intent/implemented-frs)
         frs (visible-frs state)
-        implemented-count (count implemented-set)
+        handbook-scenario-count (visible-scenario-count frs)
         by-priority (group-by #(:priority (fr/get-fr %)) frs)
         priority-order [:critical :high :medium :low]]
     [:div {:style (:sidebar styles)}
@@ -643,21 +677,21 @@
      [:div {:style {:padding "18px 16px"
                     :border-bottom "1px solid #27272a"}}
       [:h1 {:style {:margin "0"
-                    :font-size "15px"
+                    :font-size "17px"
                     :font-weight "600"
                     :color "#fafafa"}}
-       "Spec Registry"]
-      [:div {:style {:color "#71717a"
+       "Spec Handbook"]
+      [:div {:style (:sidebar-kicker styles)}
+       "Browse functional requirements as human-readable spec pages."]
+      [:div {:style {:color "#a1a1aa"
                      :font-size "11px"
-                     :margin-top "4px"
+                     :margin-top "10px"
                      :font-family "'IBM Plex Mono', monospace"}}
-       (if show-all?
-         (str (count frs) " FRs · " (fr/scenario-count) " scenarios")
-         (str implemented-count "/" (count all-frs) " implemented"))]
+       (str (count frs) " FRs · " handbook-scenario-count " executable scenarios")]
 
       [:input {:type "text"
                :value search-query
-               :placeholder "Search FRs"
+               :placeholder "Search requirements"
                :style (:search-input styles)
                :on {:input (fn [event]
                              (set-ui-state! assoc :search-query (.. event -target -value)))}}]
@@ -669,20 +703,24 @@
                      :gap "8px"}}
        [:div {:style {:display "flex" :gap "4px" :background "#27272a"
                       :padding "3px" :border-radius "4px"}}
-        [:button {:style {:background (if-not show-all? "#3f3f46" "transparent")
-                          :border "none"
-                          :color (if-not show-all? "#fafafa" "#71717a")
-                          :padding "4px 10px" :border-radius "3px" :cursor "pointer"
-                          :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
-                  :on {:click (fn [_] (set-ui-state! assoc :show-all? false))}}
-         "Implemented"]
         [:button {:style {:background (if show-all? "#3f3f46" "transparent")
                           :border "none"
                           :color (if show-all? "#fafafa" "#71717a")
                           :padding "4px 10px" :border-radius "3px" :cursor "pointer"
                           :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
                   :on {:click (fn [_] (set-ui-state! assoc :show-all? true))}}
-         "All"]]]]
+         "All"]
+        [:button {:style {:background (if-not show-all? "#3f3f46" "transparent")
+                          :border "none"
+                          :color (if-not show-all? "#fafafa" "#71717a")
+                          :padding "4px 10px" :border-radius "3px" :cursor "pointer"
+                          :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
+                  :on {:click (fn [_] (set-ui-state! assoc :show-all? false))}}
+         "Intent-linked"]]]
+      [:div {:style (:sidebar-help styles)}
+       (if show-all?
+         "Showing the full handbook. Switch to intent-linked if you only want requirements with registered runtime linkage."
+         (str "Showing " (count frs) " requirements currently cited by registered intents."))]]
 
      ;; FR list by priority
      (if (seq frs)
@@ -704,25 +742,28 @@
             (let [fr (fr/get-fr fr-id)
                   is-selected (= fr-id selected)
                   is-implemented? (contains? implemented-set fr-id)
-                  has-scenarios? (fr/has-executable-scenarios? fr-id)]
+                  scenarios (executable-scenarios fr)
+                  has-scenarios? (seq scenarios)]
               ^{:key fr-id}
               [:div {:style (merge (:fr-item styles)
                                    (when is-selected (:fr-item-selected styles)))
                      :on {:click (fn [_] (set-ui-state! assoc :selected-fr fr-id))}}
                [:div {:style {:display "flex" :align-items "center" :gap "6px"}}
                 [:span {:style (:fr-title styles)}
-                 (name fr-id)]
-                (when is-implemented?
-                  [:span {:title "Implemented (cited by intent)"
-                          :style {:color "#22c55e" :font-size "8px"}} "●"])
-                (when (and has-scenarios? (not is-implemented?))
-                  [:span {:title "Has scenarios but no implementing intent"
-                          :style {:color "#f59e0b" :font-size "8px"}} "○"])]
+                 (name fr-id)]]
                [:div {:style (:fr-desc styles)}
                 (let [desc (:desc fr)]
                   (if (> (count desc) 55)
                     (str (subs desc 0 52) "...")
-                    desc))]]))])
+                    desc))]
+               [:div {:style (:fr-meta styles)}
+                [:span (safe-name (:priority fr))]
+                (when has-scenarios?
+                  [:span (str (count scenarios) " ex")])
+                (when is-implemented?
+                  [:span {:style {:color "#22c55e"}} "linked"])
+                (when-let [first-tag (first (:tags fr))]
+                  [:span (str "#" (safe-name first-tag))])]]))])
        [:div {:style {:padding "20px 16px"
                       :color "#71717a"
                       :font-size "12px"
