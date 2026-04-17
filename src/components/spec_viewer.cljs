@@ -28,6 +28,9 @@
 (defn- current-search-params []
   (js/URLSearchParams. (.-search js/location)))
 
+(defn- essay-mode? []
+  (.has (current-search-params) "essay"))
+
 (defn- parse-bool-param [value]
   (contains? #{"1" "true" "yes"} (some-> value str/lower-case)))
 
@@ -123,6 +126,41 @@
           {}
           behaviors))
 
+(def essay-outline-snippet
+  "{:tree [:doc [:a \"Hello\"] [:b \"World\"]]\n :selection {:nodes #{\"a\"} :focus \"a\"}\n :editing-block-id nil}")
+
+(def essay-kernel-snippet
+  "[{:op :create-node :id \"x\" :type :block :props {:text \"Hello\"}}\n {:op :place :id \"x\" :under :doc :at :last}\n {:op :update-node :id \"x\" :props {:text \"Hello world\"}}]")
+
+(def essay-state-machine-snippet
+  "Idle -> Selection -> Editing\n\nidle: no cursor, no selection\nselection: block focus and range\nediting: caret inside a specific block\n\nThe spec is mostly about moving between those states without ambiguity.")
+
+(def essay-example-refs
+  [{:fr-id :fr.nav/horizontal-boundary
+    :scenario-id :LEFT-AT-START
+    :title "Cursor movement becomes a tree operation"
+    :body "ArrowLeft at column 0 does not just move within a string. It crosses a block boundary and lands on a different node in the tree."}
+   {:fr-id :fr.struct/create-sibling
+    :scenario-id :SPLIT-MID
+    :title "Enter edits structure, not just text"
+    :body "Splitting a block is not a newline insert. The document becomes two sibling nodes, with the cursor transferred into the new one."}
+   {:fr-id :fr.clipboard/paste-multiline
+    :scenario-id :PASTE-SPLIT
+    :title "Pasting text can materialize new nodes"
+    :body "Blank-line paste is interpreted structurally: one string becomes multiple sibling blocks with explicit placement and focus semantics."}])
+
+(defn- essay-example-data []
+  (keep (fn [{:keys [fr-id scenario-id] :as example}]
+          (when-let [fr-data (fr/get-fr fr-id)]
+            (let [scenario (get-in fr-data [:scenarios scenario-id])
+                  behavior (get (behaviors-by-scenario (:behaviors fr-data)) scenario-id)]
+              (when (and scenario (:setup scenario) (:expect scenario))
+                (assoc example
+                       :fr fr-data
+                       :scenario scenario
+                       :behavior behavior)))))
+        essay-example-refs))
+
 (defn- ensure-valid-selection [state]
   (let [available-frs (visible-frs state)
         selected-fr (:selected-fr state)
@@ -155,14 +193,15 @@
 
 (defn- sync-url!
   []
-  (let [next-url (ui-state->search)
-        current-url (str (.-pathname js/location)
-                         (.-search js/location)
-                         (.-hash js/location))]
-    (when (not= current-url next-url)
-      (reset! syncing-url? true)
-      (.replaceState js/history nil "" next-url)
-      (reset! syncing-url? false))))
+  (when-not (essay-mode?)
+    (let [next-url (ui-state->search)
+          current-url (str (.-pathname js/location)
+                           (.-search js/location)
+                           (.-hash js/location))]
+      (when (not= current-url next-url)
+        (reset! syncing-url? true)
+        (.replaceState js/history nil "" next-url)
+        (reset! syncing-url? false)))))
 
 (defn- set-ui-state!
   [f & args]
@@ -191,15 +230,17 @@
                  (request-render!)))))
 
 (defonce _url-initializer
-  (reset! !ui-state (ensure-valid-selection (merge @!ui-state (parse-url-state)))))
+  (when-not (essay-mode?)
+    (reset! !ui-state (ensure-valid-selection (merge @!ui-state (parse-url-state))))))
 
 (defonce _popstate-listener
   (.addEventListener js/window "popstate"
                      (fn []
                        (reset! syncing-url? true)
-                       (reset! !ui-state
-                               (ensure-valid-selection
-                                (merge @!ui-state (parse-url-state))))
+                       (when-not (essay-mode?)
+                         (reset! !ui-state
+                                 (ensure-valid-selection
+                                  (merge @!ui-state (parse-url-state)))))
                        (reset! syncing-url? false))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
@@ -224,6 +265,85 @@
           :overflow-y "auto"
           :padding "20px 28px 40px"
           :background "#0f0f10"}
+
+   :essay-page {:min-height "100vh"
+                :background "#0f0f10"
+                :color "#e8e8ed"}
+
+   :essay-shell {:max-width "980px"
+                 :margin "0 auto"
+                 :padding "56px 28px 80px"}
+
+   :essay-kicker {:font-size "11px"
+                  :text-transform "uppercase"
+                  :letter-spacing "0.12em"
+                  :color "#7d7f8e"
+                  :font-family "'IBM Plex Mono', monospace"
+                  :margin-bottom "18px"}
+
+   :essay-title {:font-family "'IBM Plex Serif', Georgia, serif"
+                 :font-size "56px"
+                 :line-height "0.98"
+                 :letter-spacing "-0.04em"
+                 :margin "0 0 18px 0"
+                 :color "#f4f4f7"
+                 :max-width "860px"}
+
+   :essay-deck {:font-size "20px"
+                :line-height "1.65"
+                :color "#c7c8d1"
+                :max-width "780px"
+                :margin "0 0 28px 0"}
+
+   :essay-divider {:height "1px"
+                   :background "linear-gradient(90deg, rgba(125,127,142,0.45) 0%, rgba(125,127,142,0.08) 80%, transparent 100%)"
+                   :margin "34px 0"}
+
+   :essay-section {:margin-bottom "44px"}
+
+   :essay-section-title {:font-family "'IBM Plex Serif', Georgia, serif"
+                         :font-size "30px"
+                         :line-height "1.1"
+                         :letter-spacing "-0.02em"
+                         :margin "0 0 14px 0"
+                         :color "#f1f1f5"}
+
+   :essay-copy {:font-size "16px"
+                :line-height "1.8"
+                :color "#c2c3cd"
+                :max-width "760px"
+                :margin "0 0 16px 0"}
+
+   :essay-two-up {:display "grid"
+                  :grid-template-columns "repeat(2, minmax(0, 1fr))"
+                  :gap "18px"
+                  :margin-top "18px"}
+
+   :essay-panel {:background "#131316"
+                 :border "1px solid #23232a"
+                 :border-radius "16px"
+                 :padding "18px 20px"}
+
+   :essay-panel-title {:font-size "11px"
+                       :text-transform "uppercase"
+                       :letter-spacing "0.12em"
+                       :color "#8f90a0"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :margin-bottom "12px"}
+
+   :essay-code {:background "#101014"
+                :border "1px solid #23232a"
+                :border-radius "12px"
+                :padding "14px 16px"
+                :font-family "'IBM Plex Mono', monospace"
+                :font-size "12px"
+                :line-height "1.65"
+                :white-space "pre-wrap"
+                :color "#cfd0da"}
+
+   :essay-example-card {:margin-top "22px"
+                        :padding-top "22px"
+                        :border-top "1px solid #22222a"}
 
    :search-input {:width "100%"
                   :box-sizing "border-box"
@@ -687,6 +807,105 @@
         (when-let [scenario-note (:notes scenario)]
           [:div {:style (:note-callout styles)} scenario-note])])]))
 
+(defn EssayExample
+  [{:keys [title body fr-id scenario behavior scenario-id]}]
+  [:section {:style (:essay-example-card styles)}
+   [:h3 {:style {:font-family "'IBM Plex Serif', Georgia, serif"
+                 :font-size "28px"
+                 :line-height "1.1"
+                 :letter-spacing "-0.02em"
+                 :margin "0 0 10px 0"
+                 :color "#f1f1f5"}}
+    title]
+   [:p {:style (:essay-copy styles)} body]
+   [:div {:style {:display "flex"
+                  :gap "10px"
+                  :flex-wrap "wrap"
+                  :margin "12px 0 18px"}}
+    [:span {:style (:meta-chip styles)} (name fr-id)]
+    [:span {:style (:meta-chip styles)} (safe-name scenario-id)]
+    (when-let [context (:context behavior)]
+      [:span {:style (:meta-chip styles)} context])]
+   [:div {:style (:essay-two-up styles)}
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "Operation"]
+     [:div {:style (:essay-code styles)} (pr-str (:action scenario))]]
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "Interpretation"]
+     [:p {:style (merge (:essay-copy styles) {:margin "0" :font-size "15px"})}
+      (or (:behavior behavior)
+          "Structural state transition.")]]]
+   [:div {:style {:margin-top "18px"}}
+    (DslDiffView {:before (:tree (:setup scenario))
+                  :after (:tree (:expect scenario))})]])
+
+(defn EssayMindsetSection
+  []
+  [:section {:style (:essay-section styles)}
+   [:h2 {:style (:essay-section-title styles)} "What changes in your head"]
+   [:p {:style (:essay-copy styles)}
+    "A text editor usually feels like one string plus one cursor position. A structural editor is a tree of nodes, plus a separate state machine for whether you are idle, selecting nodes, or editing text inside one node."]
+   [:div {:style (:essay-two-up styles)}
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "String editor intuition"]
+     [:div {:style (:essay-code styles)}
+      "text: \"Hello\\nWorld\"\ncursor: 7\nselection: [3 9]"]]
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "Structural editor intuition"]
+     [:div {:style (:essay-code styles)} essay-outline-snippet]]]])
+
+(defn EssayMechanicsSection
+  []
+  [:section {:style (:essay-section styles)}
+   [:h2 {:style (:essay-section-title styles)} "What the spec is really about"]
+   [:p {:style (:essay-copy styles)}
+    "The interesting part is not slash menus or chrome. The spec is mostly about invariants: when selection and editing can coexist, when Enter means split rather than newline, when ArrowLeft is local text navigation and when it becomes movement across a tree edge."]
+   [:div {:style (:essay-two-up styles)}
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "State machine"]
+     [:div {:style (:essay-code styles)} essay-state-machine-snippet]]
+    [:div {:style (:essay-panel styles)}
+     [:div {:style (:essay-panel-title styles)} "Kernel algebra"]
+     [:div {:style (:essay-code styles)} essay-kernel-snippet]]]])
+
+(defn EssayExamplesSection
+  []
+  (let [examples (essay-example-data)]
+    [:section {:style (:essay-section styles)}
+     [:h2 {:style (:essay-section-title styles)} "Three examples that make the model click"]
+     [:p {:style (:essay-copy styles)}
+      "These examples are intentionally small. Each one takes a familiar gesture and shows the actual structural interpretation underneath it."]
+     (for [example examples]
+       ^{:key (str (:fr-id example) "-" (:scenario-id example))}
+       (EssayExample example))]))
+
+(defn EssayTakeawaySection
+  []
+  [:section {:style (:essay-section styles)}
+   [:h2 {:style (:essay-section-title styles)} "Why this matters for programmers"]
+   [:p {:style (:essay-copy styles)}
+    "Once you stop modeling the editor as a string widget, the implementation gets cleaner. Tree changes become composable operations. Editing modes become explicit state, not DOM accidents. Complex behaviors become specs and examples instead of piles of conditionals."]
+   [:p {:style (:essay-copy styles)}
+    "That is the real payoff: structural editing is not mainly a UX trick. It is a better decomposition for reasoning about document behavior."]])
+
+(defn SpecEssay
+  []
+  [:div {:style (:essay-page styles)}
+   [:style "
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap');
+    "]
+   [:div {:style (:essay-shell styles)}
+    [:div {:style (:essay-kicker styles)} "Essay view"]
+    [:h1 {:style (:essay-title styles)}
+     "Why structural editors feel strange until you stop thinking in strings"]
+    [:p {:style (:essay-deck styles)}
+     "A structural editor is not mainly a smarter textarea. It is a document model with an explicit tree, explicit interaction states, and a tiny algebra for changing shape. Many ordinary keys only make sense once you see those layers separately."]
+    [:div {:style (:essay-divider styles)}]
+    (EssayMindsetSection)
+    (EssayMechanicsSection)
+    (EssayExamplesSection)
+    (EssayTakeawaySection)]])
+
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Detail Panel
 ;; ══════════════════════════════════════════════════════════════════════════════
@@ -969,15 +1188,15 @@
 ;; Main Component
 ;; ══════════════════════════════════════════════════════════════════════════════
 
-(defn SpecViewer
-  "Main spec viewer component."
+(defn SpecHandbook
+  "Main handbook/spec browser component."
   []
   (let [state @!ui-state
         selected-fr (:selected-fr state)]
     [:div {:style (:container styles)}
      ;; Font import
      [:style "
-       @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+       @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap');
      "]
 
      ;; Sidebar
@@ -994,7 +1213,14 @@
                        :font-size "20px"
                        :font-weight "600"
                        :color "#fafafa"}}
-          "No FR Selected"]
+         "No FR Selected"]
          [:p {:style {:margin "0"
                       :line-height "1.6"}}
           "The current filter returned no functional requirements. Adjust the sidebar search or switch between Implemented and All."]])]]))
+
+(defn SpecViewer
+  "Route to either the handbook viewer or the essay viewer."
+  []
+  (if (essay-mode?)
+    (SpecEssay)
+    (SpecHandbook)))
