@@ -95,4 +95,13 @@ test.describe('Inline format rendering — intraword guard', () => {
     const r = await setTextAndRead(page, blockId, 'see $x+y$ there');
     expect(r.math).toBe(1);
   });
+
+  test('prose with multiple $ runs does not math-typeset (MathJax regex pin)', async ({ page }) => {
+    // This would fail if processHtmlClass matched "math" as a substring —
+    // the view container class includes "math-ignore" which contains "math".
+    // With \bmath\b anchoring, only the explicit .math class re-enables.
+    const r = await setTextAndRead(page, blockId, '$100 then $200 then $300 — three prices');
+    expect(r.text).toBe('$100 then $200 then $300 — three prices');
+    expect(r.math).toBe(0);
+  });
 });
