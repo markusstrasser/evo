@@ -377,165 +377,159 @@
           :background "#0f0f10"}
 
    :essay-page {:min-height "100vh"
-                :background "linear-gradient(180deg, #f6f0e5 0%, #f3ecdf 52%, #efe7d8 100%)"
-                :color "#1c1812"}
+                :background "#fbfaf7"
+                :color "#161310"}
 
-   :essay-shell {:max-width "1040px"
+   :essay-shell {:max-width "980px"
                  :margin "0 auto"
-                 :padding "64px 28px 96px"}
+                 :padding "72px 36px 120px"}
 
-   :essay-kicker {:font-size "11px"
+   :essay-kicker {:font-size "10px"
                   :text-transform "uppercase"
-                  :letter-spacing "0.14em"
-                  :color "#8b5e3c"
+                  :letter-spacing "0.16em"
+                  :color "#9a4632"
                   :font-family "'IBM Plex Mono', monospace"
-                  :margin-bottom "18px"}
+                  :margin-bottom "20px"}
 
-   :essay-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                 :font-size "72px"
-                 :line-height "0.94"
-                 :letter-spacing "-0.05em"
-                 :margin "0 0 20px 0"
-                 :color "#19140d"
-                 :max-width "900px"}
+   :essay-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                 :font-size "clamp(42px, 6.4vw, 66px)"
+                 :line-height "0.98"
+                 :letter-spacing "-0.045em"
+                 :margin "0 0 18px 0"
+                 :color "#11100d"
+                 :max-width "840px"}
 
-   :essay-deck {:font-size "22px"
-                :line-height "1.62"
-                :color "#4f4438"
-                :max-width "780px"
-                :margin "0 0 30px 0"}
+   :essay-deck {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                :font-size "clamp(18px, 2.2vw, 21px)"
+                :line-height "1.68"
+                :color "#39322c"
+                :max-width "690px"
+                :margin "0 0 32px 0"}
 
    :essay-divider {:height "1px"
-                   :background "linear-gradient(90deg, rgba(139,94,60,0.45) 0%, rgba(139,94,60,0.10) 72%, transparent 100%)"
-                   :margin "38px 0"}
+                   :background "#d9d2c6"
+                   :margin "46px 0 54px"}
 
-   :essay-section {:margin-bottom "56px"}
+   :essay-section {:margin-bottom "74px"}
 
-   :essay-section-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                         :font-size "34px"
-                         :line-height "1.05"
-                         :letter-spacing "-0.03em"
-                         :margin "0 0 16px 0"
-                         :color "#19140d"}
+   :essay-section-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                         :font-size "clamp(26px, 3.2vw, 31px)"
+                         :line-height "1.08"
+                         :letter-spacing "-0.028em"
+                         :margin "0 0 14px 0"
+                         :color "#151310"
+                         :max-width "700px"}
 
-   :essay-copy {:font-size "17px"
+   :essay-copy {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                :font-size "18px"
                 :line-height "1.82"
-                :color "#504436"
-                :max-width "760px"
+                :color "#2f2a25"
+                :max-width "680px"
                 :margin "0 0 16px 0"}
 
-   :essay-band {:display "flex"
-                :flex-wrap "wrap"
-                :gap "16px"
-                :margin-top "28px"}
+   :essay-band {:display "grid"
+                :grid-template-columns "repeat(auto-fit, minmax(220px, 1fr))"
+                :gap "18px"
+                :margin-top "26px"}
 
-   :essay-band-card {:flex "1 1 280px"
-                     :min-width "0"
-                     :background "rgba(255,255,255,0.52)"
-                     :border "1px solid rgba(123,95,66,0.18)"
-                     :border-radius "24px"
-                     :padding "20px 22px"
-                     :box-shadow "0 16px 40px rgba(69,44,24,0.06)"}
+   :essay-band-card {:min-width "0"
+                     :padding-top "14px"
+                     :border-top "1px solid #d8d1c4"}
 
-   :essay-band-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                      :font-size "24px"
-                      :line-height "1.1"
-                      :letter-spacing "-0.02em"
-                      :margin "0 0 10px 0"
-                      :color "#19140d"}
+   :essay-band-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                      :font-size "21px"
+                      :line-height "1.15"
+                      :letter-spacing "-0.018em"
+                      :margin "0 0 8px 0"
+                      :color "#151310"}
 
-   :essay-band-copy {:font-size "15px"
-                     :line-height "1.7"
-                     :color "#5f5244"
-                     :margin "0 0 14px 0"}
+   :essay-band-copy {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                     :font-size "16px"
+                     :line-height "1.72"
+                     :color "#4a4037"
+                     :margin "0 0 12px 0"}
 
-   :essay-two-up {:display "flex"
-                  :flex-wrap "wrap"
-                  :gap "18px"
-                  :margin-top "18px"}
+   :essay-two-up {:display "grid"
+                  :grid-template-columns "repeat(auto-fit, minmax(280px, 1fr))"
+                  :gap "16px"
+                  :margin-top "18px"
+                  :max-width "860px"}
 
-   :essay-panel {:flex "1 1 320px"
-                 :min-width "0"
-                 :background "rgba(255,255,255,0.58)"
-                 :border "1px solid rgba(123,95,66,0.16)"
-                 :border-radius "22px"
-                 :padding "18px 20px"
-                 :box-shadow "0 12px 32px rgba(69,44,24,0.05)"}
+   :essay-panel {:min-width "0"
+                 :padding-top "14px"
+                 :border-top "1px solid #d8d1c4"}
 
-   :essay-panel-title {:font-size "11px"
+   :essay-panel-title {:font-size "10px"
                        :text-transform "uppercase"
-                       :letter-spacing "0.14em"
-                       :color "#8b5e3c"
-                       :font-family "'IBM Plex Mono', monospace"
-                       :margin-bottom "12px"}
-
-   :essay-code {:background "rgba(30,24,17,0.94)"
-                :border-radius "16px"
-                :padding "16px 18px"
-                :font-family "'IBM Plex Mono', monospace"
-                :font-size "12px"
-                :line-height "1.7"
-                :white-space "pre-wrap"
-                :color "#f2ebdf"
-                :box-shadow "inset 0 0 0 1px rgba(255,255,255,0.04)"}
-
-   :essay-example-card {:margin-top "28px"
-                        :padding-top "28px"
-                        :border-top "1px solid rgba(123,95,66,0.18)"}
-
-   :essay-example-ref {:font-size "11px"
-                       :text-transform "uppercase"
-                       :letter-spacing "0.12em"
-                       :color "#8b5e3c"
+                       :letter-spacing "0.15em"
+                       :color "#8f4b38"
                        :font-family "'IBM Plex Mono', monospace"
                        :margin-bottom "10px"}
 
-   :essay-example-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                         :font-size "32px"
-                         :line-height "1.04"
-                         :letter-spacing "-0.03em"
-                         :margin "0 0 10px 0"
-                         :color "#19140d"}
+   :essay-code {:background "#f3efe8"
+                :border "1px solid #e0d8ca"
+                :border-radius "4px"
+                :padding "14px 16px"
+                :font-family "'IBM Plex Mono', monospace"
+                :font-size "12px"
+                :line-height "1.68"
+                :white-space "pre-wrap"
+                :color "#2e2924"}
+
+   :essay-example-card {:margin-top "32px"
+                        :padding-top "30px"
+                        :border-top "1px solid #d8d1c4"}
+
+   :essay-example-ref {:font-size "10px"
+                       :text-transform "uppercase"
+                       :letter-spacing "0.14em"
+                       :color "#9a4632"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :margin-bottom "10px"}
+
+   :essay-example-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                         :font-size "clamp(25px, 3vw, 30px)"
+                         :line-height "1.06"
+                         :letter-spacing "-0.028em"
+                         :margin "0 0 8px 0"
+                         :color "#151310"
+                         :max-width "680px"}
 
    :essay-example-shell {:display "flex"
                          :flex-direction "column"
-                         :gap "16px"}
+                         :gap "14px"}
 
-   :essay-action-line {:background "#1b1712"
-                       :border-radius "999px"
-                       :padding "10px 16px"
+   :essay-action-line {:display "block"
+                       :max-width "640px"
+                       :padding "0 0 0 12px"
+                       :border-left "2px solid #c86b4f"
                        :font-family "'IBM Plex Mono', monospace"
                        :font-size "12px"
-                       :line-height "1.6"
+                       :line-height "1.7"
                        :white-space "pre-wrap"
-                       :color "#f0e6d6"
-                       :display "inline-block"
-                       :max-width "100%"}
+                       :color "#5d4c42"}
 
    :essay-figure-row {:display "flex"
                       :flex-wrap "wrap"
-                      :gap "16px"
-                      :align-items "stretch"}
+                      :gap "12px"
+                      :align-items "flex-start"
+                      :max-width "860px"}
 
    :essay-figure-card {:flex "1 1 320px"
                        :min-width "0"
-                       :background "rgba(255,255,255,0.68)"
-                       :border "1px solid rgba(123,95,66,0.16)"
-                       :border-radius "22px"
-                       :padding "18px 20px"
-                       :box-shadow "0 12px 32px rgba(69,44,24,0.05)"}
+                       :padding-top "10px"}
 
    :essay-editor-frame {:display "block"
                         :width "100%"
-                        :border "0"
-                        :border-radius "18px"
-                        :background "white"}
+                        :border "1px solid #ddd5c8"
+                        :border-radius "4px"
+                        :background "#fffefe"}
 
    :essay-figure-code {:margin-top "10px"
                        :padding "12px 14px"
-                       :border-radius "16px"
-                       :background "rgba(255,255,255,0.78)"
-                       :border "1px solid rgba(123,95,66,0.14)"
+                       :border-radius "4px"
+                       :background "#f8f5ef"
+                       :border "1px solid #e0d8ca"
                        :font-family "'IBM Plex Mono', monospace"
                        :font-size "12px"
                        :line-height "1.65"
@@ -544,11 +538,11 @@
    :essay-figure-arrow {:display "flex"
                         :align-items "center"
                         :justify-content "center"
-                        :font-family "'IBM Plex Serif', Georgia, serif"
-                        :font-size "46px"
-                        :color "#8b5e3c"
-                        :padding "0 6px"
-                        :min-width "48px"}
+                        :font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                        :font-size "30px"
+                        :color "#a08b76"
+                        :padding "78px 4px 0"
+                        :min-width "26px"}
 
    :search-input {:width "100%"
                   :box-sizing "border-box"
