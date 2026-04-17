@@ -132,6 +132,9 @@
 (def essay-kernel-snippet
   "[{:op :create-node :id \"x\" :type :block :props {:text \"Hello\"}}\n {:op :place :id \"x\" :under :doc :at :last}\n {:op :update-node :id \"x\" :props {:text \"Hello world\"}}]")
 
+(def essay-session-snippet
+  "{:cursor {:block-id \"a\" :offset 0}\n :selection {:nodes #{\"a\"} :focus \"a\"}\n :ui {:editing-block-id nil}}")
+
 (def essay-state-machine-snippet
   "Idle -> Selection -> Editing\n\nidle: no cursor, no selection\nselection: block focus and range\nediting: caret inside a specific block\n\nThe spec is mostly about moving between those states without ambiguity.")
 
@@ -267,83 +270,172 @@
           :background "#0f0f10"}
 
    :essay-page {:min-height "100vh"
-                :background "#0f0f10"
-                :color "#e8e8ed"}
+                :background "linear-gradient(180deg, #f6f0e5 0%, #f3ecdf 52%, #efe7d8 100%)"
+                :color "#1c1812"}
 
-   :essay-shell {:max-width "980px"
+   :essay-shell {:max-width "1040px"
                  :margin "0 auto"
-                 :padding "56px 28px 80px"}
+                 :padding "64px 28px 96px"}
 
    :essay-kicker {:font-size "11px"
                   :text-transform "uppercase"
-                  :letter-spacing "0.12em"
-                  :color "#7d7f8e"
+                  :letter-spacing "0.14em"
+                  :color "#8b5e3c"
                   :font-family "'IBM Plex Mono', monospace"
                   :margin-bottom "18px"}
 
    :essay-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                 :font-size "56px"
-                 :line-height "0.98"
-                 :letter-spacing "-0.04em"
-                 :margin "0 0 18px 0"
-                 :color "#f4f4f7"
-                 :max-width "860px"}
+                 :font-size "72px"
+                 :line-height "0.94"
+                 :letter-spacing "-0.05em"
+                 :margin "0 0 20px 0"
+                 :color "#19140d"
+                 :max-width "900px"}
 
-   :essay-deck {:font-size "20px"
-                :line-height "1.65"
-                :color "#c7c8d1"
+   :essay-deck {:font-size "22px"
+                :line-height "1.62"
+                :color "#4f4438"
                 :max-width "780px"
-                :margin "0 0 28px 0"}
+                :margin "0 0 30px 0"}
 
    :essay-divider {:height "1px"
-                   :background "linear-gradient(90deg, rgba(125,127,142,0.45) 0%, rgba(125,127,142,0.08) 80%, transparent 100%)"
-                   :margin "34px 0"}
+                   :background "linear-gradient(90deg, rgba(139,94,60,0.45) 0%, rgba(139,94,60,0.10) 72%, transparent 100%)"
+                   :margin "38px 0"}
 
-   :essay-section {:margin-bottom "44px"}
+   :essay-section {:margin-bottom "56px"}
 
    :essay-section-title {:font-family "'IBM Plex Serif', Georgia, serif"
-                         :font-size "30px"
-                         :line-height "1.1"
-                         :letter-spacing "-0.02em"
-                         :margin "0 0 14px 0"
-                         :color "#f1f1f5"}
+                         :font-size "34px"
+                         :line-height "1.05"
+                         :letter-spacing "-0.03em"
+                         :margin "0 0 16px 0"
+                         :color "#19140d"}
 
-   :essay-copy {:font-size "16px"
-                :line-height "1.8"
-                :color "#c2c3cd"
+   :essay-copy {:font-size "17px"
+                :line-height "1.82"
+                :color "#504436"
                 :max-width "760px"
                 :margin "0 0 16px 0"}
 
-   :essay-two-up {:display "grid"
-                  :grid-template-columns "repeat(2, minmax(0, 1fr))"
+   :essay-band {:display "flex"
+                :flex-wrap "wrap"
+                :gap "16px"
+                :margin-top "28px"}
+
+   :essay-band-card {:flex "1 1 280px"
+                     :min-width "0"
+                     :background "rgba(255,255,255,0.52)"
+                     :border "1px solid rgba(123,95,66,0.18)"
+                     :border-radius "24px"
+                     :padding "20px 22px"
+                     :box-shadow "0 16px 40px rgba(69,44,24,0.06)"}
+
+   :essay-band-title {:font-family "'IBM Plex Serif', Georgia, serif"
+                      :font-size "24px"
+                      :line-height "1.1"
+                      :letter-spacing "-0.02em"
+                      :margin "0 0 10px 0"
+                      :color "#19140d"}
+
+   :essay-band-copy {:font-size "15px"
+                     :line-height "1.7"
+                     :color "#5f5244"
+                     :margin "0 0 14px 0"}
+
+   :essay-two-up {:display "flex"
+                  :flex-wrap "wrap"
                   :gap "18px"
                   :margin-top "18px"}
 
-   :essay-panel {:background "#131316"
-                 :border "1px solid #23232a"
-                 :border-radius "16px"
-                 :padding "18px 20px"}
+   :essay-panel {:flex "1 1 320px"
+                 :min-width "0"
+                 :background "rgba(255,255,255,0.58)"
+                 :border "1px solid rgba(123,95,66,0.16)"
+                 :border-radius "22px"
+                 :padding "18px 20px"
+                 :box-shadow "0 12px 32px rgba(69,44,24,0.05)"}
 
    :essay-panel-title {:font-size "11px"
                        :text-transform "uppercase"
-                       :letter-spacing "0.12em"
-                       :color "#8f90a0"
+                       :letter-spacing "0.14em"
+                       :color "#8b5e3c"
                        :font-family "'IBM Plex Mono', monospace"
                        :margin-bottom "12px"}
 
-   :essay-code {:background "#101014"
-                :border "1px solid #23232a"
-                :border-radius "12px"
-                :padding "14px 16px"
+   :essay-code {:background "rgba(30,24,17,0.94)"
+                :border-radius "16px"
+                :padding "16px 18px"
                 :font-family "'IBM Plex Mono', monospace"
                 :font-size "12px"
-                :line-height "1.65"
+                :line-height "1.7"
                 :white-space "pre-wrap"
-                :color "#cfd0da"}
+                :color "#f2ebdf"
+                :box-shadow "inset 0 0 0 1px rgba(255,255,255,0.04)"}
 
-   :essay-example-card {:margin-top "22px"
-                        :padding-top "22px"
-                        :border-top "1px solid #22222a"}
+   :essay-example-card {:margin-top "28px"
+                        :padding-top "28px"
+                        :border-top "1px solid rgba(123,95,66,0.18)"}
+
+   :essay-example-ref {:font-size "11px"
+                       :text-transform "uppercase"
+                       :letter-spacing "0.12em"
+                       :color "#8b5e3c"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :margin-bottom "10px"}
+
+   :essay-example-title {:font-family "'IBM Plex Serif', Georgia, serif"
+                         :font-size "32px"
+                         :line-height "1.04"
+                         :letter-spacing "-0.03em"
+                         :margin "0 0 10px 0"
+                         :color "#19140d"}
+
+   :essay-example-shell {:display "flex"
+                         :flex-direction "column"
+                         :gap "16px"}
+
+   :essay-action-line {:background "#1b1712"
+                       :border-radius "999px"
+                       :padding "10px 16px"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :font-size "12px"
+                       :line-height "1.6"
+                       :white-space "pre-wrap"
+                       :color "#f0e6d6"
+                       :display "inline-block"
+                       :max-width "100%"}
+
+   :essay-figure-row {:display "flex"
+                      :flex-wrap "wrap"
+                      :gap "16px"
+                      :align-items "stretch"}
+
+   :essay-figure-card {:flex "1 1 320px"
+                       :min-width "0"
+                       :background "rgba(255,255,255,0.68)"
+                       :border "1px solid rgba(123,95,66,0.16)"
+                       :border-radius "22px"
+                       :padding "18px 20px"
+                       :box-shadow "0 12px 32px rgba(69,44,24,0.05)"}
+
+   :essay-figure-code {:margin-top "10px"
+                       :padding "12px 14px"
+                       :border-radius "16px"
+                       :background "rgba(255,255,255,0.78)"
+                       :border "1px solid rgba(123,95,66,0.14)"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :font-size "12px"
+                       :line-height "1.65"
+                       :overflow-x "auto"}
+
+   :essay-figure-arrow {:display "flex"
+                        :align-items "center"
+                        :justify-content "center"
+                        :font-family "'IBM Plex Serif', Georgia, serif"
+                        :font-size "46px"
+                        :color "#8b5e3c"
+                        :padding "0 6px"
+                        :min-width "48px"}
 
    :search-input {:width "100%"
                   :box-sizing "border-box"
@@ -648,21 +740,38 @@
           [:span {:style {:background "#4c1d95" :color "#c4b5fd" :padding "2px 6px"
                           :border-radius "3px" :font-size "10px"}} "anchor"])])]))
 
+(def dark-dsl-palette
+  {:keyword "#c678dd"
+   :string "#98c379"
+   :attrs "#e5c07b"
+   :brackets "#6b7280"
+   :indent "#4b5563"})
+
+(def light-dsl-palette
+  {:keyword "#8b3fa8"
+   :string "#24604b"
+   :attrs "#9d5a0c"
+   :brackets "#9a8d7d"
+   :indent "#c5b8a8"})
+
 (defn- render-dsl-tree
   "Render tree DSL with syntax highlighting (raw Clojure notation)."
-  [tree depth]
+  ([tree depth]
+   (render-dsl-tree tree depth dark-dsl-palette))
+  ([tree depth palette]
   (when (and (vector? tree) (seq tree))
     (let [[tag & remaining] tree
           text (first (filter string? remaining))
           attrs (first (filter map? remaining))
           children (filter vector? remaining)
           indent (apply str (repeat (* depth 2) " "))
-          kw-color "#c678dd"
-          str-color "#98c379"
-          attr-color "#e5c07b"
-          bracket-color "#6b7280"]
+          kw-color (:keyword palette)
+          str-color (:string palette)
+          attr-color (:attrs palette)
+          bracket-color (:brackets palette)
+          indent-color (:indent palette)]
       [:div {:style {:white-space "pre" :line-height "1.5"}}
-       [:span {:style {:color "#4b5563"}} indent]
+       [:span {:style {:color indent-color}} indent]
        [:span {:style {:color bracket-color}} "["]
        [:span {:style {:color kw-color}} (str ":" (name tag))]
        (when text
@@ -672,11 +781,11 @@
        (when (empty? children)
          [:span {:style {:color bracket-color}} "]"])
        (for [[i child] (map-indexed vector children)]
-         ^{:key i} (render-dsl-tree child (inc depth)))
+         ^{:key i} (render-dsl-tree child (inc depth) palette))
        (when (seq children)
          [:div {:style {:white-space "pre"}}
-          [:span {:style {:color "#4b5563"}} indent]
-          [:span {:style {:color bracket-color}} "]"]])])))
+          [:span {:style {:color indent-color}} indent]
+          [:span {:style {:color bracket-color}} "]"]])]))))
 
 (defn- DslView
   "Raw DSL syntax view with syntax highlighting."
@@ -689,6 +798,12 @@
                    :padding "14px"
                    :border-radius "10px"}}
      (render-dsl-tree tree 0)]))
+
+(defn- EssayDslView
+  [tree]
+  (when tree
+    [:div {:style (:essay-figure-code styles)}
+     (render-dsl-tree tree 0 light-dsl-palette)]))
 
 (defn- DslDiffView
   "Side-by-side DSL syntax comparison."
@@ -810,41 +925,55 @@
 (defn EssayExample
   [{:keys [title body fr-id scenario behavior scenario-id]}]
   [:section {:style (:essay-example-card styles)}
-   [:h3 {:style {:font-family "'IBM Plex Serif', Georgia, serif"
-                 :font-size "28px"
-                 :line-height "1.1"
-                 :letter-spacing "-0.02em"
-                 :margin "0 0 10px 0"
-                 :color "#f1f1f5"}}
-    title]
-   [:p {:style (:essay-copy styles)} body]
-   [:div {:style {:display "flex"
-                  :gap "10px"
-                  :flex-wrap "wrap"
-                  :margin "12px 0 18px"}}
-    [:span {:style (:meta-chip styles)} (name fr-id)]
-    [:span {:style (:meta-chip styles)} (safe-name scenario-id)]
-    (when-let [context (:context behavior)]
-      [:span {:style (:meta-chip styles)} context])]
-   [:div {:style (:essay-two-up styles)}
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "Operation"]
-     [:div {:style (:essay-code styles)} (pr-str (:action scenario))]]
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "Interpretation"]
-     [:p {:style (merge (:essay-copy styles) {:margin "0" :font-size "15px"})}
-      (or (:behavior behavior)
-          "Structural state transition.")]]]
-   [:div {:style {:margin-top "18px"}}
-    (DslDiffView {:before (:tree (:setup scenario))
-                  :after (:tree (:expect scenario))})]])
+   [:div {:style (:essay-example-shell styles)}
+    [:div {:style (:essay-example-ref styles)}
+     (str (name fr-id) " / " (safe-name scenario-id))]
+    [:h3 {:style (:essay-example-title styles)} title]
+    [:p {:style (:essay-copy styles)} body]
+    [:div {:style (:essay-action-line styles)}
+     (pr-str (:action scenario))]
+    [:div {:style (:essay-figure-row styles)}
+     [:div {:style (:essay-figure-card styles)}
+      [:div {:style (:essay-panel-title styles)} "Before"]
+      (EssayDslView (:tree (:setup scenario)))]
+     [:div {:style (:essay-figure-arrow styles)} "→"]
+     [:div {:style (:essay-figure-card styles)}
+      [:div {:style (:essay-panel-title styles)} "After"]
+      (EssayDslView (:tree (:expect scenario)))]]
+    [:p {:style (merge (:essay-copy styles) {:max-width "700px"})}
+     (or (:behavior behavior)
+         (:context behavior)
+         "Structural state transition.")]]])
+
+(defn EssayFrameSection
+  []
+  [:section {:style (:essay-section styles)}
+   [:h2 {:style (:essay-section-title styles)} "You are editing three synchronized machines"]
+   [:p {:style (:essay-copy styles)}
+    "The document has shape. The user session has mode. The kernel has a small algebra for changing structure. Most of the spec exists to keep those three layers in sync without ambiguity."]
+   [:div {:style (:essay-band styles)}
+    [:div {:style (:essay-band-card styles)}
+     [:h3 {:style (:essay-band-title styles)} "1. Document graph"]
+     [:p {:style (:essay-band-copy styles)}
+      "Blocks are not lines in one long buffer. They are nodes in a tree with explicit parent and sibling relationships."]
+     [:div {:style (:essay-code styles)} essay-outline-snippet]]
+    [:div {:style (:essay-band-card styles)}
+     [:h3 {:style (:essay-band-title styles)} "2. Session state"]
+     [:p {:style (:essay-band-copy styles)}
+      "Cursor, node selection, and editing mode are distinct pieces of state. That is why behavior can stay crisp at boundaries."]
+     [:div {:style (:essay-code styles)} essay-session-snippet]]
+    [:div {:style (:essay-band-card styles)}
+     [:h3 {:style (:essay-band-title styles)} "3. Kernel operations"]
+     [:p {:style (:essay-band-copy styles)}
+      "Even complex gestures reduce to a tiny set of structural edits. That keeps the implementation small and the spec legible."]
+     [:div {:style (:essay-code styles)} essay-kernel-snippet]]]])
 
 (defn EssayMindsetSection
   []
   [:section {:style (:essay-section styles)}
-   [:h2 {:style (:essay-section-title styles)} "What changes in your head"]
+   [:h2 {:style (:essay-section-title styles)} "Why normal editor intuition breaks"]
    [:p {:style (:essay-copy styles)}
-    "A text editor usually feels like one string plus one cursor position. A structural editor is a tree of nodes, plus a separate state machine for whether you are idle, selecting nodes, or editing text inside one node."]
+    "In a string editor, nearly everything feels like text mutation plus cursor arithmetic. In a structural editor, the same keys often become shape-changing operations or state transitions. That is why the first encounter feels foreign: the mental model is different, not just the UI."]
    [:div {:style (:essay-two-up styles)}
     [:div {:style (:essay-panel styles)}
      [:div {:style (:essay-panel-title styles)} "String editor intuition"]
@@ -852,21 +981,7 @@
       "text: \"Hello\\nWorld\"\ncursor: 7\nselection: [3 9]"]]
     [:div {:style (:essay-panel styles)}
      [:div {:style (:essay-panel-title styles)} "Structural editor intuition"]
-     [:div {:style (:essay-code styles)} essay-outline-snippet]]]])
-
-(defn EssayMechanicsSection
-  []
-  [:section {:style (:essay-section styles)}
-   [:h2 {:style (:essay-section-title styles)} "What the spec is really about"]
-   [:p {:style (:essay-copy styles)}
-    "The interesting part is not slash menus or chrome. The spec is mostly about invariants: when selection and editing can coexist, when Enter means split rather than newline, when ArrowLeft is local text navigation and when it becomes movement across a tree edge."]
-   [:div {:style (:essay-two-up styles)}
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "State machine"]
-     [:div {:style (:essay-code styles)} essay-state-machine-snippet]]
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "Kernel algebra"]
-     [:div {:style (:essay-code styles)} essay-kernel-snippet]]]])
+     [:div {:style (:essay-code styles)} essay-state-machine-snippet]]]])
 
 (defn EssayExamplesSection
   []
@@ -901,8 +1016,8 @@
     [:p {:style (:essay-deck styles)}
      "A structural editor is not mainly a smarter textarea. It is a document model with an explicit tree, explicit interaction states, and a tiny algebra for changing shape. Many ordinary keys only make sense once you see those layers separately."]
     [:div {:style (:essay-divider styles)}]
+    (EssayFrameSection)
     (EssayMindsetSection)
-    (EssayMechanicsSection)
     (EssayExamplesSection)
     (EssayTakeawaySection)]])
 
