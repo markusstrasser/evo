@@ -110,10 +110,9 @@ src/shell/           # UI adapters: Replicant components
 src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Page refs
 src/components/      # Replicant UI components
+src/spec/registry.cljc  # FR loader + validation
 resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
 resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
-dev/spec_registry.cljc  # FR loader + validation
-dev/test_scanner.cljc   # Test verification coverage scanner
 ```
 
 ### Transaction Pipeline
@@ -405,14 +404,16 @@ DB uses string IDs, not keywords:
 - Located in `test/` directory (`.cljc` files)
 - Tag tests with FR metadata: `(deftest ^{:fr/ids #{:fr.xxx/yyy}} ...)`
 
-```clojure
-;; Reproduce property test failure
-bb lint:scenarios          # Ensure docs/specs scenario IDs have tests
+```bash
+# FR scenario coverage report
+bb lint:fr-tests           # Reports scenario coverage; add -- --strict to fail on gaps
+```
 
-;; FR coverage tracking
+```clojure
+;; FR coverage at the REPL
 (require '[kernel.intent :as intent])
-(intent/full-audit)        # Show implementation + verification coverage
-(intent/coverage-summary)  # High-level metrics
+(intent/full-audit)        ; Show implementation + verification coverage
+(intent/coverage-summary)  ; High-level metrics
 ```
 
 ### Explicit Harness Bootstrap
