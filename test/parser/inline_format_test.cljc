@@ -62,7 +62,32 @@
     (is (all-text? "foo(*p, **pp)")))
   (testing "Python/Clojure splat syntax"
     (is (all-text? "func(*args, **kwargs)"))
-    (is (all-text? "(apply f *args)"))))
+    (is (all-text? "(apply f *args)")))
+  (testing "Python exponentiation and intraword bold-like runs"
+    (is (all-text? "2**3**4"))
+    (is (all-text? "x = a**b"))
+    (is (all-text? "foo**bar**baz"))))
+
+;; Known limitation: `__init__` and `__main__` standalone DO emphasize as
+;; strong "init"/"main". Outer boundaries are string edges and the rule
+;; treats nil/start/end as non-word, so a whole-block dunder is
+;; indistinguishable from `__bold__`. Backticked code spans (future)
+;; are the intended escape hatch.
+
+(deftest multi-char-intraword-markers-stay-literal
+  (testing "== equality chains in code"
+    (is (all-text? "a==b==c"))
+    (is (all-text? "(x==y==z)"))
+    (is (all-text? "assert a==b==c"))
+    (is (all-text? "if a==b==c:")))
+  (testing "$$ runs inside identifiers/prices"
+    (is (all-text? "price$$100$$total"))
+    (is (all-text? "id$$abc$$xyz")))
+  (testing "bounded multi-char markers still format"
+    (is (= [:bold] (types "**bold**")))
+    (is (= [:bold] (types "__also bold__")))
+    (is (= [:highlight] (types "==marked==")))
+    (is (= [:math-block] (types "$$E = mc^2$$")))))
 
 (deftest unicode-intraword-stays-literal
   (testing "Cyrillic, Japanese, German with accents"
