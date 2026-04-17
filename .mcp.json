@@ -19,7 +19,9 @@
     "chrome-devtools": {
       "type": "stdio",
       "command": "npx",
-      "args": ["chrome-devtools-mcp@latest"]
+      "args": [
+        "chrome-devtools-mcp@latest"
+      ]
     },
     "brave-search": {
       "type": "stdio",
@@ -30,6 +32,18 @@
       ],
       "env": {
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "parallel": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/alien/Projects/agent-infra",
+        "parallel-mcp"
+      ],
+      "env": {
+        "PARALLEL_API_KEY": "${PARALLEL_API_KEY}"
       }
     }
   }
