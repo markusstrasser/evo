@@ -147,3 +147,16 @@
            (re-find #"\$[^$]+\$" text)
            (re-find #"\*[^*]+\*" text)
            (re-find #"_[^_]+_" text))))
+
+(defn has-math?
+  "True iff parsing `text` produces at least one math segment.
+
+   Authoritative source for the view layer's MathJax gating — prefer
+   this over raw regex checks so that code-like inputs (e.g.
+   `cljs$core$key`, `price$100$total`) do not trigger spurious
+   typeset passes after the word-boundary guards reject them."
+  [text]
+  (and (string? text)
+       (boolean (some #(or (= :math-inline (:type %))
+                           (= :math-block (:type %)))
+                      (split-with-formatting text)))))

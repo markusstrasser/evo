@@ -1569,10 +1569,10 @@
               children (if (seq rendered)
                          rendered
                          ["\u200B"]) ; ZWS makes block visible to a11y tree
-              ;; Check if content has math ($ or $$)
-              has-math? (and (string? content)
-                             (or (str/includes? content "$$")
-                                 (re-find #"\$[^$]+\$" content)))
+              ;; Delegate math detection to the parser — avoids
+              ;; false-positive typeset passes on inputs like
+              ;; `cljs$core$key` that the parser rejects.
+              has-math? (inline-format/has-math? content)
               ;; Add on-render hook to typeset math when present
               container-props (cond-> (merge {:replicant/key view-key} click-handler)
                                 has-math? (assoc :replicant/on-render
