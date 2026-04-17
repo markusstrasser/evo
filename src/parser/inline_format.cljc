@@ -24,11 +24,23 @@
    ["*" :italic]
    ["_" :italic]])
 
-;; Single-char markers need word-boundary guards so intraword runs like
-;; `cljs_core_key` or `cljs$core$key` don't become italic/math. Multi-char
-;; markers (`**`, `__`, `==`, `~~`, `$$`) are uncommon in normal text so
-;; they stay greedy.
-(def ^:private word-boundary-markers #{"_" "*" "$"})
+;; Markers that must reject intraword matches (both sides outside the
+;; span must be non-word). Covers the common intraword code hazards:
+;;
+;;   `_`            identifiers               (cljs_core_key)
+;;   `*`  `**`      multiplication / splats   (a*b*c, 2**3, **kwargs, foo*bar*baz)
+;;   `$`  `$$`      prices / identifiers      (cljs$core$key, price$100$total)
+;;   `==`            equality chains           (a==b==c, assert x==y==z)
+;;
+;; `__` and `~~` are intentionally absent.
+;;   - `__`: adding it does NOT help the `__init__`-alone case (outer
+;;     sides are string boundaries, which read as non-word), and blocking
+;;     it would also break the legitimate `__bold__` alone pattern. Both
+;;     render as strong emphasis today. Treat `__init__` standalone as a
+;;     known limitation; users can switch to backticked code spans once
+;;     those land.
+;;   - `~~`: strikethrough rarely occurs intraword in code.
+(def ^:private word-boundary-markers #{"_" "*" "**" "$" "$$" "=="})
 
 ;; Unicode-aware word class: any letter (\p{L}) or digit (\p{N}).
 ;; CLJS needs the /u flag to enable Unicode property escapes, so the
