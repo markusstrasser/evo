@@ -24,6 +24,21 @@
    ["*" :italic]
    ["_" :italic]])
 
+;; Single-char markers need word-boundary guards so intraword runs like
+;; `cljs_core_key` or `cljs$core$key` don't become italic/math. Multi-char
+;; markers (`**`, `__`, `==`, `~~`, `$$`) are uncommon in normal text so
+;; they stay greedy.
+(def ^:private word-boundary-markers #{"_" "*" "$"})
+
+(defn- word-char?
+  "True for ASCII word chars (a-z, A-Z, 0-9). Portable across CLJ/CLJS:
+   `ch` may be a java.lang.Character or a 1-char string."
+  [ch]
+  (when ch
+    (let [s (str ch)]
+      (and (= 1 (count s))
+           (boolean (re-matches #"[A-Za-z0-9]" s))))))
+
 (defn- find-marker-at
   "Check if any marker starts at pos. Returns [marker type] or nil."
   [text pos]
@@ -59,15 +74,28 @@
     (conj segments {:type :text :value (subs text start end)})
     segments))
 
+(defn- word-boundary-ok?
+  "For single-char markers, require non-word (or absent) chars immediately
+   outside the marker span. Keeps identifiers like `foo_bar_baz`,
+   `cljs$core$key`, or `x*y*z` literal instead of italic/math."
+  [text pos marker close-pos]
+  (if-not (contains? word-boundary-markers marker)
+    true
+    (let [before (when (pos? pos) (nth text (dec pos)))
+          after (when (< close-pos (count text)) (nth text close-pos))]
+      (and (not (word-char? before))
+           (not (word-char? after))))))
+
 (defn- try-complete-format
   "Try to complete a format region. Returns {:end-pos n :segment {...}} or nil."
   [text pos marker type]
   (when-let [close-pos (find-closing text marker pos)]
-    (let [content-start (+ pos (count marker))
-          content-end (- close-pos (count marker))
-          content (subs text content-start content-end)]
-      {:end-pos close-pos
-       :segment {:type type :value content}})))
+    (when (word-boundary-ok? text pos marker close-pos)
+      (let [content-start (+ pos (count marker))
+            content-end (- close-pos (count marker))
+            content (subs text content-start content-end)]
+        {:end-pos close-pos
+         :segment {:type type :value content}}))))
 
 (defn split-with-formatting
   "Split text into segments with inline formatting.
