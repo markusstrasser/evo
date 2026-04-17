@@ -1545,11 +1545,14 @@
         :video (video-embed {:block-id block-id :url url :is-focused is-focused
                              :on-intent on-intent :db db})
 
-        ;; Default: quote, heading, or plain text
+        ;; Default: quote, heading, or plain text.
+        ;; `.math-ignore` keeps MathJax from typesetting raw `$...$` runs in
+        ;; normal prose (e.g. `cljs$core$key`, `price$100$total`). Explicit
+        ;; math spans carry class `math` which `processHtmlClass` re-enables.
         (let [container-tag (case format
-                              :quote :blockquote.block-content
-                              :heading (keyword (str "h" level ".block-content"))
-                              :span.block-content)
+                              :quote :blockquote.block-content.math-ignore
+                              :heading (keyword (str "h" level ".block-content.math-ignore"))
+                              :span.block-content.math-ignore)
               click-handler {:on {:click (fn [e]
                                            (.stopPropagation e)
                                            (cond
