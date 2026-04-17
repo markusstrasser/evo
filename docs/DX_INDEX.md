@@ -46,7 +46,6 @@ npm start        # Clean + watch CLJS + watch CSS
 |-----|-------|
 | **[RENDERING_AND_DISPATCH.md](RENDERING_AND_DISPATCH.md)** | Replicant + runtime adapter boundaries |
 | **[KEYBOARD_OWNERSHIP.md](KEYBOARD_OWNERSHIP.md)** | Canonical keyboard ownership matrix |
-| **[DEPENDENCY_REVIEW.md](DEPENDENCY_REVIEW.md)** | Upstream package assessment: keep, narrow, bump, or remove |
 | **[LOGSEQ_PARITY_EVO.md](LOGSEQ_PARITY_EVO.md)** | Gaps + guardrails |
 | **[CODING_GOTCHAS.md](CODING_GOTCHAS.md)** | Common pitfalls |
 
