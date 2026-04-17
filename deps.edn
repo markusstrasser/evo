@@ -29,9 +29,11 @@
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}
 
-           ;; Evo-native MCP server — exposes intent registry + FR catalog to agents.
+           ;; Evo-native MCP server — exposes intent registry, FR catalog, and a
+           ;; live nREPL bridge into the shadow-cljs browser runtime (:blocks-ui).
            ;; Pure Clojure stdio JSON-RPC; no external MCP SDK.
            :mcp {:extra-paths ["mcp"]
+                 :extra-deps {nrepl/nrepl {:mvn/version "1.5.1"}}
                  :main-opts ["-m" "servers.dev-diagnostics"]}
 
            ;; bhauman/clojure-mcp — REPL + shadow-cljs bridge, v0.3.1 (2026-03-14).

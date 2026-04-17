@@ -2,21 +2,23 @@
   "Evo live MCP server — exposes the intent registry + FR catalog to agents.
 
    Transport: newline-delimited JSON-RPC 2.0 over stdio (MCP 2024-11-05).
-   Scope v1: read-only introspection. No nREPL bridge, no dispatch.
-
-   Tools:
-     list-intents      — all registered intents + FR citations
-     describe-intent   — full Malli spec, doc, allowed-states for one intent
-     list-frs          — functional requirement IDs, with filters
-     describe-fr       — full metadata for one FR
+   Scope:
+     v1 (JVM-local, no browser required):
+       list-intents, describe-intent, list-frs, describe-fr
+     v2 (bridges to shadow-cljs :55449 / :blocks-ui — browser must be attached):
+       query-db, snapshot-db, dispatch-intent, eval-cljs
 
    Loading plugins.manifest here triggers side-effect registration of every
    editor intent via register-intent!, so @intent/!intents is populated by the
-   time -main runs."
+   time -main runs. v2 tools validate intents against this same registry on
+   the JVM side before sending them to the CLJS runtime — so `describe-intent`
+   and `dispatch-intent` agree on what a valid intent looks like."
   (:require [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [kernel.intent :as intent]
+            [servers.nrepl-bridge :as bridge]
             [spec.registry :as fr]
             plugins.manifest)
   (:import [java.io BufferedReader InputStreamReader OutputStreamWriter]))
@@ -74,6 +76,54 @@
        :entry (with-out-str (pp/pprint entry))}
       {:error (str "No FR registered for " (pr-str id))})))
 
+;; ── v2: live browser bridge ───────────────────────────────────────────────────
+;; These tools round-trip through shadow-cljs nREPL into the :blocks-ui runtime.
+;; If no browser is attached, bridge returns {:ok? false :error ...} — we surface
+;; that verbatim so the agent can tell the difference between "no editor open"
+;; and "bad intent".
+
+(def ^:private query-db-cljs
+  ;; Returns a small top-level sketch, never the full db. Agents that want
+  ;; deeper probing can use eval-cljs with a targeted expression.
+  "(let [db @shell.editor/!db
+         vs @shell.view-state/!view-state
+         sketch (fn [v]
+                  (cond
+                    (map? v) {:map-keys (vec (keys v)) :size (count v)}
+                    (coll? v) {:count (count v) :sample (vec (take 3 v))}
+                    :else v))]
+     {:db/hash (hash db)
+      :db/top-level (into {} (map (fn [[k v]] [k (sketch v)]) db))
+      :view-state/mode (:mode vs)
+      :view-state/selection (:selection vs)
+      :view-state/top-level (into {} (map (fn [[k v]] [k (sketch v)]) vs))})")
+
+(defn- tool:query-db [_]
+  (bridge/cljs-eval query-db-cljs))
+
+(defn- tool:snapshot-db [_]
+  (bridge/cljs-eval
+    "{:db/hash (hash @shell.editor/!db)
+      :view-state/hash (hash @shell.view-state/!view-state)}"))
+
+(defn- tool:dispatch-intent [{:keys [intent]}]
+  (let [parsed (try (edn/read-string intent)
+                    (catch Throwable t
+                      (throw (ex-info (str "Invalid EDN: " (ex-message t))
+                                      {:intent-string intent}))))]
+    (intent/validate-intent! parsed)
+    (let [code (format
+                 (str "(let [before (hash @shell.editor/!db)] "
+                      "  (shell.executor/apply-intent! shell.editor/!db %s \"MCP\") "
+                      "  {:before-hash before "
+                      "   :after-hash (hash @shell.editor/!db) "
+                      "   :changed? (not= before (hash @shell.editor/!db))})")
+                 (pr-str parsed))]
+      (bridge/cljs-eval code))))
+
+(defn- tool:eval-cljs [{:keys [code]}]
+  (bridge/cljs-eval code))
+
 (def ^:private tools
   {"list-intents"
    {:handler #'tool:list-intents
@@ -110,6 +160,36 @@
                    :properties {:id {:type "string"
                                      :description "FR id without leading colon, e.g. 'fr.edit/smart-split'"}}
                    :required ["id"]
+                   :additionalProperties false}}
+
+   ;; ── v2 live-editor tools ──────────────────────────────────────────────────
+
+   "query-db"
+   {:handler #'tool:query-db
+    :description "Snapshot the live editor DB + view-state from the browser runtime. Returns a top-level shape sketch plus hashes — not the full document (use eval-cljs for deep probes)."
+    :input-schema {:type "object" :properties {} :additionalProperties false}}
+
+   "snapshot-db"
+   {:handler #'tool:snapshot-db
+    :description "Cheap hash-only snapshot of db + view-state. Use for change detection across dispatch-intent calls."
+    :input-schema {:type "object" :properties {} :additionalProperties false}}
+
+   "dispatch-intent"
+   {:handler #'tool:dispatch-intent
+    :description "Validate an intent (EDN) against its registered Malli spec on the JVM, then apply it to the live editor via shell.executor/apply-intent!. Returns before/after hashes so the agent can confirm the dispatch caused a change."
+    :input-schema {:type "object"
+                   :properties {:intent {:type "string"
+                                         :description "EDN string for the intent map, e.g. '{:type :indent :id \"abc\"}'"}}
+                   :required ["intent"]
+                   :additionalProperties false}}
+
+   "eval-cljs"
+   {:handler #'tool:eval-cljs
+    :description "Evaluate an arbitrary CLJS expression in the browser runtime via shadow.cljs.devtools.api/cljs-eval. Escape hatch for deep inspection; prefer the typed tools above when possible."
+    :input-schema {:type "object"
+                   :properties {:code {:type "string"
+                                       :description "CLJS source to evaluate in the :blocks-ui runtime"}}
+                   :required ["code"]
                    :additionalProperties false}}})
 
 ;; ── JSON-RPC plumbing ─────────────────────────────────────────────────────────
