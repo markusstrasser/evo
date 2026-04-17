@@ -232,13 +232,13 @@
                         :cursor-position 5
                         :folded #{}}
                    :selection {:nodes #{} :focus nil :anchor nil}}
-          [result elapsed] (timed
-                            #(intent/apply-intent db session
-                               {:type :navigate-with-cursor-memory
-                                :current-block-id "block-500"
-                                :current-text "hello world"
-                                :current-cursor-pos 5
-                                :direction :down}))]
+          [_result elapsed] (timed
+                             #(intent/apply-intent db session
+                                {:type :navigate-with-cursor-memory
+                                 :current-block-id "block-500"
+                                 :current-text "hello world"
+                                 :current-cursor-pos 5
+                                 :direction :down}))]
       (is (< elapsed threshold-fast)
           (str "Navigation intent took " elapsed "ms, expected <" threshold-fast "ms")))))
 

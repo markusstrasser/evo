@@ -80,14 +80,14 @@
           initial-count (count (q/children db :doc))
 
           ;; Create a new block via split
-          {:keys [db session]} (let [result (api/dispatch* db session
-                                              {:type :context-aware-enter
-                                               :block-id "a"
-                                               :cursor-pos 5})]
-                                 {:db (:db result)
-                                  :session (if-let [updates (:session-updates result)]
-                                             (merge-with merge session updates)
-                                             session)})
+          {:keys [db]} (let [result (api/dispatch* db session
+                                      {:type :context-aware-enter
+                                       :block-id "a"
+                                       :cursor-pos 5})]
+                         {:db (:db result)
+                          :session (if-let [updates (:session-updates result)]
+                                     (merge-with merge session updates)
+                                     session)})
           after-create-count (count (q/children db :doc))]
 
       ;; Verify block was created

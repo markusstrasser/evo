@@ -79,7 +79,7 @@
 
 (deftest folded-blocks-hidden-from-queries
   (testing "Folded block's children should be hidden from visible-blocks query"
-    (let [db (build-nested-doc)
+    (let [_db (build-nested-doc)
           session (-> (empty-session)
                       (with-folded "parent"))]
       ;; Children should not be in visible blocks
@@ -110,7 +110,7 @@
 
 (deftest selection-of-folded-children
   (testing "Selection containing folded children remains valid"
-    (let [db (build-nested-doc)
+    (let [_db (build-nested-doc)
           ;; Select children first
           session (with-selection ["child-1" "child-2"] "child-2" "child-1")
           ;; Then fold parent
@@ -154,13 +154,13 @@
                                :current-block-id "parent"
                                :current-text "Parent"
                                :current-cursor-pos 6
-                               :direction :down})]
+                               :direction :down})
+          editing-id (get-in session [:ui :editing-block-id])]
       ;; Should be editing sibling, not child-1
-      (let [editing-id (get-in session [:ui :editing-block-id])]
-        (is (or (= "sibling" editing-id)
-                ;; Implementation may stay on parent if sibling is below
-                (= "parent" editing-id))
-            "Should navigate past folded children")))))
+      (is (or (= "sibling" editing-id)
+              ;; Implementation may stay on parent if sibling is below
+              (= "parent" editing-id))
+          "Should navigate past folded children"))))
 
 ;; ── Unfold Behavior Tests ────────────────────────────────────────────────────
 
@@ -189,19 +189,18 @@
           ;; Select child-1 and child-2
           session (with-selection ["child-1" "child-2"] "child-2" "child-1")
           ;; Fold parent (hides the selected children)
-          {:keys [session]} (run-intent db session {:type :toggle-fold :block-id "parent"})]
+          {:keys [session]} (run-intent db session {:type :toggle-fold :block-id "parent"})
+          selection (q/selection session)]
       ;; Expected behavior: either clear selection entirely or move to parent
       ;; This depends on implementation - test documents expected behavior
-      (let [selection (q/selection session)
-            focus (get-in session [:selection :focus])]
-        (is (or
-             ;; Option 1: Selection cleared
-             (empty? selection)
-             ;; Option 2: Selection moved to parent
-             (= #{"parent"} selection)
-             ;; Option 3: Selection unchanged but marked as stale (UI handles)
-             (= #{"child-1" "child-2"} selection))
-            "Selection should be handled when blocks become hidden")))))
+      (is (or
+           ;; Option 1: Selection cleared
+           (empty? selection)
+           ;; Option 2: Selection moved to parent
+           (= #{"parent"} selection)
+           ;; Option 3: Selection unchanged but marked as stale (UI handles)
+           (= #{"child-1" "child-2"} selection))
+          "Selection should be handled when blocks become hidden"))))
 
 ;; ── Zoom + Fold Interaction ──────────────────────────────────────────────────
 

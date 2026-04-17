@@ -160,12 +160,12 @@
           {:keys [db]} (run-intent db session {:type :paste-text
                                                :block-id "a"
                                                :cursor-pos 0
-                                               :pasted-text "- parent\n    - child1\n    - child2"})]
-      (let [root-id (first (q/children db :doc))
-            children-of-root (q/children db root-id)]
-        (is (= 2 (count children-of-root)) "Two siblings under parent")
-        (is (= "child1" (get-in db [:nodes (first children-of-root) :props :text])))
-        (is (= "child2" (get-in db [:nodes (second children-of-root) :props :text])))))))
+                                               :pasted-text "- parent\n    - child1\n    - child2"})
+          root-id (first (q/children db :doc))
+          children-of-root (q/children db root-id)]
+      (is (= 2 (count children-of-root)) "Two siblings under parent")
+      (is (= "child1" (get-in db [:nodes (first children-of-root) :props :text])))
+      (is (= "child2" (get-in db [:nodes (second children-of-root) :props :text]))))))
 
 (deftest paste-markdown-deep-hierarchy-normalized-test
   (testing "Deep hierarchy with gaps normalizes to sequential depths"
@@ -177,13 +177,13 @@
           {:keys [db]} (run-intent db session {:type :paste-text
                                                :block-id "a"
                                                :cursor-pos 0
-                                               :pasted-text "- root\n    - mid\n        - deep"})]
-      (let [root-id (first (q/children db :doc))
-            mid-id (first (q/children db root-id))
-            deep-id (first (q/children db mid-id))]
-        (is (= "root" (get-in db [:nodes root-id :props :text])))
-        (is (= "mid" (get-in db [:nodes mid-id :props :text])))
-        (is (= "deep" (get-in db [:nodes deep-id :props :text])))))))
+                                               :pasted-text "- root\n    - mid\n        - deep"})
+          root-id (first (q/children db :doc))
+          mid-id (first (q/children db root-id))
+          deep-id (first (q/children db mid-id))]
+      (is (= "root" (get-in db [:nodes root-id :props :text])))
+      (is (= "mid" (get-in db [:nodes mid-id :props :text])))
+      (is (= "deep" (get-in db [:nodes deep-id :props :text]))))))
 
 ;; ── Smart URL Paste Tests (Logseq Parity) ────────────────────────────────────
 

@@ -182,7 +182,7 @@
 
 (deftest selection-cleared-when-ancestor-folds
   (testing "Selection should be cleared when selected blocks become hidden by fold"
-    (let [db (build-nested-doc)
+    (let [_db (build-nested-doc)
           ;; Select child-1 and child-2
           session1 (with-selection ["child-1" "child-2"] "child-2" "child-1" :forward)
 
@@ -209,7 +209,7 @@
 
 (deftest shift-arrow-from-edit-seeds-selection-with-anchor
   (testing "Shift+Arrow from edit mode should seed selection with current block as anchor"
-    (let [db (build-5-block-doc)
+    (let [_db (build-5-block-doc)
           ;; Editing block "c"
           session1 (-> (empty-session)
                        (assoc-in [:ui :editing-block-id] "c")
