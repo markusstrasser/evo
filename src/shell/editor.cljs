@@ -51,6 +51,7 @@
 (defn- test-mode? [] (query-param? "test=true"))
 (defn- devtools-enabled? [] (query-param? "devtools"))
 (defn- specs-mode? [] (query-param? "specs"))
+(defn- embed-mode? [] (query-param? "embed"))
 
 ;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
@@ -454,16 +455,17 @@
   (let [db @!db
         storage-status @!storage-status
         checking? (:checking? storage-status)
+        embed? (embed-mode?)
         current-page-id (vs/current-page)
         page-title (when current-page-id (q/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
         journals-view? (vs/journals-view?)
         quick-switcher-visible? (vs/quick-switcher-visible?)]
-    [:div.app
+    [:div {:class (str "app" (when embed? " app--embed"))}
      ;; Sidebar for page navigation (toggleable via Cmd+B)
      ;; Always show sidebar - it has the folder picker
-     (when sidebar-visible?
+     (when (and sidebar-visible? (not embed?))
        (sidebar/Sidebar {:db db
                          :on-intent handle-intent
                          :on-pick-folder pick-folder!
@@ -471,14 +473,14 @@
                          :storage-status storage-status}))
 
      ;; Main wrapper - flexbox centering for content
-     [:div.main-wrapper
+     [:div {:class (str "main-wrapper" (when embed? " main-wrapper--embed"))}
       ;; Main content area - only render after storage check completes
       (when-not checking?
-        [:main.main-content
-         {:on {:click (fn [_e]
-                        ;; Background click to clear selection (Logseq parity)
-                        (when-not (vs/editing-block-id)
-                          (handle-intent {:type :selection :mode :clear})))}}
+        [:main {:class (str "main-content" (when embed? " main-content--embed"))
+                :on {:click (fn [_e]
+                              ;; Background click to clear selection (Logseq parity)
+                              (when-not (vs/editing-block-id)
+                                (handle-intent {:type :selection :mode :clear})))}} 
 
          ;; Mock-text for cursor detection
          (MockText)
@@ -493,11 +495,12 @@
 
            ;; Single page view
            current-page-id
-           [:div
+           [:div {:class (when embed? "embed-shell")}
             ;; Editable page title (click to rename)
-            (PageTitle {:page-id current-page-id
-                        :page-title page-title
-                        :on-intent handle-intent})
+            (when-not embed?
+              (PageTitle {:page-id current-page-id
+                          :page-title page-title
+                          :on-intent handle-intent}))
 
             ;; Main outline for current page only
             (Outline {:db db
@@ -505,9 +508,10 @@
                       :on-intent handle-intent})
 
             ;; Backlinks panel - shows "Linked References" from other pages
-            (backlinks/BacklinksPanel {:db db
-                                       :page-title page-title
-                                       :on-intent handle-intent})]
+            (when-not embed?
+              (backlinks/BacklinksPanel {:db db
+                                         :page-title page-title
+                                         :on-intent handle-intent}))]
 
            ;; All Pages view (no page selected)
            :else
@@ -523,14 +527,16 @@
            (HotkeysReference))])]
 
      ;; Quick Switcher overlay (Cmd+K) - rendered outside main content for proper modal behavior
-     (when quick-switcher-visible?
+     (when (and quick-switcher-visible? (not embed?))
        (quick-switcher/QuickSwitcher {:db db :on-intent handle-intent}))
 
      ;; Toast notification (uses Popover API for top-layer rendering)
-     (notification/Notification)
+     (when-not embed?
+       (notification/Notification))
 
      ;; Lightbox overlay for fullscreen image viewing
-     (lightbox/Lightbox)]))
+     (when-not embed?
+       (lightbox/Lightbox))]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -590,6 +596,42 @@
   ;; Clear storage checking state (no folder check needed in test mode)
   (swap! !storage-status assoc :checking? false))
 
+(defn- normalize-view-state-updates
+  "Convert JS/EDN fixture payload into view-state updates with proper sets."
+  [session]
+  (cond-> session
+    (sequential? (get-in session [:selection :nodes]))
+    (update-in [:selection :nodes] set)
+
+    (sequential? (get-in session [:ui :folded]))
+    (update-in [:ui :folded] set)))
+
+(defn load-fixture!
+  "Load a fixture payload into the editor for embedded demos/tests.
+
+   Payload shape:
+   {:ops [...]
+    :session {:selection {:nodes [...] :focus ... :anchor ...}
+              :ui {:current-page ... :editing-block-id ... :cursor-position ...
+                   :folded [...] :zoom-root ...}}}"
+  [payload-js]
+  (let [payload (js->clj payload-js :keywordize-keys true)
+        ops (mapv (fn [op]
+                    (cond-> op
+                      (:op op) (update :op keyword)
+                      (:type op) (update :type keyword)
+                      (:at op) (update :at keyword)
+                      (and (:under op) (string? (:under op))
+                           (#{"doc" ":doc" "trash" ":trash"} (:under op)))
+                      (update :under #(keyword (str/replace % #"^:" "")))))
+                  (:ops payload))
+        session (normalize-view-state-updates (or (:session payload) {}))
+        result (tx/interpret (db/empty-db) ops)]
+    (reset! !db (H/record (:db result)))
+    (vs/reset-view-state!)
+    (vs/merge-view-state-updates! session)
+    (swap! !storage-status assoc :checking? false)))
+
 (defn main []
   (when ^boolean goog.DEBUG
     (js/console.log "Blocks UI starting...")
@@ -643,6 +685,7 @@
                                          ops)
                                result (tx/interpret @!db ops)]
                            (reset! !db (H/record (:db result)))))
+             :loadFixture load-fixture!
 
              ;; ── Debug Helpers (for E2E test diagnostics) ────────────────────────
              ;; Debug an intent - check if it would be allowed and why
@@ -675,10 +718,10 @@
                                 :bufferBlockId (get-in current-session [:buffer :block-id])
                                 :bufferDirty (get-in current-session [:buffer :dirty?])}))
 
-             ;; Copy full debug state to clipboard for bug reports
-             :copyDebugState (fn []
-                               (let [current-session (vs/get-view-state)
-                                     db-snapshot @!db
+	             ;; Copy full debug state to clipboard for bug reports
+	             :copyDebugState (fn []
+	                               (let [current-session (vs/get-view-state)
+	                                     db-snapshot @!db
                                      debug-data {:timestamp (.toISOString (js/Date.))
                                                  :state (sm/current-state current-session)
                                                  :session current-session
@@ -699,8 +742,14 @@
                                  (-> (js/navigator.clipboard.writeText json-str)
                                      (.then #(js/console.log "✅ Debug state copied to clipboard"))
                                      (.catch #(js/console.error "❌ Failed to copy:" %)))
-                                 (js/console.log "Debug state:" debug-data)
-                                 json-str))})
+	                                 (js/console.log "Debug state:" debug-data)
+	                                 json-str))})
+
+  (when (and (embed-mode?) (seq (.-name js/window)))
+    (try
+      (load-fixture! (.parse js/JSON (.-name js/window)))
+      (catch :default err
+        (js/console.error "Failed to load embed fixture from window.name" err))))
 
   ;; Phase 2: Expose session for debugging
   (set! (.-SESSION js/window) vs/!view-state)

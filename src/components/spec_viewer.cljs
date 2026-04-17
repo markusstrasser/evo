@@ -28,6 +28,9 @@
 (defn- current-search-params []
   (js/URLSearchParams. (.-search js/location)))
 
+(defn- specviewer-route? []
+  (.has (current-search-params) "specs"))
+
 (defn- essay-mode? []
   (.has (current-search-params) "essay"))
 
@@ -164,6 +167,110 @@
                        :behavior behavior)))))
         essay-example-refs))
 
+(def essay-demo-src "/?test=true&embed=1")
+(def essay-demo-page-id "essay-demo-page")
+
+(defn- tree-entry-attrs [entry]
+  (first (filter map? (rest entry))))
+
+(defn- tree-entry-text [entry]
+  (or (first (filter string? (rest entry))) ""))
+
+(defn- tree-entry-children [entry]
+  (filter vector? (rest entry)))
+
+(defn- tree-node-count [tree]
+  (if (and (vector? tree) (seq tree))
+    (reduce (fn [total child]
+              (+ total (tree-node-count child)))
+            1
+            (tree-entry-children tree))
+    0))
+
+(defn- cursor->position [text cursor]
+  (case cursor
+    :end (count text)
+    :start 0
+    (if (number? cursor) cursor 0)))
+
+(defn- collect-tree-session [entry acc]
+  (let [id (safe-name (first entry))
+        text (tree-entry-text entry)
+        attrs (tree-entry-attrs entry)
+        selected? (or (:selected attrs) (:selected? attrs))
+        focus? (or (:focus attrs) (:focus? attrs))
+        anchor? (or (:anchor attrs) (:anchor? attrs))
+        folded? (:folded attrs)
+        cursor (:cursor attrs)
+        acc (cond-> acc
+              (or selected? focus? anchor?)
+              (update-in [:selection :nodes] (fnil conj #{}) id)
+
+              focus?
+              (assoc-in [:selection :focus] id)
+
+              anchor?
+              (assoc-in [:selection :anchor] id)
+
+              folded?
+              (update-in [:ui :folded] (fnil conj #{}) id)
+
+              cursor
+              (assoc :cursor-block {:id id
+                                    :position (cursor->position text cursor)}))]
+    (reduce (fn [state child]
+              (collect-tree-session child state))
+            acc
+            (tree-entry-children entry))))
+
+(defn- tree->fixture-ops [tree]
+  (let [top-level (tree-entry-children tree)]
+    (into [{:op :create-node :id essay-demo-page-id :type :page :props {:title "Essay Demo"}}
+           {:op :place :id essay-demo-page-id :under :doc :at :last}]
+          (mapcat
+           (fn build-ops [entry parent-id]
+             (let [id (safe-name (first entry))
+                   text (tree-entry-text entry)
+                   children (tree-entry-children entry)]
+               (concat
+                [{:op :create-node :id id :type :block :props {:text text}}
+                 {:op :place :id id :under parent-id :at :last}]
+                (mapcat #(build-ops % id) children))))
+           top-level
+           (repeat essay-demo-page-id)))))
+
+(defn- scenario-state->fixture-payload [state]
+  (let [tree (:tree state)
+        base-session {:selection {:nodes #{} :focus nil :anchor nil}
+                      :ui {:current-page essay-demo-page-id
+                           :journals-view? false
+                           :sidebar-visible? false
+                           :hotkeys-visible? false
+                           :editing-page-title? false
+                           :folded #{}
+                           :zoom-root nil}}
+        tree-session (reduce (fn [acc entry]
+                               (collect-tree-session entry acc))
+                             base-session
+                             (tree-entry-children tree))
+        cursor-block (:cursor-block tree-session)
+        ui-session (cond-> (:ui tree-session)
+                     (contains? state :zoom-root)
+                     (assoc :zoom-root (:zoom-root state))
+
+                     (contains? state :folded)
+                     (assoc :folded (set (map safe-name (:folded state))))
+
+                     cursor-block
+                     (assoc :editing-block-id (:id cursor-block)
+                            :cursor-position (:position cursor-block)))
+        selection-session (if cursor-block
+                            {:nodes #{} :focus nil :anchor nil}
+                            (:selection tree-session))]
+    {:ops (tree->fixture-ops tree)
+     :session {:selection (update selection-session :nodes vec)
+               :ui (update ui-session :folded vec)}}))
+
 (defn- ensure-valid-selection [state]
   (let [available-frs (visible-frs state)
         selected-fr (:selected-fr state)
@@ -196,7 +303,7 @@
 
 (defn- sync-url!
   []
-  (when-not (essay-mode?)
+  (when (and (specviewer-route?) (not (essay-mode?)))
     (let [next-url (ui-state->search)
           current-url (str (.-pathname js/location)
                            (.-search js/location)
@@ -233,14 +340,14 @@
                  (request-render!)))))
 
 (defonce _url-initializer
-  (when-not (essay-mode?)
+  (when (and (specviewer-route?) (not (essay-mode?)))
     (reset! !ui-state (ensure-valid-selection (merge @!ui-state (parse-url-state))))))
 
 (defonce _popstate-listener
   (.addEventListener js/window "popstate"
                      (fn []
                        (reset! syncing-url? true)
-                       (when-not (essay-mode?)
+                       (when (and (specviewer-route?) (not (essay-mode?)))
                          (reset! !ui-state
                                  (ensure-valid-selection
                                   (merge @!ui-state (parse-url-state)))))
@@ -417,6 +524,12 @@
                        :border-radius "22px"
                        :padding "18px 20px"
                        :box-shadow "0 12px 32px rgba(69,44,24,0.05)"}
+
+   :essay-editor-frame {:display "block"
+                        :width "100%"
+                        :border "0"
+                        :border-radius "18px"
+                        :background "white"}
 
    :essay-figure-code {:margin-top "10px"
                        :padding "12px 14px"
@@ -747,13 +860,6 @@
    :brackets "#6b7280"
    :indent "#4b5563"})
 
-(def light-dsl-palette
-  {:keyword "#8b3fa8"
-   :string "#24604b"
-   :attrs "#9d5a0c"
-   :brackets "#9a8d7d"
-   :indent "#c5b8a8"})
-
 (defn- render-dsl-tree
   "Render tree DSL with syntax highlighting (raw Clojure notation)."
   ([tree depth]
@@ -799,11 +905,16 @@
                    :border-radius "10px"}}
      (render-dsl-tree tree 0)]))
 
-(defn- EssayDslView
-  [tree]
-  (when tree
-    [:div {:style (:essay-figure-code styles)}
-     (render-dsl-tree tree 0 light-dsl-palette)]))
+(defn- EssayEditorFrame
+  [{:keys [state title]}]
+  (let [payload (scenario-state->fixture-payload state)
+        node-count (max 1 (reduce + (map tree-node-count (tree-entry-children (:tree state)))))
+        frame-height (+ 88 (* node-count 54))]
+    [:iframe {:title title
+              :src essay-demo-src
+              :name (js/JSON.stringify (clj->js payload))
+              :loading "lazy"
+              :style (assoc (:essay-editor-frame styles) :height (str frame-height "px"))}]))
 
 (defn- DslDiffView
   "Side-by-side DSL syntax comparison."
@@ -935,11 +1046,13 @@
     [:div {:style (:essay-figure-row styles)}
      [:div {:style (:essay-figure-card styles)}
       [:div {:style (:essay-panel-title styles)} "Before"]
-      (EssayDslView (:tree (:setup scenario)))]
+      (EssayEditorFrame {:state (:setup scenario)
+                         :title (str title " before")})]
      [:div {:style (:essay-figure-arrow styles)} "→"]
      [:div {:style (:essay-figure-card styles)}
       [:div {:style (:essay-panel-title styles)} "After"]
-      (EssayDslView (:tree (:expect scenario)))]]
+      (EssayEditorFrame {:state (:expect scenario)
+                         :title (str title " after")})]]
     [:p {:style (merge (:essay-copy styles) {:max-width "700px"})}
      (or (:behavior behavior)
          (:context behavior)
