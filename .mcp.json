@@ -8,6 +8,14 @@
         "clojure -X:mcp-shadow-dual"
       ]
     },
+    "evo-live": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/bash",
+      "args": [
+        "-c",
+        "clojure -M:mcp"
+      ]
+    },
     "context7": {
       "type": "stdio",
       "command": "npx",
