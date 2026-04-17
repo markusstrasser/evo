@@ -3,9 +3,9 @@
 
    CRITICAL: Selection must use DOM/visual order (pre-order traversal),
    NOT sibling order. This ensures Shift+Down from parent selects first child."
-  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
-  (:require #?(:clj [clojure.test :refer [deftest is testing use-fixtures]]
-               :cljs [cljs.test :refer [deftest is testing use-fixtures]])
+  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
+  (:require #?(:clj [clojure.test :refer [deftest is testing]]
+               :cljs [cljs.test :refer [deftest is testing]])
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]

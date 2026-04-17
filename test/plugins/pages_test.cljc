@@ -1,8 +1,7 @@
 (ns plugins.pages-test
   "Regression tests for page delete/restore flows."
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
-  (:require [clojure.string :as str]
-            #?(:clj [clojure.test :refer [deftest is testing]]
+  (:require #?(:clj [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
             [kernel.api :as api]
             [kernel.constants :as const]
@@ -11,7 +10,8 @@
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [plugins.manifest :as manifest]
-            #?(:cljs [shell.storage :as storage])))
+            #?@(:cljs [[clojure.string :as str]
+                       [shell.storage :as storage]])))
 
 (defn- ensure-plugins!
   []

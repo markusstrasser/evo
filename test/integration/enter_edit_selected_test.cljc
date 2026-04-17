@@ -14,7 +14,6 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]
             ;; REQUIRED: Load plugin to register :enter-edit-selected intent
             [plugins.editing]))
 
@@ -63,8 +62,9 @@
 
 ;; ── Test Fixtures ────────────────────────────────────────────────────────────
 
-(defn build-simple-doc []
+(defn build-simple-doc
   "Create db with three blocks: [a, b, c]"
+  []
   (let [db0 (db/empty-db)
         {:keys [db issues]}
         (tx/interpret db0
@@ -77,8 +77,9 @@
     (assert (empty? issues) (str "Fixture failed: " (pr-str issues)))
     db))
 
-(defn build-empty-block-doc []
+(defn build-empty-block-doc
   "Create db with an empty block."
+  []
   (let [db0 (db/empty-db)
         {:keys [db issues]}
         (tx/interpret db0

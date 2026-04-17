@@ -1,4 +1,7 @@
-(ns property.intent-sequences-test
+(ns ^{:clj-kondo/config '{:linters {:unused-namespace {:level :off}
+                                    :unused-referred-var {:level :off}
+                                    :unused-binding {:level :off}}}}
+  property.intent-sequences-test
   "Property-based tests for intent sequences.
 
    Tests that random sequences of structural intents maintain DB invariants.
@@ -10,7 +13,11 @@
    - Parent-child consistency maintained
    - No orphaned nodes (except trash)
    - Intent sequences are composable (order independence for invariants)
-   - Undo/redo preserves DB validity"
+   - Undo/redo preserves DB validity
+
+   NOTE: namespace-lint suppressed — clj-kondo has a known false-positive
+   with defspec+.cljc that flags these requires as unused. Also suppressing
+   :unused-binding because clj-kondo doesn't track gen/let bindings."
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]

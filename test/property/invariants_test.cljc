@@ -1,4 +1,6 @@
-(ns property.invariants-test
+(ns ^{:clj-kondo/config '{:linters {:unused-namespace {:level :off}
+                                    :unused-referred-var {:level :off}}}}
+  property.invariants-test
   "Property-based tests for database invariants.
 
    These tests generate random operation sequences and verify that
@@ -9,15 +11,17 @@
    - Derived indexes match computed values
    - No orphaned nodes (except in trash)
    - Undo/redo is reversible
-   - Cursor position is always within text bounds"
+   - Cursor position is always within text bounds
+
+   NOTE: namespace-lint suppressed — clj-kondo has a known false-positive
+   with defspec+.cljc that flags these requires as unused."
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.clojure-test :refer [defspec]]
             [kernel.db :as db]
             [kernel.transaction :as tx]
-            [kernel.intent :as intent]
-            [kernel.query :as q]))
+            [kernel.intent :as intent]))
 
 ;; ── Generators ───────────────────────────────────────────────────────────────
 

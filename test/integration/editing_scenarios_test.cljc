@@ -129,10 +129,10 @@
   (testing "Enter at start of block creates new block above"
     (let [db (build-simple-doc)
           session (editing-session "b" 0) ;; Cursor at start
-          {:keys [db session]} (run-intent db session
-                                 {:type :context-aware-enter
-                                  :block-id "b"
-                                  :cursor-pos 0})]
+          {:keys [db]} (run-intent db session
+                         {:type :context-aware-enter
+                          :block-id "b"
+                          :cursor-pos 0})]
       ;; Original block text unchanged
       (is (= "Second block" (get-in db [:nodes "b" :props :text])))
       ;; New empty block should be above "b"
@@ -157,9 +157,9 @@
   (testing "Backspace merge reparents children to merged-into block"
     (let [db (build-3-level-hierarchy)
           session (editing-session "child-2" 0)
-          {:keys [db session]} (run-intent db session
-                                 {:type :merge-with-prev
-                                  :block-id "child-2"})]
+          {:keys [db]} (run-intent db session
+                         {:type :merge-with-prev
+                          :block-id "child-2"})]
       ;; child-2 should be merged into child-1
       (is (= "First childSecond child" (get-in db [:nodes "child-1" :props :text])))
       ;; grandchild should still be under child-1

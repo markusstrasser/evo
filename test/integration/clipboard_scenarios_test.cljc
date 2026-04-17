@@ -96,11 +96,11 @@
     ;; The "after" text is lost for current block, appended to last sibling
     (let [db (build-single-block)
           session (editing-session "target" 7)
-          {:keys [db session]} (run-intent db session
-                                 {:type :paste-text
-                                  :block-id "target"
-                                  :cursor-pos 7
-                                  :pasted-text "line1\n\nline2\n\nline3"})] ;; Blank lines trigger split
+          {:keys [db]} (run-intent db session
+                         {:type :paste-text
+                          :block-id "target"
+                          :cursor-pos 7
+                          :pasted-text "line1\n\nline2\n\nline3"})] ;; Blank lines trigger split
       ;; Original block gets before + first paragraph (no "after" text here)
       (is (= "Target line1" (get-in db [:nodes "target" :props :text])))
       ;; New sibling blocks created (under same parent as target)
@@ -126,11 +126,11 @@
   (testing "Paste with blank lines creates sibling blocks"
     (let [db (build-single-block)
           session (editing-session "target" 7)
-          {:keys [db session]} (run-intent db session
-                                 {:type :paste-text
-                                  :block-id "target"
-                                  :cursor-pos 7
-                                  :pasted-text "line1\n\nline3"})] ;; Blank line in middle
+          {:keys [db]} (run-intent db session
+                         {:type :paste-text
+                          :block-id "target"
+                          :cursor-pos 7
+                          :pasted-text "line1\n\nline3"})] ;; Blank line in middle
       ;; Original block gets before + first paragraph
       (is (= "Target line1" (get-in db [:nodes "target" :props :text])))
       ;; New sibling blocks created under same parent
@@ -145,11 +145,11 @@
   (testing "Paste empty string leaves text unchanged"
     (let [db (build-single-block)
           session (editing-session "target" 7)
-          {:keys [db ops]} (run-intent db session
-                             {:type :paste-text
-                              :block-id "target"
-                              :cursor-pos 7
-                              :pasted-text ""})]
+          {:keys [db]} (run-intent db session
+                         {:type :paste-text
+                          :block-id "target"
+                          :cursor-pos 7
+                          :pasted-text ""})]
       ;; Text unchanged (may have no-op update, that's fine)
       (is (= "Target block" (get-in db [:nodes "target" :props :text]))))))
 
@@ -163,13 +163,11 @@
                           :cursor-pos 7
                           :pasted-text "pasted\n"})] ;; Trailing newline
       ;; Should NOT create an empty block at end
-      (let [children (q/children db "target")]
-        ;; Either 0 or 1 child, but not an extra empty block
-        (when (seq children)
-          (let [last-child (last children)
-                last-text (get-in db [:nodes last-child :props :text])]
-            (is (or (nil? last-text) (= "" last-text) (not= "" last-text))
-                "Last block should have content or be intentionally empty")))))))
+      (when-let [children (seq (q/children db "target"))]
+        (let [last-child (last children)
+              last-text (get-in db [:nodes last-child :props :text])]
+          (is (or (nil? last-text) (= "" last-text) (not= "" last-text))
+              "Last block should have content or be intentionally empty"))))))
 
 (deftest paste-preserves-line-endings-inline
   (testing "Paste preserves line endings inline (single newlines don't split)"

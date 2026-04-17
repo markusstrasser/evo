@@ -13,8 +13,6 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.api :as api]
-            [kernel.query :as q]
             ;; Required to register merge-with-prev, delete-forward intents
             [plugins.editing]))
 
@@ -103,7 +101,7 @@
   (testing "Delete first block should focus next sibling"
     (let [db (build-3-sibling-doc)
           session (with-selection ["a"] "a")
-          {:keys [db session]} (run-intent db session {:type :delete-selected})]
+          {:keys [session]} (run-intent db session {:type :delete-selected})]
       ;; Focus should move to next block "b"
       (is (or (= "b" (get-in session [:selection :focus]))
               ;; Or c if b was somehow affected
@@ -243,7 +241,7 @@
 
 (deftest focus-preserved-across-zoom-in
   (testing "Focus should be preserved when zooming into block"
-    (let [db (build-nested-with-children)
+    (let [_db (build-nested-with-children)
           ;; Select child-1 before zoom
           session (with-selection ["child-1"] "child-1")
           ;; Zoom into parent
@@ -256,7 +254,7 @@
 
 (deftest focus-adjusted-when-zooming-past-selection
   (testing "Focus should adjust when zooming past currently selected block"
-    (let [db (build-nested-with-children)
+    (let [_db (build-nested-with-children)
           ;; Select sibling (outside parent subtree)
           session (with-selection ["sibling"] "sibling")
           ;; Zoom into parent (sibling is no longer visible)
