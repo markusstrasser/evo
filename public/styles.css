@@ -2479,3 +2479,22 @@
     margin-top: 3cm;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HIDDEN MARKER SPANS
+   Visually-hidden spans carrying markdown markers (`**`, `_`, `==`, `~~`)
+   around formatted segments so native partial-text copy produces
+   round-trippable markdown. aria-hidden on the DOM side keeps screen
+   readers from announcing the literal markers.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.block-content .marker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  user-select: text; /* ensure selection traversal still sees the span */
+}
