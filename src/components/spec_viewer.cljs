@@ -6,6 +6,7 @@
    to the URL."
   (:require [spec.registry :as fr]
             [kernel.intent :as intent]
+            [clojure.set :as set]
             [clojure.string :as str]
             [replicant.dom :as d]))
 
@@ -81,6 +82,56 @@
      (+ total (count (executable-scenarios (fr/get-fr fr-id)))))
    0
    fr-ids))
+
+(defn- intent-audit-index []
+  (into {} (map (juxt :id identity)) (intent/full-audit)))
+
+(defn- related-frs
+  [fr-id]
+  (let [current-fr (fr/get-fr fr-id)
+        current-tags (set (:tags current-fr))
+        current-type (:type current-fr)
+        current-namespace (namespace fr-id)]
+    (->> (fr/list-frs)
+         (remove #{fr-id})
+         (map (fn [other-id]
+                (let [other-fr (fr/get-fr other-id)
+                      shared-tags (vec (sort (set/intersection current-tags (set (:tags other-fr)))))
+                      score (+ (* 3 (count shared-tags))
+                               (if (= current-namespace (namespace other-id)) 2 0)
+                               (if (= current-type (:type other-fr)) 1 0))]
+                  {:id other-id
+                   :fr other-fr
+                   :shared-tags shared-tags
+                   :score score})))
+         (filter #(pos? (:score %)))
+         (sort-by (juxt (comp - :score) :id))
+         (take 4)
+         vec)))
+
+(defn- scenario-action-label
+  [action]
+  (let [steps (if (vector? action) action [action])]
+    (str/join
+     " then "
+     (map (fn [step]
+            (str ":" (safe-name (:type step))
+                 (when-let [direction (:direction step)]
+                   (str " " (safe-name direction)))
+                 (when-let [mode (:mode step)]
+                   (str " " (safe-name mode)))
+                 (when-let [cursor-pos (:current-cursor-pos step)]
+                   (str " from col " cursor-pos))))
+          steps))))
+
+(defn- behaviors-by-scenario
+  [behaviors]
+  (reduce (fn [acc behavior]
+            (if-let [scenario-id (:scenario behavior)]
+              (assoc acc scenario-id behavior)
+              acc))
+          {}
+          behaviors))
 
 (defn- ensure-valid-selection [state]
   (let [available-frs (visible-frs state)
@@ -213,6 +264,127 @@
 
    :sticky-header-inner {:border-bottom "1px solid #27272a"
                          :padding-bottom "16px"}
+
+   :eyebrow {:font-size "11px"
+             :text-transform "uppercase"
+             :letter-spacing "0.08em"
+             :color "#71717a"
+             :font-family "'IBM Plex Mono', monospace"
+             :margin-bottom "10px"}
+
+   :doc-grid {:display "grid"
+              :grid-template-columns "minmax(0, 2.1fr) minmax(280px, 1fr)"
+              :gap "20px"
+              :align-items "start"}
+
+   :doc-main {:display "flex"
+              :flex-direction "column"
+              :gap "20px"}
+
+   :doc-aside {:display "flex"
+               :flex-direction "column"
+               :gap "20px"}
+
+   :surface {:background "#17171a"
+             :border "1px solid #27272a"
+             :border-radius "12px"
+             :padding "18px 20px"}
+
+   :lede {:font-size "18px"
+          :line-height "1.6"
+          :color "#ededf0"
+          :margin "0"}
+
+   :section-title {:font-size "14px"
+                   :font-weight "600"
+                   :color "#d4d4d8"
+                   :margin "0 0 14px 0"
+                   :text-transform "uppercase"
+                   :letter-spacing "0.05em"}
+
+   :section-copy {:font-size "14px"
+                  :line-height "1.7"
+                  :color "#bdbdc7"
+                  :margin "0"}
+
+   :meta-list {:display "flex"
+               :flex-wrap "wrap"
+               :gap "8px"}
+
+   :meta-chip {:padding "5px 9px"
+               :border-radius "999px"
+               :background "#222228"
+               :color "#c7c7d1"
+               :font-size "11px"
+               :font-family "'IBM Plex Mono', monospace"}
+
+   :behavior-card {:padding "14px 16px"
+                   :border "1px solid #27272a"
+                   :border-radius "10px"
+                   :background "#141418"}
+
+   :behavior-context {:font-size "12px"
+                      :color "#8f90a0"
+                      :margin-bottom "8px"}
+
+   :behavior-text {:font-size "14px"
+                   :line-height "1.6"
+                   :color "#ededf0"}
+
+   :behavior-grid {:display "flex"
+                   :flex-direction "column"
+                   :gap "12px"}
+
+   :related-link {:display "block"
+                  :width "100%"
+                  :box-sizing "border-box"
+                  :text-align "left"
+                  :padding "12px 14px"
+                  :border "1px solid #27272a"
+                  :border-radius "10px"
+                  :background "#141418"
+                  :color "#ededf0"
+                  :cursor "pointer"}
+
+   :scenario-prose-grid {:display "grid"
+                         :grid-template-columns "repeat(3, minmax(0, 1fr))"
+                         :gap "12px"
+                         :margin-bottom "16px"}
+
+   :scenario-note {:padding "12px 14px"
+                   :border "1px solid #27272a"
+                   :border-radius "10px"
+                   :background "#141418"}
+
+   :scenario-note-label {:font-size "10px"
+                         :text-transform "uppercase"
+                         :letter-spacing "0.08em"
+                         :color "#71717a"
+                         :font-family "'IBM Plex Mono', monospace"
+                         :margin-bottom "8px"}
+
+   :scenario-note-body {:font-size "13px"
+                        :line-height "1.6"
+                        :color "#d4d4d8"}
+
+   :inline-code-block {:margin-top "10px"
+                       :padding "10px 12px"
+                       :border-radius "8px"
+                       :background "#101014"
+                       :border "1px solid #27272a"
+                       :font-family "'IBM Plex Mono', monospace"
+                       :font-size "11px"
+                       :line-height "1.6"
+                       :white-space "pre-wrap"
+                       :color "#c7c7d1"}
+
+   :note-callout {:margin-top "14px"
+                  :padding "12px 14px"
+                  :border-radius "10px"
+                  :background "#121d1a"
+                  :border "1px solid #1f4636"
+                  :color "#b7e4d2"
+                  :line-height "1.6"}
 
    ;; Sidebar items
    :fr-item {:padding "12px 16px"
@@ -492,7 +664,7 @@
 
 (defn ScenarioCard
   "Render a scenario with row-aligned before/after diff view."
-  [{:keys [scenario-id scenario]}]
+  [{:keys [scenario-id scenario behavior]}]
   (let [{:keys [setup action expect]} scenario
         executable? (and setup action expect)]
     [:div {:style (:scenario-card styles)}
@@ -515,25 +687,47 @@
      ;; Row-aligned diff view (Tufte-style: minimal saccades)
      (when executable?
        [:div
-        [:div {:style {:padding "12px 16px"}}
+        [:div {:style {:padding "16px"}}
+         [:div {:style (:scenario-prose-grid styles)}
+          [:div {:style (:scenario-note styles)}
+           [:div {:style (:scenario-note-label styles)} "Setup"]
+           [:div {:style (:scenario-note-body styles)}
+            (or (:context behavior)
+                "Initial document state before the operation runs.")]]
+          [:div {:style (:scenario-note styles)}
+           [:div {:style (:scenario-note-label styles)} "Operation"]
+           [:div {:style (:scenario-note-body styles)}
+            (scenario-action-label action)]
+           [:div {:style (:inline-code-block styles)}
+            (pr-str action)]]
+          [:div {:style (:scenario-note styles)}
+           [:div {:style (:scenario-note-label styles)} "What this proves"]
+           [:div {:style (:scenario-note-body styles)}
+            (or (:behavior behavior)
+                "The resulting structure should match the requirement after the operation completes.")]]]
          (DiffView {:before (:tree setup) :after (:tree expect)})]
 
-        ;; Compact action banner
-        [:div {:style {:background "linear-gradient(90deg, #312e81 0%, #3730a3 100%)"
-                       :padding "8px 16px"
-                       :font-family "'IBM Plex Mono', monospace"
-                       :font-size "11px"
-                       :color "#c7d2fe"
-                       :display "flex"
-                       :align-items "center"
-                       :gap "8px"}}
-         [:span {:style {:color "#818cf8" :font-weight "600" :font-size "9px"
-                         :text-transform "uppercase" :letter-spacing "0.5px"}}
-          "action"]
-         [:span {:style {:color "#6366f1"}} "→"]
-         [:span (str ":" (safe-name (:type action))
-                     (when-let [dir (:direction action)] (str " " (safe-name dir)))
-                     (when-let [pos (:current-cursor-pos action)] (str " from col " pos)))]]])]))
+        (when-let [scenario-note (:notes scenario)]
+          [:div {:style (:note-callout styles)} scenario-note])])]))
+
+(defn RelatedRequirementCard
+  [{:keys [id fr shared-tags]}]
+  [:div {:style (:related-link styles)}
+   [:div {:style {:font-family "'IBM Plex Mono', monospace"
+                  :font-size "12px"
+                  :margin-bottom "6px"}}
+    (name id)]
+   [:div {:style {:font-size "12px"
+                  :line-height "1.5"
+                  :color "#8f90a0"}}
+    (:desc fr)]
+   (when (seq shared-tags)
+     [:div {:style {:margin-top "10px"}}
+      [:div {:style (:meta-list styles)}
+       (for [tag shared-tags]
+         ^{:key (str id "-" tag)}
+         [:span {:style (:meta-chip styles)}
+          (str "#" (safe-name tag))])]])])
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Detail Panel
@@ -546,9 +740,13 @@
     (let [all-scenarios (:scenarios fr)
           scenarios (into {} (filter (fn [[_ s]] (fr/executable-scenario? s)) all-scenarios))
           scenario-count (count scenarios)
-          show-dsl? (:show-dsl? @!ui-state)]
+          show-dsl? (:show-dsl? @!ui-state)
+          audit (get (intent-audit-index) fr-id)
+          implementing-intents (sort (:implementing-intents audit))
+          behaviors (:behaviors fr)
+          behavior-index (behaviors-by-scenario behaviors)
+          related (related-frs fr-id)]
       [:div
-       ;; Header
        [:div {:style (:sticky-header styles)}
         [:div {:style (merge (:sticky-header-inner styles)
                              {:display "flex"
@@ -557,13 +755,17 @@
                               :gap "16px"
                               :flex-wrap "wrap"})}
          [:div
+          [:div {:style (:eyebrow styles)} "Functional Requirement"]
           [:h2 {:style {:margin "0 0 8px 0"
-                        :font-size "22px"
+                        :font-size "28px"
                         :font-weight "600"
                         :color "#fafafa"
                         :font-family "'IBM Plex Mono', monospace"}}
            (name fr-id)]
-          [:p {:style {:color "#a1a1aa" :margin "0" :line-height "1.5"}}
+          [:p {:style {:color "#c9cad5"
+                       :margin "0"
+                       :line-height "1.7"
+                       :max-width "820px"}}
            (:desc fr)]
           [:div {:style {:margin-top "14px"
                          :display "flex"
@@ -582,6 +784,9 @@
             (str "Type: " (name (:type fr)))]
            [:span {:style {:font-size "12px" :color "#71717a"}}
             (str "Spec: " (:spec-ref fr))]
+           (when-let [level (:level fr)]
+             [:span {:style {:font-size "12px" :color "#71717a"}}
+              (str "Level: " (safe-name level))])
            (when (pos? scenario-count)
              [:span {:style {:display "flex"
                              :align-items "center"
@@ -617,44 +822,113 @@
                     :on {:click (fn [_] (set-ui-state! assoc :show-dsl? true))}}
            "DSL"]]]]
 
-       ;; Behaviors table
-       (when-let [behaviors (:behaviors fr)]
-         [:div {:style {:margin-bottom "28px"}}
-          [:h3 {:style {:font-size "13px" :font-weight "600" :color "#a1a1aa"
-                        :margin-bottom "12px" :text-transform "uppercase" :letter-spacing "0.5px"}}
-           "Behaviors"]
-          [:table {:style {:width "100%" :border-collapse "collapse" :font-size "13px"
-                           :background "#18181b" :border-radius "6px" :overflow "hidden"}}
-           [:thead
-            [:tr {:style {:background "#1f1f23"}}
-             [:th {:style {:text-align "left" :padding "10px 14px" :color "#71717a" :font-weight "500" :border-bottom "1px solid #27272a"}} "Context"]
-             [:th {:style {:text-align "left" :padding "10px 14px" :color "#71717a" :font-weight "500" :border-bottom "1px solid #27272a"}} "Behavior"]
-             [:th {:style {:text-align "left" :padding "10px 14px" :color "#71717a" :font-weight "500" :border-bottom "1px solid #27272a"}} "Scenario"]]]
-           [:tbody
-            (for [[i beh] (map-indexed vector behaviors)]
-              ^{:key i}
-              [:tr
-               [:td {:style {:padding "10px 14px" :border-bottom "1px solid #27272a" :color "#d4d4d8"}} (:context beh)]
-               [:td {:style {:padding "10px 14px" :border-bottom "1px solid #27272a" :color "#d4d4d8"}} (:behavior beh)]
-               [:td {:style {:padding "10px 14px" :border-bottom "1px solid #27272a"}}
-                (when-let [s (:scenario beh)]
-                  [:code {:style {:background "#27272a" :color "#a1a1aa" :padding "3px 8px"
-                                  :border-radius "3px" :font-family "'IBM Plex Mono', monospace" :font-size "11px"}}
-                   (name s)])]])]]])
+       [:div {:style (:doc-grid styles)}
+        [:div {:style (:doc-main styles)}
+         [:section {:style (:surface styles)}
+          [:div {:style (:eyebrow styles)} "What this guarantees"]
+          [:p {:style (:lede styles)} (:desc fr)]
+          (when (seq (:tags fr))
+            [:div {:style {:margin-top "16px"}}
+             [:div {:style (:meta-list styles)}
+              (for [tag (:tags fr)]
+                ^{:key tag}
+                [:span {:style (:meta-chip styles)}
+                 (str "#" (safe-name tag))])]])]
 
-       ;; Scenarios section with view toggle
-       (when (seq scenarios)
-         [:div
-          [:div {:style {:display "flex" :justify-content "space-between" :align-items "center" :margin-bottom "16px"}}
-           [:h3 {:style {:font-size "13px" :font-weight "600" :color "#a1a1aa" :margin "0"
-                         :text-transform "uppercase" :letter-spacing "0.5px"}}
-            (str "Scenarios (" scenario-count ")")]]
+         (when (seq behaviors)
+           [:section {:style (:surface styles)}
+            [:h3 {:style (:section-title styles)} "Behavior breakdown"]
+            [:div {:style (:behavior-grid styles)}
+             (for [[idx behavior] (map-indexed vector behaviors)]
+               ^{:key (str idx "-" (:context behavior))}
+               [:div {:style (:behavior-card styles)}
+                [:div {:style (:behavior-context styles)} (:context behavior)]
+                [:div {:style (:behavior-text styles)} (:behavior behavior)]
+                (when-let [scenario-id (:scenario behavior)]
+                  [:div {:style {:margin-top "10px"}}
+                   [:span {:style (:meta-chip styles)}
+                    (str "Example: " (safe-name scenario-id))]])])]])
 
-          ;; Scenario cards
-          (for [[scenario-id scenario] scenarios]
-            ^{:key scenario-id}
-            (ScenarioCard {:scenario-id scenario-id
-                           :scenario scenario}))])])))
+         (when (seq scenarios)
+           [:section
+            [:h3 {:style (:section-title styles)}
+             (str "Worked examples (" scenario-count ")")]
+            [:p {:style (merge (:section-copy styles) {:margin-bottom "16px"})}
+             "Each example shows the starting structure, the operation that runs, and the resulting structure the requirement depends on."]
+            (for [[scenario-id scenario] scenarios]
+              ^{:key scenario-id}
+              (ScenarioCard {:scenario-id scenario-id
+                             :scenario scenario
+                             :behavior (get behavior-index scenario-id)}))])]
+
+        [:aside {:style (:doc-aside styles)}
+         [:section {:style (:surface styles)}
+          [:div {:style (:eyebrow styles)} "Composition"]
+          [:p {:style (:section-copy styles)}
+           (str "This requirement is composed from "
+                (count behaviors) " named behavior"
+                (when (not= 1 (count behaviors)) "s")
+                " and "
+                scenario-count " executable example"
+                (when (not= 1 scenario-count) "s")
+                ".")]
+          (when (seq behaviors)
+            [:div {:style {:margin-top "14px"}}
+             [:div {:style (:meta-list styles)}
+              (for [behavior (take 4 behaviors)]
+                ^{:key (:context behavior)}
+                [:span {:style (:meta-chip styles)} (:context behavior)])]])]
+
+         [:section {:style (:surface styles)}
+          [:div {:style (:eyebrow styles)} "Runtime linkage"]
+          [:p {:style (:section-copy styles)}
+           (if (seq implementing-intents)
+             "Current runtime linkage for this requirement."
+             "No registered intents currently cite this requirement. This page is still valuable as a human spec, but the runtime linkage is not explicit here.")]
+          [:div {:style {:margin-top "14px"
+                         :display "flex"
+                         :flex-direction "column"
+                         :gap "10px"}}
+           (if (seq implementing-intents)
+             (for [intent-id implementing-intents]
+               ^{:key intent-id}
+               [:span {:style (:meta-chip styles)}
+                (str ":" (safe-name intent-id))])
+             [:span {:style (:meta-chip styles)} "No linked intents"])]]
+
+         (when-let [notes (:notes fr)]
+           [:section {:style (:surface styles)}
+            [:div {:style (:eyebrow styles)} "Spec note"]
+            [:div {:style (:section-copy styles)} notes]])
+
+         (when-let [invariants (:invariants fr)]
+           [:section {:style (:surface styles)}
+            [:div {:style (:eyebrow styles)} "Invariants"]
+            [:div {:style {:display "flex" :flex-direction "column" :gap "10px"}}
+             (when-let [pre (:pre invariants)]
+               [:div
+                [:div {:style (:scenario-note-label styles)} "Preconditions"]
+                [:div {:style (:meta-list styles)}
+                 (for [item pre]
+                   ^{:key (str "pre-" item)}
+                   [:span {:style (:meta-chip styles)}
+                    (safe-name item)])]])
+             (when-let [post (:post invariants)]
+               [:div
+                [:div {:style (:scenario-note-label styles)} "Postconditions"]
+                [:div {:style (:meta-list styles)}
+                 (for [item post]
+                   ^{:key (str "post-" item)}
+                   [:span {:style (:meta-chip styles)}
+                    (safe-name item)])]])]])
+
+         (when (seq related)
+           [:section {:style (:surface styles)}
+            [:div {:style (:eyebrow styles)} "Related requirements"]
+            [:div {:style {:display "flex" :flex-direction "column" :gap "10px"}}
+             (for [related-item related]
+               ^{:key (:id related-item)}
+               (RelatedRequirementCard related-item))]])]]])))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Sidebar
