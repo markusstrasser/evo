@@ -16,7 +16,6 @@
             [kernel.query :as q]
             [utils.fuzzy-search :as fuzzy]
             [clojure.string :as str]
-            [medley.core :as medley]
             #?(:cljs [utils.journal :as journal])))
 
 ;; ── Result Limits ─────────────────────────────────────────────────────────────
@@ -50,7 +49,7 @@
 
    Args: [{:keys [type item]}]
    Returns: string label for display"
-  (fn [opts] (:type opts)))
+  :type)
 
 ;; ── Page Ref Implementation ───────────────────────────────────────────────────
 
