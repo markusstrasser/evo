@@ -358,6 +358,30 @@
     container-name: main;
   }
 
+  .app--embed {
+    display: block;
+    min-height: 0;
+    background: transparent;
+  }
+
+  .main-wrapper--embed {
+    justify-content: stretch;
+    overflow: visible;
+  }
+
+  .main-content--embed {
+    max-width: none;
+    padding: 0;
+  }
+
+  .embed-shell {
+    padding: 12px 14px 10px;
+    background: white;
+    border: 1px solid oklch(92% 0.01 250);
+    border-radius: 18px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
+  }
+
   /* ─────────────────────────────────────────────────────────────────────────
      Sidebar - Editorial refinement with subtle depth
      ───────────────────────────────────────────────────────────────────────── */
