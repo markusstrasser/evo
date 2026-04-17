@@ -29,18 +29,19 @@
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}
 
-           ;; MCP dev-diagnostics server (minimal deps)
-           :mcp {:extra-paths ["mcp" "dev"]
-                 :extra-deps {io.modelcontextprotocol.sdk/mcp {:mvn/version "0.17.0"}
-                              org.clojure/data.json {:mvn/version "2.5.1"}
-                              org.slf4j/slf4j-simple {:mvn/version "2.1.0-alpha1"}}
+           ;; Evo-native MCP server — exposes intent registry + FR catalog to agents.
+           ;; Pure Clojure stdio JSON-RPC; no external MCP SDK.
+           :mcp {:extra-paths ["mcp"]
                  :main-opts ["-m" "servers.dev-diagnostics"]}
 
-           ;; Full clojure-mcp server with shadow-cljs support
+           ;; bhauman/clojure-mcp — REPL + shadow-cljs bridge, v0.3.1 (2026-03-14).
+           ;; :cli-assist profile trims tools for CLI clients (Claude Code / Codex / Gemini CLI).
            :mcp-shadow-dual {:extra-deps {io.github.bhauman/clojure-mcp
-                                          {:git/sha "2dd09e595df7bb9b01a7c811955a354777253dc2"}}
+                                          {:git/tag "v0.3.1"
+                                           :git/sha "81005cec94ab539fe92f45f42ab738a7e5f23f21"}}
                              :exec-fn clojure-mcp.main/start-mcp-server
-                             :exec-args {:port 55449}} ; shadow-cljs nREPL port from npm run dev
+                             :exec-args {:port 55449
+                                         :config-profile :cli-assist}}
 
            ;; Clojure script entrypoints under scripts/
            :scripts {:extra-paths ["scripts"]}
