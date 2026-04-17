@@ -6,23 +6,23 @@
 
 ;; ── Pattern Matching Tests ────────────────────────────────────────────────────
 
-(deftest image-pattern-test
-  (testing "basic image pattern matching"
-    (is (re-find images/image-pattern "![alt](path.png)"))
-    (is (re-find images/image-pattern "![](path.png)"))
-    (is (re-find images/image-pattern "![A cat](../assets/cat.jpg)"))
-    (is (re-find images/image-pattern "![](https://example.com/img.png)")))
+(deftest image?-basic-shapes
+  (testing "basic image shapes are detected"
+    (is (images/image? "![alt](path.png)"))
+    (is (images/image? "![](path.png)"))
+    (is (images/image? "![A cat](../assets/cat.jpg)"))
+    (is (images/image? "![](https://example.com/img.png)")))
 
-  (testing "pattern with width attribute"
-    (is (re-find images/image-pattern "![alt](path.png){width=400}"))
-    (is (re-find images/image-pattern "![](path.png){width=200}"))
-    (is (re-find images/image-pattern "![cat](cat.jpg){width=1024}")))
+  (testing "images with width attribute"
+    (is (images/image? "![alt](path.png){width=400}"))
+    (is (images/image? "![](path.png){width=200}"))
+    (is (images/image? "![cat](cat.jpg){width=1024}")))
 
-  (testing "non-matching patterns"
-    (is (nil? (re-find images/image-pattern "regular text")))
-    (is (nil? (re-find images/image-pattern "[not an image](link)")))
-    (is (nil? (re-find images/image-pattern "![incomplete")))
-    (is (nil? (re-find images/image-pattern "")))))
+  (testing "non-image strings are rejected"
+    (is (not (images/image? "regular text")))
+    (is (not (images/image? "[not an image](link)")))
+    (is (not (images/image? "![incomplete")))
+    (is (not (images/image? "")))))
 
 ;; ── Image Detection Tests ─────────────────────────────────────────────────────
 
@@ -154,6 +154,36 @@
     (is (= "![cat](cat.png){width=200}" (images/format-image "cat.png" "cat" 200)))))
 
 ;; ── Update Image Width Tests ────────────────────────────────────────────────
+
+;; ── Balanced Parens in URL Path ─────────────────────────────────────────────
+
+(deftest balanced-parens-in-path
+  (testing "Wikipedia-style URL with one nested paren pair"
+    (is (= [{:alt "" :path "https://en.wikipedia.org/wiki/Foo_(bar).png"}]
+           (images/extract-images "![](https://en.wikipedia.org/wiki/Foo_(bar).png)"))))
+
+  (testing "deeply nested balanced parens"
+    (is (= [{:alt "d" :path "a(b)c/d(e(f)g)h.png" :width 400}]
+           (images/extract-images "![d](a(b)c/d(e(f)g)h.png){width=400}"))))
+
+  (testing "multiple images, each with nested parens"
+    (let [r (images/extract-images
+              "![a](one(ok).png) and ![b](two(x)(y).png)")]
+      (is (= 2 (count r)))
+      (is (= "one(ok).png" (get-in r [0 :path])))
+      (is (= "two(x)(y).png" (get-in r [1 :path])))))
+
+  (testing "unbalanced parens do not match"
+    (is (nil? (images/extract-images "![broken](unclosed(paren.png"))))
+
+  (testing "whitespace inside path terminates the match"
+    (is (nil? (images/extract-images "![oops](has space.png)"))))
+
+  (testing "split-with-images preserves context around nested-paren paths"
+    (is (= [{:type :text :value "See "}
+            {:type :image :alt "" :path "x/Foo_(bar).png"}
+            {:type :text :value " here"}]
+           (images/split-with-images "See ![](x/Foo_(bar).png) here")))))
 
 (deftest update-image-width-test
   (testing "adds width to image without one"

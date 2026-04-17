@@ -7,25 +7,19 @@
    - Relative paths: ![](../assets/image.png)
    - Absolute URLs: ![](https://example.com/image.png)
    - Alt text: ![A descriptive caption](path.png)
-   - Width attribute: ![](path.png){width=400}"
+   - Width attribute: ![](path.png){width=400}
+   - Balanced parens in the URL path (CommonMark): ![](…/Foo_(bar).png)
+
+   The path scanner tracks paren depth so URLs like Wikipedia links with
+   `(…)` segments survive round-trip. Whitespace inside the path still
+   terminates the match (Markdown convention)."
   (:require [clojure.string :as str]))
 
-;; ── Image Regex ──────────────────────────────────────────────────────────────
-;; Pattern: ![alt](path){width=N}
-;; - ! marks it as an image (vs regular link)
-;; - [alt] is optional alt text (can be empty)
-;; - (path) is the image path/URL
-;; - {width=N} is optional width attribute
+(def ^:private width-suffix-re
+  "Optional {width=N} attribute immediately after the closing paren."
+  #"^\{width=(\d+)\}")
 
-(def image-pattern
-  "Regex to match markdown image syntax: ![alt](path) with optional {width=N}"
-  #"!\[([^\]]*)\]\(([^)]+)\)(?:\{width=(\d+)\})?")
-
-(def width-attr-pattern
-  "Regex to extract width from {width=N} suffix"
-  #"\{width=(\d+)\}")
-
-;; ── Parsing Functions ────────────────────────────────────────────────────────
+;; ── Parsing Helpers ──────────────────────────────────────────────────────────
 
 (defn- parse-width
   "Parse width string to integer, returns nil if invalid."
@@ -35,22 +29,99 @@
        :cljs (let [n (js/parseInt width-str 10)]
                (when-not (js/isNaN n) n)))))
 
+(defn- ws?
+  "Whitespace inside a Markdown URL path terminates the match."
+  [ch]
+  (or (= ch \space) (= ch \tab) (= ch \newline) (= ch \return)))
+
+(defn- find-balanced-close
+  "Given the index of an opening `(`, scan forward tracking paren depth
+   and return the index of the matching `)`. Returns nil if the path
+   contains whitespace or never closes."
+  [text open-idx]
+  (let [n (count text)]
+    (loop [i (inc open-idx)
+           depth 1]
+      (if (>= i n)
+        nil
+        (let [ch (nth text i)]
+          (cond
+            (ws? ch)       nil
+            (= ch \()      (recur (inc i) (inc depth))
+            (= ch \))      (if (= depth 1)
+                             i
+                             (recur (inc i) (dec depth)))
+            :else          (recur (inc i) depth)))))))
+
+(defn- find-image-at
+  "If `![alt](path){width=N}?` starts at `pos`, return a map with
+   :alt :path :width :start :end :full-match. Otherwise nil."
+  [text pos]
+  (let [n (count text)]
+    (when (and (< (+ pos 2) n)
+               (= \! (nth text pos))
+               (= \[ (nth text (inc pos))))
+      (when-let [alt-end (str/index-of text "]" (+ pos 2))]
+        (let [paren-open (inc alt-end)]
+          (when (and (< paren-open n) (= \( (nth text paren-open)))
+            (when-let [paren-close (find-balanced-close text paren-open)]
+              (let [alt (subs text (+ pos 2) alt-end)
+                    path (subs text (inc paren-open) paren-close)
+                    ;; Path must be non-empty
+                    _ (when (str/blank? path) nil)
+                    width-start (inc paren-close)
+                    width-hit (when (< width-start n)
+                                (re-find width-suffix-re (subs text width-start)))
+                    width-str (when width-hit (second width-hit))
+                    width-len (if width-hit (count (first width-hit)) 0)
+                    end (+ paren-close 1 width-len)]
+                (when-not (str/blank? path)
+                  (cond-> {:alt alt
+                           :path path
+                           :start pos
+                           :end end
+                           :full-match (subs text pos end)}
+                    width-str (assoc :width (parse-width width-str))))))))))))
+
+(defn- scan-images
+  "Walk the text left-to-right, returning every image match in order as
+   maps with :start :end :alt :path :width :full-match."
+  [text]
+  (when (and text (string? text))
+    (loop [pos 0
+           acc (transient [])]
+      (let [idx (when (< pos (count text)) (str/index-of text "![" pos))]
+        (cond
+          (nil? idx)
+          (persistent! acc)
+
+          :else
+          (if-let [m (find-image-at text idx)]
+            (recur (:end m) (conj! acc m))
+            ;; Not actually an image at idx; advance past the `!` and retry.
+            (recur (inc idx) acc)))))))
+
+;; ── Public API ───────────────────────────────────────────────────────────────
+
 (defn extract-images
   "Extract all image references from text.
 
-   Returns seq of {:alt \"alt text\" :path \"image/path.png\" :width 400}
-   Width is nil if not specified."
+   Returns seq of {:alt \"alt text\" :path \"image/path.png\" :width 400},
+   or nil when there are no valid image matches. Width is omitted if
+   not specified."
   [text]
   (when (and text (str/includes? text "!["))
-    (->> (re-seq image-pattern text)
-         (map (fn [[_full alt path width-str]]
+    (let [hits (scan-images text)]
+      (when (seq hits)
+        (mapv (fn [{:keys [alt path width]}]
                 (cond-> {:alt alt :path path}
-                  width-str (assoc :width (parse-width width-str))))))))
+                  width (assoc :width width)))
+              hits)))))
 
 (defn split-with-images
   "Split text into segments of plain text and image references.
 
-   Returns vector of {:type :text/:image :value text :alt alt :path path :width N}
+   Returns vector of {:type :text/:image :value text :alt alt :path path :width N}.
 
    Example:
      (split-with-images \"Before ![cat](cat.png){width=200} after\")
@@ -59,41 +130,36 @@
          {:type :text :value \" after\"}]"
   [text]
   (if (or (nil? text) (not (str/includes? text "![")))
-    ;; Fast path: no images possible
     [{:type :text :value text}]
-    ;; Parse images
-    (let [matches (re-seq image-pattern text)
-          result (atom [])
-          pos (atom 0)]
-      (doseq [[full-match alt path width-str] matches]
-        (let [match-start (str/index-of text full-match @pos)]
-          ;; Add text before this match
-          (when (> match-start @pos)
-            (swap! result conj {:type :text
-                                :value (subs text @pos match-start)}))
-          ;; Add the image with optional width
-          (swap! result conj (cond-> {:type :image
-                                      :alt alt
-                                      :path path}
-                               width-str (assoc :width (parse-width width-str))))
-          ;; Move position past this match
-          (reset! pos (+ match-start (count full-match)))))
-      ;; Add remaining text
-      (when (< @pos (count text))
-        (swap! result conj {:type :text
-                            :value (subs text @pos)}))
-      @result)))
+    (let [matches (scan-images text)
+          n (count text)]
+      (loop [pos 0
+             remaining matches
+             acc (transient [])]
+        (if (empty? remaining)
+          (persistent!
+            (if (< pos n)
+              (conj! acc {:type :text :value (subs text pos)})
+              acc))
+          (let [{:keys [start end alt path width]} (first remaining)
+                acc' (cond-> acc
+                       (< pos start)
+                       (conj! {:type :text :value (subs text pos start)})
+                       true
+                       (conj! (cond-> {:type :image :alt alt :path path}
+                                width (assoc :width width))))]
+            (recur end (rest remaining) acc')))))))
 
 (defn image?
   "Check if text contains any image references."
   [text]
-  (and text
+  (and (string? text)
        (str/includes? text "![")
-       (re-find image-pattern text)))
+       (boolean (seq (scan-images text)))))
 
 (defn path->filename
   "Extract filename from an image path.
-   
+
    Example: \"../assets/cat_123_0.png\" => \"cat_123_0.png\""
   [path]
   (when path
@@ -129,9 +195,8 @@
        base))))
 
 (defn update-image-width
-  "Update or add width attribute to an image markdown string.
+  "Update or add width attribute to every image in text.
 
-   If text contains an image, updates its width attribute.
    If width is nil, removes the width attribute.
 
    Example:
@@ -144,14 +209,17 @@
      (update-image-width \"![cat](cat.png){width=200}\" nil)
      => \"![cat](cat.png)\""
   [text new-width]
-  (if-not (image? text)
-    text
-    (let [;; First, strip any existing width attribute
-          base-text (str/replace text width-attr-pattern "")]
-      (if new-width
-        ;; Add new width after the closing paren of each image
-        (str/replace base-text
-                     #"(!\[[^\]]*\]\([^)]+\))"
-                     (str "$1{width=" new-width "}"))
-        ;; No width - return base text
-        base-text))))
+  (let [matches (scan-images text)]
+    (if (empty? matches)
+      text
+      (loop [pos 0
+             remaining matches
+             out []]
+        (if (empty? remaining)
+          (apply str (conj out (subs text pos)))
+          (let [{:keys [start end alt path]} (first remaining)]
+            (recur end
+                   (rest remaining)
+                   (conj out
+                         (subs text pos start)
+                         (format-image path alt new-width)))))))))
