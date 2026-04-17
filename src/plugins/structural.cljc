@@ -98,7 +98,7 @@
 (defn delete-ops
   "Move block to :trash (children come along automatically).
    Signature: [db session id] - uniform for apply-to-active-targets."
-  [db _session id]
+  [_db _session id]
   [{:op :place :id id :under const/root-trash :at :last}])
 
 (defn indent-ops

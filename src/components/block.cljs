@@ -1703,7 +1703,6 @@
              (when show-autocomplete?
                (autocomplete/Popup
                 {:autocomplete autocomplete-state
-                 :on-select #(on-intent {:type :autocomplete/select})
-                 :on-dismiss #(on-intent {:type :autocomplete/dismiss})}))]
+                 :on-select #(on-intent {:type :autocomplete/select})}))]
       ;; Only show children if not folded
       (and children-el (not is-folded)) (conj children-el))))

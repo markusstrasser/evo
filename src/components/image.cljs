@@ -177,7 +177,7 @@
 (defn- handle-resize-end
   "Complete resize operation. Fire intent to persist."
   [_e]
-  (when-let [{:keys [block-id start-x start-width on-intent]} @!resize-state]
+  (when-let [{:keys [block-id start-width on-intent]} @!resize-state]
     (let [el (js/document.querySelector (str "[data-block-id=\"" block-id "\"] .block-image"))
           final-width (if el
                         (js/parseInt (.. el -style -width) 10)

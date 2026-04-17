@@ -109,8 +109,10 @@
        (devtools/format-entry-with-diff entry current-page-id)]]]))
 
 (defn OpsLogPanel
-  "Panel showing operation log with copy functionality."
-  [{:keys [db]}]
+  "Panel showing operation log with copy functionality.
+
+   Reads from devtools' own log state; no DB needed."
+  []
   (let [log (devtools/get-log)
         log-text (devtools/format-full-log)
         current-page-id (vs/current-page)]
@@ -149,10 +151,11 @@
              doall)])]))
 
 (defn DOMDiffPanel
-  "Panel showing hiccup/DOM differences."
-  [{:keys [db]}]
-  ;; Use last-db-snapshot for full DB data (only stored once, not in log)
-  ;; Log entries only contain summaries for performance
+  "Panel showing hiccup/DOM differences.
+
+   Uses last-db-snapshot from devtools state — log entries only contain
+   summaries for performance, so the full before/after DBs live there."
+  []
   (let [snapshot (devtools/last-db-snapshot)
         {:keys [db-before db-after]} snapshot]
     [:div.dom-diff-panel
@@ -259,10 +262,10 @@
    [StateSnapshot {:db db}]
 
    ;; Operations log
-   [OpsLogPanel {:db db}]
+   [OpsLogPanel]
 
    ;; DOM diff viewer
-   [DOMDiffPanel {:db db}]
+   [DOMDiffPanel]
 
    ;; REPL helpers
    [:div.repl-helpers
