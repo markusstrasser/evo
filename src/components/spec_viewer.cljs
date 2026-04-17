@@ -17,7 +17,7 @@
 (defonce !ui-state
   (atom {:selected-fr nil
          :show-all? true ; true = handbook view, false = intent-linked subset
-         :show-dsl? false ; false = outline view, true = raw DSL syntax
+         :show-dsl? true ; false = outline view, true = raw DSL syntax
          :search-query ""}))
 
 (defonce render-scheduled? (atom false))
@@ -36,11 +36,16 @@
         fr-param (.get params "fr")
         q-param (.get params "q")
         view-param (.get params "view")
-        all-param (.get params "all")]
-    {:selected-fr (when (seq fr-param) (keyword fr-param))
-     :show-all? (parse-bool-param all-param)
-     :show-dsl? (= "dsl" (some-> view-param str/lower-case))
-     :search-query (or q-param "")}))
+        all-param (.get params "all")
+        fr-id (when (seq fr-param)
+                (let [candidate (keyword fr-param)]
+                  (or (when (fr/fr-exists? candidate) candidate)
+                      (first (filter #(= (name %) fr-param) (fr/list-frs))))))]
+    (cond-> {}
+      fr-id (assoc :selected-fr fr-id)
+      (some? all-param) (assoc :show-all? (parse-bool-param all-param))
+      (some? view-param) (assoc :show-dsl? (= "dsl" (some-> view-param str/lower-case)))
+      (some? q-param) (assoc :search-query q-param))))
 
 (defn- visible-frs
   [{:keys [show-all? search-query]}]
@@ -109,21 +114,6 @@
          (take 4)
          vec)))
 
-(defn- scenario-action-label
-  [action]
-  (let [steps (if (vector? action) action [action])]
-    (str/join
-     " then "
-     (map (fn [step]
-            (str ":" (safe-name (:type step))
-                 (when-let [direction (:direction step)]
-                   (str " " (safe-name direction)))
-                 (when-let [mode (:mode step)]
-                   (str " " (safe-name mode)))
-                 (when-let [cursor-pos (:current-cursor-pos step)]
-                   (str " from col " cursor-pos))))
-          steps))))
-
 (defn- behaviors-by-scenario
   [behaviors]
   (reduce (fn [acc behavior]
@@ -145,7 +135,9 @@
         params (current-search-params)]
     (.set params "specs" "")
     (if selected-fr
-      (.set params "fr" (name selected-fr))
+      (.set params "fr" (if-let [fr-ns (namespace selected-fr)]
+                          (str fr-ns "/" (name selected-fr))
+                          (name selected-fr)))
       (.delete params "fr"))
     (if show-all?
       (.set params "all" "1")
@@ -223,20 +215,20 @@
                :font-size "14px"
                :background "#0f0f10"}
 
-   :sidebar {:width "320px"
+   :sidebar {:width "300px"
              :border-right "1px solid #2a2a2e"
              :overflow-y "auto"
              :background "#18181b"}
 
    :main {:flex "1"
           :overflow-y "auto"
-          :padding "24px 32px"
+          :padding "20px 28px 40px"
           :background "#0f0f10"}
 
    :search-input {:width "100%"
                   :box-sizing "border-box"
                   :margin-top "12px"
-                  :padding "10px 12px"
+                  :padding "9px 11px"
                   :border "1px solid #27272a"
                   :border-radius "6px"
                   :background "#111114"
@@ -247,7 +239,7 @@
    :sidebar-kicker {:color "#71717a"
                     :font-size "11px"
                     :margin-top "6px"
-                    :line-height "1.5"}
+                    :line-height "1.45"}
 
    :sidebar-help {:color "#71717a"
                   :font-size "11px"
@@ -255,10 +247,10 @@
                   :margin-top "10px"}
 
    :sticky-header {:position "sticky"
-                   :top "-24px"
+                   :top "-20px"
                    :z-index "2"
                    :margin "0 -8px 24px"
-                   :padding "24px 8px 16px"
+                   :padding "20px 8px 14px"
                    :background "linear-gradient(180deg, rgba(15,15,16,0.98) 0%, rgba(15,15,16,0.95) 78%, rgba(15,15,16,0) 100%)"
                    :backdrop-filter "blur(10px)"}
 
@@ -272,26 +264,17 @@
              :font-family "'IBM Plex Mono', monospace"
              :margin-bottom "10px"}
 
-   :doc-grid {:display "grid"
-              :grid-template-columns "minmax(0, 2.1fr) minmax(280px, 1fr)"
-              :gap "20px"
-              :align-items "start"}
-
    :doc-main {:display "flex"
               :flex-direction "column"
               :gap "20px"}
 
-   :doc-aside {:display "flex"
-               :flex-direction "column"
-               :gap "20px"}
-
-   :surface {:background "#17171a"
+   :surface {:background "#151518"
              :border "1px solid #27272a"
-             :border-radius "12px"
-             :padding "18px 20px"}
+              :border-radius "12px"
+              :padding "18px 20px"}
 
-   :lede {:font-size "18px"
-          :line-height "1.6"
+   :lede {:font-size "17px"
+          :line-height "1.55"
           :color "#ededf0"
           :margin "0"}
 
@@ -318,10 +301,8 @@
                :font-size "11px"
                :font-family "'IBM Plex Mono', monospace"}
 
-   :behavior-card {:padding "14px 16px"
-                   :border "1px solid #27272a"
-                   :border-radius "10px"
-                   :background "#141418"}
+   :behavior-card {:padding "12px 0"
+                   :border-bottom "1px solid #23232a"}
 
    :behavior-context {:font-size "12px"
                       :color "#8f90a0"
@@ -333,7 +314,7 @@
 
    :behavior-grid {:display "flex"
                    :flex-direction "column"
-                   :gap "12px"}
+                   :gap "0"}
 
    :related-link {:display "block"
                   :width "100%"
@@ -346,15 +327,16 @@
                   :color "#ededf0"
                   :cursor "pointer"}
 
-   :scenario-prose-grid {:display "grid"
-                         :grid-template-columns "repeat(3, minmax(0, 1fr))"
-                         :gap "12px"
-                         :margin-bottom "16px"}
+   :scenario-prose-grid {:display "flex"
+                         :align-items "center"
+                         :justify-content "space-between"
+                         :gap "16px"
+                         :margin-bottom "14px"}
 
-   :scenario-note {:padding "12px 14px"
-                   :border "1px solid #27272a"
-                   :border-radius "10px"
-                   :background "#141418"}
+   :scenario-note {:display "flex"
+                   :flex-direction "column"
+                   :gap "6px"
+                   :min-width "0"}
 
    :scenario-note-label {:font-size "10px"
                          :text-transform "uppercase"
@@ -363,8 +345,8 @@
                          :font-family "'IBM Plex Mono', monospace"
                          :margin-bottom "8px"}
 
-   :scenario-note-body {:font-size "13px"
-                        :line-height "1.6"
+   :scenario-note-body {:font-size "12px"
+                        :line-height "1.5"
                         :color "#d4d4d8"}
 
    :inline-code-block {:margin-top "10px"
@@ -582,9 +564,10 @@
   (when tree
     [:div {:style {:font-family "'IBM Plex Mono', monospace"
                    :font-size "12px"
-                   :background "#1a1a1f"
-                   :padding "12px"
-                   :border-radius "4px"}}
+                   :background "#121216"
+                   :border "1px solid #22222a"
+                   :padding "14px"
+                   :border-radius "10px"}}
      (render-dsl-tree tree 0)]))
 
 (defn- DslDiffView
@@ -690,44 +673,19 @@
         [:div {:style {:padding "16px"}}
          [:div {:style (:scenario-prose-grid styles)}
           [:div {:style (:scenario-note styles)}
-           [:div {:style (:scenario-note-label styles)} "Setup"]
-           [:div {:style (:scenario-note-body styles)}
-            (or (:context behavior)
-                "Initial document state before the operation runs.")]]
-          [:div {:style (:scenario-note styles)}
-           [:div {:style (:scenario-note-label styles)} "Operation"]
-           [:div {:style (:scenario-note-body styles)}
-            (scenario-action-label action)]
-           [:div {:style (:inline-code-block styles)}
-            (pr-str action)]]
-          [:div {:style (:scenario-note styles)}
-           [:div {:style (:scenario-note-label styles)} "What this proves"]
+           [:div {:style (:scenario-note-label styles)} "Meaning"]
            [:div {:style (:scenario-note-body styles)}
             (or (:behavior behavior)
-                "The resulting structure should match the requirement after the operation completes.")]]]
+                (:context behavior)
+                "Example state transition.")]]
+          [:div {:style (:scenario-note styles)}
+           [:div {:style (:scenario-note-label styles)} "Operation"]
+           [:div {:style (:inline-code-block styles)}
+            (pr-str action)]]]
          (DiffView {:before (:tree setup) :after (:tree expect)})]
 
         (when-let [scenario-note (:notes scenario)]
           [:div {:style (:note-callout styles)} scenario-note])])]))
-
-(defn RelatedRequirementCard
-  [{:keys [id fr shared-tags]}]
-  [:div {:style (:related-link styles)}
-   [:div {:style {:font-family "'IBM Plex Mono', monospace"
-                  :font-size "12px"
-                  :margin-bottom "6px"}}
-    (name id)]
-   [:div {:style {:font-size "12px"
-                  :line-height "1.5"
-                  :color "#8f90a0"}}
-    (:desc fr)]
-   (when (seq shared-tags)
-     [:div {:style {:margin-top "10px"}}
-      [:div {:style (:meta-list styles)}
-       (for [tag shared-tags]
-         ^{:key (str id "-" tag)}
-         [:span {:style (:meta-chip styles)}
-          (str "#" (safe-name tag))])]])])
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Detail Panel
@@ -822,113 +780,76 @@
                     :on {:click (fn [_] (set-ui-state! assoc :show-dsl? true))}}
            "DSL"]]]]
 
-       [:div {:style (:doc-grid styles)}
-        [:div {:style (:doc-main styles)}
-         [:section {:style (:surface styles)}
-          [:div {:style (:eyebrow styles)} "What this guarantees"]
-          [:p {:style (:lede styles)} (:desc fr)]
-          (when (seq (:tags fr))
-            [:div {:style {:margin-top "16px"}}
-             [:div {:style (:meta-list styles)}
-              (for [tag (:tags fr)]
-                ^{:key tag}
-                [:span {:style (:meta-chip styles)}
-                 (str "#" (safe-name tag))])]])]
+       [:div {:style (:doc-main styles)}
+        (when (seq behaviors)
+          [:section {:style (:surface styles)}
+           [:h3 {:style (:section-title styles)} "Behavior breakdown"]
+           [:div {:style (:behavior-grid styles)}
+            (for [[idx behavior] (map-indexed vector behaviors)]
+              ^{:key (str idx "-" (:context behavior))}
+              [:div {:style (merge (:behavior-card styles)
+                                   (when (= idx (dec (count behaviors)))
+                                     {:border-bottom "none"}))}
+               [:div {:style (:behavior-context styles)} (:context behavior)]
+               [:div {:style (:behavior-text styles)} (:behavior behavior)]])]])
 
-         (when (seq behaviors)
-           [:section {:style (:surface styles)}
-            [:h3 {:style (:section-title styles)} "Behavior breakdown"]
-            [:div {:style (:behavior-grid styles)}
-             (for [[idx behavior] (map-indexed vector behaviors)]
-               ^{:key (str idx "-" (:context behavior))}
-               [:div {:style (:behavior-card styles)}
-                [:div {:style (:behavior-context styles)} (:context behavior)]
-                [:div {:style (:behavior-text styles)} (:behavior behavior)]
-                (when-let [scenario-id (:scenario behavior)]
-                  [:div {:style {:margin-top "10px"}}
-                   [:span {:style (:meta-chip styles)}
-                    (str "Example: " (safe-name scenario-id))]])])]])
+        (when (seq scenarios)
+          [:section
+           [:h3 {:style (:section-title styles)}
+            (str "Worked examples (" scenario-count ")")]
+           (for [[scenario-id scenario] scenarios]
+             ^{:key scenario-id}
+             (ScenarioCard {:scenario-id scenario-id
+                            :scenario scenario
+                            :behavior (get behavior-index scenario-id)}))])
 
-         (when (seq scenarios)
-           [:section
-            [:h3 {:style (:section-title styles)}
-             (str "Worked examples (" scenario-count ")")]
-            [:p {:style (merge (:section-copy styles) {:margin-bottom "16px"})}
-             "Each example shows the starting structure, the operation that runs, and the resulting structure the requirement depends on."]
-            (for [[scenario-id scenario] scenarios]
-              ^{:key scenario-id}
-              (ScenarioCard {:scenario-id scenario-id
-                             :scenario scenario
-                             :behavior (get behavior-index scenario-id)}))])]
-
-        [:aside {:style (:doc-aside styles)}
-         [:section {:style (:surface styles)}
-          [:div {:style (:eyebrow styles)} "Composition"]
-          [:p {:style (:section-copy styles)}
-           (str "This requirement is composed from "
-                (count behaviors) " named behavior"
-                (when (not= 1 (count behaviors)) "s")
-                " and "
-                scenario-count " executable example"
-                (when (not= 1 scenario-count) "s")
-                ".")]
-          (when (seq behaviors)
-            [:div {:style {:margin-top "14px"}}
-             [:div {:style (:meta-list styles)}
-              (for [behavior (take 4 behaviors)]
-                ^{:key (:context behavior)}
-                [:span {:style (:meta-chip styles)} (:context behavior)])]])]
-
-         [:section {:style (:surface styles)}
-          [:div {:style (:eyebrow styles)} "Runtime linkage"]
-          [:p {:style (:section-copy styles)}
-           (if (seq implementing-intents)
-             "Current runtime linkage for this requirement."
-             "No registered intents currently cite this requirement. This page is still valuable as a human spec, but the runtime linkage is not explicit here.")]
-          [:div {:style {:margin-top "14px"
-                         :display "flex"
-                         :flex-direction "column"
-                         :gap "10px"}}
-           (if (seq implementing-intents)
-             (for [intent-id implementing-intents]
-               ^{:key intent-id}
-               [:span {:style (:meta-chip styles)}
-                (str ":" (safe-name intent-id))])
-             [:span {:style (:meta-chip styles)} "No linked intents"])]]
-
-         (when-let [notes (:notes fr)]
-           [:section {:style (:surface styles)}
-            [:div {:style (:eyebrow styles)} "Spec note"]
-            [:div {:style (:section-copy styles)} notes]])
-
-         (when-let [invariants (:invariants fr)]
-           [:section {:style (:surface styles)}
-            [:div {:style (:eyebrow styles)} "Invariants"]
-            [:div {:style {:display "flex" :flex-direction "column" :gap "10px"}}
-             (when-let [pre (:pre invariants)]
-               [:div
-                [:div {:style (:scenario-note-label styles)} "Preconditions"]
-                [:div {:style (:meta-list styles)}
-                 (for [item pre]
-                   ^{:key (str "pre-" item)}
-                   [:span {:style (:meta-chip styles)}
-                    (safe-name item)])]])
-             (when-let [post (:post invariants)]
-               [:div
-                [:div {:style (:scenario-note-label styles)} "Postconditions"]
-                [:div {:style (:meta-list styles)}
-                 (for [item post]
-                   ^{:key (str "post-" item)}
-                   [:span {:style (:meta-chip styles)}
-                    (safe-name item)])]])]])
-
-         (when (seq related)
-           [:section {:style (:surface styles)}
-            [:div {:style (:eyebrow styles)} "Related requirements"]
-            [:div {:style {:display "flex" :flex-direction "column" :gap "10px"}}
-             (for [related-item related]
-               ^{:key (:id related-item)}
-               (RelatedRequirementCard related-item))]])]]])))
+        (when (or (seq (:tags fr))
+                  (seq implementing-intents)
+                  (:notes fr)
+                  (:invariants fr)
+                  (seq related))
+          [:section {:style (:surface styles)}
+           [:h3 {:style (:section-title styles)} "Spec context"]
+           (when (seq (:tags fr))
+             [:div {:style {:margin-bottom "14px"}}
+              [:div {:style (:meta-list styles)}
+               (for [tag (:tags fr)]
+                 ^{:key (str "tag-" tag)}
+                 [:span {:style (:meta-chip styles)}
+                  (str "#" (safe-name tag))])]])
+           (when (seq implementing-intents)
+             [:div {:style {:margin-bottom "14px"}}
+              [:div {:style (:scenario-note-label styles)} "Linked intents"]
+              [:div {:style (:meta-list styles)}
+               (for [intent-id implementing-intents]
+                 ^{:key intent-id}
+                 [:span {:style (:meta-chip styles)}
+                  (str ":" (safe-name intent-id))])]])
+           (when-let [notes (:notes fr)]
+             [:p {:style (merge (:section-copy styles) {:margin-bottom "14px"})} notes])
+           (when-let [invariants (:invariants fr)]
+             [:div {:style {:margin-bottom "14px"}}
+              (when-let [pre (:pre invariants)]
+                [:div {:style {:margin-bottom "10px"}}
+                 [:div {:style (:scenario-note-label styles)} "Preconditions"]
+                 [:div {:style (:meta-list styles)}
+                  (for [item pre]
+                    ^{:key (str "pre-" item)}
+                    [:span {:style (:meta-chip styles)} (safe-name item)])]])
+              (when-let [post (:post invariants)]
+                [:div
+                 [:div {:style (:scenario-note-label styles)} "Postconditions"]
+                 [:div {:style (:meta-list styles)}
+                  (for [item post]
+                    ^{:key (str "post-" item)}
+                    [:span {:style (:meta-chip styles)} (safe-name item)])]])])
+           (when (seq related)
+             [:div
+              [:div {:style (:scenario-note-label styles)} "Related"]
+              [:div {:style (:meta-list styles)}
+               (for [{:keys [id]} related]
+                 ^{:key id}
+                 [:span {:style (:meta-chip styles)} (name id)])]])])]])))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; FR Sidebar
