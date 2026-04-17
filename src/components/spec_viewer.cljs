@@ -1,12 +1,9 @@
 (ns components.spec-viewer
-  "Spec-as-UI: Interactive documentation for Functional Requirements.
-   
-   Renders specs.edn as browsable documentation with:
-   - FR registry browser (filterable by priority/type/tags)
-   - Tree DSL visualizer (setup → action → expect)
-   - Before/After diff view for scenarios
-   
-   Usage: Add ?specs to URL to show spec viewer"
+  "Spec-as-UI: browsable documentation for Functional Requirements.
+
+   Renders specs.edn as a registry browser with row-aligned before/after
+   scenario diffs (outline + raw DSL views). Activated by adding ?specs
+   to the URL."
   (:require [spec.registry :as fr]
             [kernel.intent :as intent]
             [clojure.string :as str]
@@ -18,11 +15,8 @@
 
 (defonce !ui-state
   (atom {:selected-fr nil
-         :selected-scenario nil
-         :filter {:priority nil :type nil :tag nil}
          :show-all? false ; false = only show FRs with executable scenarios
-         :show-dsl? false ; false = outline view, true = raw DSL syntax
-         :expanded #{}}))
+         :show-dsl? false})) ; false = outline view, true = raw DSL syntax
 
 (defonce render-scheduled? (atom false))
 
@@ -40,8 +34,6 @@
        (d/render (js/document.getElementById "root")
                  (SpecViewer))))))
 
-;; Note: Render is triggered by blocks_ui when it detects spec mode
-;; We just need to trigger a re-render when our state changes
 (defonce _watcher
   (add-watch !ui-state :render
              (fn [_ _ old-state new-state]
@@ -117,50 +109,6 @@
                      :justify-content "space-between"
                      :align-items "center"}
 
-   :scenario-body {:padding "0"}
-
-   ;; Before/After panels
-   :diff-container {:display "grid"
-                    :grid-template-columns "1fr 1fr"
-                    :gap "0"}
-
-   :diff-panel {:padding "16px 18px"
-                :min-height "120px"}
-
-   :diff-panel-before {:background "#18181b"
-                       :border-right "1px solid #27272a"}
-
-   :diff-panel-after {:background "#1a1a1f"}
-
-   :diff-label {:font-size "10px"
-                :font-weight "600"
-                :letter-spacing "1px"
-                :text-transform "uppercase"
-                :margin-bottom "10px"
-                :display "flex"
-                :align-items "center"
-                :gap "6px"}
-
-   :diff-label-before {:color "#a1a1aa"}
-   :diff-label-after {:color "#22c55e"}
-
-   ;; Action banner (between before/after)
-   :action-banner {:background "linear-gradient(90deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%)"
-                   :padding "10px 18px"
-                   :font-family "'IBM Plex Mono', monospace"
-                   :font-size "12px"
-                   :color "#e0e7ff"
-                   :display "flex"
-                   :align-items "center"
-                   :gap "10px"}
-
-   :action-arrow {:font-size "16px"
-                  :color "#a5b4fc"}
-
-;; (tree-viz style removed - using inline styles in outline view)
-
-;; (run buttons and status badges removed - scenarios are for documentation only)
-
    ;; Tags
    :tag {:display "inline-block"
          :background "#27272a"
@@ -174,8 +122,6 @@
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Tree Visualizer
 ;; ══════════════════════════════════════════════════════════════════════════════
-
-;; format-attrs removed - using outline view instead
 
 (defn- render-cursor-in-text
   "Render text with a visual cursor indicator at the specified position."
@@ -267,18 +213,6 @@
         (when anchor?
           [:span {:style {:background "#4c1d95" :color "#c4b5fd" :padding "2px 6px"
                           :border-radius "3px" :font-size "10px"}} "anchor"])])]))
-
-(defn TreeVisualizer
-  "Visualize a tree DSL structure as an outline."
-  [{:keys [tree]}]
-  (when tree
-    (let [[_root & entries] tree
-          blocks (mapcat #(flatten-blocks (extract-block-info %) 0) entries)]
-      [:div {:style {:font-family "'IBM Plex Mono', monospace"}}
-       [:style "@keyframes blink { 50% { opacity: 0; } }"]
-       (for [[i [depth block-info]] (map-indexed vector blocks)]
-         ^{:key i}
-         (render-block-cell block-info depth))])))
 
 (defn- render-dsl-tree
   "Render tree DSL with syntax highlighting (raw Clojure notation)."
@@ -395,8 +329,6 @@
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Scenario Card
 ;; ══════════════════════════════════════════════════════════════════════════════
-
-;; run-scenario! removed - scenarios are for documentation, not interactive execution
 
 (defn ScenarioCard
   "Render a scenario with row-aligned before/after diff view."
@@ -583,16 +515,22 @@
                      :display "flex"
                      :align-items "center"
                      :gap "8px"}}
-       [:button {:style {:background (if show-all? "#3f3f46" "#27272a")
-                         :border "1px solid #3f3f46"
-                         :border-radius "4px"
-                         :padding "4px 8px"
-                         :font-size "10px"
-                         :color (if show-all? "#fafafa" "#71717a")
-                         :cursor "pointer"
-                         :font-family "'IBM Plex Mono', monospace"}
-                 :on {:click (fn [_] (swap! !ui-state update :show-all? not))}}
-        (if show-all? "All FRs" "Implemented")]]]
+       [:div {:style {:display "flex" :gap "4px" :background "#27272a"
+                      :padding "3px" :border-radius "4px"}}
+        [:button {:style {:background (if-not show-all? "#3f3f46" "transparent")
+                          :border "none"
+                          :color (if-not show-all? "#fafafa" "#71717a")
+                          :padding "4px 10px" :border-radius "3px" :cursor "pointer"
+                          :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
+                  :on {:click (fn [_] (swap! !ui-state assoc :show-all? false))}}
+         "Implemented"]
+        [:button {:style {:background (if show-all? "#3f3f46" "transparent")
+                          :border "none"
+                          :color (if show-all? "#fafafa" "#71717a")
+                          :padding "4px 10px" :border-radius "3px" :cursor "pointer"
+                          :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
+                  :on {:click (fn [_] (swap! !ui-state assoc :show-all? true))}}
+         "All"]]]]
 
      ;; FR list by priority
      (for [priority priority-order
@@ -621,11 +559,12 @@
              [:div {:style {:display "flex" :align-items "center" :gap "6px"}}
               [:span {:style (:fr-title styles)}
                (name fr-id)]
-              ;; Show implementation status indicator
               (when is-implemented?
-                [:span {:style {:color "#22c55e" :font-size "8px"}} "●"])
+                [:span {:title "Implemented (cited by intent)"
+                        :style {:color "#22c55e" :font-size "8px"}} "●"])
               (when (and has-scenarios? (not is-implemented?))
-                [:span {:style {:color "#f59e0b" :font-size "8px"}} "○"])]
+                [:span {:title "Has scenarios but no implementing intent"
+                        :style {:color "#f59e0b" :font-size "8px"}} "○"])]
              [:div {:style (:fr-desc styles)}
               (let [desc (:desc fr)]
                 (if (> (count desc) 55)
@@ -666,7 +605,7 @@
                        :font-weight "600"}}
           "Spec-as-UI"]
          [:p {:style {:color "#71717a" :line-height "1.6" :margin-bottom "24px"}}
-          "Select a Functional Requirement from the sidebar to view behaviors and run executable scenarios."]
+          "Select a Functional Requirement from the sidebar to view its behaviors and row-aligned before/after scenarios."]
          [:div {:style {:display "flex"
                         :flex-direction "column"
                         :gap "8px"
