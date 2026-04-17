@@ -122,37 +122,14 @@ Comprehensive comparison of cursor and focus edge cases between Evo and Logseq.
 
 ## Gaps (Not Yet Implemented)
 
-### Core Editing
+All core-editing parity items that this doc previously tracked have
+landed. Remaining gaps are niche power-user surfaces.
 
-| Gap | Logseq | Evo | Priority |
-|-----|--------|-----|----------|
-| **Doc-mode** | Enter/Shift+Enter swap when enabled | ✅ Implemented | - |
-| **Empty block auto-outdent** | Enter on empty child at end of parent outdents | ✅ Fixed | - |
-| **Shift+Click visibility** | Only selects visible blocks | ✅ Fixed (uses visible-range) | - |
-| **Indent expands collapsed** | Indent into collapsed sibling expands it | ✅ Fixed | - |
-| **Non-consecutive rejection** | Indent/outdent on non-adjacent selection rejected | ✅ Fixed | - |
-| **Empty list top-level fallback** | Enter on `- ` at top level adds newline | ✅ Fixed (normal split) | - |
-
-### UI Features
-
-| Gap | Logseq | Evo | Priority |
-|-----|--------|-----|----------|
-| **Slash commands** | `/` opens inline palette | Not implemented | LOW |
-| **Quick switcher** | Cmd+K overlay search | Not implemented | LOW |
-| **Shift+Enter sidebar** | Opens selected in sidebar | Not implemented | LOW |
-| **Block-ref navigation** | Enter on `((uuid))` opens sidebar | Stub only | LOW |
-| **Page-ref navigation** | Enter on `[[page]]` navigates | Stub only | LOW |
-| **Cmd+Click toggle** | Toggle block in selection | Not implemented | LOW |
-| **Drag & drop** | Mouse block reordering | Not implemented | LOW |
-
----
-
-## Priority Order
-
-**Low (power features):**
-1. Block-ref/Page-ref navigation on Enter
-2. Slash commands
-3. Quick switcher
+| Gap | Logseq | Evo |
+|-----|--------|-----|
+| **Shift+Enter sidebar** | Opens selected in sidebar | Not implemented |
+| **Block-ref navigation** | Enter on `((uuid))` opens sidebar | Out of scope — see "No Block References" above |
+| **Cmd+Click toggle** | Toggle block in selection | Not implemented |
 
 ---
 

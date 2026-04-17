@@ -37,6 +37,7 @@ npm start        # Clean + watch CLJS + watch CSS
 | **[STRUCTURAL_EDITING.md](STRUCTURAL_EDITING.md)** | Core editor: state machine, navigation, selection, editing, structure ops |
 | **[LOGSEQ_UI_FEATURES.md](LOGSEQ_UI_FEATURES.md)** | Logseq-specific: slash commands, sidebar, clipboard |
 | **[LOGSEQ_SPEC.md](LOGSEQ_SPEC.md)** | Full Logseq reference with source links |
+| **[DAILY_JOURNAL_SPEC.md](DAILY_JOURNAL_SPEC.md)** | Auto-created date-named pages: title format, navigation, filename layout |
 
 ---
 
