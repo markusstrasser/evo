@@ -308,7 +308,7 @@
    Each validator returns a vector of issues (empty if valid)."
   [db op op-index]
   (into []
-        (comp cat)
+        cat
         [(when-not (schema/valid-op? op)
            [(make-issue op op-index :invalid-schema
                         (str "Operation does not match schema: " (schema/explain-op op)))])
@@ -404,16 +404,15 @@
          ;; Only :place ops modify tree structure and require re-derivation.
          structure-changing? (some #(= (:op %) :place) normalized-ops)
 
-         t1 (time/now-ms)
+         #?@(:cljs [t1 (time/now-ms)])
          derived-db (cond
                       skip-derived? final-db
                       (not structure-changing?) (assoc final-db :derived (:derived db))
                       :else (db/derive-indexes final-db))
-         t2 (time/now-ms)
 
-         ;; Performance instrumentation (DEBUG only, >5ms threshold)
+         ;; Performance instrumentation (cljs DEBUG only, >5ms threshold)
          _ #?(:cljs (when ^boolean goog.DEBUG
-                      (let [derive-ms (- t2 t1)
+                      (let [derive-ms (- (time/now-ms) t1)
                             node-count (count (:nodes final-db))]
                         (when (and structure-changing? (> derive-ms 5))
                           (js/console.log "🔄 derive-indexes:"
