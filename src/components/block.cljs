@@ -1028,16 +1028,33 @@
       (interpose [:br] (map #(if (empty? %) "" %) parts)))
     text))
 
+(defn- marker-span
+  "Visually-hidden span that carries a markdown marker (e.g. `**`, `_`)
+   into the DOM so native partial-text selection + clipboard copy sees
+   the marker and preserves markdown round-trips. Hidden from screen
+   readers via aria-hidden (the semantic <strong>/<em>/<mark>/<del>
+   tag already communicates the intent).
+
+   CSS class `.marker` is defined in public/styles.css with the
+   standard clip/position:absolute pattern so the span takes zero
+   visual space but is part of selection and clipboard output."
+  [text]
+  [:span.marker {:aria-hidden "true"} text])
+
 (defn- render-formatted-segment
   "Render a single formatted segment as hiccup.
-   Returns a vector: either a single hiccup element or sequence of text/br elements."
+   Returns a vector of siblings. Formatted segments carry hidden marker
+   spans on either side so native copy produces round-trippable markdown;
+   math segments intentionally do not (MathJax is the source of truth)."
   [{:keys [type value]}]
   (case type
-    :bold [[:strong value]]
-    :italic [[:em value]]
-    :highlight [[:mark value]]
-    :strikethrough [[:del value]]
-    ;; Math - wrap with delimiters for MathJax (class="math" triggers processing)
+    :bold [(marker-span "**") [:strong value] (marker-span "**")]
+    :italic [(marker-span "_") [:em value] (marker-span "_")]
+    :highlight [(marker-span "==") [:mark value] (marker-span "==")]
+    :strikethrough [(marker-span "~~") [:del value] (marker-span "~~")]
+    ;; Math - wrap with delimiters for MathJax (class="math" triggers processing).
+    ;; No hidden markers: MathJax typesets the delimited source and partial
+    ;; copies of the rendered output are inherently lossy.
     :math-block [[:div.math {:style {:text-align "center" :margin "0.5em 0"}}
                   (str "$$" value "$$")]]
     :math-inline [[:span.math (str "$" value "$")]]
