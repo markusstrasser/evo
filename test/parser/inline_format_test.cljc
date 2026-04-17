@@ -44,3 +44,17 @@
 (deftest mixed-inline-content
   (is (= [:text :bold :text :italic :text]
          (types "hello **world** and _emph_ here"))))
+
+(deftest has-math-only-on-real-math
+  (testing "has-math? returns true for parsed math segments"
+    (is (fmt/has-math? "$x+y$"))
+    (is (fmt/has-math? "see $x+y$ there"))
+    (is (fmt/has-math? "$$E = mc^2$$")))
+  (testing "has-math? returns false when dollar runs are rejected as intraword"
+    (is (not (fmt/has-math? "cljs$core$key")))
+    (is (not (fmt/has-math? "price$100$total")))
+    (is (not (fmt/has-math? "function cljs$core$key(map_entry){}"))))
+  (testing "has-math? is false for plain text and empty"
+    (is (not (fmt/has-math? "hello world")))
+    (is (not (fmt/has-math? "")))
+    (is (not (fmt/has-math? nil)))))
