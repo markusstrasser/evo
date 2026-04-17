@@ -16,11 +16,96 @@
 (defonce !ui-state
   (atom {:selected-fr nil
          :show-all? false ; false = only show FRs with executable scenarios
-         :show-dsl? false})) ; false = outline view, true = raw DSL syntax
+         :show-dsl? false ; false = outline view, true = raw DSL syntax
+         :search-query ""}))
 
 (defonce render-scheduled? (atom false))
+(defonce syncing-url? (atom false))
 
 (declare SpecViewer)
+
+(defn- current-search-params []
+  (js/URLSearchParams. (.-search js/location)))
+
+(defn- parse-bool-param [value]
+  (contains? #{"1" "true" "yes"} (some-> value str/lower-case)))
+
+(defn- parse-url-state []
+  (let [params (current-search-params)
+        fr-param (.get params "fr")
+        q-param (.get params "q")
+        view-param (.get params "view")
+        all-param (.get params "all")]
+    {:selected-fr (when (seq fr-param) (keyword fr-param))
+     :show-all? (parse-bool-param all-param)
+     :show-dsl? (= "dsl" (some-> view-param str/lower-case))
+     :search-query (or q-param "")}))
+
+(defn- visible-frs
+  [{:keys [show-all? search-query]}]
+  (let [all-frs (fr/list-frs)
+        implemented-set (intent/implemented-frs)
+        base-frs (if show-all?
+                   all-frs
+                   (filter #(contains? implemented-set %) all-frs))
+        query (some-> search-query str/trim str/lower-case)]
+    (->> base-frs
+         (filter (fn [fr-id]
+                   (if (str/blank? query)
+                     true
+                     (let [fr-data (fr/get-fr fr-id)
+                           name-text (name fr-id)
+                           desc-text (:desc fr-data)]
+                       (or (str/includes? (str/lower-case name-text) query)
+                           (and desc-text
+                                (str/includes? (str/lower-case desc-text) query)))))))
+         sort
+         vec)))
+
+(defn- ensure-valid-selection [state]
+  (let [available-frs (visible-frs state)
+        selected-fr (:selected-fr state)
+        selected-visible? (some #{selected-fr} available-frs)]
+    (assoc state :selected-fr (or (when selected-visible? selected-fr)
+                                  (first available-frs)))))
+
+(defn- ui-state->search []
+  (let [{:keys [selected-fr show-all? show-dsl? search-query]} @!ui-state
+        params (current-search-params)]
+    (.set params "specs" "")
+    (if selected-fr
+      (.set params "fr" (name selected-fr))
+      (.delete params "fr"))
+    (if show-all?
+      (.set params "all" "1")
+      (.delete params "all"))
+    (if show-dsl?
+      (.set params "view" "dsl")
+      (.delete params "view"))
+    (if (str/blank? search-query)
+      (.delete params "q")
+      (.set params "q" (str/trim search-query)))
+    (let [query (.toString params)]
+      (str (.-pathname js/location)
+           (when (seq query) (str "?" query))
+           (.-hash js/location)))))
+
+(defn- sync-url!
+  []
+  (let [next-url (ui-state->search)
+        current-url (str (.-pathname js/location)
+                         (.-search js/location)
+                         (.-hash js/location))]
+    (when (not= current-url next-url)
+      (reset! syncing-url? true)
+      (.replaceState js/history nil "" next-url)
+      (reset! syncing-url? false))))
+
+(defn- set-ui-state!
+  [f & args]
+  (swap! !ui-state
+         (fn [state]
+           (ensure-valid-selection (apply f state args)))))
 
 (defn- request-render!
   "Request a render on the next animation frame.
@@ -38,7 +123,21 @@
   (add-watch !ui-state :render
              (fn [_ _ old-state new-state]
                (when (not= old-state new-state)
+                 (when-not @syncing-url?
+                   (sync-url!))
                  (request-render!)))))
+
+(defonce _url-initializer
+  (reset! !ui-state (ensure-valid-selection (merge @!ui-state (parse-url-state)))))
+
+(defonce _popstate-listener
+  (.addEventListener js/window "popstate"
+                     (fn []
+                       (reset! syncing-url? true)
+                       (reset! !ui-state
+                               (ensure-valid-selection
+                                (merge @!ui-state (parse-url-state))))
+                       (reset! syncing-url? false))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Styles
@@ -62,6 +161,28 @@
           :overflow-y "auto"
           :padding "24px 32px"
           :background "#0f0f10"}
+
+   :search-input {:width "100%"
+                  :box-sizing "border-box"
+                  :margin-top "12px"
+                  :padding "10px 12px"
+                  :border "1px solid #27272a"
+                  :border-radius "6px"
+                  :background "#111114"
+                  :color "#fafafa"
+                  :font-size "12px"
+                  :outline "none"}
+
+   :sticky-header {:position "sticky"
+                   :top "-24px"
+                   :z-index "2"
+                   :margin "0 -8px 24px"
+                   :padding "24px 8px 16px"
+                   :background "linear-gradient(180deg, rgba(15,15,16,0.98) 0%, rgba(15,15,16,0.95) 78%, rgba(15,15,16,0) 100%)"
+                   :backdrop-filter "blur(10px)"}
+
+   :sticky-header-inner {:border-bottom "1px solid #27272a"
+                         :padding-bottom "16px"}
 
    ;; Sidebar items
    :fr-item {:padding "12px 16px"
@@ -392,34 +513,73 @@
           show-dsl? (:show-dsl? @!ui-state)]
       [:div
        ;; Header
-       [:div {:style {:margin-bottom "28px"}}
-        [:h2 {:style {:margin "0 0 8px 0"
-                      :font-size "22px"
-                      :font-weight "600"
-                      :color "#fafafa"
-                      :font-family "'IBM Plex Mono', monospace"}}
-         (name fr-id)]
-        [:p {:style {:color "#a1a1aa" :margin "0" :line-height "1.5"}}
-         (:desc fr)]
-
-        ;; Metadata row
-        [:div {:style {:margin-top "14px" :display "flex" :gap "12px" :flex-wrap "wrap" :align-items "center"}}
-         [:span {:style (merge (:priority-badge styles)
-                               (case (:priority fr)
-                                 :critical (:priority-critical styles)
-                                 :high (:priority-high styles)
-                                 :medium (:priority-medium styles)
-                                 :low (:priority-low styles)
-                                 {}))}
-          (str/upper-case (name (:priority fr)))]
-         [:span {:style {:font-size "12px" :color "#71717a"}}
-          (str "Type: " (name (:type fr)))]
-         [:span {:style {:font-size "12px" :color "#71717a"}}
-          (str "Spec: " (:spec-ref fr))]
-         (when (pos? scenario-count)
-           [:span {:style {:display "flex" :align-items "center" :gap "4px"
-                           :font-size "12px" :color "#22c55e"}}
-            "●" (str scenario-count " scenario" (when (> scenario-count 1) "s"))])]]
+       [:div {:style (:sticky-header styles)}
+        [:div {:style (merge (:sticky-header-inner styles)
+                             {:display "flex"
+                              :justify-content "space-between"
+                              :align-items "flex-start"
+                              :gap "16px"
+                              :flex-wrap "wrap"})}
+         [:div
+          [:h2 {:style {:margin "0 0 8px 0"
+                        :font-size "22px"
+                        :font-weight "600"
+                        :color "#fafafa"
+                        :font-family "'IBM Plex Mono', monospace"}}
+           (name fr-id)]
+          [:p {:style {:color "#a1a1aa" :margin "0" :line-height "1.5"}}
+           (:desc fr)]
+          [:div {:style {:margin-top "14px"
+                         :display "flex"
+                         :gap "12px"
+                         :flex-wrap "wrap"
+                         :align-items "center"}}
+           [:span {:style (merge (:priority-badge styles)
+                                 (case (:priority fr)
+                                   :critical (:priority-critical styles)
+                                   :high (:priority-high styles)
+                                   :medium (:priority-medium styles)
+                                   :low (:priority-low styles)
+                                   {}))}
+            (str/upper-case (name (:priority fr)))]
+           [:span {:style {:font-size "12px" :color "#71717a"}}
+            (str "Type: " (name (:type fr)))]
+           [:span {:style {:font-size "12px" :color "#71717a"}}
+            (str "Spec: " (:spec-ref fr))]
+           (when (pos? scenario-count)
+             [:span {:style {:display "flex"
+                             :align-items "center"
+                             :gap "4px"
+                             :font-size "12px"
+                             :color "#22c55e"}}
+              "●"
+              (str scenario-count " scenario" (when (> scenario-count 1) "s"))])]]
+         [:div {:style {:display "flex"
+                        :gap "4px"
+                        :background "#27272a"
+                        :padding "3px"
+                        :border-radius "4px"
+                        :align-self "flex-start"}}
+          [:button {:style {:background (if-not show-dsl? "#3f3f46" "transparent")
+                            :border "none"
+                            :color (if-not show-dsl? "#fafafa" "#71717a")
+                            :padding "4px 10px"
+                            :border-radius "3px"
+                            :cursor "pointer"
+                            :font-size "11px"
+                            :font-family "'IBM Plex Mono', monospace"}
+                    :on {:click (fn [_] (set-ui-state! assoc :show-dsl? false))}}
+           "Outline"]
+          [:button {:style {:background (if show-dsl? "#3f3f46" "transparent")
+                            :border "none"
+                            :color (if show-dsl? "#fafafa" "#71717a")
+                            :padding "4px 10px"
+                            :border-radius "3px"
+                            :cursor "pointer"
+                            :font-size "11px"
+                            :font-family "'IBM Plex Mono', monospace"}
+                    :on {:click (fn [_] (set-ui-state! assoc :show-dsl? true))}}
+           "DSL"]]]]
 
        ;; Behaviors table
        (when-let [behaviors (:behaviors fr)]
@@ -452,21 +612,7 @@
           [:div {:style {:display "flex" :justify-content "space-between" :align-items "center" :margin-bottom "16px"}}
            [:h3 {:style {:font-size "13px" :font-weight "600" :color "#a1a1aa" :margin "0"
                          :text-transform "uppercase" :letter-spacing "0.5px"}}
-            (str "Scenarios (" scenario-count ")")]
-           ;; View toggle: Outline / DSL
-           [:div {:style {:display "flex" :gap "4px" :background "#27272a" :padding "3px" :border-radius "4px"}}
-            [:button {:style {:background (if-not show-dsl? "#3f3f46" "transparent")
-                              :border "none" :color (if-not show-dsl? "#fafafa" "#71717a")
-                              :padding "4px 10px" :border-radius "3px" :cursor "pointer"
-                              :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
-                      :on {:click (fn [_] (swap! !ui-state assoc :show-dsl? false))}}
-             "Outline"]
-            [:button {:style {:background (if show-dsl? "#3f3f46" "transparent")
-                              :border "none" :color (if show-dsl? "#fafafa" "#71717a")
-                              :padding "4px 10px" :border-radius "3px" :cursor "pointer"
-                              :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
-                      :on {:click (fn [_] (swap! !ui-state assoc :show-dsl? true))}}
-             "DSL"]]]
+            (str "Scenarios (" scenario-count ")")]]
 
           ;; Scenario cards
           (for [[scenario-id scenario] scenarios]
@@ -484,12 +630,11 @@
   (let [state @!ui-state
         selected (:selected-fr state)
         show-all? (:show-all? state)
+        search-query (:search-query state)
         all-frs (fr/list-frs)
         ;; Filter to only implemented FRs (cited by intents) unless show-all?
         implemented-set (intent/implemented-frs)
-        frs (if show-all?
-              all-frs
-              (filter #(contains? implemented-set %) all-frs))
+        frs (visible-frs state)
         implemented-count (count implemented-set)
         by-priority (group-by #(:priority (fr/get-fr %)) frs)
         priority-order [:critical :high :medium :low]]
@@ -510,6 +655,13 @@
          (str (count frs) " FRs · " (fr/scenario-count) " scenarios")
          (str implemented-count "/" (count all-frs) " implemented"))]
 
+      [:input {:type "text"
+               :value search-query
+               :placeholder "Search FRs"
+               :style (:search-input styles)
+               :on {:input (fn [event]
+                             (set-ui-state! assoc :search-query (.. event -target -value)))}}]
+
       ;; Toggle
       [:div {:style {:margin-top "10px"
                      :display "flex"
@@ -522,54 +674,60 @@
                           :color (if-not show-all? "#fafafa" "#71717a")
                           :padding "4px 10px" :border-radius "3px" :cursor "pointer"
                           :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
-                  :on {:click (fn [_] (swap! !ui-state assoc :show-all? false))}}
+                  :on {:click (fn [_] (set-ui-state! assoc :show-all? false))}}
          "Implemented"]
         [:button {:style {:background (if show-all? "#3f3f46" "transparent")
                           :border "none"
                           :color (if show-all? "#fafafa" "#71717a")
                           :padding "4px 10px" :border-radius "3px" :cursor "pointer"
                           :font-size "11px" :font-family "'IBM Plex Mono', monospace"}
-                  :on {:click (fn [_] (swap! !ui-state assoc :show-all? true))}}
+                  :on {:click (fn [_] (set-ui-state! assoc :show-all? true))}}
          "All"]]]]
 
      ;; FR list by priority
-     (for [priority priority-order
-           :let [fr-ids (get by-priority priority)]
-           :when (seq fr-ids)]
-       ^{:key priority}
-       [:div
-        [:div {:style {:padding "8px 16px"
-                       :background "#0f0f10"
-                       :font-size "10px"
-                       :font-weight "600"
-                       :color "#52525b"
-                       :text-transform "uppercase"
-                       :letter-spacing "0.5px"
-                       :border-bottom "1px solid #27272a"}}
-         (str (name priority) " (" (count fr-ids) ")")]
-        (for [fr-id (sort fr-ids)]
-          (let [fr (fr/get-fr fr-id)
-                is-selected (= fr-id selected)
-                is-implemented? (contains? implemented-set fr-id)
-                has-scenarios? (fr/has-executable-scenarios? fr-id)]
-            ^{:key fr-id}
-            [:div {:style (merge (:fr-item styles)
-                                 (when is-selected (:fr-item-selected styles)))
-                   :on {:click (fn [_] (swap! !ui-state assoc :selected-fr fr-id))}}
-             [:div {:style {:display "flex" :align-items "center" :gap "6px"}}
-              [:span {:style (:fr-title styles)}
-               (name fr-id)]
-              (when is-implemented?
-                [:span {:title "Implemented (cited by intent)"
-                        :style {:color "#22c55e" :font-size "8px"}} "●"])
-              (when (and has-scenarios? (not is-implemented?))
-                [:span {:title "Has scenarios but no implementing intent"
-                        :style {:color "#f59e0b" :font-size "8px"}} "○"])]
-             [:div {:style (:fr-desc styles)}
-              (let [desc (:desc fr)]
-                (if (> (count desc) 55)
-                  (str (subs desc 0 52) "...")
-                  desc))]]))])]))
+     (if (seq frs)
+       (for [priority priority-order
+             :let [fr-ids (get by-priority priority)]
+             :when (seq fr-ids)]
+         ^{:key priority}
+         [:div
+          [:div {:style {:padding "8px 16px"
+                         :background "#0f0f10"
+                         :font-size "10px"
+                         :font-weight "600"
+                         :color "#52525b"
+                         :text-transform "uppercase"
+                         :letter-spacing "0.5px"
+                         :border-bottom "1px solid #27272a"}}
+           (str (name priority) " (" (count fr-ids) ")")]
+          (for [fr-id (sort fr-ids)]
+            (let [fr (fr/get-fr fr-id)
+                  is-selected (= fr-id selected)
+                  is-implemented? (contains? implemented-set fr-id)
+                  has-scenarios? (fr/has-executable-scenarios? fr-id)]
+              ^{:key fr-id}
+              [:div {:style (merge (:fr-item styles)
+                                   (when is-selected (:fr-item-selected styles)))
+                     :on {:click (fn [_] (set-ui-state! assoc :selected-fr fr-id))}}
+               [:div {:style {:display "flex" :align-items "center" :gap "6px"}}
+                [:span {:style (:fr-title styles)}
+                 (name fr-id)]
+                (when is-implemented?
+                  [:span {:title "Implemented (cited by intent)"
+                          :style {:color "#22c55e" :font-size "8px"}} "●"])
+                (when (and has-scenarios? (not is-implemented?))
+                  [:span {:title "Has scenarios but no implementing intent"
+                          :style {:color "#f59e0b" :font-size "8px"}} "○"])]
+               [:div {:style (:fr-desc styles)}
+                (let [desc (:desc fr)]
+                  (if (> (count desc) 55)
+                    (str (subs desc 0 52) "...")
+                    desc))]]))])
+       [:div {:style {:padding "20px 16px"
+                      :color "#71717a"
+                      :font-size "12px"
+                      :line-height "1.5"}}
+        "No matching FRs. Adjust the filter or search query."])]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Main Component
@@ -593,33 +751,14 @@
      [:div {:style (:main styles)}
       (if selected-fr
         (FRDetail {:fr-id selected-fr})
-        ;; Welcome screen
-        [:div {:style {:text-align "center"
-                       :padding "80px 20px"
-                       :max-width "480px"
-                       :margin "0 auto"}}
-         [:div {:style {:font-size "48px" :margin-bottom "20px"}} "⚗"]
-         [:h2 {:style {:color "#fafafa"
-                       :margin-bottom "12px"
+        [:div {:style {:padding "48px 16px"
+                       :max-width "520px"
+                       :color "#a1a1aa"}}
+         [:h2 {:style {:margin "0 0 10px 0"
                        :font-size "20px"
-                       :font-weight "600"}}
-          "Spec-as-UI"]
-         [:p {:style {:color "#71717a" :line-height "1.6" :margin-bottom "24px"}}
-          "Select a Functional Requirement from the sidebar to view its behaviors and row-aligned before/after scenarios."]
-         [:div {:style {:display "flex"
-                        :flex-direction "column"
-                        :gap "8px"
-                        :text-align "left"
-                        :background "#18181b"
-                        :border-radius "8px"
-                        :padding "16px 20px"
-                        :font-size "13px"}}
-          [:div {:style {:display "flex" :gap "10px" :color "#a1a1aa"}}
-           [:span {:style {:color "#c678dd"}} "→"]
-           "FR metadata & priority"]
-          [:div {:style {:display "flex" :gap "10px" :color "#a1a1aa"}}
-           [:span {:style {:color "#c678dd"}} "→"]
-           "Context → Behavior mapping"]
-          [:div {:style {:display "flex" :gap "10px" :color "#a1a1aa"}}
-           [:span {:style {:color "#c678dd"}} "→"]
-           "Before / After scenario diffs"]]])]]))
+                       :font-weight "600"
+                       :color "#fafafa"}}
+          "No FR Selected"]
+         [:p {:style {:margin "0"
+                      :line-height "1.6"}}
+          "The current filter returned no functional requirements. Adjust the sidebar search or switch between Implemented and All."]])]]))
