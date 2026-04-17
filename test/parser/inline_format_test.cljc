@@ -27,7 +27,9 @@
 
 (deftest intraword-dollars-stay-literal
   (testing "cljs$core$key does not become inline math"
-    (is (all-text? "cljs$core$key")))
+    (is (all-text? "cljs$core$key"))
+    (is (all-text? "function cljs$core$key(map_entry){return cljs.core._key(map_entry)}"))
+    (is (all-text? "price$100$total")))
   (testing "bounded dollars still parse as math"
     (is (= [:math-inline] (types "$x+y$")))
     (is (= [:text :math-inline :text] (types "see $x+y$ now")))))
