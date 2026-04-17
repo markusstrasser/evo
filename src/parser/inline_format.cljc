@@ -30,14 +30,31 @@
 ;; they stay greedy.
 (def ^:private word-boundary-markers #{"_" "*" "$"})
 
+;; Unicode-aware word class: any letter (\p{L}) or digit (\p{N}).
+;; CLJS needs the /u flag to enable Unicode property escapes, so the
+;; CLJS branch builds the regex via js/RegExp. The JVM flavour handles
+;; \p{L}/\p{N} as Unicode properties natively in Pattern.
+(def ^:private word-char-re
+  #?(:clj  #"\p{L}|\p{N}"
+     :cljs (js/RegExp. "\\p{L}|\\p{N}" "u")))
+
 (defn- word-char?
-  "True for ASCII word chars (a-z, A-Z, 0-9). Portable across CLJ/CLJS:
-   `ch` may be a java.lang.Character or a 1-char string."
+  "True for any Unicode letter or digit. Used to guard single-char markers
+   against intraword false positives (cljs_core_key, привет_мир_тест,
+   変数_名前). `ch` may be a java.lang.Character or a 1-char string."
   [ch]
   (when ch
     (let [s (str ch)]
       (and (= 1 (count s))
-           (boolean (re-matches #"[A-Za-z0-9]" s))))))
+           (boolean (re-matches word-char-re s))))))
+
+(defn- whitespace?
+  "Portable whitespace check for a 1-char string or Character."
+  [ch]
+  (when ch
+    (let [s (str ch)]
+      (and (= 1 (count s))
+           (boolean (re-matches #"\s" s))))))
 
 (defn- find-marker-at
   "Check if any marker starts at pos. Returns [marker type] or nil."
@@ -74,10 +91,10 @@
     (conj segments {:type :text :value (subs text start end)})
     segments))
 
-(defn- word-boundary-ok?
-  "For single-char markers, require non-word (or absent) chars immediately
-   outside the marker span. Keeps identifiers like `foo_bar_baz`,
-   `cljs$core$key`, or `x*y*z` literal instead of italic/math."
+(defn- outer-boundary-ok?
+  "Single-char markers (`_`, `*`, `$`) require non-word (or absent) chars
+   immediately OUTSIDE the marker span. Keeps identifiers like
+   `cljs_core_key`, `cljs$core$key`, or `x*y*z` literal."
   [text pos marker close-pos]
   (if-not (contains? word-boundary-markers marker)
     true
@@ -86,11 +103,26 @@
       (and (not (word-char? before))
            (not (word-char? after))))))
 
+(defn- inner-boundary-ok?
+  "CommonMark flanking rule for ALL markers: the opener must not be
+   followed by whitespace, and the closer must not be preceded by
+   whitespace. Keeps spaced operators like `x = a * b * c` literal and
+   rejects malformed spans like `** foo **`."
+  [text pos marker close-pos]
+  (let [mlen (count marker)
+        first-inside (+ pos mlen)
+        last-inside (- close-pos mlen 1)]
+    (and (< first-inside (count text))
+         (<= 0 last-inside)
+         (not (whitespace? (nth text first-inside)))
+         (not (whitespace? (nth text last-inside))))))
+
 (defn- try-complete-format
   "Try to complete a format region. Returns {:end-pos n :segment {...}} or nil."
   [text pos marker type]
   (when-let [close-pos (find-closing text marker pos)]
-    (when (word-boundary-ok? text pos marker close-pos)
+    (when (and (outer-boundary-ok? text pos marker close-pos)
+               (inner-boundary-ok? text pos marker close-pos))
       (let [content-start (+ pos (count marker))
             content-end (- close-pos (count marker))
             content (subs text content-start content-end)]
