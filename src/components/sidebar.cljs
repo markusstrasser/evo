@@ -164,7 +164,7 @@
 
 (defn- PageItem
   "Single page item in sidebar list."
-  [{:keys [db page-id title is-current? is-journal? is-favorite? on-intent show-star?]}]
+  [{:keys [page-id title is-current? is-journal? is-favorite? on-intent show-star?]}]
   [:div.sidebar-page-item
    {:class [(when is-current? "active")
             (when is-journal? "journal")]
@@ -414,8 +414,7 @@
          (into [:div.page-list]
                (for [{:keys [id title]} favorites]
                  ^{:key id}
-                 (PageItem {:db db
-                            :page-id id
+                 (PageItem {:page-id id
                             :title title
                             :is-current? (= id current-page-id)
                             :is-journal? false
@@ -433,8 +432,7 @@
          (into [:div.page-list]
                (for [{:keys [id title favorite?]} recents]
                  ^{:key id}
-                 (PageItem {:db db
-                            :page-id id
+                 (PageItem {:page-id id
                             :title title
                             :is-current? (= id current-page-id)
                             :is-journal? false

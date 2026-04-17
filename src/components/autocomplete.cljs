@@ -149,10 +149,12 @@
       :selected 0
       :items [...]}
    - on-select: Called when item is selected (click or Enter)
-   - on-dismiss: Called when popup should close (Escape, click outside)
+
+   Dismissal (Escape, click outside, typing invalidation) is driven from
+   components.block via :autocomplete/dismiss intents, not by this popup.
 
    Uses Popover API for top-layer rendering."
-  [{:keys [autocomplete on-select on-dismiss]}]
+  [{:keys [autocomplete on-select]}]
   (when autocomplete
     (let [{:keys [type query selected items]} autocomplete]
       [:div#autocomplete-popup.autocomplete-popup
