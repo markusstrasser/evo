@@ -24,6 +24,7 @@
 (defonce syncing-url? (atom false))
 
 (declare SpecViewer)
+(declare EssayReferenceRail)
 
 (defn- current-search-params []
   (js/URLSearchParams. (.-search js/location)))
@@ -155,6 +156,18 @@
     :title "Pasting text can materialize new nodes"
     :body "Blank-line paste is interpreted structurally: one string becomes multiple sibling blocks with explicit placement and focus semantics."}])
 
+(def essay-section-refs
+  {:frame [:fr.selection/edit-view-exclusive
+           :fr.state/type-to-edit
+           :fr.nav/horizontal-boundary]
+   :mindset [:fr.selection/edit-view-exclusive
+             :fr.struct/create-sibling
+             :fr.clipboard/paste-multiline]
+   :takeaway [:fr.selection/edit-view-exclusive
+              :fr.struct/create-sibling
+              :fr.nav/horizontal-boundary
+              :fr.clipboard/paste-multiline]})
+
 (defn- essay-example-data []
   (keep (fn [{:keys [fr-id scenario-id] :as example}]
           (when-let [fr-data (fr/get-fr fr-id)]
@@ -166,6 +179,23 @@
                        :scenario scenario
                        :behavior behavior)))))
         essay-example-refs))
+
+(defn- fr-slug [fr-id]
+  (if-let [fr-ns (namespace fr-id)]
+    (str fr-ns "/" (name fr-id))
+    (name fr-id)))
+
+(defn- fr-handbook-href [fr-id]
+  (str "/?specs=&fr=" (js/encodeURIComponent (fr-slug fr-id)) "&all=1&view=dsl"))
+
+(defn- essay-reference-data [fr-id]
+  (when-let [fr-data (fr/get-fr fr-id)]
+    {:id fr-id
+     :title (name fr-id)
+     :spec-ref (:spec-ref fr-data)
+     :type (:type fr-data)
+     :priority (:priority fr-data)
+     :desc (:desc fr-data)}))
 
 (def essay-demo-src "/?test=true&embed=1")
 (def essay-demo-page-id "essay-demo-page")
@@ -382,7 +412,7 @@
 
    :essay-shell {:max-width "980px"
                  :margin "0 auto"
-                 :padding "72px 36px 120px"}
+                 :padding "56px 28px 96px"}
 
    :essay-kicker {:font-size "10px"
                   :text-transform "uppercase"
@@ -400,17 +430,27 @@
                  :max-width "840px"}
 
    :essay-deck {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
-                :font-size "clamp(18px, 2.2vw, 21px)"
-                :line-height "1.68"
+                :font-size "clamp(17px, 1.9vw, 19px)"
+                :line-height "1.62"
                 :color "#39322c"
-                :max-width "690px"
-                :margin "0 0 32px 0"}
+                :max-width "680px"
+                :margin "0 0 22px 0"}
 
    :essay-divider {:height "1px"
                    :background "#d9d2c6"
-                   :margin "46px 0 54px"}
+                   :margin "28px 0 34px"}
 
-   :essay-section {:margin-bottom "74px"}
+   :essay-section {:margin-bottom "54px"}
+
+   :essay-section-shell {:display "grid"
+                         :grid-template-columns "minmax(0, 1fr) 220px"
+                         :gap "22px"
+                         :align-items "start"}
+
+   :essay-section-main {:min-width "0"}
+
+   :essay-section-rail {:min-width "0"
+                        :padding-top "3px"}
 
    :essay-section-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
                          :font-size "clamp(26px, 3.2vw, 31px)"
@@ -421,19 +461,26 @@
                          :max-width "700px"}
 
    :essay-copy {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
-                :font-size "18px"
-                :line-height "1.82"
+                :font-size "16px"
+                :line-height "1.66"
                 :color "#2f2a25"
-                :max-width "680px"
-                :margin "0 0 16px 0"}
+                :max-width "660px"
+                :margin "0 0 12px 0"}
+
+   :essay-tight-copy {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                      :font-size "15px"
+                      :line-height "1.55"
+                      :color "#433a33"
+                      :max-width "660px"
+                      :margin "0 0 10px 0"}
 
    :essay-band {:display "grid"
                 :grid-template-columns "repeat(auto-fit, minmax(220px, 1fr))"
-                :gap "18px"
-                :margin-top "26px"}
+                :gap "14px"
+                :margin-top "20px"}
 
    :essay-band-card {:min-width "0"
-                     :padding-top "14px"
+                     :padding-top "10px"
                      :border-top "1px solid #d8d1c4"}
 
    :essay-band-title {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
@@ -444,15 +491,15 @@
                       :color "#151310"}
 
    :essay-band-copy {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
-                     :font-size "16px"
-                     :line-height "1.72"
+                     :font-size "14px"
+                     :line-height "1.56"
                      :color "#4a4037"
-                     :margin "0 0 12px 0"}
+                     :margin "0 0 8px 0"}
 
    :essay-two-up {:display "grid"
                   :grid-template-columns "repeat(auto-fit, minmax(280px, 1fr))"
-                  :gap "16px"
-                  :margin-top "18px"
+                  :gap "12px"
+                  :margin-top "14px"
                   :max-width "860px"}
 
    :essay-panel {:min-width "0"
@@ -469,15 +516,15 @@
    :essay-code {:background "#f3efe8"
                 :border "1px solid #e0d8ca"
                 :border-radius "4px"
-                :padding "14px 16px"
+                :padding "11px 12px"
                 :font-family "'IBM Plex Mono', monospace"
-                :font-size "12px"
-                :line-height "1.68"
+                :font-size "11px"
+                :line-height "1.56"
                 :white-space "pre-wrap"
                 :color "#2e2924"}
 
    :essay-example-card {:margin-top "32px"
-                        :padding-top "30px"
+                        :padding-top "18px"
                         :border-top "1px solid #d8d1c4"}
 
    :essay-example-ref {:font-size "10px"
@@ -497,27 +544,27 @@
 
    :essay-example-shell {:display "flex"
                          :flex-direction "column"
-                         :gap "14px"}
+                         :gap "10px"}
 
    :essay-action-line {:display "block"
-                       :max-width "640px"
+                       :max-width "660px"
                        :padding "0 0 0 12px"
                        :border-left "2px solid #c86b4f"
                        :font-family "'IBM Plex Mono', monospace"
-                       :font-size "12px"
-                       :line-height "1.7"
+                       :font-size "11px"
+                       :line-height "1.55"
                        :white-space "pre-wrap"
                        :color "#5d4c42"}
 
    :essay-figure-row {:display "flex"
                       :flex-wrap "wrap"
-                      :gap "12px"
+                      :gap "10px"
                       :align-items "flex-start"
                       :max-width "860px"}
 
    :essay-figure-card {:flex "1 1 320px"
                        :min-width "0"
-                       :padding-top "10px"}
+                       :padding-top "6px"}
 
    :essay-editor-frame {:display "block"
                         :width "100%"
@@ -525,24 +572,40 @@
                         :border-radius "4px"
                         :background "#fffefe"}
 
-   :essay-figure-code {:margin-top "10px"
-                       :padding "12px 14px"
-                       :border-radius "4px"
-                       :background "#f8f5ef"
-                       :border "1px solid #e0d8ca"
-                       :font-family "'IBM Plex Mono', monospace"
-                       :font-size "12px"
-                       :line-height "1.65"
-                       :overflow-x "auto"}
-
    :essay-figure-arrow {:display "flex"
                         :align-items "center"
                         :justify-content "center"
                         :font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
-                        :font-size "30px"
+                        :font-size "24px"
                         :color "#a08b76"
-                        :padding "78px 4px 0"
+                        :padding "62px 2px 0"
                         :min-width "26px"}
+
+   :essay-ref-list {:display "flex"
+                    :flex-direction "column"
+                    :gap "8px"}
+
+   :essay-ref-item {:padding-top "8px"
+                    :border-top "1px solid #e0d8ca"}
+
+   :essay-ref-link {:display "inline-block"
+                    :font-family "'IBM Plex Mono', monospace"
+                    :font-size "11px"
+                    :line-height "1.45"
+                    :color "#7f3425"
+                    :text-decoration "none"}
+
+   :essay-ref-meta {:font-family "'IBM Plex Mono', monospace"
+                    :font-size "10px"
+                    :line-height "1.45"
+                    :color "#8d8176"
+                    :margin-top "3px"}
+
+   :essay-ref-desc {:font-family "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", Georgia, serif"
+                    :font-size "13px"
+                    :line-height "1.45"
+                    :color "#5b5046"
+                    :margin-top "4px"}
 
    :search-input {:width "100%"
                   :box-sizing "border-box"
@@ -1030,85 +1093,115 @@
 (defn EssayExample
   [{:keys [title body fr-id scenario behavior scenario-id]}]
   [:section {:style (:essay-example-card styles)}
-   [:div {:style (:essay-example-shell styles)}
-    [:div {:style (:essay-example-ref styles)}
-     (str (name fr-id) " / " (safe-name scenario-id))]
-    [:h3 {:style (:essay-example-title styles)} title]
-    [:p {:style (:essay-copy styles)} body]
-    [:div {:style (:essay-action-line styles)}
-     (pr-str (:action scenario))]
-    [:div {:style (:essay-figure-row styles)}
-     [:div {:style (:essay-figure-card styles)}
-      [:div {:style (:essay-panel-title styles)} "Before"]
-      (EssayEditorFrame {:state (:setup scenario)
-                         :title (str title " before")})]
-     [:div {:style (:essay-figure-arrow styles)} "→"]
-     [:div {:style (:essay-figure-card styles)}
-      [:div {:style (:essay-panel-title styles)} "After"]
-      (EssayEditorFrame {:state (:expect scenario)
-                         :title (str title " after")})]]
-    [:p {:style (merge (:essay-copy styles) {:max-width "700px"})}
-     (or (:behavior behavior)
-         (:context behavior)
-         "Structural state transition.")]]])
+   [:div {:style (:essay-section-shell styles)}
+    [:div {:style (merge (:essay-section-main styles) (:essay-example-shell styles))}
+     [:div {:style (:essay-example-ref styles)}
+      (str (name fr-id) " / " (safe-name scenario-id))]
+     [:h3 {:style (:essay-example-title styles)} title]
+     [:p {:style (:essay-tight-copy styles)} body]
+     [:div {:style (:essay-action-line styles)}
+      (pr-str (:action scenario))]
+     [:div {:style (:essay-figure-row styles)}
+      [:div {:style (:essay-figure-card styles)}
+       [:div {:style (:essay-panel-title styles)} "Before"]
+       (EssayEditorFrame {:state (:setup scenario)
+                          :title (str title " before")})]
+      [:div {:style (:essay-figure-arrow styles)} "→"]
+      [:div {:style (:essay-figure-card styles)}
+       [:div {:style (:essay-panel-title styles)} "After"]
+       (EssayEditorFrame {:state (:expect scenario)
+                          :title (str title " after")})]]
+     [:p {:style (:essay-tight-copy styles)}
+      (or (:behavior behavior)
+          (:context behavior)
+          "Structural state transition.")]]
+    (EssayReferenceRail [fr-id])]])
+
+(defn EssayReferenceRail
+  [fr-ids]
+  (let [refs (keep essay-reference-data (distinct fr-ids))]
+    [:aside {:style (:essay-section-rail styles)}
+     [:div {:style (:essay-ref-list styles)}
+      (for [{:keys [id title spec-ref type priority desc]} refs]
+        ^{:key id}
+        [:div {:style (:essay-ref-item styles)}
+         [:a {:href (fr-handbook-href id)
+              :style (:essay-ref-link styles)}
+          title]
+         [:div {:style (:essay-ref-meta styles)}
+          (str spec-ref " · " (name type) " · " (name priority))]
+         [:div {:style (:essay-ref-desc styles)} desc]])]]))
+
+(defn EssaySection
+  [{:keys [title refs]} & body]
+  [:section {:style (:essay-section styles)}
+   [:div {:style (:essay-section-shell styles)}
+    [:div {:style (:essay-section-main styles)}
+     [:h2 {:style (:essay-section-title styles)} title]
+     body]
+    (EssayReferenceRail refs)]])
 
 (defn EssayFrameSection
   []
-  [:section {:style (:essay-section styles)}
-   [:h2 {:style (:essay-section-title styles)} "You are editing three synchronized machines"]
-   [:p {:style (:essay-copy styles)}
-    "The document has shape. The user session has mode. The kernel has a small algebra for changing structure. Most of the spec exists to keep those three layers in sync without ambiguity."]
-   [:div {:style (:essay-band styles)}
-    [:div {:style (:essay-band-card styles)}
-     [:h3 {:style (:essay-band-title styles)} "1. Document graph"]
-     [:p {:style (:essay-band-copy styles)}
-      "Blocks are not lines in one long buffer. They are nodes in a tree with explicit parent and sibling relationships."]
-     [:div {:style (:essay-code styles)} essay-outline-snippet]]
-    [:div {:style (:essay-band-card styles)}
-     [:h3 {:style (:essay-band-title styles)} "2. Session state"]
-     [:p {:style (:essay-band-copy styles)}
-      "Cursor, node selection, and editing mode are distinct pieces of state. That is why behavior can stay crisp at boundaries."]
-     [:div {:style (:essay-code styles)} essay-session-snippet]]
-    [:div {:style (:essay-band-card styles)}
-     [:h3 {:style (:essay-band-title styles)} "3. Kernel operations"]
-     [:p {:style (:essay-band-copy styles)}
-      "Even complex gestures reduce to a tiny set of structural edits. That keeps the implementation small and the spec legible."]
-     [:div {:style (:essay-code styles)} essay-kernel-snippet]]]])
+  (EssaySection {:title "You are editing three synchronized machines"
+                 :refs (:frame essay-section-refs)}
+    [:p {:style (:essay-copy styles)}
+     "The document has shape. The user session has mode. The kernel has a small algebra for changing structure. Most of the spec exists to keep those three layers in sync without ambiguity."]
+    [:p {:style (:essay-tight-copy styles)}
+     "The important shift is that these are separate systems. The tree says what exists. The session says what the user is doing. The kernel says what structural change is legal."]
+    [:div {:style (:essay-band styles)}
+     [:div {:style (:essay-band-card styles)}
+      [:h3 {:style (:essay-band-title styles)} "1. Document graph"]
+      [:p {:style (:essay-band-copy styles)}
+       "Blocks are nodes with parents and siblings, not lines in one buffer."]
+      [:div {:style (:essay-code styles)} essay-outline-snippet]]
+     [:div {:style (:essay-band-card styles)}
+      [:h3 {:style (:essay-band-title styles)} "2. Session state"]
+      [:p {:style (:essay-band-copy styles)}
+       "Selection, cursor, and edit mode are explicit rather than inferred from the DOM."]
+      [:div {:style (:essay-code styles)} essay-session-snippet]]
+     [:div {:style (:essay-band-card styles)}
+      [:h3 {:style (:essay-band-title styles)} "3. Kernel operations"]
+      [:p {:style (:essay-band-copy styles)}
+       "The command surface is small enough to reason about as algebra."]
+      [:div {:style (:essay-code styles)} essay-kernel-snippet]]]))
 
 (defn EssayMindsetSection
   []
-  [:section {:style (:essay-section styles)}
-   [:h2 {:style (:essay-section-title styles)} "Why normal editor intuition breaks"]
-   [:p {:style (:essay-copy styles)}
-    "In a string editor, nearly everything feels like text mutation plus cursor arithmetic. In a structural editor, the same keys often become shape-changing operations or state transitions. That is why the first encounter feels foreign: the mental model is different, not just the UI."]
-   [:div {:style (:essay-two-up styles)}
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "String editor intuition"]
-     [:div {:style (:essay-code styles)}
-      "text: \"Hello\\nWorld\"\ncursor: 7\nselection: [3 9]"]]
-    [:div {:style (:essay-panel styles)}
-     [:div {:style (:essay-panel-title styles)} "Structural editor intuition"]
-     [:div {:style (:essay-code styles)} essay-state-machine-snippet]]]])
+  (EssaySection {:title "Why normal editor intuition breaks"
+                 :refs (:mindset essay-section-refs)}
+    [:p {:style (:essay-copy styles)}
+     "In a string editor, nearly everything feels like text mutation plus cursor arithmetic. In a structural editor, the same keys often become shape-changing operations or state transitions."]
+    [:p {:style (:essay-tight-copy styles)}
+     "That is why the first encounter feels foreign: the oddness is not surface UI, it is a different decomposition of the problem. Boundary crossing, block creation, and paste are no longer exceptional hacks. They are first-class structural cases."]
+    [:div {:style (:essay-two-up styles)}
+     [:div {:style (:essay-panel styles)}
+      [:div {:style (:essay-panel-title styles)} "String editor intuition"]
+      [:div {:style (:essay-code styles)}
+       "text: \"Hello\\nWorld\"\ncursor: 7\nselection: [3 9]"]]
+     [:div {:style (:essay-panel styles)}
+      [:div {:style (:essay-panel-title styles)} "Structural editor intuition"]
+      [:div {:style (:essay-code styles)} essay-state-machine-snippet]]]))
 
 (defn EssayExamplesSection
   []
   (let [examples (essay-example-data)]
     [:section {:style (:essay-section styles)}
      [:h2 {:style (:essay-section-title styles)} "Three examples that make the model click"]
-     [:p {:style (:essay-copy styles)}
-      "These examples are intentionally small. Each one takes a familiar gesture and shows the actual structural interpretation underneath it."]
+     [:p {:style (:essay-tight-copy styles)}
+      "These are small because the point is not UI spectacle. The point is to show the minimum state transition that forces a different mental model."]
      (for [example examples]
        ^{:key (str (:fr-id example) "-" (:scenario-id example))}
        (EssayExample example))]))
 
 (defn EssayTakeawaySection
   []
-  [:section {:style (:essay-section styles)}
-   [:h2 {:style (:essay-section-title styles)} "Why this matters for programmers"]
-   [:p {:style (:essay-copy styles)}
-    "Once you stop modeling the editor as a string widget, the implementation gets cleaner. Tree changes become composable operations. Editing modes become explicit state, not DOM accidents. Complex behaviors become specs and examples instead of piles of conditionals."]
-   [:p {:style (:essay-copy styles)}
-    "That is the real payoff: structural editing is not mainly a UX trick. It is a better decomposition for reasoning about document behavior."]])
+  (EssaySection {:title "Why this matters for programmers"
+                 :refs (:takeaway essay-section-refs)}
+    [:p {:style (:essay-copy styles)}
+     "Once you stop modeling the editor as a string widget, the implementation gets cleaner. Tree changes become composable operations. Editing modes become explicit state, not DOM accidents. Complex behaviors become specs and examples instead of piles of conditionals."]
+    [:p {:style (:essay-tight-copy styles)}
+     "The payoff is not novelty. It is that behavior becomes auditable. You can point to a requirement, a scenario, and a state transition instead of reasoning through a pile of hidden textarea cases."]))
 
 (defn SpecEssay
   []
