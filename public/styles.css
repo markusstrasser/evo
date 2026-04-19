@@ -211,9 +211,11 @@
 
     /* ─── Block Layout (threading-aware) ─────────────────────────────────── */
     --block-line-height: 1.5;
-    --block-indent: 18px;           /* Reduced from 24px - tighter nesting */
-    --block-bullet-size: 0.3em;     /* Scales with text size */
-    --block-bullet-padding: 0.5em;  /* Click target padding around bullet */
+    /* Responsive indent — tight on narrow viewports, roomier on wide screens
+       so deep nesting stays legible without eating the whole measure. */
+    --block-indent: clamp(14px, 1.6vw, 22px);
+    --block-bullet-size: 6px;       /* Fixed — avoids bullet-jump across heading sizes */
+    --block-bullet-padding: 8px;    /* Click target padding around bullet */
     --block-bullet-left: 5px;       /* Bullet position from block left edge */
     --block-thread-width: 1px;
     --block-thread-color: var(--color-border);
@@ -260,21 +262,33 @@
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    font-feature-settings: "ss01", "ss02", "cv01"; /* Geist stylistic sets */
+    font-kerning: normal;
+    font-optical-sizing: auto;
+    font-synthesis: none;
+    font-feature-settings:
+      "kern" 1,
+      "liga" 1,
+      "calt" 1,
+      "ss01",
+      "ss02",
+      "cv01";
   }
 
+  /* Selection: soft amber wash, preserves text color for long runs */
   ::selection {
-    background: var(--color-accent);
-    color: white;
+    background: oklch(90% 0.05 55 / 0.9);
+    color: var(--color-text);
   }
 
   ::placeholder {
     color: var(--color-text-tertiary);
   }
 
+  /* Rounded focus ring via box-shadow so radii are respected */
   :focus-visible {
-    outline: 2px solid var(--color-focus-ring);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-focus-ring);
+    border-radius: var(--radius-sm);
   }
 
   /* Scrollbar styling */
@@ -331,6 +345,8 @@
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     color: var(--color-accent-text);
+    /* Mono + lining/tabular digits — code reads as data, not prose */
+    font-variant-numeric: tabular-nums lining-nums;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -352,7 +368,9 @@
 
   .main-content {
     width: 100%;
-    max-width: 1000px;
+    /* Editorial measure — ~72ch keeps line length in the 60–80ch reading zone
+       while still giving wide screens room for deeply nested blocks. */
+    max-width: clamp(640px, 72ch, 920px);
     padding: 1rem 1.5rem; /* Vertical spacing + horizontal breathing room */
     container-type: inline-size;
     container-name: main;
@@ -584,6 +602,8 @@
     min-width: 18px;
     text-align: center;
     margin-left: var(--space-2);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   /* ── Collapsible Section ───────────────────────────────────────────────── */
@@ -645,6 +665,8 @@
     border-radius: 10px;
     min-width: 18px;
     text-align: center;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   .section-action {
@@ -926,7 +948,9 @@
   .block {
     position: relative;
     padding: 0 0 0 var(--block-indent);
-    margin: 0;
+    /* Subtle vertical rhythm — enough air to separate sibling blocks
+       without breaking the outliner's dense feel. */
+    margin-block: 0.15em;
     border-radius: var(--radius-sm);
     border-left: 2px solid transparent;
 
@@ -979,8 +1003,11 @@
     caret-color: var(--color-accent);
 
     /* Editorial typography (gwern-inspired) */
-    font-variant-numeric: oldstyle-nums; /* Elegant prose numerals */
+    font-variant-numeric: oldstyle-nums proportional-nums; /* Elegant prose numerals */
     hanging-punctuation: first last;
+    /* Better line breaking — avoids orphans/rivers without the re-balance cost
+       of `text-wrap: balance` on long content. Safe fallback to `wrap`. */
+    text-wrap: pretty;
 
     &:focus,
     &:focus-visible {
@@ -2001,6 +2028,8 @@
   .journals-count {
     font-size: var(--text-sm);
     color: var(--text-muted);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   .journals-list {
@@ -2139,6 +2168,8 @@
     font-size: var(--text-xs);
     font-weight: 600;
     color: oklch(50% 0.08 279);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   .backlinks-content {
@@ -2263,6 +2294,8 @@
     font-weight: 500;
     color: var(--color-text-tertiary);
     opacity: 0.7;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   /* Section color accents */
