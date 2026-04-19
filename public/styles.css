@@ -954,16 +954,19 @@
        without breaking the outliner's dense feel. */
     margin-block: 0.15em;
     border-radius: var(--radius-sm);
-    border-left: 2px solid transparent;
+    /* Hairline left bar — only present when focused/selected. Avoids the
+       2px-of-transparent gutter that shifted text rightward on every block. */
+    border-left: 1px solid transparent;
 
     &.selected {
       background: var(--color-selected-bg);
-      border-left-color: var(--color-accent);
+      border-left-color: var(--color-selected-border);
     }
 
     &.focused {
       background: var(--color-focused-bg);
-      border-left-color: var(--color-accent);
+      /* Desaturated accent — present but doesn't compete with text */
+      border-left-color: oklch(70% 0.06 55);
     }
 
     &.editing {
@@ -975,16 +978,19 @@
       opacity: 0.5;
     }
 
-    /* Bullet accent when focused/selected */
+    /* Bullet accent when focused/selected — softened.
+       Solid dot: gentle desaturated amber, not full chroma.
+       Hollow ring (bullet-expanded): keep the existing 1px border color
+       set globally on .bullet-expanded::before; just tint, don't thicken. */
     &.focused:not(.editing),
     &.selected:not(.editing) {
       & .block-bullet::before {
-        background: var(--color-accent);
+        background: oklch(65% 0.09 55);
       }
 
       & .block-bullet.bullet-expanded::before {
         background: transparent;
-        border-color: var(--color-accent);
+        border-color: oklch(65% 0.09 55);
       }
     }
 
@@ -1010,10 +1016,20 @@
     /* Better line breaking — avoids orphans/rivers without the re-balance cost
        of `text-wrap: balance` on long content. Safe fallback to `wrap`. */
     text-wrap: pretty;
+    /* Logseq pattern — preserve user-typed whitespace (tabs, runs of spaces)
+       and break long unbroken tokens (URLs, hashes) so they don't blow the
+       measure. `anywhere` is needed for soft-break inside long words; plain
+       `break-word` only breaks at hyphens. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 
+    /* Suppress the global focus ring on contenteditable — the .editing
+       background + bullet accent already signal active state. The ring
+       is for buttons, links, and other discrete controls. */
     &:focus,
     &:focus-visible {
       outline: none;
+      box-shadow: none;
     }
 
     &:empty::before {
@@ -1502,7 +1518,8 @@
       width: calc(var(--block-bullet-size) + 0.125em);
       height: calc(var(--block-bullet-size) + 0.125em);
       background: transparent;
-      border: 1.5px solid var(--color-text-tertiary);
+      /* Hairline ring — 1px reads as outlined dot, 1.5px reads as button */
+      border: 1px solid var(--color-text-tertiary);
     }
   }
 
