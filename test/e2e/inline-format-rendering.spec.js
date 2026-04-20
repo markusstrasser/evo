@@ -119,20 +119,25 @@ test.describe('Inline format rendering — intraword guard', () => {
  * append a row rather than writing a new spec file.
  */
 
-// Inputs the PARSER must leave entirely as :text. Formatted inputs are
-// excluded from this corpus because `render-formatted-segment` hardcodes
-// the marker char in the visible marker-span (`**` for bold, `_` for
-// italic) regardless of which marker the user typed, so `*italic*`
-// textContent comes back as `_italic_` — a separate bug worth fixing but
-// out of scope for this property.
+// textContent must match input byte-for-byte after render. Covers both
+// inputs the parser leaves as :text AND inputs that format (the marker-
+// span machinery preserves the exact marker char the user typed, so
+// `*italic*` round-trips as `*italic*`, not `_italic_`).
 const ROUND_TRIP_CORPUS = [
   // ── CLJS/JS identifiers with special chars ─────────────────────────
   'cljs.core._key(map_entry)',
   'cljs$core$key(map_entry)',
   'function cljs$core$key(map_entry){return cljs.core._key(map_entry);}',
   'asdadwad $key(map_entry){return cljs.core._key(map_entry);}$',
-  'foo_bar_baz',
+  'foo_bar_baz and foo__bar__baz',
+  '__init__ and __main__',
   '**kwargs, *args',
+  // ── Formatted prose (exercises marker-char preservation) ──────────
+  'this is *italic* text',
+  'this is _italic_ text',
+  'this is **bold** text',
+  'this is __bold__ text',
+  'über_cool und auch *nicht* kursiv hier',
   // ── Shell / code snippets ─────────────────────────────────────────
   'echo "hello $USER" > /tmp/x',
   'for (let i=0; i<10; i++) { sum += arr[i]; }',

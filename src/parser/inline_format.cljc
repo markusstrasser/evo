@@ -163,7 +163,7 @@
             content (subs text content-start content-end)]
         (when (math-content-ok? marker content)
           {:end-pos close-pos
-           :segment {:type type :value content}})))))
+           :segment {:type type :value content :marker marker}})))))
 
 (defn split-with-formatting
   "Split text into segments with inline formatting.

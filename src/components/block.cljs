@@ -1045,11 +1045,15 @@
   "Render a single formatted segment as hiccup.
    Returns a vector of siblings. Formatted segments carry hidden marker
    spans on either side so native copy produces round-trippable markdown;
-   math segments intentionally do not (MathJax is the source of truth)."
-  [{:keys [type value]}]
+   math segments intentionally do not (MathJax is the source of truth).
+
+   The marker-span text preserves the exact marker the user typed (`*` vs
+   `_`, `**` vs `__`), not a canonical form — so `*italic*` round-trips
+   as `*italic*`, not `_italic_`."
+  [{:keys [type value marker]}]
   (case type
-    :bold [(marker-span "**") [:strong value] (marker-span "**")]
-    :italic [(marker-span "_") [:em value] (marker-span "_")]
+    :bold (let [m (or marker "**")] [(marker-span m) [:strong value] (marker-span m)])
+    :italic (let [m (or marker "_")] [(marker-span m) [:em value] (marker-span m)])
     :highlight [(marker-span "==") [:mark value] (marker-span "==")]
     :strikethrough [(marker-span "~~") [:del value] (marker-span "~~")]
     ;; Math - wrap with delimiters for MathJax (class="math" triggers processing).
