@@ -100,6 +100,19 @@
     (is (= [:text :italic :text]
            (types "say _\u0437\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439_ now")))))
 
+(deftest code-like-math-content-stays-literal
+  (testing "content with `;` is code, not TeX — never hand to MathJax"
+    (is (all-text? "asdadwad $key(map_entry){return cljs.core._key(map_entry);}$"))
+    (is (all-text? "$let x = 1;$"))
+    (is (all-text? "see $a; b;$ here")))
+  (testing "content with `function ` or `return ` keywords is code, not math"
+    (is (all-text? "$function f(x){return x}$"))
+    (is (all-text? "$return cljs.core._key(map_entry)$")))
+  (testing "genuine math with no code signals still parses"
+    (is (= [:math-inline] (types "$x^2 + y^2 = r^2$")))
+    (is (= [:math-inline] (types "$\\frac{a}{b}$")))
+    (is (= [:math-block] (types "$$E = mc^2$$")))))
+
 (deftest inner-whitespace-rejects-malformed-spans
   (testing "marker followed immediately by whitespace cannot open"
     (is (all-text? "** foo **"))

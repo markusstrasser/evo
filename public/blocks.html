@@ -4,6 +4,22 @@
     <meta charset="utf-8"/>
     <title>Blocks UI - Architectural Demo</title>
     <link href="/styles.css" rel="stylesheet">
+
+    <!-- MathJax Configuration — must match public/index.html -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$']],
+                displayMath: [['$$', '$$']]
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+                processHtmlClass: '(?:^|\\s)math(?=\\s|$)',
+                ignoreHtmlClass: 'math-ignore'
+            }
+        };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body>
 <div id="root"></div>

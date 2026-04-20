@@ -14,11 +14,13 @@
             },
             options: {
                 skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-                // \bmath\b anchors the class name so math-ignore, math-block,
-                // math-inline, etc. do NOT substring-match and accidentally
-                // re-enable typesetting on an ignored ancestor. Explicit math
-                // spans carry class "math" (exact).
-                processHtmlClass: '\\bmath\\b',
+                // Match only the exact token "math" between class-list
+                // separators. `\b` treats `-` as a boundary, so the old
+                // `\bmath\b` pattern accidentally matches the substring
+                // "math" inside "math-ignore" when the walker tests the
+                // raw class string — MathJax happens to wrap this with
+                // space-boundaries internally today, but don't rely on it.
+                processHtmlClass: '(?:^|\\s)math(?=\\s|$)',
                 // CRITICAL: Skip elements being edited (contenteditable) and
                 // view-mode block containers. Without this, MathJax will
                 // process raw $...$ in prose and strip delimiters.
