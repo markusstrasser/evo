@@ -32,6 +32,41 @@
 </head>
 <body>
 <div id="root"></div>
+
+<!-- Editorial-flavor toggle (experimental) — removes cleanly by deleting
+     this button + the inline script + the html.flavor-editorial block in
+     styles.css. Applies the class synchronously before first paint to avoid
+     a flash on reload. -->
+<button class="flavor-toggle" type="button" id="flavor-toggle" aria-pressed="false">
+  Refined
+</button>
+<script>
+  (function () {
+    var KEY = "evo.flavor";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(KEY);
+    if (saved === "editorial") root.classList.add("flavor-editorial");
+
+    function sync() {
+      var btn = document.getElementById("flavor-toggle");
+      if (!btn) return;
+      var on = root.classList.contains("flavor-editorial");
+      btn.textContent = on ? "Editorial" : "Refined";
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      sync();
+      document.getElementById("flavor-toggle").addEventListener("click", function () {
+        root.classList.toggle("flavor-editorial");
+        localStorage.setItem(KEY,
+          root.classList.contains("flavor-editorial") ? "editorial" : "refined");
+        sync();
+      });
+    });
+  })();
+</script>
+
 <script src="/js/blocks-ui/main.js"></script>
 </body>
 </html>
