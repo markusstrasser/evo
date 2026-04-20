@@ -130,18 +130,27 @@
          (not (whitespace? (nth text last-inside))))))
 
 (defn- math-content-ok?
-  "Reject math spans whose content carries strong code signals. TeX
-   inline math essentially never contains `;`, and JS/CLJS-style tokens
-   like `function ` or `return ` are dead giveaways that a user pasted
-   source, not an equation. Feeding such content to MathJax produces
-   garbled glyph output with dropped delimiters (see
+  "Reject math spans whose content is either clearly not math OR would
+   be mangled by MathJax. Four signals, in order of confidence:
+
+   1. `;` — essentially never appears in inline TeX, ubiquitous in source.
+   2. `function `/`return ` — dead giveaways of pasted JS/CLJS.
+   3. `\\n` — MathJax inline `$...$` is single-line; a newline inside
+      indicates the user typed `$` as prose/currency across a line break.
+   4. `[[` — page-ref syntax. Math spans never wrap wiki-style links,
+      and MathJax would consume the brackets.
+
+   Feeding any of these to MathJax produces glyph output with dropped
+   delimiters and mangled textContent (see
    `test/e2e/inline-format-rendering.spec.js`)."
   [marker content]
   (if-not (or (= "$" marker) (= "$$" marker))
     true
     (not (or (str/includes? content ";")
              (str/includes? content "function ")
-             (str/includes? content "return ")))))
+             (str/includes? content "return ")
+             (str/includes? content "\n")
+             (str/includes? content "[[")))))
 
 (defn- try-complete-format
   "Try to complete a format region. Returns {:end-pos n :segment {...}} or nil."

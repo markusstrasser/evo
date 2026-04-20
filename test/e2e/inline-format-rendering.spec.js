@@ -105,3 +105,88 @@ test.describe('Inline format rendering — intraword guard', () => {
     expect(r.math).toBe(0);
   });
 });
+
+/**
+ * Round-trip property: any input the parser rejects as formatting MUST
+ * render with `textContent === input` (modulo hidden marker spans on
+ * genuinely-formatted runs). Catches the whole class of "parser says X,
+ * downstream renderer mutates DOM, textContent no longer equals DB text"
+ * bugs — including MathJax typesetting code-like `$...$` spans, CSS
+ * content: hacks eating punctuation, and any future global DOM scanner
+ * added without respecting `math-ignore`.
+ *
+ * When adding new inline syntax (backticks, autolinks, emoji, etc.),
+ * append a row rather than writing a new spec file.
+ */
+
+// Inputs the PARSER must leave entirely as :text. Formatted inputs are
+// excluded from this corpus because `render-formatted-segment` hardcodes
+// the marker char in the visible marker-span (`**` for bold, `_` for
+// italic) regardless of which marker the user typed, so `*italic*`
+// textContent comes back as `_italic_` — a separate bug worth fixing but
+// out of scope for this property.
+const ROUND_TRIP_CORPUS = [
+  // ── CLJS/JS identifiers with special chars ─────────────────────────
+  'cljs.core._key(map_entry)',
+  'cljs$core$key(map_entry)',
+  'function cljs$core$key(map_entry){return cljs.core._key(map_entry);}',
+  'asdadwad $key(map_entry){return cljs.core._key(map_entry);}$',
+  'foo_bar_baz',
+  '**kwargs, *args',
+  // ── Shell / code snippets ─────────────────────────────────────────
+  'echo "hello $USER" > /tmp/x',
+  'for (let i=0; i<10; i++) { sum += arr[i]; }',
+  'SELECT * FROM users WHERE id = $1;',
+  'grep -E "\\bfoo\\b" file.txt',
+  // ── Currency and numeric prose ────────────────────────────────────
+  '$100 then $200 then $300 — three prices',
+  'costs $5.99 or £4.80',
+  'revenue of $1.2B',
+  'price$100$total',
+  // ── Arithmetic / equality in prose ────────────────────────────────
+  'x = a * b * c',
+  '2*3*4 = 24',
+  'a==b==c',
+  'assert x == y == z',
+  // ── Mixed marker fragments that should stay literal ───────────────
+  'unbalanced *star here',
+  'unbalanced _underscore',
+  'trailing $ sign alone',
+  // ── Code-like $...$ content (the core bug this spec guards) ───────
+  '$see [[Some Page]]$',
+  '$let x = 1; return x;$',
+  '$$function f(x){return 2*x}$$',
+  // ── Unicode identifiers ───────────────────────────────────────────
+  'привет_мир_тест',
+  '価格$合計$円',
+  // ── Realistic user prose ──────────────────────────────────────────
+  'TODO: refactor the parser — too many edge cases!',
+  'Meeting @ 3pm w/ team re: Q2 goals',
+  'See also: commit a2557236 [ui] Mark view block-content as math-ignore',
+];
+
+test.describe('Inline format rendering — round-trip property', () => {
+  let blockId;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/index.html?test=true');
+    await page.waitForLoadState('domcontentloaded');
+    await waitForBlocks(page);
+    blockId = await getFirstBlockId(page);
+    await exitEditMode(page);
+  });
+
+  for (const input of ROUND_TRIP_CORPUS) {
+    test(`textContent round-trips: ${JSON.stringify(input).slice(0, 60)}`, async ({ page }) => {
+      const r = await setTextAndRead(page, blockId, input);
+      expect(r).not.toBeNull();
+      // MathJax must not have produced .math spans for any of these inputs.
+      expect(r.math, `input produced unexpected math span: ${input}`).toBe(0);
+      // textContent must match the input verbatim — the whole point of the
+      // invariant. Hidden marker spans contribute their chars to textContent,
+      // so for the formatted cases we'd see marker text; this corpus is
+      // intentionally restricted to inputs the parser must leave literal.
+      expect(r.text, `DOM textContent diverged from DB text for: ${input}`).toBe(input);
+    });
+  }
+});
