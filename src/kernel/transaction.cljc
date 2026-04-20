@@ -30,6 +30,7 @@
             [kernel.ops :as ops]
             [kernel.position :as pos]
             [kernel.schema :as schema]
+            [kernel.text-validation :as text-validation]
             [kernel.time :as time]
             [medley.core :as m]))
 
@@ -246,11 +247,24 @@
     (make-issue op op-index :duplicate-create
                 (str "Node " id " already exists"))))
 
+(defn- check-text-tripwire
+  "Validate that :text prop, if present, passes the text tripwire.
+   Returns issue if text contains scanner corruption signals, nil otherwise.
+
+   See kernel.text-validation for the reject categories. This is the
+   single chokepoint that prevents MathJax/CHTML glyphs, scanner markup,
+   and control chars from reaching the DB regardless of which intent
+   wrote the text."
+  [op op-index props]
+  (when-let [{:keys [reason hint]} (text-validation/invalid-text-reason (:text props))]
+    (make-issue op op-index (keyword "text-tripwire" (name reason)) hint)))
+
 (defn- validate-create-node
   "Validate :create-node operation."
   [db op op-index]
-  (let [{:keys [id]} op]
-    (keep identity [(check-node-not-exists db op op-index id)])))
+  (let [{:keys [id props]} op]
+    (keep identity [(check-node-not-exists db op op-index id)
+                    (check-text-tripwire op op-index props)])))
 
 (defn- check-node-exists
   "Validate that node exists. Returns issue if not found, nil otherwise."
@@ -295,8 +309,9 @@
 (defn- validate-update-node
   "Validate :update-node operation."
   [db op op-index]
-  (let [{:keys [id]} op]
-    (keep identity [(check-node-exists db op op-index id)])))
+  (let [{:keys [id props]} op]
+    (keep identity [(check-node-exists db op op-index id)
+                    (check-text-tripwire op op-index props)])))
 
 (defn- validate-op
   "Validate a single operation. Returns vector of issues.
