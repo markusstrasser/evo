@@ -129,6 +129,20 @@
          (not (whitespace? (nth text first-inside)))
          (not (whitespace? (nth text last-inside))))))
 
+(defn- math-content-ok?
+  "Reject math spans whose content carries strong code signals. TeX
+   inline math essentially never contains `;`, and JS/CLJS-style tokens
+   like `function ` or `return ` are dead giveaways that a user pasted
+   source, not an equation. Feeding such content to MathJax produces
+   garbled glyph output with dropped delimiters (see
+   `test/e2e/inline-format-rendering.spec.js`)."
+  [marker content]
+  (if-not (or (= "$" marker) (= "$$" marker))
+    true
+    (not (or (str/includes? content ";")
+             (str/includes? content "function ")
+             (str/includes? content "return ")))))
+
 (defn- try-complete-format
   "Try to complete a format region. Returns {:end-pos n :segment {...}} or nil."
   [text pos marker type]
@@ -138,8 +152,9 @@
       (let [content-start (+ pos (count marker))
             content-end (- close-pos (count marker))
             content (subs text content-start content-end)]
-        {:end-pos close-pos
-         :segment {:type type :value content}}))))
+        (when (math-content-ok? marker content)
+          {:end-pos close-pos
+           :segment {:type type :value content}})))))
 
 (defn split-with-formatting
   "Split text into segments with inline formatting.
