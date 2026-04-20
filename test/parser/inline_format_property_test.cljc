@@ -72,29 +72,95 @@
       (every? #(or (empty? %) (even? (count %)))
               (str/split s #"[^*]+"))))
 
+(def ^:private mixed-char-gen
+  "Char generator biased toward markers and word chars so we exercise
+   boundary rules. Also seeds code-like characters (`;`, `{`, `}`, `[`,
+   `]`) so the math-content tripwire sees relevant inputs."
+  (gen/frequency
+   [[4 gen/char-alphanumeric]
+    [1 (gen/return \space)]
+    [1 (gen/return \_)]
+    [1 (gen/return \*)]
+    [1 (gen/return \$)]
+    [1 (gen/return \=)]
+    [1 (gen/return \~)]
+    [1 (gen/return \.)]
+    [1 (gen/return \()]
+    [1 (gen/return \))]
+    [1 (gen/return \{)]
+    [1 (gen/return \})]
+    [1 (gen/return \[)]
+    [1 (gen/return \])]
+    [1 (gen/return \;)]
+    [1 (gen/return \newline)]]))
+
 (defspec parse-serialize-identity-on-random-strings
-  500
+  1000
   (prop/for-all
-    [s (gen/fmap str/join
-                 (gen/vector (gen/frequency
-                               ;; Character frequency mix: biased toward markers
-                               ;; and word chars so we exercise boundary rules.
-                               [[4 gen/char-alphanumeric]
-                                [1 (gen/return \space)]
-                                [1 (gen/return \_)]
-                                [1 (gen/return \*)]
-                                [1 (gen/return \$)]
-                                [1 (gen/return \=)]
-                                [1 (gen/return \~)]
-                                [1 (gen/return \.)]
-                                [1 (gen/return \()]
-                                [1 (gen/return \))]])
-                             0 60))]
+    [s (gen/fmap str/join (gen/vector mixed-char-gen 0 60))]
     (if (italic-star-free? s)
       (= s (serialize (fmt/split-with-formatting s)))
       ;; For aliased `*`/`_` italic inputs we still assert the parser is
       ;; lossless by comparing the LENGTH of the reserialized form.
       (= (count s) (count (serialize (fmt/split-with-formatting s)))))))
+
+;; ── Invariant C — math-content tripwire holds under random inputs ────────────
+
+(defn- math-segments
+  "Return the math-inline and math-block segments from a parser output."
+  [segments]
+  (filter #(contains? #{:math-inline :math-block} (:type %)) segments))
+
+(defspec math-segments-never-contain-code-signals
+  1000
+  (prop/for-all
+    [s (gen/fmap str/join (gen/vector mixed-char-gen 0 80))]
+    ;; math-content-ok? rejects content containing any of these signals.
+    ;; Under random generation, assert the parser NEVER emits a math
+    ;; segment whose :value carries those signals — i.e. the tripwire
+    ;; in try-complete-format is on the happy path, not conditional.
+    (let [math (math-segments (fmt/split-with-formatting s))
+          bad-signals ["function " "return " "\n" "[["]]
+      (every? (fn [seg]
+                (let [v (:value seg)]
+                  (and (not (str/includes? v ";"))
+                       (every? #(not (str/includes? v %)) bad-signals))))
+              math))))
+
+;; ── Invariant D — textContent round-trip under a simulated renderer ──────────
+
+(defn- simulate-rendered-text
+  "JVM simulation of what the DOM's textContent reads for a parser
+   output under render-formatted-segment (src/components/block.cljs).
+   Marker-span siblings contribute their marker chars to textContent;
+   formatted inner value is plain text; math segments render as
+   `$value$` / `$$value$$` for the purposes of this simulation, which
+   matches what happens BEFORE MathJax typesets (MathJax mutation is
+   the e2e-only concern; e2e spec covers that).
+
+   The goal: prove the parser + renderer together satisfy
+   `render(text).textContent == text` for every input that doesn't
+   hit MathJax — which in pure CLJ is every input, because there is
+   no MathJax on the JVM."
+  [segments]
+  (apply str
+         (map (fn [{:keys [type value marker]}]
+                (case type
+                  :text value
+                  (:bold :italic)
+                  (let [m (or marker (if (= type :bold) "**" "_"))]
+                    (str m value m))
+                  :highlight (str "==" value "==")
+                  :strikethrough (str "~~" value "~~")
+                  :math-inline (str "$" value "$")
+                  :math-block (str "$$" value "$$")))
+              segments)))
+
+(defspec render-round-trip-holds-on-random-strings
+  1000
+  (prop/for-all
+    [s (gen/fmap str/join (gen/vector mixed-char-gen 0 60))]
+    (= s (simulate-rendered-text (fmt/split-with-formatting s)))))
 
 ;; ── Invariant B — negative corpus must stay literal ──────────────────────────
 
