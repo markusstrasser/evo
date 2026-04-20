@@ -33,20 +33,36 @@
      (helpers/select-only-update selection-id)
      (helpers/clear-selection-update))))
 
+(defn- first-block-on-page
+  "First child of the page, or nil if the page has no blocks.
+   Used to seed focus on navigate so typing works without an extra click."
+  [db page-id]
+  (first (q/children db page-id)))
+
 (defn- handle-switch-page
   "Switch to a specific page by ID.
-   LOGSEQ PARITY: Clears zoom-root and exits journals view when switching pages."
-  [_db _session {:keys [page-id]}]
-  {:session-updates (page-view-update page-id {:reset-zoom? true})})
+   LOGSEQ PARITY: Clears zoom-root and exits journals view when switching pages.
+   Also seeds selection on the first block so the focused-key → enter-edit-with-char
+   path in global-keyboard fires on the next printable key (prevents 'typed but
+   nothing happens' after page switch)."
+  [db _session {:keys [page-id]}]
+  {:session-updates (page-view-update page-id
+                                      {:reset-zoom? true
+                                       :selection-id (first-block-on-page db page-id)})})
 
 (defn- navigate-or-create-page
   "Navigate to page by name, creating it if it doesn't exist.
-   
+
    Returns intent result with :ops (for new page) and :session-updates."
   [db page-name]
   (if-let [page-id (q/find-page-by-name db page-name)]
-    ;; Page exists - just navigate
-    {:session-updates (page-view-update page-id {:clear-editing? true})}
+    ;; Page exists - navigate and focus the first block so typing is immediate.
+    ;; Passing :selection-id prevents the clear-selection branch in
+    ;; page-view-update, which otherwise strands navigate-to-page in a no-focus
+    ;; state where global-keyboard cannot route printable keys to any block.
+    {:session-updates (page-view-update page-id
+                                        {:clear-editing? true
+                                         :selection-id (first-block-on-page db page-id)})}
     ;; Page doesn't exist - create it and navigate
     (let [new-page-id (str "page-" (random-uuid))
           first-block-id (str "block-" (random-uuid))]

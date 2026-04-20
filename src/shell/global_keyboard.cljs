@@ -283,9 +283,16 @@
                       (handle-intent enriched-intent)
                       (handle-intent {:type enriched-intent}))))))
 
-            (and (printable-key? event key) focus-id (not editing-block-id))
+            ;; Printable key with a focused but non-editing block → type-to-edit.
+            ;; `key-name` is the local binding from the parsed event (line ~194).
+            ;; Using the unbound symbol `key` here silently resolves to
+            ;; `cljs.core/key`, whose `.length` is 1 (arity), making
+            ;; `printable-key?` return true and serializing the fn's source
+            ;; (`function cljs$core$key(...) { return cljs.core._key(...); }`)
+            ;; into the block's text via `(str "" key)` downstream.
+            (and (printable-key? event key-name) focus-id (not editing-block-id))
             (do
               (.preventDefault e)
               (handle-intent {:type :enter-edit-with-char
                               :block-id focus-id
-                              :char key}))))))))
+                              :char key-name}))))))))
