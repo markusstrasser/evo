@@ -13,10 +13,6 @@
 /* Typography: Geist (Vercel) - distinctive, geometric, excellent for UI */
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
 
-/* Editorial flavor (toggled via html.flavor-editorial) —
-   Fraunces variable serif with optical sizing for display contexts. */
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&display=swap");
-
 /* Fallback if Geist isn't available - use system fonts that are distinctive */
 /* @import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap"); */
 
@@ -2560,96 +2556,4 @@
   clip-path: inset(50%);
   white-space: nowrap;
   user-select: text; /* ensure selection traversal still sees the span */
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   EDITORIAL FLAVOR (experimental — toggle via html.flavor-editorial)
-
-   Adds grain/noise atmosphere, warmer paper tone, and a Fraunces display
-   serif for page titles and H1 blocks. Scoped so nothing leaks when off.
-   Remove this entire block + the @import above + the toggle in blocks.html
-   to rip it out cleanly.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-html.flavor-editorial {
-  /* Warmer paper tone — pulls chroma from near-zero to visible warmth */
-  --color-bg: oklch(98.5% 0.01 80);
-  --color-surface: oklch(96.5% 0.012 80);
-
-  /* Serif display stack — used for page titles + H1 blocks */
-  --font-display: "Fraunces", "Iowan Old Style", "Hoefler Text", "Palatino",
-                  Georgia, serif;
-}
-
-/* Grain overlay — SVG turbulence, ~4% opacity, fixed to viewport.
-   Pointer-events: none so it never eats clicks. */
-html.flavor-editorial body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.15  0 0 0 0 0.12  0 0 0 0 0.08  0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  background-size: 220px 220px;
-}
-
-/* Page title — Fraunces, optical-sizing pushed to display mode */
-html.flavor-editorial h1.page-title-display,
-html.flavor-editorial .page-title-input,
-html.flavor-editorial h1.journal-title {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-style: italic;
-  font-optical-sizing: auto;
-  font-variation-settings: "opsz" 96, "SOFT" 50;
-  letter-spacing: -0.015em;
-  /* Slightly larger on the editorial flavor — a display face deserves air */
-  font-size: calc(var(--text-2xl) * 1.1);
-}
-
-/* H1 in blocks — Fraunces display, keep the refined underline */
-html.flavor-editorial h1.block-content {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-optical-sizing: auto;
-  font-variation-settings: "opsz" 72, "SOFT" 30;
-  letter-spacing: -0.02em;
-}
-
-/* H2 keeps Geist but tracks tighter to pair with the serif H1 */
-html.flavor-editorial h2.block-content {
-  letter-spacing: -0.025em;
-}
-
-/* Tiny toggle affordance top-right — visible but unobtrusive */
-.flavor-toggle {
-  position: fixed;
-  top: 12px;
-  right: 14px;
-  z-index: 1001;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.flavor-toggle:hover {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
-}
-
-html.flavor-editorial .flavor-toggle {
-  color: var(--color-accent-text);
-  border-color: var(--color-accent);
-  background: var(--color-accent-subtle);
 }
