@@ -108,10 +108,20 @@
   (testing "content with `function ` or `return ` keywords is code, not math"
     (is (all-text? "$function f(x){return x}$"))
     (is (all-text? "$return cljs.core._key(map_entry)$")))
+  (testing "block math with code content also rejected"
+    (is (all-text? "$$for (i=0; i<n; i++)$$"))
+    (is (all-text? "$$function f(x){return 2*x}$$")))
+  (testing "newline inside $...$ indicates prose/currency, not math"
+    (is (all-text? "costs $5\nshipping $10"))
+    (is (all-text? "$line one\nline two$")))
+  (testing "page refs inside $...$ are mistakes, not math"
+    (is (all-text? "$see [[Some Page]]$"))
+    (is (all-text? "$x + [[y]] = z$")))
   (testing "genuine math with no code signals still parses"
     (is (= [:math-inline] (types "$x^2 + y^2 = r^2$")))
     (is (= [:math-inline] (types "$\\frac{a}{b}$")))
-    (is (= [:math-block] (types "$$E = mc^2$$")))))
+    (is (= [:math-block] (types "$$E = mc^2$$")))
+    (is (= [:math-block] (types "$$\\int_0^1 x^2 \\, dx$$")))))
 
 (deftest inner-whitespace-rejects-malformed-spans
   (testing "marker followed immediately by whitespace cannot open"
