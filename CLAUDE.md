@@ -367,6 +367,30 @@ Avoid shadowing core Clojure vars:
 
 **Pre-commit hook blocks shadowed vars**. Run `bb lint` to detect before committing.
 
+#### Rename-Escape (bare reference to a renamed core fn)
+
+A sneakier variant of shadowing: you renamed a local to avoid the
+clash, but left a bare reference to the core fn on one call site.
+
+```clojure
+;; ❌ WRONG: `key-name` was chosen to avoid shadowing, but `key`
+;; is still used below — CLJS resolves it to `cljs.core/key`, and
+;; `(str "" cljs.core/key)` emits the compiled fn source:
+;;   "function cljs$core$key(map_entry){return cljs.core._key(map_entry);}"
+(let [key-name (:key event)]
+  (printable-key? event key)            ; ← silently wrong
+  (handle-intent {:char key}))          ; ← silently wrong
+
+;; ✅ CORRECT: use the rename everywhere.
+(let [key-name (:key event)]
+  (printable-key? event key-name)
+  (handle-intent {:char key-name}))
+```
+
+`bb lint:rename-escape` catches this specific class (file binds
+`<prefix>-name` + bare `<prefix>` used outside a fn that has `<prefix>`
+as a parameter). Runs as part of `bb check`.
+
 ### Multi-Character Text Markers
 
 Bold/italic use multi-char markers (`**`, `__`). Need substring matching:
@@ -428,8 +452,22 @@ Truthful isolated tiers must load their own fixtures.
 - Test actual browser behavior: cursor position, focus, keyboard navigation
 - Use accessibility snapshots (not screenshots)
 - Verify DOM state, not internal DB structure
-- **Smoke tier** (`npm run test:e2e:smoke`): 15 critical tests, ~5 seconds - use during development
-- **Full suite** (`npm run test:e2e`): ~285 tests, ~5 minutes - use for PR validation
+- **Smoke tier** (`npm run test:e2e:smoke`): ~15 critical tests, ~5 seconds - use during development
+- **Full suite** (`npm run test:e2e`): the full chromium project - use for PR validation
+- **Artifact cleanup**: `bb e2e:clean` wipes `test-results/` and `playwright-report/` when they fill disk (Playwright doesn't cap these)
+
+#### Test-mode harness gotchas
+
+`?test=true` triggers `reset-to-empty-db!` in `src/shell/editor.cljs`, which sets **specific** defaults that shield other tests — journals tests especially have to work around them:
+
+- `:journals-view?` is set to **false** (so tests land on `test-page`, not the journals list). Any spec that expects the journals view must enter it explicitly via `window.TEST_HELPERS.openJournalsView()`.
+- `process-auto-trash-queue!` is a **no-op** in test mode. This prevents the 100 ms auto-trash queue from silently deleting empty fixture pages and stripping focus through `handle-delete-page`'s session update. If you're writing a test that *wants* to exercise auto-trash, dispatch `:auto-trash-empty-page` directly.
+
+#### Playwright timing gotchas (learned the hard way)
+
+- **Don't combine "first char via global-keyboard" with "multi-char via `keyboard.type`" in one test.** The view→edit transition schedules contenteditable focus via Replicant's on-mount hook; sequential keystrokes race that scheduling and drop chars under parallel worker load. Either press every char with individual `keyboard.press` calls, or enter edit mode first, *then* type the full string.
+- **Read block text from the DB, not the DOM.** View-mode renders a ZWSP (`​`, `​`) for empty blocks so they show in the a11y tree. `textContent`-based helpers return that ZWSP and break `.toBe('')` assertions. Use `window.TEST_HELPERS.getBlockText(id)`.
+- **`clj->js` emits kebab-string keys.** `session.ui.current_page` is not set — use `session.ui['current-page']`. The existing helpers fall back through both forms, which is a symptom of the trap, not a pattern to copy.
 
 **CRITICAL: Keyboard Events on `contenteditable` Elements**
 
