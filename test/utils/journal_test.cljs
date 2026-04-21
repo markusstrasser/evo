@@ -46,20 +46,59 @@
 ;; ── Journal Detection Tests ─────────────────────────────────────────────────────
 
 (deftest journal-page-detection-test
-  (testing "valid journal page titles"
+  (testing "valid journal page titles with ordinal suffix"
     (is (true? (journal/journal-page? "Dec 11th, 2025")))
     (is (true? (journal/journal-page? "Jan 1st, 2024")))
     (is (true? (journal/journal-page? "Feb 2nd, 2025")))
     (is (true? (journal/journal-page? "Mar 3rd, 2023")))
-    (is (true? (journal/journal-page? "Apr 21st, 2022")))
-    (is (true? (journal/journal-page? "2025-12-11"))))  ; ISO format
+    (is (true? (journal/journal-page? "Apr 21st, 2022"))))
+
+  (testing "ISO format is still recognized"
+    (is (true? (journal/journal-page? "2025-12-11"))))
+
+  (testing "ordinal-less human form — legacy compat with pre-fix page-ref"
+    ;; Older `page-ref` produced `[[Dec 11, 2025]]` (no ordinal). If any
+    ;; such page-refs have been clicked, the resulting pages have these
+    ;; titles and would otherwise be invisible to the Journals view.
+    (is (true? (journal/journal-page? "Dec 11, 2025")))
+    (is (true? (journal/journal-page? "Apr 19, 2026")))
+    (is (true? (journal/journal-page? "Jan 1, 2024"))))
 
   (testing "invalid journal page titles"
     (is (false? (journal/journal-page? "My Notes")))
     (is (false? (journal/journal-page? "December 11th, 2025"))) ; Full month
-    (is (false? (journal/journal-page? "Dec 11, 2025"))) ; Missing ordinal
+    (is (false? (journal/journal-page? "Dec, 2025")))           ; No day
     (is (false? (journal/journal-page? "")))
     (is (false? (journal/journal-page? nil)))))
+
+(deftest parse-journal-date-test
+  (testing "ordinal form parses to ISO date"
+    (is (= "2025-12-11" (journal/parse-journal-date "Dec 11th, 2025")))
+    (is (= "2024-01-01" (journal/parse-journal-date "Jan 1st, 2024"))))
+
+  (testing "ordinal-less form parses to the same ISO date"
+    (is (= "2025-12-11" (journal/parse-journal-date "Dec 11, 2025")))
+    (is (= "2026-04-19" (journal/parse-journal-date "Apr 19, 2026")))
+    (is (= "2024-01-01" (journal/parse-journal-date "Jan 1, 2024"))))
+
+  (testing "ISO passes through"
+    (is (= "2025-12-11" (journal/parse-journal-date "2025-12-11"))))
+
+  (testing "non-journal titles return nil"
+    (is (nil? (journal/parse-journal-date "My Notes")))
+    (is (nil? (journal/parse-journal-date nil)))))
+
+(deftest page-ref-uses-ordinal-format-test
+  (testing "page-ref emits canonical ordinal format so a click-through creates a recognized journal"
+    (let [ref (journal/page-ref (js/Date. 2025 11 14))] ; 14th
+      (is (= "[[Dec 14th, 2025]]" ref))
+      ;; And the bracket-stripped title must satisfy journal-page?
+      (is (true? (journal/journal-page? "Dec 14th, 2025")))))
+  (testing "ordinals are correct for edge days"
+    (is (= "[[Dec 1st, 2025]]"  (journal/page-ref (js/Date. 2025 11 1))))
+    (is (= "[[Dec 2nd, 2025]]"  (journal/page-ref (js/Date. 2025 11 2))))
+    (is (= "[[Dec 11th, 2025]]" (journal/page-ref (js/Date. 2025 11 11))))
+    (is (= "[[Dec 21st, 2025]]" (journal/page-ref (js/Date. 2025 11 21))))))
 
 ;; ── Convenience Function Tests ──────────────────────────────────────────────────
 
