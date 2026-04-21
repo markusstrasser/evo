@@ -36,6 +36,8 @@ npm run build              # Clean + release blocks-ui + minified CSS
 
 **Important**: Always use `npm start` for development. It runs **watch mode** which prevents "stale output" errors. Never use `npx shadow-cljs compile` directly.
 
+**Agent gotcha — `bb` alias**: On this machine `bb` is shell-aliased to `bun build`. When running babashka tasks from Bash, use `\bb` (escapes the alias) or the absolute path. A bare `bb test` will fail with a `bun build` usage error.
+
 ### Testing
 
 ```bash
