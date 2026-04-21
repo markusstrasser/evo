@@ -138,29 +138,61 @@ test.describe('Journals View', () => {
 
   test.describe('Journals View Display', () => {
     test('displays journal pages sorted newest first', async ({ page }) => {
-      // Create journals in random order
+      // Create journals in random order (all past, to stay independent
+      // of today's date). Pure-chronological contract: sort descending
+      // by date regardless of today's position.
       await createJournalPages(page, [
         'Dec 10th, 2025',
         'Dec 12th, 2025',
         'Dec 11th, 2025'
       ]);
 
-      // Go back to journals view
       await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
       await page.waitForTimeout(200);
 
-      // Wait for journals view to render
       await expect(page.locator('.journals-view')).toBeVisible();
 
-      // Get journal titles - today should be first, then sorted by date desc
       const journalTitles = page.locator('.journal-title');
       const titles = await journalTitles.allTextContents();
 
-      // Today's journal is first, then Dec 12, 11, 10
-      expect(titles[0]).toBe(getTodayTitle());
-      expect(titles).toContain('Dec 12th, 2025');
-      expect(titles).toContain('Dec 11th, 2025');
-      expect(titles).toContain('Dec 10th, 2025');
+      // Today (whatever the current date is) lands in its chronological
+      // slot — for any real test-run date in 2026+ that's ahead of
+      // Dec 2025, so today is first; but we don't hard-code that.
+      // Instead assert the seeded past-journal trio is descending.
+      const dec10 = titles.indexOf('Dec 10th, 2025');
+      const dec11 = titles.indexOf('Dec 11th, 2025');
+      const dec12 = titles.indexOf('Dec 12th, 2025');
+      expect(dec10).toBeGreaterThanOrEqual(0);
+      expect(dec11).toBeGreaterThanOrEqual(0);
+      expect(dec12).toBeGreaterThanOrEqual(0);
+      // Newer date → earlier index (higher in the list).
+      expect(dec12).toBeLessThan(dec11);
+      expect(dec11).toBeLessThan(dec10);
+    });
+
+    test('future-dated journal sorts above today (pure chronological)', async ({ page }) => {
+      // Regression guard for the "today pinned first" behavior that
+      // placed today above a future journal. A user writing
+      // [[Apr 21st, 2026]] on Apr 20th expects Apr 21 above Apr 20.
+      // Use far-future dates so the assertion is date-independent.
+      await createJournalPages(page, ['Dec 31st, 2099', 'Jan 1st, 2100']);
+
+      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await page.waitForTimeout(200);
+      await expect(page.locator('.journals-view')).toBeVisible();
+
+      const titles = await page.locator('.journal-title').allTextContents();
+      const jan2100 = titles.indexOf('Jan 1st, 2100');
+      const dec2099 = titles.indexOf('Dec 31st, 2099');
+      const today = titles.indexOf(getTodayTitle());
+      expect(jan2100).toBeGreaterThanOrEqual(0);
+      expect(dec2099).toBeGreaterThanOrEqual(0);
+      expect(today).toBeGreaterThanOrEqual(0);
+      // Both future journals must be above today.
+      expect(jan2100).toBeLessThan(today);
+      expect(dec2099).toBeLessThan(today);
+      // And the later future date must be above the earlier one.
+      expect(jan2100).toBeLessThan(dec2099);
     });
 
     test('shows header with title and count', async ({ page }) => {
@@ -271,6 +303,7 @@ test.describe('Journals View', () => {
       // Should appear in journals
       await expect(page.locator('.journal-title').filter({ hasText: '2025-12-10' })).toBeVisible();
     });
+
   });
 
   test.describe('Logseq Parity', () => {
