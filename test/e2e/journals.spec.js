@@ -82,9 +82,7 @@ async function createJournalPages(page, dates, { addContent = true } = {}) {
  * helper at the top of each test that expects `.journals-view`.
  */
 async function enterJournalsView(page) {
-  await page.evaluate(() => {
-    window.TEST_HELPERS.dispatchIntent({ type: 'open-journals-view' });
-  });
+  await page.evaluate(() => window.TEST_HELPERS.openJournalsView());
   await expect(page.locator('.journals-view')).toBeVisible({ timeout: 3000 });
 }
 

@@ -553,13 +553,20 @@
 
 (defn- process-auto-trash-queue!
   "Process queued pages for auto-trash check.
-   Called after render to avoid nested dispatch."
+   Called after render to avoid nested dispatch.
+
+   Skipped under `?test=true` — the 100 ms queue otherwise silently
+   trashes empty fixture pages created by `:create-page` in tests and
+   takes focus with it through `handle-delete-page`'s session update,
+   making any multi-page e2e scenario flake. In tests, fixtures are
+   ephemeral by definition; auto-trash is a prod-side UX feature."
   []
-  (doseq [page-id (vs/take-auto-trash-queue!)]
-    (executor/apply-intent! !db
-                            {:type :auto-trash-empty-page
-                             :page-id page-id}
-                            "AUTO-TRASH")))
+  (when-not (test-mode?)
+    (doseq [page-id (vs/take-auto-trash-queue!)]
+      (executor/apply-intent! !db
+                              {:type :auto-trash-empty-page
+                               :page-id page-id}
+                              "AUTO-TRASH"))))
 
 (defn request-render!
   "Request a render on the next animation frame.
@@ -645,6 +652,12 @@
   ;; Expose test helpers for E2E tests
   (set! (.-TEST_HELPERS js/window)
         #js {:resetToEmptyDb reset-to-empty-db!
+             ;; First-class affordance so journals.spec doesn't need to
+             ;; click the sidebar nav (flaky under Replicant re-render
+             ;; timing). `reset-to-empty-db!` sets journals-view? false;
+             ;; tests that need journals view must explicitly enter it.
+             :openJournalsView (fn []
+                                 (handle-intent {:type :open-journals-view}))
              :dispatchIntent (fn [intent-js]
                               ;; Convert JS object to Clojure map, ensuring keyword fields are keywords
                                (let [raw (js->clj intent-js :keywordize-keys true)

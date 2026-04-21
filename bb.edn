@@ -19,6 +19,7 @@
   check {:doc "Lint + architecture verification + compile check"
          :task (do
                  (run 'lint)
+                 (run 'lint:rename-escape)
                  (run 'arch:verify)
                  (run 'test:verify-harness)
                  (shell "bb scripts/verify_kernel_boundaries.clj")
@@ -77,6 +78,9 @@
 
   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
                      :task (shell "node scripts/lint-e2e-keyboard.js")}
+
+  lint:rename-escape {:doc "Catch bare references to core fns (key, val, type…) when a local with `-name` suffix exists in the same file (catches the 3b6fdcd7 bug class)"
+                      :task (shell "bb scripts/lint_rename_escape.clj")}
 
   lint:fr-tests {:doc "Report FR scenario coverage (use -- --strict to fail on gaps)"
                  :task (let [arg-str (when (seq *command-line-args*)
@@ -142,6 +146,11 @@
 
   e2e:report {:doc "Open last E2E test report"
               :task (shell "npx playwright show-report")}
+
+  e2e:clean {:doc "Wipe Playwright artifacts (test-results/, playwright-report/) — run after failures filled disk"
+             :task (do
+                     (shell "rm -rf test-results playwright-report")
+                     (println "✓ Cleaned test-results/ and playwright-report/"))}
 
   test:e2e {:doc "Run Playwright tests filtered by scenario ID (optional arg, chromium only)"
             :task (let [scenario (first *command-line-args*)
