@@ -441,6 +441,26 @@
 
 ;; ── Navigation History (browser-style back/forward) ─────────────────────────
 
+(defn- history-step-session-updates
+  "Build session-updates for navigate-back/forward. Resolves :journals as a
+   virtual page; otherwise seeds selection on the destination page's first
+   block so typing works immediately (same contract as switch-page)."
+  [db new-page new-idx]
+  (if (= new-page :journals)
+    {:ui {:journals-view? true
+          :history-index new-idx
+          :zoom-root nil}}
+    (let [first-block (first-block-on-page db new-page)
+          base {:ui {:current-page new-page
+                     :journals-view? false
+                     :history-index new-idx
+                     :zoom-root nil}}]
+      (if first-block
+        (helpers/merge-session-updates base
+                                       (helpers/select-only-update first-block))
+        (helpers/merge-session-updates base
+                                       (helpers/clear-selection-update))))))
+
 (intent/register-intent! :navigate-back
                          {:doc "Navigate back in page history (Cmd+[).
          Returns to the previous page in navigation history without
@@ -450,23 +470,14 @@
                           :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :navigate-back]]]
                           :handler
-                          (fn [_db session _intent]
+                          (fn [db session _intent]
                             (let [history (get-in session [:ui :history] [])
                                   history-idx (get-in session [:ui :history-index] -1)]
                               (when (> history-idx 0)
                                 (let [new-idx (dec history-idx)
                                       new-page (nth history new-idx)]
-                                  ;; Handle :journals as virtual page
-                                  (if (= new-page :journals)
-                                    {:session-updates
-                                     {:ui {:journals-view? true
-                                           :history-index new-idx
-                                           :zoom-root nil}}}
-                                    {:session-updates
-                                     {:ui {:current-page new-page
-                                           :journals-view? false
-                                           :history-index new-idx
-                                           :zoom-root nil}}})))))})
+                                  {:session-updates
+                                   (history-step-session-updates db new-page new-idx)}))))})
 
 (intent/register-intent! :navigate-forward
                          {:doc "Navigate forward in page history (Cmd+]).
@@ -477,23 +488,14 @@
                           :fr/ids #{:fr.pages/switch-page}
                           :spec [:map [:type [:= :navigate-forward]]]
                           :handler
-                          (fn [_db session _intent]
+                          (fn [db session _intent]
                             (let [history (get-in session [:ui :history] [])
                                   history-idx (get-in session [:ui :history-index] -1)
                                   max-idx (dec (count history))]
                               (when (and (>= history-idx 0) (< history-idx max-idx))
                                 (let [new-idx (inc history-idx)
                                       new-page (nth history new-idx)]
-                                  ;; Handle :journals as virtual page
-                                  (if (= new-page :journals)
-                                    {:session-updates
-                                     {:ui {:journals-view? true
-                                           :history-index new-idx
-                                           :zoom-root nil}}}
-                                    {:session-updates
-                                     {:ui {:current-page new-page
-                                           :journals-view? false
-                                           :history-index new-idx
-                                           :zoom-root nil}}})))))})
+                                  {:session-updates
+                                   (history-step-session-updates db new-page new-idx)}))))})
 
 (def loaded? "Sentinel for spec.runner to verify plugin loaded." true)
