@@ -159,8 +159,14 @@
    Returns:
      {:log :db :ops :issues :session-updates :trace}"
   [log db session intent mint]
-  (let [{:keys [ops] :as result} (dispatch* db session intent)
-        new-log (if (seq ops)
+  (let [result (dispatch* db session intent)
+        db-after (:db result)
+        ops (:ops result)
+        ;; Log only on REAL state change, not merely 'intent emitted ops'.
+        ;; Ops may validate-away (issues) or normalize-away (no-op :place)
+        ;; leaving db-before = db-after; those shouldn't grow undo depth.
+        changed? (not (identical? db db-after))
+        new-log (if changed?
                   (let [{:keys [op-id timestamp]} (mint)
                         prev-op-id (:op-id (L/entry-at-head log))
                         entry (L/make-entry {:op-id op-id

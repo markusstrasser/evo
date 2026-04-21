@@ -91,9 +91,12 @@
    Lean first cut always uses :initial — :apply-tx is called through a
    separate future entry point once plugins opt in.
 
-   Plugins are run in unspecified order. If two plugins emit the same
-   key, the second silently wins. (Phase D isolation rule: plugins
-   should partition key space, so collisions are a bug.)"
+   Plugin invocation order is unspecified (iteration over a hash-map).
+   Collisions between plugins emitting the same derived key are therefore
+   UNDEFINED BEHAVIOR — one will silently win, but which one is not
+   guaranteed to be stable across runs. The Phase D isolation rule
+   requires plugins to partition the derived-key namespace; collisions
+   indicate a plugin bug, not a merge policy."
   [db]
   (reduce (fn [acc [_k {:keys [initial]}]]
             (try

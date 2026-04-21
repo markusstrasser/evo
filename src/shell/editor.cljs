@@ -829,8 +829,12 @@
      (when-not (test-mode?)
        ;; First, mark pages in trash > 30 days as tombstones
        (executor/apply-intent! !db {:type :cleanup-old-trash} "STARTUP")
-       ;; Then, garbage collect tombstoned nodes (bypasses transaction pipeline)
+       ;; Then, garbage collect tombstoned nodes. gc-tombstones bypasses the
+       ;; transaction pipeline (it's housekeeping, not a user action), so we
+       ;; must re-anchor the log to match or undo would resurrect the GC'd
+       ;; nodes. Accepting: GC drops prior undo history.
        (swap! !db api/gc-tombstones)
+       (slog/reset-with-db! @!db)
        ;; Finally, auto-trash any empty pages (except today's journal)
        (executor/apply-intent! !db {:type :scan-empty-pages} "STARTUP")))
    2000)

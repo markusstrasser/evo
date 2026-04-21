@@ -169,9 +169,13 @@
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
 
-    ;; Append the transaction to the op log for structural intents.
-    ;; Ephemeral intents (session-updates only, no ops) don't touch the log.
-    (when (seq ops)
+    ;; Append the transaction to the op log only on REAL state change.
+    ;; Raw ops emitted by the intent handler may normalize away (no-op :place)
+    ;; or be rejected by validation — in both cases db-before = db-after and
+    ;; we must not grow undo depth. Ephemeral intents (session-updates only)
+    ;; also leave db unchanged.
+    (when (and (seq ops)
+               (not (identical? db-before db-after)))
       (slog/append-and-advance! intent-map ops current-session))
 
     ;; Capture old page BEFORE applying session updates

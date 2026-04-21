@@ -220,48 +220,66 @@
   (when (str/starts-with? trimmed id-property-prefix)
     (str/trim (subs trimmed (count id-property-prefix)))))
 
+(defn- finalize-block
+  "Close out a collected block. If the *last* continuation line is an
+   `id:: ...` property, extract it as :raw-id and drop from body.
+
+   Only the terminal id:: counts — any id::-looking line with real text
+   or another id:: after it is preserved as user content. This matches
+   evo's serializer invariant (one trailing id:: per block) while
+   refusing to steal user text that happens to contain 'id:: ' as a
+   continuation."
+  [block]
+  (let [lines (:raw-lines block)
+        n (count lines)
+        last-line (when (pos? n) (nth lines (dec n)))
+        raw-id (when last-line
+                 (id-property-value (str/triml last-line)))
+        body-lines (if raw-id (subvec (vec lines) 0 (dec n)) (vec lines))
+        text (if (:embed? block) "" (str/join "\n" body-lines))]
+    (-> block
+        (dissoc :raw-lines)
+        (assoc :text text :raw-id raw-id))))
+
 (defn- parse-blocks
-  "First pass: group content lines into block records preserving source order.
+  "First pass: group content lines into block records preserving source
+   order. Returns vector of {:depth :embed? :text :embed-data :raw-id}.
 
-   Returns vector of {:depth :embed? :text :embed-data :raw-id}.
-
-   `:raw-id` is the value from a trailing `id::` property line, or nil if
-   absent. `assign-ids` below turns that into the final `:id`."
+   All non-blank, non-bullet lines are collected into :raw-lines;
+   finalize-block (on block close) decides whether the final line was
+   the block's id:: property."
   [content-lines]
-  (let [finalize (fn [blocks current]
-                   (if current (conj blocks current) blocks))]
+  (let [push (fn [blocks current]
+               (if current (conj blocks (finalize-block current)) blocks))]
     (loop [remaining content-lines
            blocks []
            current nil]
       (if-let [line (first remaining)]
         (let [trimmed (str/triml line)]
           (cond
-            ;; Trailing id:: property binds to the current block
-            (and current (some? (id-property-value trimmed)))
-            (recur (rest remaining) blocks
-                   (assoc current :raw-id (id-property-value trimmed)))
-
             ;; New bullet → flush current, start new block
             (is-bullet-line? line)
             (let [depth (parse-indent-level line)
-                  text (strip-bullet line)
-                  embed-data (parse-embed-line text)
+                  content (strip-bullet line)
+                  embed-data (parse-embed-line content)
                   block (if embed-data
-                          {:depth depth :embed? true :embed-data embed-data :text ""}
-                          {:depth depth :embed? false :text text})]
-              (recur (rest remaining) (finalize blocks current) block))
+                          {:depth depth :embed? true :embed-data embed-data
+                           :raw-lines []}
+                          {:depth depth :embed? false
+                           :raw-lines [content]})]
+              (recur (rest remaining) (push blocks current) block))
 
-            ;; Text continuation (non-blank, no bullet, no id::)
-            (and current (not (:embed? current))
+            ;; Non-blank, non-bullet line → continuation
+            (and current
                  (not (str/blank? trimmed))
                  (not (str/starts-with? trimmed "-")))
             (recur (rest remaining) blocks
-                   (update current :text str "\n" trimmed))
+                   (update current :raw-lines conj trimmed))
 
-            ;; Blank / unrecognized — skip
+            ;; Blank / pre-first-bullet — skip
             :else
             (recur (rest remaining) blocks current)))
-        (finalize blocks current)))))
+        (push blocks current)))))
 
 (defn- warn
   "Emit a warning about malformed input. Never throws."
