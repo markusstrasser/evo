@@ -153,25 +153,60 @@
                   ;; Error checking - clear state, stay empty
                   (swap! !storage-status assoc :checking? false))))))
 
-;; Auto-save to folder on DB changes (debounced)
+;; Auto-save to folder on DB changes (debounced, page-scoped)
 (defonce ^:private save-timeout (atom nil))
+(defonce ^:private dirty-pages (atom #{}))
+
+(defn- page-for
+  "Return the enclosing page id for node-id in db, or node-id itself if it is
+   a page. Returns nil for keyword roots and nodes with no page ancestor."
+  [db node-id]
+  (when (string? node-id)
+    (if (= :page (get-in db [:nodes node-id :type]))
+      node-id
+      (q/page-of db node-id))))
+
+(defn- dirty-page-ids
+  "Compute the set of page ids whose on-disk representation may have changed
+   between old-db and new-db. Looks at node-level and children-order diffs
+   only; resolves each changed id to its enclosing page in BOTH dbs so moves,
+   deletions, and page renames are covered."
+  [old-db new-db]
+  (let [old-nodes (:nodes old-db)
+        new-nodes (:nodes new-db)
+        old-children (:children-by-parent old-db)
+        new-children (:children-by-parent new-db)
+        diff-keys (fn [a b]
+                    (into #{}
+                          (concat
+                           (keep (fn [[k v]] (when (not= v (get b k)) k)) a)
+                           (keep (fn [[k v]] (when (not= v (get a k)) k)) b))))
+        changed-ids (into (diff-keys old-nodes new-nodes)
+                          (diff-keys old-children new-children))]
+    (into #{}
+          (comp (mapcat (fn [id] [(page-for old-db id) (page-for new-db id)]))
+                (filter some?))
+          changed-ids)))
 
 (defn- schedule-save!
-  "Debounced save - waits 500ms after last change before saving."
-  [db-val]
+  "Accumulate dirty pages and schedule a debounced write (500ms)."
+  [old-val new-val]
+  (swap! dirty-pages into (dirty-page-ids old-val new-val))
   (when-let [t @save-timeout]
     (js/clearTimeout t))
   (reset! save-timeout
           (js/setTimeout
            (fn []
-             (when (and (not (test-mode?)) (storage/has-folder?))
-               (storage/save-db! db-val)))
+             (let [pages @dirty-pages]
+               (reset! dirty-pages #{})
+               (when (and (not (test-mode?)) (storage/has-folder?))
+                 (storage/save-pages! new-val pages))))
            500)))
 
 (defonce _db-watcher
   (add-watch !db :auto-save
-             (fn [_ _ _ new-val]
-               (schedule-save! new-val))))
+             (fn [_ _ old-val new-val]
+               (schedule-save! old-val new-val))))
 
 ;; ── URL Sync (popstate handler for browser back/forward) ────────────────────
 
