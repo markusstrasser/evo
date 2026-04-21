@@ -12,7 +12,7 @@
      window.DEBUG.undoCount()
      window.DEBUG.assertBlockText('block-1', 'expected text')"
   (:require [dev.tooling :as tooling]
-            [kernel.history :as H]
+            [shell.history :as sh]
             [shell.view-state :as vs]))
 
 ;; ─── Dispatch Log Queries ───────────────────────────────────────────────────
@@ -74,29 +74,28 @@
 
 (defn undo-count
   "Number of available undo steps."
-  [db]
-  (H/undo-count db))
+  []
+  (sh/undo-count))
 
 (defn redo-count
   "Number of available redo steps."
-  [db]
-  (H/redo-count db))
+  []
+  (sh/redo-count))
 
 (defn can-undo?
   "Check if undo is available."
-  [db]
-  (H/can-undo? db))
+  []
+  (sh/can-undo?))
 
 (defn can-redo?
   "Check if redo is available."
-  [db]
-  (H/can-redo? db))
+  []
+  (sh/can-redo?))
 
 (defn undo-stack-summary
   "Get a summary of the undo stack (not full DB snapshots)."
-  [db]
-  (let [history (H/get-history db)
-        past (:past history)]
+  []
+  (let [past (:past (sh/get-history))]
     (mapv (fn [idx]
             {:index idx
              :node-count (count (get-in past [idx :db :nodes]))})
@@ -143,9 +142,9 @@
 
 (defn assert-undoable
   "Assert that undo is available."
-  [db]
-  (if (H/can-undo? db)
-    {:ok true :undo-count (H/undo-count db)}
+  []
+  (if (sh/can-undo?)
+    {:ok true :undo-count (sh/undo-count)}
     {:ok false
      :reason "No undo available"
      :undo-count 0}))
@@ -184,8 +183,8 @@
              :focus (vs/focus-id)
              :folded-count (count (vs/folded))
              :current-page (vs/current-page)}
-   :history {:undo-count (H/undo-count db)
-             :redo-count (H/redo-count db)}
+   :history {:undo-count (sh/undo-count)
+             :redo-count (sh/redo-count)}
    :log {:entry-count (count (tooling/get-log))
          :last-intent (last-intent)}
    :clipboard {:entry-count (count (tooling/get-clipboard-log))
@@ -207,11 +206,11 @@
              :getOperations (fn [] (clj->js (operations)))
 
              ;; ─── Undo/Redo ────────────────────────────────────
-             :undoCount (fn [] (undo-count @db-atom))
-             :redoCount (fn [] (redo-count @db-atom))
-             :canUndo (fn [] (can-undo? @db-atom))
-             :canRedo (fn [] (can-redo? @db-atom))
-             :undoStack (fn [] (clj->js (undo-stack-summary @db-atom)))
+             :undoCount (fn [] (undo-count))
+             :redoCount (fn [] (redo-count))
+             :canUndo (fn [] (can-undo?))
+             :canRedo (fn [] (can-redo?))
+             :undoStack (fn [] (clj->js (undo-stack-summary)))
 
              ;; ─── Clipboard ────────────────────────────────────
              :lastCopy (fn [] (clj->js (tooling/last-clipboard-op)))
@@ -226,7 +225,7 @@
              :assertEditing (fn [block-id]
                               (clj->js (assert-editing block-id)))
              :assertUndoable (fn []
-                               (clj->js (assert-undoable @db-atom)))
+                               (clj->js (assert-undoable)))
              :assertLastIntent (fn [type-str]
                                  (clj->js (assert-last-intent type-str)))
 

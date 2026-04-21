@@ -10,8 +10,8 @@
             [kernel.db :as db]
             [kernel.query :as q]
             [kernel.transaction :as tx]
-            [kernel.history :as H]
             [kernel.api :as api]
+            [shell.history :as sh]
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
@@ -56,8 +56,9 @@
 ;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
   (atom
-   ;; Always start with empty DB - demo data loaded only if no folder configured
-   (-> (db/empty-db) (H/record))))
+   ;; Always start with empty DB - demo data loaded only if no folder configured.
+   ;; History lives in shell.history/!history (external to the db map).
+   (db/empty-db)))
 
 ;; Storage status atom for UI feedback
 (defonce !storage-status
@@ -102,14 +103,13 @@
                  ;; Folder has pages - load them
                  (do
                    (js/console.log "📂 Loading" (count ops) "ops from folder...")
-                   (reset! !db (-> (db/empty-db)
-                                   (tx/interpret ops)
-                                   :db
-                                   (H/record))))
+                   (reset! !db (:db (tx/interpret (db/empty-db) ops)))
+                   (sh/clear!))
                  ;; Empty folder - start with empty DB
                  (do
                    (js/console.log "📂 Empty folder, starting fresh")
-                   (reset! !db (-> (db/empty-db) (H/record)))))
+                   (reset! !db (db/empty-db))
+                   (sh/clear!)))
                ;; Navigate to startup page (URL param or today's journal)
                (navigate-to-startup-page!)
                (swap! !storage-status assoc
@@ -136,7 +136,8 @@
   (image/clear-url-cache!)
   (swap! !storage-status assoc :folder-name nil)
   ;; Reset to empty DB (no demo data - user must pick folder or start fresh)
-  (reset! !db (-> (db/empty-db) (H/record)))
+  (reset! !db (db/empty-db))
+  (sh/clear!)
   (vs/set-current-page! nil))
 
 ;; Try to restore previously selected folder on startup
@@ -624,13 +625,13 @@
    Exposed on window.TEST_HELPERS for Playwright."
   []
   ;; Reset DB (document only, no session data)
-  (reset! !db (-> (db/empty-db)
-                  (tx/interpret [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
-                                 {:op :place :id "test-page" :under :doc :at :last}
-                                 {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
-                                 {:op :place :id "test-block-1" :under "test-page" :at :last}])
-                  :db
-                  (H/record)))
+  (reset! !db (:db (tx/interpret
+                    (db/empty-db)
+                    [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
+                     {:op :place :id "test-page" :under :doc :at :last}
+                     {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
+                     {:op :place :id "test-block-1" :under "test-page" :at :last}])))
+  (sh/clear!)
   ;; Reset session and set current page
   (vs/reset-view-state!)
   (vs/set-journals-view! false) ; Disable journals view so test-page is visible
@@ -669,7 +670,8 @@
                   (:ops payload))
         session (normalize-view-state-updates (or (:session payload) {}))
         result (tx/interpret (db/empty-db) ops)]
-    (reset! !db (H/record (:db result)))
+    (reset! !db (:db result))
+    (sh/clear!)
     (vs/reset-view-state!)
     (vs/merge-view-state-updates! session)
     (swap! !storage-status assoc :checking? false)))
@@ -732,7 +734,7 @@
                                              (update :under #(keyword (str/replace % #"^:" "")))))
                                          ops)
                                result (tx/interpret @!db ops)]
-                           (reset! !db (H/record (:db result)))))
+                           (reset! !db (:db result))))
              :loadFixture load-fixture!
 
              ;; ── Debug Helpers (for E2E test diagnostics) ────────────────────────

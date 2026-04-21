@@ -85,40 +85,30 @@
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
 
-   Like dispatch, but returns {:db :issues :trace} for debugging and introspection.
+   Pure: history recording is the caller's responsibility (see
+   `dispatch-tracked` or `shell.history/record!`).
 
    Args:
    - db: Current database (persistent document graph)
    - session: Current session state (ephemeral UI state) or nil for session-independent intents
    - intent: Intent map (e.g., {:type :selection :mode :replace :ids [\"a\"]})
    - opts: Optional map with:
-     - :history/enabled? - Set to false to disable history recording (default: true)
      - :state-machine/enforce? - Override *enforce-state-machine* (default: use dynamic var)
 
    Returns:
-   - {:db new-db :issues [] :trace [...]} - Full result with trace
+   - {:db new-db :issues [] :trace [...] :session-updates {...} :ops [...]}
+
+   `:ops` is the vector of kernel ops that were emitted by the intent handler
+   (after normalization). Callers that track history should record a snapshot
+   of the pre-dispatch (db, session) iff `(seq ops)`.
 
    State Machine Enforcement (LOGSEQ PARITY):
    - When *enforce-state-machine* is true (default), validates intent against current state
    - Invalid intents return no-op result (no changes, no errors) - matches Logseq behavior
    - Idle state guard: Enter/Backspace/Tab/etc. do nothing from idle state
-   - Edit-only intents blocked when in selection mode and vice versa
-
-   Example:
-     (dispatch* db session {:type :selection :mode :extend-next})
-     ;=> {:db db' :issues [] :trace [{:tx-id ... :ops [...]}]}
-
-     (dispatch* db nil {:type :indent :id \"a\"} {:history/enabled? false})
-     ;=> {:db db' :issues [] :trace [...]} (no history recorded)
-
-   Use in REPL/agents for debugging:
-     (let [{:keys [db issues trace]} (api/dispatch* db session intent)]
-       (when (seq issues)
-         (println \"Issues:\" issues))
-       (println \"Trace:\" trace)
-       db)"
+   - Edit-only intents blocked when in selection mode and vice versa"
   ([db session intent] (dispatch* db session intent nil))
-  ([db session intent {:keys [history/enabled? state-machine/enforce?] :as _opts}]
+  ([db session intent {:keys [state-machine/enforce?] :as _opts}]
    (let [enforce? (if (some? enforce?) enforce? *enforce-state-machine*)]
 
      ;; STATE MACHINE GUARD (LOGSEQ PARITY)
@@ -130,6 +120,7 @@
                   (not (sm/intent-allowed? session intent))))
        ;; Intent blocked by state machine - return no-op
        {:db db
+        :ops []
         :issues []
         :trace [{:tx-id #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
                  :ops []
@@ -141,17 +132,34 @@
         :session-updates nil}
 
        ;; Intent allowed - proceed with dispatch
-       (let [{:keys [ops session-updates]} (intent/apply-intent db session intent)
-             ;; Only record history when there are actual structural ops
-             ;; Ephemeral intents (session-updates only) don't trigger history
-             record? (and (not (false? enabled?)) (seq ops))
-             ;; Record both DB and session for proper undo/redo cursor restore
-             db0 (if record? (H/record db session) db)]
+       (let [{:keys [ops session-updates]} (intent/apply-intent db session intent)]
          #?(:clj (journal-tx! intent ops))
-         ;; DB ops go through normal transaction pipeline
-         ;; Session updates are returned for caller to apply
-         (-> (tx/interpret db0 ops)
-             (assoc :session-updates session-updates)))))))
+         ;; DB ops go through normal transaction pipeline.
+         ;; Session updates + ops are returned for callers (shell/tests) that
+         ;; want to record history.
+         (-> (tx/interpret db ops)
+             (assoc :ops (vec ops)
+                    :session-updates session-updates)))))))
+
+(defn dispatch-tracked
+  "Dispatch an intent and thread history through.
+
+   Convenience wrapper for callers that want snapshot-based undo/redo:
+   records pre-dispatch (db, session) into `history` iff the intent emitted
+   structural ops.
+
+   Args:
+   - history: Current history value (see `kernel.history/empty-history`)
+   - db, session, intent: As for `dispatch*`
+
+   Returns:
+   - {:history :db :ops :issues :session-updates :trace}"
+  [history db session intent]
+  (let [result (dispatch* db session intent)
+        new-history (if (seq (:ops result))
+                      (H/record history db session)
+                      history)]
+    (assoc result :history new-history)))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
@@ -186,7 +194,7 @@
          db
          (throw (ex-info \"Validation failed\" {:issues issues}))))"
   [db session intent]
-  (select-keys (dispatch* db session intent) [:db :issues :session-updates]))
+  (select-keys (dispatch* db session intent) [:db :ops :issues :session-updates]))
 
 (defn dispatch!
   "Dispatch an intent, throwing on validation failure.

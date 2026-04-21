@@ -4,10 +4,10 @@
    Owns app-level shortcuts plus the small amount of DOM enrichment that is
    still required before an intent reaches the canonical executor path."
   (:require [components.lightbox :as lightbox]
-            [kernel.history :as H]
             [kernel.query :as q]
             [keymap.core :as keymap]
             [shell.executor :as executor]
+            [shell.history :as sh]
             [shell.view-state :as vs]
             [utils.block-dom :as block-dom]
             [utils.text-selection :as text-sel]))
@@ -254,18 +254,12 @@
               (.preventDefault e)
               (cond
                 (= intent-type :undo)
-                (when-let [{:keys [db session]} (H/undo @!db (vs/get-view-state))]
-                  (when session
-                    (vs/merge-view-state-updates! session))
-                  (reset! !db db)
-                  (executor/assert-derived-fresh! db "after undo"))
+                (when (sh/undo! !db)
+                  (executor/assert-derived-fresh! @!db "after undo"))
 
                 (= intent-type :redo)
-                (when-let [{:keys [db session]} (H/redo @!db (vs/get-view-state))]
-                  (when session
-                    (vs/merge-view-state-updates! session))
-                  (reset! !db db)
-                  (executor/assert-derived-fresh! db "after redo"))
+                (when (sh/redo! !db)
+                  (executor/assert-derived-fresh! @!db "after redo"))
 
                 :else
                 (let [enriched-intent (enrich-intent handle-intent

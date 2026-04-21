@@ -5,6 +5,7 @@
    lives in one place."
   (:require [kernel.api :as api]
             [kernel.db :as db]
+            [shell.history :as sh]
             [shell.view-state :as vs]
             [shell.storage :as storage]
             [shell.url-sync :as url-sync]
@@ -160,13 +161,18 @@
         intent-type (:type intent-map)
         current-session (vs/get-view-state)
         db-before @!db
-        {:keys [db issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
+        {:keys [db ops issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
 
     ;; Report validation issues
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
+
+    ;; Record pre-dispatch state into undo history for structural ops.
+    ;; Ephemeral intents (session-updates only, no ops) don't touch history.
+    (when (seq ops)
+      (sh/record! db-before current-session))
 
     ;; Capture old page BEFORE applying session updates
     ;; (so push-history! can seed it into history if needed)

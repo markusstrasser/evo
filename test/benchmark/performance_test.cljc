@@ -194,17 +194,19 @@
 (deftest benchmark-undo-after-many-ops
   (testing "Undo after many operations should be fast"
     (let [db0 (generate-flat-doc 100)
-          ;; Perform 50 operations with history
-          final-db (reduce
-                    (fn [current-db i]
-                      (let [recorded (history/record current-db {})]
-                        (:db (tx/interpret recorded
-                               [{:op :update-node
-                                 :id (str "block-" i)
-                                 :props {:text (str "Modified " i)}}]))))
-                    db0
-                    (range 50))
-          [result elapsed] (timed #(history/undo final-db))]
+          ;; Perform 50 operations recording history alongside db
+          {:keys [history db]}
+          (reduce
+           (fn [{:keys [history db]} i]
+             (let [h' (history/record history db {})
+                   d' (:db (tx/interpret db
+                                         [{:op :update-node
+                                           :id (str "block-" i)
+                                           :props {:text (str "Modified " i)}}]))]
+               {:history h' :db d'}))
+           {:history history/empty-history :db db0}
+           (range 50))
+          [result elapsed] (timed #(history/undo history db {}))]
       (is (< elapsed threshold-fast)
           (str "Undo took " elapsed "ms, expected <" threshold-fast "ms"))
       (is (some? (:db result))))))
