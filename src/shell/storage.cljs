@@ -418,6 +418,19 @@
         (save-page! db page-id))
       (js/console.log "💾 Saved to folder"))))
 
+(defn save-pages!
+  "Save only the given page ids to markdown files. Skips ids that are not pages
+   in the current db (e.g., deleted since the change was observed)."
+  [db page-ids]
+  (when (and (has-folder?) (seq page-ids))
+    (let [written (volatile! 0)]
+      (doseq [page-id page-ids]
+        (when (= :page (get-in db [:nodes page-id :type]))
+          (save-page! db page-id)
+          (vswap! written inc)))
+      (when (pos? @written)
+        (js/console.log (str "💾 Saved " @written " page(s)"))))))
+
 (defn load-all-pages
   "Load all pages from markdown files in the folder.
    Returns a Promise that resolves to vector of ops."
