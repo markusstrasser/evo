@@ -145,15 +145,14 @@
                                (filter #(journal/journal-page? (:title %))))
         ;; Check if today's journal exists
         today-exists? (some :is-today? existing-journals)
-        ;; Filter to visible journals (today or has content)
+        ;; Filter to visible journals (today or has content) and sort
+        ;; by date descending — pure chronological order. Today is kept
+        ;; visible by the filter clause, not by pinning it to the top;
+        ;; pinning would place today above a future-dated journal, which
+        ;; reads backwards when you scroll a mix of past/today/future.
         journal-pages (->> existing-journals
                            (filter #(or (:is-today? %) (:has-content? %)))
-                           ;; Sort: today first, then by date descending
-                           (sort (fn [a b]
-                                   (cond
-                                     (:is-today? a) -1
-                                     (:is-today? b) 1
-                                     :else (compare (:date b) (:date a))))))
+                           (sort-by :date #(compare %2 %1)))
         total (count journal-pages)
         ;; Build journal items with editing context
         journal-items (map-indexed
