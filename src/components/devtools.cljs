@@ -2,7 +2,7 @@
   "Dev tools UI component for debugging state and operations."
   (:require [dev.tooling :as devtools]
             [kernel.query :as q]
-            [shell.history :as sh]
+            [shell.log :as slog]
             [shell.view-state :as vs]
             [clojure.string :as str]))
 
@@ -237,12 +237,12 @@
                   :margin-top "10px"}}
     [:div
      [:strong "Can undo: "]
-     [:span {:style {:color (if (sh/can-undo?) "#10b981" "#ef4444")}}
-      (str (sh/can-undo?))]]
+     [:span {:style {:color (if (slog/can-undo?) "#10b981" "#ef4444")}}
+      (str (slog/can-undo?))]]
     [:div
      [:strong "Can redo: "]
-     [:span {:style {:color (if (sh/can-redo?) "#10b981" "#ef4444")}}
-      (str (sh/can-redo?))]]]])
+     [:span {:style {:color (if (slog/can-redo?) "#10b981" "#ef4444")}}
+      (str (slog/can-redo?))]]]])
 
 (defn DevToolsPanel
   "Main dev tools panel with all debugging info."

@@ -23,9 +23,9 @@
      is NEVER mutated directly - always recomputed from canonical structure.
 
    :fr.kernel/undo-restores-all
-     Transaction pipeline is pure (DB, ops) → DB'. Combined with kernel.history,
+     Transaction pipeline is pure (DB, ops) → DB'. Combined with kernel.log,
      this enables complete undo/redo: all state (content + session) is restored
-     by replaying inverse operations through the same pipeline."
+     by re-folding the op log through the same pipeline."
   (:require [kernel.db :as db]
             [kernel.ops :as ops]
             [kernel.position :as pos]

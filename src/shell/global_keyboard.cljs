@@ -7,7 +7,7 @@
             [kernel.query :as q]
             [keymap.core :as keymap]
             [shell.executor :as executor]
-            [shell.history :as sh]
+            [shell.log :as slog]
             [shell.view-state :as vs]
             [utils.block-dom :as block-dom]
             [utils.text-selection :as text-sel]))
@@ -254,11 +254,11 @@
               (.preventDefault e)
               (cond
                 (= intent-type :undo)
-                (when (sh/undo! !db)
+                (when (slog/undo! !db)
                   (executor/assert-derived-fresh! @!db "after undo"))
 
                 (= intent-type :redo)
-                (when (sh/redo! !db)
+                (when (slog/redo! !db)
                   (executor/assert-derived-fresh! @!db "after redo"))
 
                 :else

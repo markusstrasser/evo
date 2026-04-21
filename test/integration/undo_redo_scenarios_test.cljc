@@ -13,25 +13,54 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.api :as api]
-            [kernel.history :as history]
+            [kernel.log :as L]
             [kernel.query :as q]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
 ;; ── Test Helpers ─────────────────────────────────────────────────────────────
 
-(defn dispatch!
-  "Test helper: dispatch an intent and thread history alongside db.
+(def ^:private test-mint
+  "Deterministic-enough minter for tests: unique op-id, constant timestamp."
+  (fn [] {:op-id (random-uuid) :timestamp 0}))
 
-   Returns {:history :db :session} with session merged from session-updates.
-   History auto-records on structural ops (via api/dispatch-tracked)."
-  [history db session intent]
-  (let [result (api/dispatch-tracked history db session intent)
+(defn- empty-log-with-root
+  "Build a log whose :root-db is `db` (baseline, no undoable ops)."
+  [db]
+  (L/reset-root db))
+
+(defn dispatch!
+  "Test helper: dispatch an intent, thread log/db/session.
+
+   Returns {:log :db :session}. On structural ops, the log is appended.
+   Session is merged from session-updates."
+  [log db session intent]
+  (let [result (api/dispatch-logged log db session intent test-mint)
         updates (:session-updates result)
         new-session (if updates (merge-with merge session updates) session)]
-    {:history (:history result)
+    {:log (:log result)
      :db (:db result)
      :session new-session}))
+
+(defn undo!
+  "Test helper: rewind head, refold db, restore pre-op session.
+
+   Returns {:log :db :session} or nil if nothing to undo."
+  [log _db session]
+  (when-let [new-log (L/undo log)]
+    (let [entry-undone (L/entry-at-head log)
+          new-db (L/head-db new-log)
+          restored (:session-before entry-undone)
+          new-session (if restored (merge-with merge session restored) session)]
+      {:log new-log :db new-db :session new-session})))
+
+(defn redo!
+  "Test helper: advance head, refold db.
+
+   Returns {:log :db :session} or nil if nothing to redo."
+  [log _db session]
+  (when-let [new-log (L/redo log)]
+    {:log new-log :db (L/head-db new-log) :session session}))
 
 ;; ── Session Helpers ──────────────────────────────────────────────────────────
 
@@ -90,45 +119,42 @@
 
 (deftest ^{:fr/ids #{:fr.kernel/undo-restores-all}} undo-block-creation
   (testing "Undo should restore DB to state before block creation"
-    (let [db (build-simple-doc)
+    (let [db0 (build-simple-doc)
           session (editing-session "a" 5)
-          initial-count (count (q/children db :doc))
+          log0 (empty-log-with-root db0)
+          initial-count (count (q/children db0 :doc))
 
           ;; Create a new block via split
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :context-aware-enter
-                                           :block-id "a"
-                                           :cursor-pos 5})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :context-aware-enter
+                                       :block-id "a"
+                                       :cursor-pos 5})
           after-create-count (count (q/children db :doc))]
 
-      ;; Verify block was created
       (is (>= after-create-count initial-count)
           "Should have created a block or nested structure")
 
-      ;; Now undo
-      (let [result (history/undo history db session)
-            db-after (:db result)]
+      ;; Undo
+      (let [result (undo! log db session)]
         (is (some? result) "Undo should return a result")
-        (is (= initial-count (count (q/children db-after :doc)))
+        (is (= initial-count (count (q/children (:db result) :doc)))
             "Undo should restore original block count")))))
 
 (deftest ^{:fr/ids #{:fr.kernel/undo-restores-all}} undo-restores-text-content
   (testing "Undo should restore exact text content"
-    (let [db (build-simple-doc)
-          original-text (get-in db [:nodes "a" :props :text])
+    (let [db0 (build-simple-doc)
+          original-text (get-in db0 [:nodes "a" :props :text])
           session (editing-session "a" 0)
+          log0 (empty-log-with-root db0)
 
-          ;; Modify text
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :update-content
-                                           :block-id "a"
-                                           :text "Modified text"})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :update-content
+                                       :block-id "a"
+                                       :text "Modified text"})
 
-          ;; Verify modification
           _ (is (= "Modified text" (get-in db [:nodes "a" :props :text])))
 
-          ;; Undo
-          {:keys [db]} (history/undo history db session)]
+          {:keys [db]} (undo! log db session)]
 
       (is (= original-text (get-in db [:nodes "a" :props :text]))
           "Undo should restore original text"))))
@@ -137,45 +163,38 @@
 
 (deftest undo-delete-with-reparenting
   (testing "Undo delete should restore block AND its children's parent relationships"
-    (let [db (build-nested-doc)
+    (let [db0 (build-nested-doc)
           session (with-selection ["child"] "child")
+          log0 (empty-log-with-root db0)
 
-          ;; Verify initial state
-          _ (is (= "parent" (get-in db [:derived :parent-of "child"])))
+          _ (is (= "parent" (get-in db0 [:derived :parent-of "child"])))
 
-          ;; Delete child (which should move to trash)
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :delete-selected})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :delete-selected})
 
-          ;; Verify deletion
           _ (is (= :trash (get-in db [:derived :parent-of "child"]))
                 "Child should be in trash after delete")
 
-          ;; Undo
-          {:keys [db]} (history/undo history db session)]
+          {:keys [db]} (undo! log db session)]
 
-      ;; Child should be back under parent
       (is (= "parent" (get-in db [:derived :parent-of "child"]))
           "Undo should restore child to original parent"))))
 
 (deftest undo-indent-restores-structure
   (testing "Undo indent should restore original parent"
-    (let [db (build-simple-doc)
+    (let [db0 (build-simple-doc)
           session (with-selection ["b"] "b")
+          log0 (empty-log-with-root db0)
 
-          ;; Verify initial parent
-          _ (is (= :doc (get-in db [:derived :parent-of "b"])))
+          _ (is (= :doc (get-in db0 [:derived :parent-of "b"])))
 
-          ;; Indent "b" under "a"
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :indent-selected})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :indent-selected})
 
-          ;; Verify indent
           _ (is (= "a" (get-in db [:derived :parent-of "b"]))
                 "Block should be under 'a' after indent")
 
-          ;; Undo
-          {:keys [db]} (history/undo history db session)]
+          {:keys [db]} (undo! log db session)]
 
       (is (= :doc (get-in db [:derived :parent-of "b"]))
           "Undo should restore original parent (:doc)"))))
@@ -184,143 +203,112 @@
 
 (deftest ^{:fr/ids #{:fr.kernel/undo-restores-all}} redo-after-undo
   (testing "Redo should re-apply undone operation"
-    (let [db (build-simple-doc)
+    (let [db0 (build-simple-doc)
           session (editing-session "a" 0)
+          log0 (empty-log-with-root db0)
 
-          ;; Modify text
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :update-content
-                                           :block-id "a"
-                                           :text "Modified"})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :update-content
+                                       :block-id "a"
+                                       :text "Modified"})
 
           modified-text (get-in db [:nodes "a" :props :text])
 
-          ;; Undo
-          {hist-after-undo :history db-after-undo :db}
-          (history/undo history db session)
-          _ (is (not= modified-text (get-in db-after-undo [:nodes "a" :props :text]))
+          undone (undo! log db session)
+          _ (is (not= modified-text (get-in (:db undone) [:nodes "a" :props :text]))
                 "Undo should change text")
 
-          ;; Redo
-          {:keys [db]} (history/redo hist-after-undo db-after-undo session)]
+          redone (redo! (:log undone) (:db undone) (:session undone))]
 
-      (is (= modified-text (get-in db [:nodes "a" :props :text]))
+      (is (= modified-text (get-in (:db redone) [:nodes "a" :props :text]))
           "Redo should restore modified text"))))
 
 (deftest new-operation-clears-redo-stack
   (testing "New operation after undo should clear redo stack"
-    (let [db (build-simple-doc)
+    (let [db0 (build-simple-doc)
           session (editing-session "a" 0)
+          log0 (empty-log-with-root db0)
 
-          ;; First modification
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :update-content
-                                           :block-id "a"
-                                           :text "First mod"})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :update-content
+                                       :block-id "a"
+                                       :text "First mod"})
 
-          ;; Undo - may return nil if no history
-          undo-result (history/undo history db session)
-          history (or (:history undo-result) history)
-          db-after-undo (if undo-result (:db undo-result) db)
+          undone (undo! log db session)
+          log-after-undo (:log undone)
+          db-after-undo (:db undone)
 
-          ;; Second modification (should clear redo)
-          {:keys [history db]} (dispatch! history db-after-undo session
-                                          {:type :update-content
-                                           :block-id "a"
-                                           :text "Second mod"})
+          ;; Second modification (should clear future)
+          {:keys [log db]} (dispatch! log-after-undo db-after-undo session
+                                      {:type :update-content
+                                       :block-id "a"
+                                       :text "Second mod"})
 
-          ;; Try to redo (should fail/no-op) - returns nil when no future
-          redo-result (history/redo history db session)
-          final-db (if redo-result (:db redo-result) db)]
+          redone (redo! log db session)]
 
-      ;; Either redo returns nil (no future) or returns same DB
-      (is (or (nil? redo-result)
-              (= "Second mod" (get-in final-db [:nodes "a" :props :text])))
-          "Redo should not work after new operation"))))
+      (is (nil? redone) "Redo should return nil after new op cleared the future"))))
 
 ;; ── Boundary Condition Tests ─────────────────────────────────────────────────
 
-(deftest undo-on-fresh-db-is-no-op
-  (testing "Undo on fresh DB with no history should be no-op"
+(deftest undo-on-fresh-log-is-no-op
+  (testing "Undo on fresh log with no history should be nil"
     (let [db (build-simple-doc)
-          original-db db
-          result (history/undo history/empty-history db nil)]
-      (is (nil? result) "Undo on fresh history should return nil")
-      (is (= (:nodes db) (:nodes original-db))
-          "Undo on fresh DB should not change content"))))
+          log (empty-log-with-root db)]
+      (is (nil? (undo! log db nil))))))
 
 (deftest redo-without-undo-is-no-op
-  (testing "Redo without prior undo should be no-op"
-    (let [db (build-simple-doc)
+  (testing "Redo without prior undo should be nil"
+    (let [db0 (build-simple-doc)
           session (editing-session "a" 0)
+          log0 (empty-log-with-root db0)
 
-          ;; Do an operation
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :update-content
-                                           :block-id "a"
-                                           :text "Modified"})
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :update-content
+                                       :block-id "a"
+                                       :text "Modified"})]
 
-          modified-db db
-
-          ;; Try redo without undo - returns nil when no future
-          result (history/redo history db session)]
-
-      (is (nil? result) "Redo without prior undo should return nil")
-      (is (= (:nodes db) (:nodes modified-db))
-          "Redo without undo should not change DB"))))
+      (is (nil? (redo! log db session))
+          "Redo without prior undo should return nil"))))
 
 ;; ── Cursor/Selection Restoration Tests ───────────────────────────────────────
 
 (deftest undo-restores-selection-state
   (testing "Undo should restore selection state from before operation"
-    ;; LOGSEQ PARITY: Undo restores to the state immediately before the operation.
-    ;; If "b" was selected when we deleted, undo should restore with "b" selected.
-    (let [db (build-simple-doc)
-          ;; Start with "b" selected - this is the state BEFORE the delete
+    (let [db0 (build-simple-doc)
           session (with-selection ["b"] "b")
+          log0 (empty-log-with-root db0)
 
-          ;; Delete "b" - dispatch! records history with pre-op session (b selected)
-          {:keys [history db]} (dispatch! history/empty-history db session
-                                          {:type :delete-selected})
+          ;; Delete "b" — log captures pre-op session (b selected)
+          {:keys [log db]} (dispatch! log0 db0 session
+                                      {:type :delete-selected})
 
-          ;; Undo - should restore both DB and session
-          undo-result (history/undo history db session)
-          undo-db (when undo-result (:db undo-result))
-          undo-session (when undo-result (:session undo-result))]
+          result (undo! log db session)]
 
-      ;; If undo succeeded, DB should be restored
-      (when undo-db
-        (is (contains? (:nodes undo-db) "b")
-            "Deleted block should be restored"))
-
-      ;; Session should have selection from before delete
-      (when undo-session
-        (is (= #{"b"} (:nodes (:selection undo-session)))
+      (when result
+        (is (contains? (:nodes (:db result)) "b")
+            "Deleted block should be restored")
+        (is (= #{"b"} (get-in (:session result) [:selection :nodes]))
             "Selection should be restored to 'b' (state before delete)")))))
 
 ;; ── Complex Scenario Tests ───────────────────────────────────────────────────
 
 (deftest multiple-undos-in-sequence
   (testing "Multiple undos should walk back through history correctly"
-    (let [db (build-simple-doc)
+    (let [db0 (build-simple-doc)
           session (editing-session "a" 0)
+          log0 (empty-log-with-root db0)
 
-          ;; Op 1: Modify "a"
-          r1 (dispatch! history/empty-history db session
+          r1 (dispatch! log0 db0 session
                         {:type :update-content :block-id "a" :text "Mod1"})
-
-          ;; Op 2: Modify "a" again
-          r2 (dispatch! (:history r1) (:db r1) session
+          r2 (dispatch! (:log r1) (:db r1) session
                         {:type :update-content :block-id "a" :text "Mod2"})
 
           _ (is (= "Mod2" (get-in (:db r2) [:nodes "a" :props :text])))
 
-          ;; Undo once (back to Mod1)
-          u1 (history/undo (:history r2) (:db r2) session)
+          u1 (undo! (:log r2) (:db r2) session)
           _ (is (= "Mod1" (get-in (:db u1) [:nodes "a" :props :text])))
 
-          ;; Undo twice (back to original)
-          u2 (history/undo (:history u1) (:db u1) session)]
+          u2 (undo! (:log u1) (:db u1) session)]
 
       (is (= "First" (get-in (:db u2) [:nodes "a" :props :text]))
           "Two undos should restore original text"))))

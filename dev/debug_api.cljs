@@ -12,7 +12,7 @@
      window.DEBUG.undoCount()
      window.DEBUG.assertBlockText('block-1', 'expected text')"
   (:require [dev.tooling :as tooling]
-            [shell.history :as sh]
+            [shell.log :as slog]
             [shell.view-state :as vs]))
 
 ;; ─── Dispatch Log Queries ───────────────────────────────────────────────────
@@ -75,31 +75,37 @@
 (defn undo-count
   "Number of available undo steps."
   []
-  (sh/undo-count))
+  (slog/undo-count))
 
 (defn redo-count
   "Number of available redo steps."
   []
-  (sh/redo-count))
+  (slog/redo-count))
 
 (defn can-undo?
   "Check if undo is available."
   []
-  (sh/can-undo?))
+  (slog/can-undo?))
 
 (defn can-redo?
   "Check if redo is available."
   []
-  (sh/can-redo?))
+  (slog/can-redo?))
 
 (defn undo-stack-summary
-  "Get a summary of the undo stack (not full DB snapshots)."
+  "Summary of the op log (not full DB snapshots). Returns one entry per op,
+   with the intent type that produced it."
   []
-  (let [past (:past (sh/get-history))]
-    (mapv (fn [idx]
-            {:index idx
-             :node-count (count (get-in past [idx :db :nodes]))})
-          (range (count past)))))
+  (let [log (slog/get-log)
+        head (:head log)
+        ops (:ops log)]
+    (vec (map-indexed (fn [idx entry]
+                        {:index idx
+                         :op-id (:op-id entry)
+                         :intent-type (get-in entry [:intent :type])
+                         :num-ops (count (:ops entry))
+                         :head? (= idx head)})
+                      ops))))
 
 ;; ─── State Assertions ───────────────────────────────────────────────────────
 ;; Return structured results: {:ok bool :reason string :actual value}
@@ -143,8 +149,8 @@
 (defn assert-undoable
   "Assert that undo is available."
   []
-  (if (sh/can-undo?)
-    {:ok true :undo-count (sh/undo-count)}
+  (if (slog/can-undo?)
+    {:ok true :undo-count (slog/undo-count)}
     {:ok false
      :reason "No undo available"
      :undo-count 0}))
@@ -183,8 +189,8 @@
              :focus (vs/focus-id)
              :folded-count (count (vs/folded))
              :current-page (vs/current-page)}
-   :history {:undo-count (sh/undo-count)
-             :redo-count (sh/redo-count)}
+   :history {:undo-count (slog/undo-count)
+             :redo-count (slog/redo-count)}
    :log {:entry-count (count (tooling/get-log))
          :last-intent (last-intent)}
    :clipboard {:entry-count (count (tooling/get-clipboard-log))

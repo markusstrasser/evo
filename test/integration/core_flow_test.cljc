@@ -9,9 +9,12 @@
             [kernel.api :as api]
             [kernel.query :as q]
             [kernel.constants :as const]
-            [kernel.history :as H]))
+            [kernel.log :as L]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
+
+(def ^:private test-mint
+  (fn [] {:op-id (random-uuid) :timestamp 0}))
 
 (defn empty-session
   "Create an empty session for testing."
@@ -53,16 +56,15 @@
       (is (= "b" focus)
           "Navigate to next sibling should move focus"))))
 
-(deftest ephemeral-does-not-hit-history
-  (testing "Ephemeral UI updates don't trigger history"
+(deftest ephemeral-does-not-hit-log
+  (testing "Ephemeral UI updates don't append to the log"
     (let [db0 (demo-db)
-          h0 H/empty-history
-          ;; Prime with one real structural snapshot so we're counting deltas, not absolutes
-          h1 (H/record h0 db0 nil)
-          {:keys [history]} (api/dispatch-tracked h1 db0 nil
-                                                  {:type :enter-edit :block-id "a"})]
-      (is (= (count (:past h1)) (count (:past history)))
-          "Ephemeral ops (edit mode) should not add history entries"))))
+          log0 (L/reset-root db0)
+          {:keys [log]} (api/dispatch-logged log0 db0 nil
+                                             {:type :enter-edit :block-id "a"}
+                                             test-mint)]
+      (is (= (count (:ops log0)) (count (:ops log)))
+          "Ephemeral ops (edit mode) should not add log entries"))))
 
 (deftest delete-moves-to-trash
   (testing "Delete moves nodes to trash (archive by design)"
@@ -89,22 +91,26 @@
 
 (deftest undo-redo-roundtrip
   (testing "Undo/redo preserves state correctly with structural changes"
-    ;; Selection operations are ephemeral (don't enter history).
-    ;; Test undo/redo with actual structural changes (text updates, moves, etc.)
+    ;; Selection operations are ephemeral (don't enter the log).
+    ;; Test undo/redo with actual structural changes (text updates).
     (let [db0 (demo-db)
-          ;; Structural change 1: update text of block "a"
-          r1 (api/dispatch-tracked H/empty-history db0 nil
-                                   {:type :update-content :block-id "a" :text "Updated A"})
-          ;; Structural change 2: update text of block "b"
-          r2 (api/dispatch-tracked (:history r1) (:db r1) nil
-                                   {:type :update-content :block-id "b" :text "Updated B"})
+          log0 (L/reset-root db0)
+          ;; Structural change 1
+          r1 (api/dispatch-logged log0 db0 nil
+                                  {:type :update-content :block-id "a" :text "Updated A"}
+                                  test-mint)
+          ;; Structural change 2
+          r2 (api/dispatch-logged (:log r1) (:db r1) nil
+                                  {:type :update-content :block-id "b" :text "Updated B"}
+                                  test-mint)
+          log-final (:log r2)
           db-final (:db r2)
-          ;; Undo
-          undo1 (H/undo (:history r2) db-final nil)
-          db-undone (:db undo1)
+          ;; Undo one step: head-idx back by 1, re-fold
+          log-undo (L/undo log-final)
+          db-undone (L/head-db log-undo)
           ;; Redo
-          redo1 (H/redo (:history undo1) db-undone nil)
-          db-redone (:db redo1)]
+          log-redo (L/redo log-undo)
+          db-redone (L/head-db log-redo)]
       (is (= "Updated A" (get-in db-undone [:nodes "a" :props :text]))
           "Undo should restore state before second update (first update still applied)")
       (is (= "B" (get-in db-undone [:nodes "b" :props :text]))
