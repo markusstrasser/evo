@@ -135,8 +135,7 @@
    - Transaction interpretation
    - Index derivation"
   [db session action]
-  (api/dispatch* db session action {:history/enabled? false
-                                    :state-machine/enforce? true}))
+  (api/dispatch* db session action {:state-machine/enforce? true}))
 
 (defn- execute-action-sequence
   "Execute a sequence of actions, threading state through.

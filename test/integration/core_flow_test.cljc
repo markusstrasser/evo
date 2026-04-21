@@ -30,17 +30,16 @@
 (defn demo-db
   "Create a demo database with simple page + blocks structure."
   []
-  (-> (db/empty-db)
-      (tx/interpret [{:op :create-node :id "page" :type :page :props {:title "P"}}
-                     {:op :place :id "page" :under :doc :at :last}
-                     {:op :create-node :id "a" :type :block :props {:text "A"}}
-                     {:op :place :id "a" :under "page" :at :last}
-                     {:op :create-node :id "b" :type :block :props {:text "B"}}
-                     {:op :place :id "b" :under "page" :at :last}
-                     {:op :create-node :id "c" :type :block :props {:text "C"}}
-                     {:op :place :id "c" :under "page" :at :last}])
-      :db
-      (H/record)))
+  (:db (tx/interpret
+        (db/empty-db)
+        [{:op :create-node :id "page" :type :page :props {:title "P"}}
+         {:op :place :id "page" :under :doc :at :last}
+         {:op :create-node :id "a" :type :block :props {:text "A"}}
+         {:op :place :id "a" :under "page" :at :last}
+         {:op :create-node :id "b" :type :block :props {:text "B"}}
+         {:op :place :id "b" :under "page" :at :last}
+         {:op :create-node :id "c" :type :block :props {:text "C"}}
+         {:op :place :id "c" :under "page" :at :last}])))
 
 (deftest selection-and-navigation
   (testing "Selection changes work through session-updates"
@@ -57,10 +56,12 @@
 (deftest ephemeral-does-not-hit-history
   (testing "Ephemeral UI updates don't trigger history"
     (let [db0 (demo-db)
-          undo0 (count (:past (:history db0)))
-          {:keys [db]} (api/dispatch db0 nil {:type :enter-edit :block-id "a"})
-          undo1 (count (:past (:history db)))]
-      (is (= undo0 undo1)
+          h0 H/empty-history
+          ;; Prime with one real structural snapshot so we're counting deltas, not absolutes
+          h1 (H/record h0 db0 nil)
+          {:keys [history]} (api/dispatch-tracked h1 db0 nil
+                                                  {:type :enter-edit :block-id "a"})]
+      (is (= (count (:past h1)) (count (:past history)))
           "Ephemeral ops (edit mode) should not add history entries"))))
 
 (deftest delete-moves-to-trash
@@ -92,19 +93,26 @@
     ;; Test undo/redo with actual structural changes (text updates, moves, etc.)
     (let [db0 (demo-db)
           ;; Structural change 1: update text of block "a"
-          {:keys [db]} (api/dispatch db0 nil {:type :update-content :block-id "a" :text "Updated A"})
+          r1 (api/dispatch-tracked H/empty-history db0 nil
+                                   {:type :update-content :block-id "a" :text "Updated A"})
           ;; Structural change 2: update text of block "b"
-          {:keys [db]} (api/dispatch db nil {:type :update-content :block-id "b" :text "Updated B"})
-          ;; Undo/redo now return {:db ... :session ...}
-          db-undone (:db (H/undo db))
-          db-redone (:db (H/redo db-undone))]
+          r2 (api/dispatch-tracked (:history r1) (:db r1) nil
+                                   {:type :update-content :block-id "b" :text "Updated B"})
+          db-final (:db r2)
+          ;; Undo
+          undo1 (H/undo (:history r2) db-final nil)
+          db-undone (:db undo1)
+          ;; Redo
+          redo1 (H/redo (:history undo1) db-undone nil)
+          db-redone (:db redo1)]
       (is (= "Updated A" (get-in db-undone [:nodes "a" :props :text]))
           "Undo should restore state before second update (first update still applied)")
       (is (= "B" (get-in db-undone [:nodes "b" :props :text]))
           "Undo should restore original text of block b")
       (is (= "Updated B" (get-in db-redone [:nodes "b" :props :text]))
           "Redo should restore forward state")
-      (is (= (get-in db [:nodes "b" :props :text]) (get-in db-redone [:nodes "b" :props :text]))
+      (is (= (get-in db-final [:nodes "b" :props :text])
+             (get-in db-redone [:nodes "b" :props :text]))
           "Redo should match original state"))))
 
 (deftest multi-select-move

@@ -6,7 +6,6 @@
             [kernel.api :as api]
             [kernel.constants :as const]
             [kernel.db :as db]
-            [kernel.history :as H]
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [plugins.manifest :as manifest]
@@ -49,8 +48,7 @@
                       :type :block
                       :props {:text "hello"}}
                      {:op :place :id "block-a" :under "page-a" :at :last}])
-      :db
-      H/record))
+      :db))
 
 (deftest restore-page-clears-trash-state-and-exits-journals-view
   (let [db0 (trashed-page-db)
