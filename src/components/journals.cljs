@@ -168,10 +168,14 @@
                                        :folded-set folded-set}))
                        journal-pages)]
 
-    ;; Auto-create today's journal if it doesn't exist (Logseq parity)
+    ;; Auto-create today's journal if it doesn't exist (Logseq parity).
+    ;; Use :ensure-page-exists rather than :create-page — the latter
+    ;; navigates to the new page and flips journals-view? off, which is
+    ;; a visual jump-cut for the user and a silent escape hatch for
+    ;; tests asserting journals view stays visible.
     (when (and (not today-exists?) on-intent)
-      ;; Use js/setTimeout to avoid dispatching during render
-      (js/setTimeout #(on-intent {:type :create-page :title today-human}) 0))
+      ;; Schedule on next tick so we don't dispatch during render.
+      (js/setTimeout #(on-intent {:type :ensure-page-exists :title today-human}) 0))
 
     [:div.journals-view
      ;; Header
