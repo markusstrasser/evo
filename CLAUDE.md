@@ -47,6 +47,9 @@ bb test:kernel             # Kernel + script tests only
 bb test-watch              # Watch entire suite
 bb test-watch:view         # Watch view tier only
 bb test-watch:int          # Watch integration tier only
+
+# E2E smoke (fast, ~5s) — use during development
+npm run test:e2e:smoke
 ```
 
 See `docs/TESTING.md` for testing philosophy and the buffer vs DB gap.
@@ -63,12 +66,13 @@ bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fai
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
 bb lint:intents            # Regenerate intent catalog (--update to write)
+bb docs:verify             # Verify file references in docs/DX_INDEX.md exist
 ```
 
 ### Cache & Index Management
 
 ```bash
-bb clean                   # Clear all caches + semantic search index
+bb clean                   # Clear all caches
 bb index                   # Rebuild ck semantic embeddings index
 ```
 
@@ -133,7 +137,7 @@ All state changes flow through a strict pipeline:
 
 ### Canonical DB Shape
 
-**IMPORTANT (2025-11-21)**: Session state moved to separate atom. DB now contains only persistent document graph.
+**Session state lives in a separate atom** (`shell/view_state.cljs`). The DB contains only the persistent document graph.
 
 ```clojure
 ;; Database (persistent document only)
