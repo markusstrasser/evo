@@ -63,7 +63,11 @@
 
 (defn- block->markdown
   "Convert a single block and its children to markdown lines.
-   Returns vector of lines with proper indentation.
+
+   Each block is followed by a Logseq-style `id:: <block-id>` property
+   line so reload preserves identity across sessions. This unlocks
+   cross-device consistency (same file → same ids) and future block-ref
+   support. Trade-off: one extra property line per block in the diff.
 
    Handles block types:
    - :block (default): Text content with bullet (images use ![alt](path){width=N} markdown)
@@ -72,33 +76,35 @@
    Multiline text blocks (from Shift+Enter) are formatted as:
    - first line
      continuation line
-     another continuation"
+     id:: <uuid>"
   [db block-id depth]
   (let [node (get-in db [:nodes block-id])
         block-type (get node :type :block)
         props (get node :props {})
         children (get-in db [:children-by-parent block-id] [])
         indent (apply str (repeat (* depth 2) " "))
-        lines (case block-type
-                ;; Embed block: serialize as {{type url}} syntax
-                :embed
-                (let [url (get props :url "")
-                      embed-type (get props :embed-type :video)
-                      type-name (case embed-type
-                                  :twitter "tweet"
-                                  :youtube "video"
-                                  :vimeo "video"
-                                  "video")]
-                  [(str indent "- {{" type-name " " url "}}")])
+        property-indent (str indent "  ")
+        own-lines (case block-type
+                    ;; Embed block: serialize as {{type url}} syntax
+                    :embed
+                    (let [url (get props :url "")
+                          embed-type (get props :embed-type :video)
+                          type-name (case embed-type
+                                      :twitter "tweet"
+                                      :youtube "video"
+                                      :vimeo "video"
+                                      "video")]
+                      [(str indent "- {{" type-name " " url "}}")])
 
-                ;; Default text block
-                (let [text (get props :text "")
-                      text-lines (str/split-lines text)
-                      first-line (str indent "- " (first text-lines))
-                      continuation-indent (str indent "  ")
-                      continuation-lines (map #(str continuation-indent %) (rest text-lines))]
-                  (into [first-line] continuation-lines)))]
-    (into lines
+                    ;; Default text block
+                    (let [text (get props :text "")
+                          text-lines (str/split-lines text)
+                          first-line (str indent "- " (first text-lines))
+                          continuation-lines (map #(str property-indent %) (rest text-lines))]
+                      (into [first-line] continuation-lines)))
+        id-line (str property-indent "id:: " block-id)
+        block-lines (conj (vec own-lines) id-line)]
+    (into block-lines
           (mapcat #(block->markdown db % (inc depth)) children))))
 
 (defn page->markdown
@@ -201,110 +207,146 @@
                      :youtube)
        :url url})))
 
-(defn- process-bullet-line
-  "Process a bullet line, creating ops and updating state.
-   Detects embed syntax and creates :embed blocks accordingly.
-   Images are stored as markdown text: ![alt](path){width=N}
-   Returns updated state map."
-  [state page-id line]
-  (let [{:keys [ops counter parent-stack]} state
-        depth (parse-indent-level line)
-        text (strip-bullet line)
-        block-id (str page-id "-b" (inc counter))
-        parent-id (get parent-stack depth page-id)
-        ;; Check if this is an embed block (video/tweet)
-        embed-data (parse-embed-line text)
-        create-op (if embed-data
-                    {:op :create-node :id block-id :type :embed
-                     :props {:url (:url embed-data) :embed-type (:embed-type embed-data)}}
-                    ;; Default: text block (including images as markdown)
-                    {:op :create-node :id block-id :type :block :props {:text text}})]
-    {:ops (-> ops
-              (conj create-op)
-              (conj {:op :place :id block-id :under parent-id :at :last}))
-     :counter (inc counter)
-     :parent-stack (assoc parent-stack (inc depth) block-id)
-     :last-block-id block-id
-     :last-block-text text}))
-
-(defn- process-continuation-line
-  "Process a continuation line, appending to last block.
-   Returns updated state map."
-  [state trimmed]
-  (let [{:keys [ops last-block-id last-block-text]} state
-        new-text (str last-block-text "\n" trimmed)]
-    (assoc state
-           :ops (mapv (fn [op]
-                        (if (and (= (:op op) :create-node)
-                                 (= (:id op) last-block-id))
-                          (assoc-in op [:props :text] new-text)
-                          op))
-                      ops)
-           :last-block-text new-text)))
-
 (defn- is-bullet-line?
   "Check if line contains a bullet marker."
   [line]
   (str/includes? line "- "))
 
-(defn- is-continuation-line?
-  "Check if line is a continuation (indented, non-blank, no bullet, has previous block)."
-  [trimmed last-block-id]
-  (and (not (str/starts-with? trimmed "-"))
-       (not (str/blank? trimmed))
-       last-block-id))
+(def ^:private id-property-prefix "id:: ")
 
-(defn- process-content-line
-  "Process a single content line, returning updated state."
-  [state page-id line]
-  (let [trimmed (str/triml line)
-        {:keys [last-block-id]} state]
-    (cond
-      (is-bullet-line? line)
-      (process-bullet-line state page-id line)
+(defn- id-property-value
+  "Return the trimmed id value if this is an `id:: ...` property line, else nil."
+  [trimmed]
+  (when (str/starts-with? trimmed id-property-prefix)
+    (str/trim (subs trimmed (count id-property-prefix)))))
 
-      (is-continuation-line? trimmed last-block-id)
-      (process-continuation-line state trimmed)
+(defn- parse-blocks
+  "First pass: group content lines into block records preserving source order.
 
-      :else
-      state)))
+   Returns vector of {:depth :embed? :text :embed-data :raw-id}.
+
+   `:raw-id` is the value from a trailing `id::` property line, or nil if
+   absent. `assign-ids` below turns that into the final `:id`."
+  [content-lines]
+  (let [finalize (fn [blocks current]
+                   (if current (conj blocks current) blocks))]
+    (loop [remaining content-lines
+           blocks []
+           current nil]
+      (if-let [line (first remaining)]
+        (let [trimmed (str/triml line)]
+          (cond
+            ;; Trailing id:: property binds to the current block
+            (and current (some? (id-property-value trimmed)))
+            (recur (rest remaining) blocks
+                   (assoc current :raw-id (id-property-value trimmed)))
+
+            ;; New bullet → flush current, start new block
+            (is-bullet-line? line)
+            (let [depth (parse-indent-level line)
+                  text (strip-bullet line)
+                  embed-data (parse-embed-line text)
+                  block (if embed-data
+                          {:depth depth :embed? true :embed-data embed-data :text ""}
+                          {:depth depth :embed? false :text text})]
+              (recur (rest remaining) (finalize blocks current) block))
+
+            ;; Text continuation (non-blank, no bullet, no id::)
+            (and current (not (:embed? current))
+                 (not (str/blank? trimmed))
+                 (not (str/starts-with? trimmed "-")))
+            (recur (rest remaining) blocks
+                   (update current :text str "\n" trimmed))
+
+            ;; Blank / unrecognized — skip
+            :else
+            (recur (rest remaining) blocks current)))
+        (finalize blocks current)))))
+
+(defn- warn
+  "Emit a warning about malformed input. Never throws."
+  [msg]
+  (js/console.warn (str "[storage/markdown->ops] " msg)))
+
+(defn- mint-id
+  "Mint a new block id. Uses the runtime's `block-<uuid>` convention so the
+   id will round-trip cleanly on next save."
+  []
+  (str "block-" (random-uuid)))
+
+(defn- assign-ids
+  "Second pass: resolve :id for each block.
+
+   Total rules for malformed input:
+   - No :raw-id (never had id::, or user deleted it) → mint fresh.
+   - Blank :raw-id value → mint + warn.
+   - Duplicate :raw-id across blocks → keep first, mint replacement + warn.
+   Everything else is accepted as-is; we deliberately don't enforce a
+   UUID shape so evo's own `block-<uuid>` / `page-<uuid>` formats pass."
+  [blocks]
+  (let [seen (volatile! #{})]
+    (mapv (fn [{:keys [raw-id] :as block}]
+            (let [id (cond
+                       (nil? raw-id) (mint-id)
+
+                       (str/blank? raw-id)
+                       (do (warn "blank id:: value — minting new id")
+                           (mint-id))
+
+                       (contains? @seen raw-id)
+                       (do (warn (str "duplicate id:: " raw-id
+                                      " — re-minting second occurrence"))
+                           (mint-id))
+
+                       :else raw-id)]
+              (vswap! seen conj id)
+              (assoc block :id id)))
+          blocks)))
+
+(defn- blocks->ops
+  "Third pass: emit create-node + place ops for assigned blocks, tracking
+   the parent stack by depth."
+  [page-id blocks]
+  (:ops
+   (reduce
+    (fn [{:keys [ops parent-stack]} {:keys [depth embed? embed-data text id]}]
+      (let [parent-id (get parent-stack depth page-id)
+            create-op (if embed?
+                        {:op :create-node :id id :type :embed
+                         :props {:url (:url embed-data)
+                                 :embed-type (:embed-type embed-data)}}
+                        ;; Default: text block (images are markdown text)
+                        {:op :create-node :id id :type :block
+                         :props {:text text}})]
+        {:ops (-> ops
+                  (conj create-op)
+                  (conj {:op :place :id id :under parent-id :at :last}))
+         :parent-stack (assoc parent-stack (inc depth) id)}))
+    {:ops [] :parent-stack {0 page-id}}
+    blocks)))
 
 (defn markdown->ops
   "Parse Logseq-style markdown into kernel ops.
 
-   Handles multiline blocks where continuation lines are indented without bullets:
-   - first line
-     continuation line (no bullet, just indented)
+   Three passes: group lines into block records, resolve ids (using
+   Logseq-style `id::` property lines when present), emit ops.
 
    Optional opts map:
    - :file-modified - file's lastModified timestamp (fallback for created-at/updated-at)"
   [page-id markdown & [{:keys [file-modified]}]]
   (let [lines (str/split-lines markdown)
-        ;; Parse header properties (title::, timestamps, trashed-at::)
         {:keys [title created-at updated-at trashed-at content-lines]}
         (parse-markdown-header lines)
 
-        ;; Determine root based on trashed state
         root (if trashed-at :trash :doc)
-
-        ;; Page props: frontmatter timestamps take priority, file-modified is fallback
         page-props (build-page-props title created-at updated-at trashed-at file-modified)
 
-        ;; Initial state: page ops and empty block tracking
-        initial-state {:ops [{:op :create-node :id page-id :type :page :props page-props}
-                             {:op :place :id page-id :under root :at :last}]
-                       :counter 0
-                       :parent-stack {0 page-id}
-                       :last-block-id nil
-                       :last-block-text nil}
+        page-ops [{:op :create-node :id page-id :type :page :props page-props}
+                  {:op :place :id page-id :under root :at :last}]
 
-        ;; Process all content lines through state transformation
-        final-state (reduce (fn [state line]
-                              (process-content-line state page-id line))
-                            initial-state
-                            content-lines)]
-
-    (:ops final-state)))
+        blocks (-> content-lines parse-blocks assign-ids)
+        body-ops (blocks->ops page-id blocks)]
+    (into page-ops body-ops)))
 
 ;; ── File System Access API ───────────────────────────────────────────────────
 
