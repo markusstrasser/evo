@@ -37,6 +37,8 @@
    side effects themselves occur when this namespace is loaded, and any
    idempotent derived registrations that tests may clear are restored here."
   []
-  (registry/register-derived! :backlinks backlinks-index/compute-backlinks-index)
+  (registry/register-derived!
+    :backlinks
+    {:initial backlinks-index/compute-backlinks-index})
   {:loaded loaded-plugins
    :count (count loaded-plugins)})

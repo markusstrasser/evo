@@ -1,76 +1,104 @@
 (ns kernel.derived-registry
-  "Registry for derived index extensions.
+  "Registry for derived-index plugins.
 
-  Plugins are pure functions Db → {keyword any} that compute additional
-  derived views. They cannot mutate canonical data.
+   A plugin is a map:
+     {:initial   (fn [db] -> {index-key index-value ...})   ; MANDATORY
+      :apply-tx  (fn [prev-index db-before tx-ops db-after]
+                    -> {index-key ...} | :kernel.derived-registry/recompute)}
 
-  Plugins are registered once at startup and run after every transaction.
+   :initial is the *oracle*: it computes the plugin's index contribution
+   from scratch. It must be a pure function of the db.
 
-  NOTE: Renamed from plugins.registry to clarify that this is kernel
-  infrastructure for derived indexes, not intent handlers.")
+   :apply-tx is an OPTIONAL incremental-maintenance path. When implemented
+   it must satisfy the contract
+     (apply-tx (initial db-before) db-before tx-ops db-after)
+     = (initial db-after)
+   i.e. it's a checkable optimization — never a second source of truth.
+   Returning `::recompute` (or being absent entirely) tells the kernel to
+   fall back to `(initial db-after)`.
+
+   Lean first cut (Phase D of the kernel refactor): no plugin implements
+   :apply-tx yet. The protocol surface is in place so profile-driven
+   per-plugin migration can happen incrementally without kernel churn.
+   The kernel does not use protocols — plugins are plain data to keep the
+   kernel free of dispatch machinery (see CLAUDE.md kernel invariants).
+
+   Isolation rule (Phase D design §4): a plugin's :initial / :apply-tx
+   reads ONLY:
+     - canonical db (:nodes, :children-by-parent, :roots)
+     - kernel-maintained core indexes (:parent-of, :prev-id-of, etc.)
+     - its own previous index value (for :apply-tx)
+   Plugins MUST NOT read other plugins' indexes. This eliminates the
+   cross-plugin dependency DAG problem by construction.")
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Registry
 ;; ══════════════════════════════════════════════════════════════════════════════
 
-;; Atom holding registered plugins: {keyword (fn [db] → map)}
+(def recompute
+  "Sentinel an :apply-tx returns to signal 'recompute via :initial'."
+  ::recompute)
+
 (defonce ^:private *plugins (atom {}))
 
-;; ══════════════════════════════════════════════════════════════════════════════
-;; Public API
-;; ══════════════════════════════════════════════════════════════════════════════
+(defn- validate-spec [k spec]
+  (when-not (map? spec)
+    (throw (ex-info "Derived plugin spec must be a map with :initial"
+                    {:key k :got spec})))
+  (when-not (ifn? (:initial spec))
+    (throw (ex-info "Derived plugin :initial must be a function"
+                    {:key k :got (:initial spec)})))
+  (when (and (contains? spec :apply-tx)
+             (not (ifn? (:apply-tx spec))))
+    (throw (ex-info "Derived plugin :apply-tx must be a function (if provided)"
+                    {:key k :got (:apply-tx spec)}))))
 
 (defn register!
-  "Register a plugin with the given key and function.
+  "Register a derived-index plugin under key `k`.
 
-   k: keyword identifier for the plugin
-   f: pure function Db → {keyword any}
-
-   The plugin function should return a map of derived data to be merged
-   into db[:derived].
-
+   `spec` is a map with :initial (mandatory) and optionally :apply-tx.
    Example:
-     (register! :my-plugin
-                (fn [db]
-                  {:my-data (compute-something db)}))"
-  [k f]
-  (swap! *plugins assoc k f)
+     (register! :my-plugin {:initial (fn [db] {:my-data (compute db)})})
+
+   Re-registration replaces the previous spec for `k`."
+  [k spec]
+  (validate-spec k spec)
+  (swap! *plugins assoc k spec)
   nil)
 
 (defn register-derived!
-  "Alias for register! that clarifies intent for derived index plugins.
-
-   Useful when scanning call-sites: `register-derived!` communicates that the
-   plugin only contributes to db[:derived] and never mutates canonical data."
-  [k f]
-  (register! k f))
+  "Alias for register!. Communicates at call-sites that this plugin only
+   contributes to db[:derived]."
+  [k spec]
+  (register! k spec))
 
 (defn unregister!
-  "Remove a plugin from the registry.
-
-   Useful for testing or hot-reloading."
+  "Remove a plugin from the registry. Used by tests / hot-reload."
   [k]
   (swap! *plugins dissoc k)
   nil)
 
 (defn registered
-  "Return a map of all registered plugins."
+  "Return the full registry map {k -> spec}."
   []
   @*plugins)
 
 (defn run-all
-  "Run all registered plugins on db and merge their outputs.
+  "Run :initial on every registered plugin and merge the results.
 
-   Returns a map to be deep-merged into db[:derived].
+   Returns a map to be merged into db[:derived].
 
-   Plugins are run in an unspecified order. If multiple plugins
-   return the same key, later plugins will override earlier ones."
+   Lean first cut always uses :initial — :apply-tx is called through a
+   separate future entry point once plugins opt in.
+
+   Plugins are run in unspecified order. If two plugins emit the same
+   key, the second silently wins. (Phase D isolation rule: plugins
+   should partition key space, so collisions are a bug.)"
   [db]
-  (reduce (fn [acc [_k f]]
+  (reduce (fn [acc [_k {:keys [initial]}]]
             (try
-              (merge acc (f db))
+              (merge acc (initial db))
               (catch #?(:clj Exception :cljs js/Error) e
-                ;; Log error but don't fail the whole derive phase
                 #?(:clj (println "Plugin error:" (.getMessage e))
                    :cljs (.error js/console "Plugin error:" (.-message e)))
                 acc)))
@@ -78,9 +106,7 @@
           @*plugins))
 
 (defn clear!
-  "Clear all registered plugins.
-
-   Useful for testing."
+  "Drop all registered plugins. Used by tests."
   []
   (reset! *plugins {})
   nil)
