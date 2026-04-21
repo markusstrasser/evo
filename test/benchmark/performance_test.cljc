@@ -17,7 +17,7 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.history :as history]
+            [kernel.log :as L]
             [kernel.query :as q]))
 
 ;; ── Timing Utilities ─────────────────────────────────────────────────────────
@@ -192,24 +192,27 @@
 ;; ── Undo/Redo Benchmarks ─────────────────────────────────────────────────────
 
 (deftest benchmark-undo-after-many-ops
-  (testing "Undo after many operations should be fast"
+  (testing "Undo after many ops should be fast"
     (let [db0 (generate-flat-doc 100)
-          ;; Perform 50 operations recording history alongside db
-          {:keys [history db]}
-          (reduce
-           (fn [{:keys [history db]} i]
-             (let [h' (history/record history db {})
-                   d' (:db (tx/interpret db
-                                         [{:op :update-node
-                                           :id (str "block-" i)
-                                           :props {:text (str "Modified " i)}}]))]
-               {:history h' :db d'}))
-           {:history history/empty-history :db db0}
-           (range 50))
-          [result elapsed] (timed #(history/undo history db {}))]
+          ;; Append 50 ops to a log rooted at db0
+          log (reduce
+               (fn [log i]
+                 (L/append log
+                           (L/make-entry
+                            {:op-id (random-uuid)
+                             :prev-op-id nil
+                             :timestamp 0
+                             :intent {:type :bench-update}
+                             :ops [{:op :update-node
+                                    :id (str "block-" i)
+                                    :props {:text (str "Modified " i)}}]
+                             :session nil})))
+               (L/reset-root db0)
+               (range 50))
+          [result elapsed] (timed #(L/undo log))]
       (is (< elapsed threshold-fast)
           (str "Undo took " elapsed "ms, expected <" threshold-fast "ms"))
-      (is (some? (:db result))))))
+      (is (some? result) "Undo should return a new log"))))
 
 ;; ── Intent Processing Benchmarks ─────────────────────────────────────────────
 

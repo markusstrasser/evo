@@ -11,7 +11,7 @@
             [kernel.query :as q]
             [kernel.transaction :as tx]
             [kernel.api :as api]
-            [shell.history :as sh]
+            [shell.log :as slog]
             [components.block :as block]
             [components.sidebar :as sidebar]
             [components.devtools :as devtools]
@@ -57,7 +57,7 @@
 (defonce !db
   (atom
    ;; Always start with empty DB - demo data loaded only if no folder configured.
-   ;; History lives in shell.history/!history (external to the db map).
+   ;; Undo/redo lives in shell.log/!log (the canonical event-sourced state).
    (db/empty-db)))
 
 ;; Storage status atom for UI feedback
@@ -100,16 +100,18 @@
   (-> (storage/load-all-pages)
       (.then (fn [ops]
                (if (seq ops)
-                 ;; Folder has pages - load them
+                 ;; Folder has pages - load them. Loaded state is the new
+                 ;; baseline (:root-db of the log), not an undoable action.
                  (do
                    (js/console.log "📂 Loading" (count ops) "ops from folder...")
-                   (reset! !db (:db (tx/interpret (db/empty-db) ops)))
-                   (sh/clear!))
+                   (let [loaded (:db (tx/interpret (db/empty-db) ops))]
+                     (reset! !db loaded)
+                     (slog/reset-with-db! loaded)))
                  ;; Empty folder - start with empty DB
                  (do
                    (js/console.log "📂 Empty folder, starting fresh")
                    (reset! !db (db/empty-db))
-                   (sh/clear!)))
+                   (slog/reset-with-db! (db/empty-db))))
                ;; Navigate to startup page (URL param or today's journal)
                (navigate-to-startup-page!)
                (swap! !storage-status assoc
@@ -137,7 +139,7 @@
   (swap! !storage-status assoc :folder-name nil)
   ;; Reset to empty DB (no demo data - user must pick folder or start fresh)
   (reset! !db (db/empty-db))
-  (sh/clear!)
+  (slog/reset-with-db! (db/empty-db))
   (vs/set-current-page! nil))
 
 ;; Try to restore previously selected folder on startup
@@ -624,14 +626,16 @@
   "Reset database to empty state for E2E tests with one empty block.
    Exposed on window.TEST_HELPERS for Playwright."
   []
-  ;; Reset DB (document only, no session data)
-  (reset! !db (:db (tx/interpret
-                    (db/empty-db)
-                    [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
-                     {:op :place :id "test-page" :under :doc :at :last}
-                     {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
-                     {:op :place :id "test-block-1" :under "test-page" :at :last}])))
-  (sh/clear!)
+  ;; Reset DB (document only, no session data). The fixture is the new
+  ;; baseline, so it becomes the log's :root-db (not an undoable action).
+  (let [initial (:db (tx/interpret
+                      (db/empty-db)
+                      [{:op :create-node :id "test-page" :type :page :props {:title "Test Page"}}
+                       {:op :place :id "test-page" :under :doc :at :last}
+                       {:op :create-node :id "test-block-1" :type :block :props {:text ""}}
+                       {:op :place :id "test-block-1" :under "test-page" :at :last}]))]
+    (reset! !db initial)
+    (slog/reset-with-db! initial))
   ;; Reset session and set current page
   (vs/reset-view-state!)
   (vs/set-journals-view! false) ; Disable journals view so test-page is visible
@@ -669,9 +673,10 @@
                       (update :under #(keyword (str/replace % #"^:" "")))))
                   (:ops payload))
         session (normalize-view-state-updates (or (:session payload) {}))
-        result (tx/interpret (db/empty-db) ops)]
-    (reset! !db (:db result))
-    (sh/clear!)
+        result (tx/interpret (db/empty-db) ops)
+        loaded (:db result)]
+    (reset! !db loaded)
+    (slog/reset-with-db! loaded)
     (vs/reset-view-state!)
     (vs/merge-view-state-updates! session)
     (swap! !storage-status assoc :checking? false)))

@@ -4,14 +4,14 @@
    Single entry point for all state changes:
    - Validates intent against current UI state (state machine)
    - Compiles intents to ops
-   - Records history
-   - Interprets ops through transaction pipeline
-   - Returns new DB and any validation issues
+   - Interprets ops through the transaction pipeline
+   - Returns new DB, emitted ops, session-updates, issues
 
-   This is the primary interface for UI, tests, REPL, and agent scripts."
+   This namespace is pure: history recording is the caller's concern
+   (see kernel.log / shell.log / dispatch-logged below)."
   (:require [kernel.intent :as intent]
             [kernel.transaction :as tx]
-            [kernel.history :as H]
+            [kernel.log :as L]
             [kernel.db :as db]
             [kernel.state-machine :as sm]
             #_{:clj-kondo/ignore [:unused-namespace]} ; str/ used in CLJ reader conditional
@@ -85,8 +85,8 @@
 (defn dispatch*
   "Dispatch an intent with full trace output (for REPL/agents).
 
-   Pure: history recording is the caller's responsibility (see
-   `dispatch-tracked` or `shell.history/record!`).
+   Pure: log appending is the caller's responsibility (see
+   `dispatch-logged` or `shell.log/append-and-advance!`).
 
    Args:
    - db: Current database (persistent document graph)
@@ -141,25 +141,37 @@
              (assoc :ops (vec ops)
                     :session-updates session-updates)))))))
 
-(defn dispatch-tracked
-  "Dispatch an intent and thread history through.
+(defn dispatch-logged
+  "Dispatch an intent and append the resulting transaction to a log.
 
-   Convenience wrapper for callers that want snapshot-based undo/redo:
-   records pre-dispatch (db, session) into `history` iff the intent emitted
-   structural ops.
+   Convenience wrapper for callers (tests, REPL, agents) that want undo/redo
+   without manually building log entries. Appends iff structural ops were
+   emitted. Identity (op-id, timestamp) is caller-provided via `mint`
+   so the kernel stays entropy-free.
 
    Args:
-   - history: Current history value (see `kernel.history/empty-history`)
-   - db, session, intent: As for `dispatch*`
+     log     Current log value (see `kernel.log/empty-log`)
+     db      Current db
+     session Current session (ephemeral UI state)
+     intent  Intent map
+     mint    Fn of () -> {:op-id uuid :timestamp ms}
 
    Returns:
-   - {:history :db :ops :issues :session-updates :trace}"
-  [history db session intent]
-  (let [result (dispatch* db session intent)
-        new-history (if (seq (:ops result))
-                      (H/record history db session)
-                      history)]
-    (assoc result :history new-history)))
+     {:log :db :ops :issues :session-updates :trace}"
+  [log db session intent mint]
+  (let [{:keys [ops] :as result} (dispatch* db session intent)
+        new-log (if (seq ops)
+                  (let [{:keys [op-id timestamp]} (mint)
+                        prev-op-id (:op-id (L/entry-at-head log))
+                        entry (L/make-entry {:op-id op-id
+                                             :prev-op-id prev-op-id
+                                             :timestamp timestamp
+                                             :intent intent
+                                             :ops ops
+                                             :session session})]
+                    (L/append log entry))
+                  log)]
+    (assoc result :log new-log)))
 
 (defn dispatch
   "Dispatch an intent: compile to ops, record history, interpret, return result.
