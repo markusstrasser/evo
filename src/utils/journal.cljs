@@ -66,17 +66,21 @@
 ;; ── Page Reference Formatting ────────────────────────────────────────────────
 
 (defn page-ref
-  "Format a date as a page reference string like [[Dec 10, 2025]].
+  "Format a date as a page reference string like [[Dec 10th, 2025]].
 
-   Note: Uses simplified format WITHOUT ordinal suffix for compatibility
-   with slash command autocomplete. Journal titles use ordinal format."
+   Uses the canonical ordinal format (`MMM do, yyyy`) so that a click
+   through the ref creates a page whose title `journal-page?` recognizes.
+   Prior versions omitted the ordinal (producing `[[Dec 10, 2025]]`);
+   the resulting page was a valid page but not a *journal*, and the
+   Journals view silently filtered it out."
   ([]
    (page-ref (js/Date.)))
   ([date]
    (let [month (format-month date)
          day (.getDate date)
+         suffix (ordinal-suffix day)
          year (.getFullYear date)]
-     (str "[[" month " " day ", " year "]]"))))
+     (str "[[" month " " day suffix ", " year "]]"))))
 
 (defn today-page-ref
   "Get today's date as a page reference [[MMM d, yyyy]]."
@@ -112,16 +116,20 @@
 
 (defn journal-page?
   "Check if a page title matches a journal date format.
-   Matches 'MMM do, yyyy' (e.g., 'Dec 14th, 2025') and ISO 'YYYY-MM-DD'."
+   Matches 'MMM do, yyyy' (e.g. 'Dec 14th, 2025'), the ordinal-less
+   'MMM d, yyyy' (e.g. 'Dec 14, 2025') that older `page-ref` produced,
+   and ISO 'YYYY-MM-DD'. The ordinal-less branch exists so user data
+   created by the pre-fix `page-ref` still classifies as a journal."
   [title]
   (boolean
    (when title
-     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+     (or (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)?, \d{4}" title)
          (re-matches #"\d{4}-\d{2}-\d{2}" title)))))
 
 (defn parse-journal-date
   "Parse journal title to sortable ISO date (YYYY-MM-DD).
-   Returns nil if not a valid journal format."
+   Returns nil if not a valid journal format. Accepts both ordinal and
+   ordinal-less human forms (see `journal-page?`)."
   [title]
   (when title
     (cond
@@ -129,12 +137,15 @@
       (re-matches #"\d{4}-\d{2}-\d{2}" title)
       title
 
-      ;; Human format: Dec 14th, 2025 -> 2025-12-14
-      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th), \d{4}" title)
+      ;; Human format, ordinal suffix optional:
+      ;;   "Dec 14th, 2025" or "Dec 14, 2025" → "2025-12-14"
+      (re-matches #"[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)?, \d{4}" title)
       (let [months {"Jan" "01" "Feb" "02" "Mar" "03" "Apr" "04"
                     "May" "05" "Jun" "06" "Jul" "07" "Aug" "08"
                     "Sep" "09" "Oct" "10" "Nov" "11" "Dec" "12"}
-            [_ mon day _ year] (re-matches #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th), (\d{4})" title)]
+            [_ mon day _ year] (re-matches
+                                #"([A-Z][a-z]{2}) (\d{1,2})(st|nd|rd|th)?, (\d{4})"
+                                title)]
         (when (and mon day year)
           (str year "-" (months mon) "-" (when (< (count day) 2) "0") day)))
 
