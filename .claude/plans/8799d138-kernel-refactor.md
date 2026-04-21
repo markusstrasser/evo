@@ -1,9 +1,18 @@
 # Evo Kernel Refactor — Event Log & Incremental Derivation
 
 **Session:** 8799d138
-**Date:** 2026-04-20 (revised after cross-model critique, 2026-04-20)
+**Date:** 2026-04-20 (revised twice; see §8)
 **Scope:** Strictly-better architectural refactors. No backward compatibility.
-**Status:** Plan revised against critique findings (see §8).
+**Status:** v3 — trimmed to minimum elegant core. Scale-driven machinery
+(branch-aware checkpoints, LRU eviction, on-disk persistence, per-plugin
+delta logic) is described but deferred until profile shows need.
+
+## Guiding constraint
+
+Every phase must land in a system that is **simpler or no more complex**
+than today. Any machinery that solves a scale problem evo doesn't have
+(thousands-of-blocks backlinks recompute, long-session op log RAM) is
+structure-only: the protocol/shape goes in, the implementation waits.
 
 ---
 
@@ -100,53 +109,53 @@ strictly smaller: no `:history` key.
 
 ---
 
-### Phase B — Op Log as Canonical State
+### Phase B — Op Log as Canonical State (lean first cut)
 
 **Goal.** The db becomes a pure function of an append-only op log. Undo
 is log rewind. Time-travel debugging is `(head-db-at log op-id)`. Derived
 indexes continue to use the current `derive-indexes` full-recompute — this
-phase does NOT require Phase D. Performance is maintained by memoizing
-`head-db` on the log's `:head` identity.
+phase does NOT require Phase D.
 
-**The shape.**
+**The shape (lean).**
 
 ```clojure
 ;; Kept OUTSIDE the db value (Phase A established this).
-!log :: Atom<{:ops          {op-id {:prev op-id   ; causal chain
-                                    :timestamp ms
-                                    :intent   {...}
-                                    :ops      [...]}}
-              :head         op-id
-              :checkpoints  BranchAwareCheckpointStore}>
+!log :: Atom<{:ops         [{:op-id, :prev-op-id, :timestamp,
+                             :intent, :ops} ...]   ; append-only vector
+              :head        op-id
+              :checkpoint  {:op-id ..., :db ...}}>  ; ONE checkpoint
 
-;; DB is a memoized fold from nearest-checkpoint-≤-head.
-(defn head-db [log] ...)   ; cache key = log :head op-id
+;; DB is a fold from the checkpoint to head.
+(defn head-db [log] ...)   ; re-folded on head change; not memoized yet
 ```
 
-Key properties:
+Key properties (lean):
 - **Append-only.** Ops are never mutated or removed from `:ops`.
 - **Linear undo = head rewind.** `undo` sets `:head` to `prev-op-id`.
-- **Branch on divergence.** If head is rewound and a new op is written,
-  it gets the rewound op as `:prev`. Old-branch ops are unreachable from
-  `:head` but still present in `:ops` until GC.
-- **Branch-GC policy.** Default: prune orphaned branches on divergence
-  (matches current snapshot-history semantics — `record` clears `:future`
-  on new action). Optional: `!log` config to retain branches for
-  session-length audit. Default chosen for memory behavior parity.
-- **Checkpoints.** Every N ops (start: N=100, tune later), cache the full
-  db keyed by op-id. On head change, fold forward from the nearest
-  checkpoint `≤ head`. Tunable per deployment.
-- **Branch-aware checkpoint store.** Not a flat `op-id → db` map. Each
-  checkpoint knows its parent-op-id chain; an undo-and-branch invalidates
-  checkpoints that descend from the orphaned branch. Represented as a
-  map keyed by op-id but with descent-pruning on branch events.
-- **On-disk anchor.** At minimum one checkpoint (the most recent) is
-  persisted to disk via the existing storage layer. Otherwise browser
-  refresh replays from op 0, which at Logseq scale is unacceptable.
-  Persistence is a single IndexedDB row keyed by `op-id`, written
-  debounced at checkpoint creation time.
-- **Eviction.** LRU on the in-memory checkpoint cache, bounded entry
-  count (start: keep 5 most-recently-accessed).
+- **Prune-on-branch.** If `:head` is rewound and a new op is appended,
+  orphaned-branch ops are dropped from `:ops` (matches current snapshot
+  semantics — `record` clears `:future` on new action).
+- **Single checkpoint.** The most recent one, period. Refreshed every N
+  ops (start: N=100). No branch-tree, no LRU, no cache of many.
+- **No on-disk checkpoint.** Cold start replays from `:ops` head. At
+  evo's current scale this is sub-millisecond. Revisit when it isn't.
+- **No memoization of `head-db`.** Recompute on every `:head` change.
+  Cheap at present scale. Add memoization if profiling shows need.
+
+**Deferred machinery (describe, do not build).**
+- **Branch-aware checkpoint store.** If branch-retention becomes a
+  requirement (audit use cases), replace the single checkpoint with a
+  map keyed by op-id with descent-pruning.
+- **LRU cache of checkpoints.** If re-folding from the single checkpoint
+  becomes expensive on long head-jumps, cache multiple checkpoints with
+  LRU eviction.
+- **On-disk checkpoint persistence.** Persist the checkpoint to
+  IndexedDB when cold-start replay exceeds interactivity budget.
+- **`head-db` memoization.** Cache by `:head` op-id if render-path
+  profile shows redundant folds within one frame.
+
+Each deferred piece is small and mechanical *once* profile says it's
+time. Building them now is preemptive.
 
 **Op envelope.**
 
@@ -202,9 +211,9 @@ repeated reads within a frame are free. Phase D replaces this with
   store for the log, one for the latest checkpoint. Established browser
   primitive.
 
-**Size.** ~3 days. `!log` + `head-db` memoization + checkpoint store +
-executor rewire + persistence integration. Kernel three-op primitives are
-unchanged.
+**Size (lean).** ~1 day. `!log` atom + `head-db` fold + single-checkpoint
+maintenance + executor rewire + undo/redo as head-rewind. Kernel three-op
+primitives are unchanged.
 
 **Migration order within Phase B.**
 1. Introduce `!log` and `head-db` alongside current `!db`. Make `!db` a
@@ -269,27 +278,38 @@ in any order.
 
 ---
 
-### Phase D — Delta-aware Plugin Protocol (the performance refactor)
+### Phase D — Delta-aware Plugin Protocol (surface only; implementations deferred)
 
-**Goal.** Each derived index is maintained per-transaction instead of
-recomputed from scratch. Backlinks cost collapses from O(graph) to
-O(refs-in-changed-blocks) per user action.
+**Goal (lean).** Put the protocol surface in place. Migrate every existing
+`compute-fn` to `initial`. No plugin implements `apply-tx` yet.
 
-**Prerequisite.** Phase B. The property-test harness that validates
-`apply-tx` correctness needs deterministic replay; the log provides that.
+**Goal (eventual, when profile demands).** Selected plugins implement
+`apply-tx` for per-transaction incremental maintenance, validated against
+`initial` via fuzz-replay from the op log (Phase B).
+
+**Prerequisite for the eventual goal.** Phase B. The property-test
+harness that validates `apply-tx` correctness needs deterministic replay;
+the log provides that.
 
 **The contract.**
 
 ```clojure
 (defprotocol Derived
   (initial  [this db]
-            "Compute index from scratch. This is the oracle spec.")
+            "Compute index from scratch. This is the oracle spec.
+             MANDATORY.")
   (apply-tx [this prev-index db-before tx-ops db-after]
             "Return new index after applying a whole transaction's ops.
-             Must satisfy: (apply-tx (initial db-before) db-before ops db-after)
-                         = (initial db-after)
+             OPTIONAL — return ::recompute to fall back to initial.
+             When implemented, must satisfy:
+               (apply-tx (initial db-before) db-before ops db-after)
+             = (initial db-after)
              on all inputs. CI-fuzzed against initial."))
 ```
+
+Default behavior: a plugin that doesn't implement `apply-tx` (or returns
+`::recompute`) gets full-recompute. Identical to today's behavior. So
+Phase D's first cut is a pure rename — no behavior change.
 
 Key properties:
 - **Pure.** `apply-tx` and `initial` are pure functions. No atoms, no
@@ -316,15 +336,15 @@ Key properties:
   "delete a page," that's a `:place` op moving the page to `:trash`.
   Plugins branch on target-parent, not on op-type.
 
-**What gets migrated (each is independent; land one at a time).**
+**Eventual `apply-tx` migration table (do not build until profile shows need).**
 
-| Index | `apply-tx` formulation |
-|---|---|
-| `:parent-of` | `:place` ops are the only source of change. Each `:place` updates one entry. O(\|place-ops\|). |
-| `:prev-id-of` / `:next-id-of` | `:place` changes at most 4 sibling links per op. O(\|place-ops\|). |
-| `:index-of` | Re-derive for the one parent whose children list changed. O(\|children of affected parent\|). |
-| `:pre` / `:post` / `:id-by-pre` | Tree traversal. Cleanest: full recompute (these are used on every render, always need to be current; not clear delta gain). **Stay on `initial`.** |
-| `:backlinks-by-page` (plugin) | On `:update-node` where `:text` changed: diff old vs new `[[refs]]` by set difference. On `:create-node` of a page: no-op (no inbound refs yet). On `:place` of a page to `:trash`: remove entries targeting that page. O(\|Δrefs\|). |
+| Index | `apply-tx` formulation | Priority |
+|---|---|---|
+| `:backlinks-by-page` | On `:update-node` where `:text` changed: diff old vs new `[[refs]]` by set difference. On `:place` of a page to `:trash`: remove entries targeting that page. O(\|Δrefs\|). | First candidate — biggest delta/initial ratio |
+| `:parent-of` | `:place` ops are the only source of change. Each `:place` updates one entry. O(\|place-ops\|). | Second |
+| `:prev-id-of` / `:next-id-of` | `:place` changes at most 4 sibling links per op. O(\|place-ops\|). | Second |
+| `:index-of` | Re-derive for the one parent whose children list changed. | Second |
+| `:pre` / `:post` / `:id-by-pre` | Tree traversal. Full recompute is the clean form; delta version isn't clearly simpler. | **Never migrate** |
 
 **What this plan does NOT claim.**
 - **Not Electric's `incseq`.** Electric's diffs are first-class
@@ -364,8 +384,9 @@ Key properties:
   `apply-tx` form for small graphs. Mitigation: measure first, keep
   `initial` as the fallback; don't force every plugin to migrate.
 
-**Size.** ~2 days protocol + core-index migration + backlinks rewrite +
-oracle-harness tests.
+**Size (lean).** ~30 LOC. Define the protocol; migrate existing
+compute-fns to `initial`. That's it. Oracle-harness and per-plugin
+`apply-tx` implementations wait for a profile signal.
 
 ---
 
@@ -394,10 +415,13 @@ oracle-harness tests.
 
 ```
 Phase A  (externalize :history)                  — 2h, prerequisite for B
-Phase B  (op log, full-recompute memoized)       — 3d, depends on A
-Phase C  (stable IDs in markdown)                — 3h, independent, ship any time
-Phase D  (apply-tx plugins, oracle-validated)    — 2d, depends on B
+Phase B  (op log, single checkpoint, lean)       — 1d, depends on A
+Phase C  (stable IDs in markdown)                — 3h, independent
+Phase D  (Derived protocol, no apply-tx impls)   — 2h, depends on B for harness
 ```
+
+Lean total: ~2 days. Every phase ends in a system that is simpler or no
+more complex than today.
 
 **A→B** is hard (B checkpoints db; history must be out first).
 
@@ -434,6 +458,32 @@ point. Between phases the system is fully usable.
 ---
 
 ## 8. Revision Log
+
+**2026-04-20 (v3)** — Trimmed to minimum elegant core after reviewing v2
+against the constraint "every phase must land a system simpler or no
+more complex than today." v2 described the end-state at Logseq scale;
+v3 is what should actually ship now.
+
+Removed from v2 (kept as described-but-deferred):
+- Branch-aware checkpoint store (v2 described it as a tree; v3 has one
+  checkpoint and prune-on-branch semantics that match current snapshot
+  history).
+- LRU checkpoint eviction.
+- On-disk checkpoint persistence.
+- `head-db` memoization.
+- Per-plugin `apply-tx` implementations (v3 migrates existing compute
+  fns to `initial`; no plugin implements `apply-tx` yet).
+- Oracle-harness fuzz-replay tests (needed only when a plugin actually
+  implements `apply-tx`).
+
+What stays from v2:
+- Phase order (A → B → C → D) and all the correctness points the
+  critique established: transaction-level `apply-tx` signature, plugin
+  isolation rule, UUID-at-shell invariant, three-op invariant,
+  externalized history.
+- Every deferred piece is described as an upgrade path with a small,
+  specific trigger condition. Shape is in place; implementation waits
+  for evidence.
 
 **2026-04-20 (v2)** — Rewritten after cross-model critique (Gemini Pro +
 Gemini Flash + Gemini + GPT-5.4, dispatched via `/critique --deep`).
