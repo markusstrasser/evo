@@ -623,147 +623,563 @@ was chased for ~22 months in TypeScript and Svelte before the CLJS
 pivot. There are four repos in the chain, all on GitHub under
 `markusstrasser/*`, none currently cloned locally by default:
 
-### savant (2023-06-08 → 2023-07-19) — TypeScript + Next.js
+### savant (2023-06-08 → 2023-07-19) — TS + Next.js — *ranking engine*
 
-41 days, ~60 commits. The earliest sketch. Chrome-extension +
-Next.js app; pulls pages via `@postlight/parser`, streams LLM
-inferences, groups UI by domain, keeps `history + inference` in a
-Zustand store. Commit messages that matter:
+41 days, ~60 commits. The earliest sketch. A Chrome-extension +
+Next.js app that ingests browser history, uses GPT-4 as a *filter*
+(not a generator), groups the survivors by domain, and shows them
+back. LLM-as-classifier; no UI generation yet.
+
+**Architecture.** Single Zustand store with three orthogonal
+concerns that foreshadow evo's later split:
+
+```
+contents[]       — original atoms pulled from sources (history, parsed URLs)
+inferences[]     — LLM decisions over those atoms (kept, skipped, confidence)
+interactions[]   — user selections (upvotes / downvotes / picks)
+processed[]      — ids already sent to LLM (dedup ledger)
+```
+
+Dispatch is direct method calls — `setContents`, `setInferences`,
+`upsertItem(path, item, keys)` with lodash-path traversal. No
+middleware, no event log, no separation between "what happened"
+and "what the state is now."
+
+**The shape in one sentence.** `extract → LLM-rank → cluster by
+domain → display`. Commit messages that matter:
 
 - `feat: keep history in state but processedHistory in store`
-- `feat: group UI by domain`
 - `feat: save interactions to store`
 - `feat: save processed Ids in store to only process once`
 - `feat: dedup tree util`
+- `feat: group UI by domain`
 
-No explicit "generative UI" framing yet. But the shape is already
-there: *incoming content → LLM processes → store accumulates → UI
-renders from store*. The event-sourced idea in utero, without the
-word for it.
+**Where it got stuck.** Three signals of the architectural
+tension that would recur:
 
-### synth (2024-05-01 → 2024-06-24) — TypeScript + Next.js + Vercel AI SDK
+1. **Commit `274afe6 refactor: remove .inferences as separate
+   struct and merge with contents`** — the author tried to keep
+   LLM decisions in a separate table, realized it split authority,
+   and merged them back. Same lesson synth would re-learn with the
+   `unify-AIstate` branch a year later, and that evo finally
+   settled by making the DB the sole document graph and session
+   a separate atom.
+2. **Dead branch `origin/completionAPI`** — last commit
+   `0f71921 feat: run /select for subsets of atoms (chained)`,
+   never merged. An attempt to make LLM ranking *iterative*
+   (rank → re-rank the survivors → re-rank again). The recursion
+   shape was right; the infrastructure wasn't there to keep the
+   intermediate states coherent.
+3. **README `## temp` section** — the author thinking out loud:
+   > "useChat inside separate component to — do summarization
+   > (-> then write to store) — do inference (inside component -->
+   > fire up if materially new stuff for user to look at). derived
+   > zustand store with chatCompletion (withInference middleware -
+   > **separate store for inferences??**)"
+   The question marks are the point. *Where does inference live*
+   was unresolved.
 
-172 commits, 54 days. The first repo where the pitch is written
-down in the README:
+**`src/pages/sketch.tsx`** (80 lines, mostly commented out) shows
+a parallel desire: a scientific-notebook vibe with `<red>` tags,
+KaTeX, "PLOT rendering", "JSONVIEW components". None of it wired
+up. This is the first appearance of the "AI output is structured
+content, not just text" instinct that synth would try to productize
+and synthoric would try to generate from code.
 
-> "AI-driven STEM learning platform that adapts content and
-> interaction types to individual users, capturing and analyzing
-> user actions to optimize the content and representations **through
-> generative UI**."
+**What transmits.** The three-concern split (content, inference,
+interaction), dedup obsession, and server-action pattern. The
+Zustand + persist middleware combo survives all the way to
+synthoric.
+
+**What dies here.** Chrome-extension as ingestion surface, chat
+as primary UI metaphor, the idea that dedup belongs in the store
+rather than at generation time.
+
+### synth (2024-05-01 → 2024-06-24) — Next.js + Vercel AI SDK — *generation engine*
+
+172 commits, 54 days. First repo whose README states the thesis:
+
+> "The goal is to make an AI-driven STEM learning platform that
+> adapts content and interaction types to individual users,
+> capturing and analyzing user actions to optimize the content and
+> representations **through generative UI**."
 
 Stack: Next.js + Vercel AI SDK + Convex + shadcn + Clerk + Sentry +
-Posthog. An `xstate` FSM attempt (`feat: goddamn xstate machine
-mock`) was introduced and then ripped out three commits later
-(`chore: remove xstate for now ... too much`) — same "formalism
-that fights REPL-first workflow" lesson browsing would re-learn
-with zippers a year later.
+Posthog + Drizzle + Biome.
 
-This is where "generative UI" enters the vocabulary. The sub-thesis
-is already the one browsing's README would repeat: *LLM emits the
-interface, user actions feed back into it.*
-
-### synthoric (2024-06-24 → 2024-12-04) — Svelte 5 + SvelteKit + Convex
-
-140 commits, 5 months. A *stack rewrite* of synth in Svelte 5. The
-README is almost identical ("AI-driven STEM learning platform …
-captures user actions and feeds them back into the content and ui
-generation process"). First commit literally: `copy files from
-NextJS project`.
-
-The commits where the generative-UI idea gets concrete:
-
-- `feat: ui builder v.01 with prefill`
-- `feat: split up dynamicinterface generation into subprompts`
-- `feat: generateDynamic with orchestrator prompt, p5, d3`
-- `prompts: new, examples and fixtures`
-- `refactor core components and showcase them`
-
-There's a live `src/routes/api/generateComponent/+server.ts` —
-LLM-produces-Svelte-component endpoint. This is the high-water
-mark of the pure "LLM emits UI code" approach. Repo stops 2024-12-04
-after a MathJax/Carta/markdown detour; no "it shipped" moment.
-
-The architectural lesson that didn't make it to a README but lived
-in the code: **LLM-generates-JSX-on-demand doesn't give you state
-continuity.** Each generation is a fresh component tree; user
-history has to be threaded through prompts; there's no single
-canonical document to diff, undo, or reason about. Synthoric
-plateaus without a data model underneath.
-
-### flowread (2025-02-20 → 2025-03-09) — Svelte 5 + TS + Arktype
-
-270 commits in **17 days**. The direct Svelte predecessor — it
-ends on a Sunday afternoon; browsing's `init` commit lands three
-days later on a Wednesday.
-
-The README framing narrows: "next gen reader app". The AI-native
-UI pitch is still there in the TODO ("Reply with custom AI generated
-visualizations for a post", "Run a custom KnowledgeCreator at Node",
-"UI stays dumb, store/convexDB is the source of truth"), but the
-focus has moved *underneath* the generation: what's the canonical
-data model that an LLM-generated view sits on top of?
-
-The commit arc answers that question in real time:
-
-- `b26b176 first step in eventsourcing`
-- `fa03130 design docs`
-- `8b56fde compress doc intent / action`
-- `290d6e3 unified store`
-- `45ca6d5 schema simplification → mirror actual DOM …
-   semantic structure derived later`
-- `c088ca1 unifeid demo node` (sic)
-- `f96b5a9 route: unified v1`
-- `a078dc4 Demoted ToC: just another pedestrian node now`
-- `32db096 store forwards curried treeoperations`
-- `eefa671 curry dispatch and give as prop instead of import`
-
-Files still in the repo (`~/Projects/flowread/src/routes/unified/`):
-`schema/documentStore.svelte.ts`, `schema/documentUtils.ts`,
-`components/DocumentView.svelte`, `components/NodeRenderer.svelte`,
-plus `src/lib/actions/dispatchDOMEvents.js` and
-`src/lib/components/RecursiveRender.svelte`. The shape is:
-*event-sourced unified store + recursive tree render + curried
-dispatch*. Read "curried treeoperations" ≈ "ops"; "unified store"
-≈ "single apply-ops dispatcher"; "schema simplification → mirror
-actual DOM, semantic structure derived later" ≈ "normalized flat
-graph with derived indexes". It's all there, in Svelte 5 runes,
-three days before the CLJS repo opens.
-
-### The chain
+**Architecture.** A **three-actor loop** that never closed:
 
 ```
-savant (2023, TS)
-  └→ early skeleton: LLM processes content, store accumulates
-  
-synth (2024, Next.js + Vercel AI SDK)
-  └→ "generative UI" enters the vocabulary
-  
-synthoric (2024, Svelte 5)
-  └→ `generateComponent` / `generateDynamic` / `ui-builder`
-  └→ peak "LLM emits UI code" approach
-  └→ hits the ceiling: no canonical state to diff/undo/reason over
-
-flowread (2025-02, Svelte 5)
-  └→ event sourcing + unified store + tree ops + dispatch
-  └→ same lesson browsing's `14823ac` would re-commit five months
-     later, but in Svelte instead of CLJS
-
-browsing (2025-03-12, CLJS)
-  └→ the CLJS re-do. `newschema`, `normalized-flat`, zipper pain,
-     then unified ops
-
-evo (2025-09-22, CLJS)
-  └→ three-op IR lock, session split, FR registry, extraction
+          ┌──────── Decide  (LLM: what interaction type next?) ────┐
+          │                                                        │
+          ▼                                                        │
+      Generate  (LLM: build the task object)                       │
+          │                                                        │
+          ▼                                                        │
+   [render interaction, user submits UserActions[]]                │
+          │                                                        │
+          ▼                                                        │
+      Infer  (LLM: update knowledge / skill / misconception graph) ┘
+                          │
+                          └─── never actually fed back into Decide
 ```
+
+Two stores, split authority:
+- **Client** (`src/app/appStore.ts`, Zustand): `interactions[]`,
+  `currentInteraction`, `userActions[]`.
+- **Server** (Convex): `interactions`, `inferences`, `history`
+  tables with `v.any()` payloads — schema-less because synth
+  couldn't settle the interaction schema.
+
+Dispatch is **server actions + Convex mutations**. Tool selection
+is a hard-coded `interactionType2Tool` map:
+
+```typescript
+const interactionType2Tool = {
+  exercise: generateTextInputExercises,
+  multipleChoice: generateMultipleChoiceTasks,
+};
+// TODO: infer from interactionTypes schema ... or types..
+```
+
+**The three structural failures** (all recorded in commits):
+
+1. **xState FSM attempt and rip-out.** `1b7ee87 feat: goddamn
+   xstate machine mock` → three commits later → `f160a14 chore:
+   remove xstate for now ... to much`. A formalism for modeling
+   interaction sequences that fought the REPL-first workflow.
+   Same shape as browsing's zipper failure a year later: *the
+   elegant abstraction resists ad-hoc iteration*.
+2. **"Massive refactor part 1/3" and "part 2/3"** — commits
+   `c0717ab` and `5596e14`. No "part 3/3" ever appears. Feature
+   velocity collapses after these.
+3. **Branch `origin/unify-AIstate`** — never merged. README
+   TODO on that branch:
+   > `[] One source of truth in AIState`
+   > `[] parseAIstate to components (through .name/.displayname)`
+   The diagnosis is in the branch name: *stop splitting state*.
+   synth couldn't fix it; evo's "kernel owns the document, shell
+   owns the session" split is the eventual answer.
+
+**The feedback loop that never wired.** `inferences[]` were
+generated and stored with `{type, description, masteryLevel,
+confidence, sources[{id, whyRelevant, weight}]}` — rich shape,
+real evidence chains. But `decideNextInteraction` never read them.
+Synth built the producer and the consumer but not the wire
+between them. This is the canonical "generative UI without a state
+model" trap.
+
+**Dead code that signals direction.**
+- `src/_scratch.ts` — commented-out `useHotkeys` for `i` / `e`
+  bindings. The author wanted keyboard-first REPL-style navigation
+  and couldn't reconcile it with Next.js client/server boundaries.
+- `src/lib/tools/index.ts` — `const IxSeqTypes = ['TextExercise',
+  'BooleanStorm', 'GraphMaster']`. "GraphMaster" is a planned
+  graph-editing interaction type that never shipped. First time
+  "the interaction *is* a graph edit" appears in the ancestry.
+- `src/app/actions/notworking.tsx` — exists, never imported.
+
+**How it ended.** The last ten commits are maintenance:
+`docs: wrote small readme`, `chore: restructure, todos`,
+`dev: setting up million lint`, `fix: test streamingUI and fix
+vercel/ai to early non-buggy version`. No "v1 shipped" commit,
+no retrospective. The README closes with "Full architecture is
+still in development."
+
+**What transmits.** The three-actor decompose (decide / generate /
+infer) survives as evo's intent → plugin → transaction → derive.
+The `UserAction` shape (`{id, displayIndex, fromSpec, value,
+timeStamp}`) is the direct ancestor of evo's op shape. Convex
+drops out but "DB as source of truth, client as projection"
+survives.
+
+**What dies here.** FSMs for interaction sequencing, separate
+client cache + server DB, chat-as-container. Also: the idea that
+the interaction schema could stay `v.any()` — synthoric tried to
+rescue it with prompts; flowread finally typed it; evo locked
+it to three ops.
+
+### synthoric (2024-06-24 → 2024-12-04) — Svelte 5 + SvelteKit + Convex — *peak "LLM emits UI code"*
+
+140 commits, 5 months. A *stack rewrite* of synth in Svelte 5 + SvelteKit.
+First commit literally: `745f028 copy files from NextJS project`.
+Same thesis, new medium: if the component system is simpler, maybe
+the generation story gets simpler too.
+
+**Architecture.** The peak "LLM emits UI code" approach. Live
+endpoint `src/routes/api/generateComponent/+server.ts`:
+
+```
+POST /api/generateComponent { componentName, patchPrompt, interactionId, seqIndex }
+  │
+  ├─ fetch context from Convex:   convexClient.query(api.interactions.getContext, {seqIndex})
+  ├─ Tools.InterfaceSpec.execute(contextStr)      → LLM writes spec prompt
+  ├─ generateDynamicInterface(specPrompt)         → LLM writes Svelte source
+  ├─ fs.writeFile(`src/components/_generated/Dynamic_${ts}.svelte`, src)
+  └─ return { path, debug }
+```
+
+That's not metaphor. The LLM generates Svelte source text and the
+endpoint writes it to disk under `_generated/`. The client then
+imports and renders it. **Each interaction is a fresh component
+tree.** There is no canonical document; there is only the pile of
+timestamped generated files plus the Convex history of
+`interactions`.
+
+**The prompt system is the product.** `src/lib/prompts/index.ts`
+is where the pedagogy lives:
+
+- `ContentGuidelinePrompt` — "reduce cognitive load", "intuition
+  over calculation", "avoid instructional preamble", SI units only,
+  no calculator-required numbers.
+- `ActionSelfTagPrompt` — requires the LLM to preface its response
+  with a pedagogical state tag ("*testing subcomponents*",
+  "*digging deeper into weakness*", "*solidifying concept B*"). An
+  attempt to give the LLM a persistent self-model across turns
+  without building one into the state.
+
+**Dispatch.** Curried factory pattern introduced in
+`15cff4e` (2024-07-26): `createDispatch(type, metaData) =>
+(action) => void`. Components receive `createDispatch` as a prop.
+This is the *exact* shape flowread and evo inherit.
+
+Class-based store `ActionState` with:
+- `userActions` (typed array)
+- `revealedMultipleChoices`, `newSubmit` (UI flags)
+- `$derived`: `hasSubmitted`, `actionsByType`, `filteredUserActions`
+
+**The stall, commit by commit.**
+
+- **Aug 2024** — productive. `bfd0afa feat: split up
+  dynamicinterface generation into subprompts` (the "one big
+  prompt" approach breaking down). `d59a8aa feat: generateDynamic
+  with orchestrator prompt, p5, d3` (orchestrator + renderer
+  libraries as tools). This is where the author realized a single
+  LLM call can't produce reliable Svelte; you need a pipeline.
+- **Sep 2024** — silence.
+- **Oct 2024** — one commit in six weeks: `31b2f0d update to new
+  sonnet model 20241022`. Maintenance, not motion.
+- **Nov–Dec 2024** — short burst, *pivoting toward content
+  rendering instead of content generation*. `4f08914 playground
+  with carta markdown and svelte-exmarkdown as MD options`,
+  `78450f3 feat: tikz with escaped backticks draws circuit`. This
+  is the author trying to get *static* rendering right (LaTeX,
+  circuits, markdown) after giving up on *dynamic* Svelte
+  generation.
+- **Last commit: `78450f3` on 2024-12-04**, then silence. No WIP
+  branch, clean working tree, no retrospective. Abandonment-shaped,
+  not shipped-shaped.
+
+**The unstated lesson (visible in the code).** Every generated
+component is a fresh tree. User history has to be re-threaded
+through the prompt each turn. There is no object you can diff,
+undo, sync, or reason about across generations. Split prompts and
+orchestrators help the *generation* but don't give you *continuity*.
+**Generation without a data model underneath plateaus.** Synthoric
+hit the plateau. The next project, flowread, started from the
+opposite end.
+
+**What transmits.** Curried dispatch as prop (exact shape → evo).
+The prompt-engineering instinct (user-input constraints, self-tag)
+survives into evo's intent + FR language. `$state` / `$derived` in
+Svelte 5 → evo's `derived` indexes.
+
+**What dies here.** LLM-emits-source-code, generated files on disk,
+"the component system is the UI model." Also: the Convex dependency.
+Flowread drops server persistence entirely and works client-side
+against a document in memory.
+
+### flowread (2025-02-20 → 2025-03-09) — Svelte 5 + TS + Arktype — *direct Svelte predecessor*
+
+270 commits in **17 days** — the densest sprint in the lineage.
+Ends 2025-03-09 14:24; browsing's `init` lands 2025-03-12. Three
+days.
+
+The README narrows: *"next gen reader app. Rn just prototyping.
+Solo dev. Simplicity and adding/removing features is key."* The
+AI-generative-UI pitch is still in TODOs (*"Reply with custom AI
+generated visualizations for a post"*, *"Run a custom
+KnowledgeCreator at Node"*, *"UI stays dumb, store/convexDB is
+the source of truth"*), but the focus has moved *underneath* the
+generation. The question is no longer "how does the LLM emit UI?"
+but "what canonical data model can an LLM-generated view sit on?"
+
+**Architecture — the closest pre-browsing shape.** The `/unified`
+route (`src/routes/unified/`) is the payoff. `unifiedModel.ts`
+defines a normalized graph:
+
+```typescript
+UnifiedNode = {
+  id, type,                          // document | paragraph | section | span |
+                                     // reference | tooltip | definition | comment
+  content: { text, title, attributes },
+  edges: Edge[],                     // typed relationships — see below
+  presentation: { placement, visibility, styling }
+}
+
+Edge.type ∈ { contains, references, annotates, defines,
+              visualizes, comments }
+
+Document = { rootNode, nodeIndex: Map<string, UnifiedNode> }
+```
+
+Compare to evo's `{:nodes, :children-by-parent, :derived {:parent-of,
+:next-id-of, …}}`. Shape is isomorphic: flat node index + typed
+edges = normalized graph + derived parent/child indexes.
+flowread's `edges: contains` ≈ evo's `:children-by-parent`.
+
+**The store, `src/routes/unified/schema/documentStore.svelte.ts`**
+(657 lines — the largest single artifact in the pre-browsing
+lineage):
+
+```
+document             — current Document (rootNode + nodeIndex)
+activeNodes          — Map<id, {reason, context}>   (UI focus, highlighted)
+lastActivatedByType  — Map<NodeType, id>            (recency per type)
+relatedNodes         — Set<id>                      (bidirectional highlight)
+recentlyInteractedNodes  — Set<id>                  (history window)
+selection            — { text, nodeId, position }
+eventLog             — [{time, action, details}]    ← event sourcing surface
+```
+
+With Svelte 5 `$derived`:
+```
+allNodes       = flatten nodeIndex
+mainNodes      = filter by placement=main
+sidebarNodes   = filter by placement=sidebar
+floatingNodes  = filter by placement=floating
+activeMainNodes = mainNodes ∩ activeNodes
+```
+
+This is *exactly* evo's derived-indexes pattern expressed in Svelte
+runes. Evo's `:pre` / `:post` / `:index-of` are the CLJS/immutable
+version of what flowread computes with `$derived` over reactive Maps.
+
+**The commit arc — 17 days of crystallization.**
+
+| Date | SHA | Message | What shifts |
+|---|---|---|---|
+| 02-24 | 9ba28e6 | event-based state | state is no longer component-local |
+| 02-25 | b3a333f | event system to the bone | dispatch pattern gets its own module |
+| 03-03 | — | prototype selection plugin | plugins as capability sketches |
+| 03-04 | — | event logging for text selection | first real use of eventLog |
+| 03-06 | d15222e | **10+ files deleted. massive red wedding level carnage** | legacy docs/stores purged |
+| 03-06 | b6eb0f2 | better tests. **fundamental ops: walk, transform, editChildren(local lens)** | the word "ops" enters vocabulary |
+| 03-08 | b26b176 | **first step in eventsourcing** | explicit naming |
+| 03-08 | 290d6e3 | **unified store** | consolidation |
+| 03-08 | 8b56fde | **compress doc intent / action** | intent and action collapse into one op shape |
+| 03-08 | fa03130 | **design docs** (Design Requirements v3.md, 150 lines, pair-written with Claude) | thesis gets documented |
+| 03-08 | f96b5a9 | **route: unified v1** | `/unified` goes live |
+| 03-08 | c088ca1 | unifeid demo node *(sic)* | single node type for everything |
+| 03-09 | 45ca6d5 | **schema simplification → mirror actual DOM … semantic structure derived later** | THE normalization commit |
+| 03-09 | a078dc4 | **Demoted ToC: just another pedestrian node now** | no more special-case nodes |
+| 03-09 | 32db096 | store forwards curried treeoperations | ops become curried functions |
+| 03-09 | 72d869d | respect data-no-forward-events attr | event filtering |
+| 03-09 | d0945be | rm /tests route | ruthless cleanup |
+| 03-09 | eefa671 | **curry dispatch and give as prop instead of import** | final commit; dispatch is a prop, not an import |
+
+`45ca6d5` and `a078dc4` are the Svelte version of browsing's
+`14823ac` crystallization. The phrasing is almost word-for-word
+the decision evo later locks as invariant: *normalized flat graph,
+derived indexes, no special-case nodes*.
+
+**What the design doc says** (`docs/Design Requirements v3.md`,
+pair-programmed with Claude on 2025-03-08):
+
+> *"AI as a participant in the interaction model — not just
+> backend but an entity that can generate UI and events like a
+> user would."*
+>
+> *"Event-driven architecture to reduce noise (vs. having AI
+> directly manipulate DOM) … Error boundaries to contain potential
+> issues with AI-generated content."*
+
+Two theses in one document. First: *LLMs should speak the same
+event language as users* — exactly evo's "intents are data,
+serializable, targetable by either a keystroke or an LLM" stance.
+Second: *event sourcing is how you keep AI-generated changes
+containable* — the reason evo's op log is append-only.
+
+**The plugin sketch** (`src/lib/stores/pluginplay.js`) — incomplete
+but shape-accurate:
+
+```javascript
+const RustPlugin = {
+  id: 'rust-lang',
+  requires: [{ id: 'syntax', version: '^1.0.0' }],
+  provides: [{ id: 'rust-format', ... }],
+  activate(ctx) { ctx.commands.register(...) },
+  render: () => "Component",
+  style: (nodeId) => "Component"
+};
+
+const selectPlugin = {
+  selectedNodes: new SvelteSet(),
+  onEvent: (event, nodeId) => { /* handle */ },
+  style: (nodeId) => this.selectedNodes.has(nodeId)
+    ? 'ring-2 ring-yellow-500' : ''
+};
+```
+
+VSCode-inspired capability-based plugin model: `requires` +
+`provides` + `activate` + `onEvent`. Never loaded at runtime in
+flowread. Evo dropped the VSCode-style capability declarations
+and went with multimethod dispatch on `:type` instead — simpler,
+no version ranges, no dependency graph.
+
+**Where it stopped (and it really did stop, mid-stride).**
+
+flowread's last three hours on 2025-03-09 are architectural
+refinement, not feature work: `curry dispatch`, `respect
+data-no-forward-events`, `rm /tests route`, two near-duplicate
+commits (`34b8351` and `eefa671` with identical messages —
+probably a rebase/amend artifact). Working tree clean at HEAD.
+No WIP branch. No retrospective.
+
+What *wasn't* built despite being in the design doc:
+
+- Plugin runtime / loader (sketched in `pluginplay.js`, never
+  wired)
+- AI-generated events (the "AI as participant" thesis lives only
+  in prose)
+- Undo / redo (event log exists, time-travel doesn't)
+- Capability-declaration enforcement (runtime wouldn't refuse a
+  plugin with missing `requires`)
+- Backend persistence (events stay in memory)
+
+This is exactly the set browsing/evo went on to build. flowread
+didn't fail to complete itself — it crystallized the
+*architecture* and the author pivoted to rebuild it in CLJS with
+the right primitives.
+
+**Files still worth reading today** (`~/Projects/flowread/`):
+
+```
+src/routes/unified/schema/unifiedModel.ts         — graph types
+src/routes/unified/schema/documentStore.svelte.ts — 657-line store
+src/routes/unified/schema/documentUtils.ts        — walk/transform/edit
+src/routes/unified/components/DocumentView.svelte
+src/routes/unified/components/NodeRenderer.svelte
+src/lib/components/RecursiveRender.svelte         — tree render
+src/lib/actions/dispatchDOMEvents.js              — event forwarding
+src/lib/stores/pluginplay.js                      — plugin sketch
+src/fixtures/newschema.ts                         — real-content sample
+docs/Design Requirements v3.md                    — the thesis
+```
+
+**The flowread → browsing handoff.** What transmits directly:
+
+| flowread | → | evo (via browsing) |
+|---|---|---|
+| `UnifiedNode` + typed edges | → | `{:nodes, :children-by-parent}` + op relations |
+| `nodeIndex: Map<id, node>` | → | `:nodes` keyed by string id |
+| `$derived` active/related/mainNodes | → | `:derived {:parent-of, :next-id-of, :pre, :post}` |
+| `eventLog` | → | op log (commit `746da175`) |
+| curried `dispatch` as prop | → | `on-intent` prop + `executor/apply-intent!` |
+| `fundamental ops: walk, transform, editChildren` | → | `create-node`, `place`, `update-node` |
+| `compress doc intent / action` | → | unified op IR |
+| `schema → mirror DOM, semantics derived` | → | normalized tree + derived indexes |
+| VSCode-style plugin capabilities | ✗ | dropped; multimethod dispatch on `:type` instead |
+| Svelte `$state` reactivity | ✗ | dropped; immutable DB + transaction pipeline |
+| Plugin `requires`/`provides` | ✗ | dropped; plugin is just a function |
+
+**What this really is.** flowread is the Svelte dry-run of
+browsing's unified-ops crystallization, written five months
+earlier. The same sentence — *"one canonical data shape, with
+derived views and event-sourced mutations through a curried
+dispatch"* — exists in commit `45ca6d5` (flowread) and in
+commit `14823ac` (browsing). The CLJS rewrite wasn't a change of
+thesis; it was a change of *medium* after TS's nominal/structural
+tension kept leaking into tree code (see "Why the chain went
+CLJS" below).
+
+### The chain at a glance
+
+```
+savant       ranking engine         LLM-as-filter       ceiling:
+(2023, TS)   extract → rank →       (GPT-4 returns      split authority
+             group by domain        selected indices)   over LLM output;
+                                                        processed[] ledger;
+                                                        inferences merged
+                                                        back into contents
+                        ↓
+synth        generation engine      LLM-as-generator    ceiling:
+(2024-05,    decide → generate      (produces task      three actors built,
+Next.js)     → infer (→ never       objects with schema) feedback wire never
+             fed back to decide)                        connected; xState
+                                                        attempted and ripped
+                                                        out; unify-AIstate
+                                                        branch never merged
+                        ↓
+synthoric    generation engine v2   LLM-as-coder        ceiling:
+(2024-06,    Convex + disk-written  (generates Svelte   no canonical state
+Svelte 5)    Dynamic_${ts}.svelte   source per turn)    under generated
+             components                                 components; pivoted
+                                                        to static rendering
+                                                        (TikZ/markdown) then
+                                                        abandoned 2024-12
+                        ↓
+flowread     document kernel        LLM-as-participant  stopping point:
+(2025-02,    /unified: normalized   (thesis: "AI speaks event-sourced model
+Svelte 5)    graph + event log +    the same event      crystallized in TS;
+             curried dispatch       language as user")  plugin runtime,
+             + typed edges                              undo, AI-gen events
+                                                        all sketched, not
+                                                        built — rebuilt in
+                                                        CLJS starting 3 days
+                                                        later
+                        ↓
+browsing     CLJS re-do             apply-ops           crystallization:
+(2025-03,    `normalized-flat` →    multimethod;        14823ac unified ops,
+CLJS)        zipper pain → unified  5 ops               -10% codebase, the
+             ops                    (patch/place/       kernel boundary
+                                     create/move/       named
+                                     delete)
+                        ↓
+evo          extraction             three-op IR         extraction proof:
+(2025-09,    kernel / shell /       (create-node,       FR registry, specs
+CLJS)        plugins / components   place,              as data, specviewer,
+             session split          update-node)        template repos
+                                                        downstream
+```
+
+### The three failure modes the chain worked through
+
+One way to read the four repos is as three distinct ceilings,
+each hit and broken in turn:
+
+1. **savant's ceiling: split authority over LLM decisions.**
+   Inferences lived in their own table; the author tried to merge
+   them back into contents (`274afe6`) and built `processed[]`
+   ledgers to dedup. Diagnosis that didn't stick: *where does
+   LLM-derived state live*?
+2. **synth's ceiling: decide/generate/infer without a feedback
+   wire.** The three actors existed as server actions, the
+   inference schema was rich (`{type, description, masteryLevel,
+   confidence, sources}`), but nothing read inferences back into
+   decisions. The `unify-AIstate` branch diagnosed it by name;
+   couldn't fix it.
+3. **synthoric's ceiling: LLM emits source code = no continuity.**
+   Each `generateComponent` call produced a fresh `.svelte` file
+   on disk. User history re-threaded through prompts every turn.
+   Nothing to diff, undo, sync, reason about across generations.
+   The pivot to static markdown/TikZ rendering in Dec 2024 is the
+   shape of hitting the ceiling and slowing down.
+
+flowread's move is to start from the opposite end: *build the
+canonical document model first, then ask where AI plugs in*. The
+design-doc sentence "AI as a participant in the interaction
+model — not just backend" is the inversion — AI speaks the same
+op language as the user, and both go through the same pipeline.
 
 ### What the TS/Svelte chain settled (that browsing didn't have to rediscover)
 
 - **"LLM emits UI code" doesn't scale without a state model.**
-  synthoric burned through this approach; the next project started
-  by building the state model first.
+  synthoric burned through this approach; flowread started by
+  building the state model first.
 - **Event sourcing is the right shape.** flowread's
-  `first step in eventsourcing` commit (b26b176) precedes browsing's
-  `s2 working` (67e2e1b) by ~5.5 months.
+  `first step in eventsourcing` commit (`b26b176`) precedes
+  browsing's `s2 working` (`67e2e1b`) by ~5 months.
 - **Unified store over scattered component state.** flowread's
   `290d6e3 unified store` and `a078dc4 Demoted ToC: just another
   pedestrian node now` are the Svelte version of browsing's
@@ -771,8 +1187,18 @@ evo (2025-09-22, CLJS)
 - **Schema mirrors the structure; semantics derive.** flowread
   commit `45ca6d5` is the explicit phrasing of what became evo's
   `:children-by-parent` + derived indexes.
-- **Curried dispatch passed as prop.** flowread's `eefa671` is
-  the shape of evo's `on-intent` and `executor/apply-intent!`.
+- **Curried dispatch passed as prop.** synthoric introduced the
+  pattern (`15cff4e`, 2024-07-26); flowread locked it in
+  (`eefa671`). Evo's `on-intent` prop + `executor/apply-intent!`
+  is the same shape.
+- **Intent and action collapse into one op.** flowread's
+  `8b56fde compress doc intent / action` is the first explicit
+  statement of the principle evo later spells out as "all state
+  changes reduce to three primitives."
+- **LLMs and users emit the same event language.** The design-doc
+  thesis — *AI as a participant, not a backend* — is the reason
+  evo's intents are EDN data: serializable, diffable, equally
+  targetable by a keystroke or an LLM.
 
 ### What the TS/Svelte chain *didn't* settle (and browsing/evo did)
 
@@ -801,6 +1227,23 @@ collisions, stack overflows, `prewalk` pain) and then pivots to
 ClojureScript's native idioms for nested data. The language change
 wasn't a pivot of the thesis; it was a pivot of the *medium* after
 TS's nominal/structural tension kept leaking into tree code.
+
+Three specific ergonomic wins the CLJS jump unlocks:
+
+- **Immutable-by-default data.** flowread's store reassigns
+  Maps/Sets to trigger Svelte reactivity (`this.activeNodes =
+  newActiveNodes`). In CLJS, immutability is free; derivations
+  recompute naturally.
+- **Data-shaped ops are just maps.** `{:op :place :id "a" :under
+  :doc :at :last}` is a value, serializable, printable at the REPL.
+  TS's type gymnastics to get discriminated unions equally ergonomic
+  never quite land.
+- **Tree walk is `clojure.walk`.** flowread wrote `walk, transform,
+  editChildren(local lens)` as bespoke utilities (`b6eb0f2`). CLJS
+  has this built-in, then browsing learns the hard way (`prewalk`
+  on deep docs overflows) that even idiomatic CLJS tree walking
+  breaks under scale — which is what forces the normalized-flat
+  model in `14823ac`.
 
 ### Not in the main chain, adjacent in time
 
