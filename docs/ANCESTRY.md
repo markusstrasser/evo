@@ -9,14 +9,23 @@ of internal crystallization since.
 
 ## TL;DR
 
-Evo has exactly one direct code ancestor: **`~/Projects/browsing/`**
+Evo's direct **code** ancestor is **`~/Projects/browsing/`**
 (`2025-03-12` → `2026-02-26`, 147+ commits across six internal
-phases). Browsing started as a Clerk/SCI notebook playground, was
-bruised by a nested-tree / zipper approach that didn't scale,
-pivoted decisively on `2025-08-04` (`14823ac` — "UNIFIED OPERATIONS
-... -10% codebase") to a normalized-graph-with-multimethod-dispatcher
-model, then lived on as a sketch surface while evo was forked off to
-take the lesson forward.
+phases). Browsing is where the ops/kernel crystallization happened
+on `2025-08-04` (`14823ac` — "UNIFIED OPERATIONS ... -10% codebase"),
+and it's where the current evo kernel was forked from.
+
+Evo's **idea** ancestry runs further back — through four TS/Svelte
+repos that chased the same "AI-native UI-evolver" thesis before
+browsing existed. In chronological order: **`savant`** (2023, Next.js)
+→ **`synth`** (2024-05, Next.js, first "generative UI" pitch) →
+**`synthoric`** (2024-06 → 2024-12, Svelte 5 + SvelteKit, 140 commits,
+first dynamic-interface-generation prototypes) → **`flowread`**
+(2025-02-20 → 2025-03-09, Svelte 5, 270 commits, first unified
+store + event-sourced tree ops — the direct Svelte predecessor that
+ended three days before browsing started). The move to ClojureScript
+at `browsing init` on `2025-03-12` was a language pivot, not an idea
+pivot — the event-sourced unified-ops thesis was already on the page.
 
 Evo itself is 1,659 commits (as of 2026-04-20) split into six
 internal phases: kernel foundation → three-op IR lock → intent-layer
@@ -24,13 +33,50 @@ internal phases: kernel foundation → three-op IR lock → intent-layer
 specviewer extraction. Key milestones have dated, hash-addressable
 commits and are listed below.
 
-No second code ancestor was found. Downstream there is at least one
-consumer (`~/Projects/chats/`, spawned from `evo-template`) whose
-existence validates the "extraction mode" thesis.
+Downstream there is at least one consumer (`~/Projects/chats/`,
+spawned from `evo-template`) whose existence validates the
+"extraction mode" thesis.
 
 ## Lineage at a glance
 
 ```
+idea lineage (TS/Svelte)                              code lineage (CLJS)
+─────────────────────────                             ───────────────────
+
+2023-06  savant (Next.js, TS)
+         │  "domain functions", streaming AI,
+         │  inference saved to store, dedup tree util
+         │  — first "AI processes content → state" sketch
+         ▼
+2024-05  synth (Next.js, Vercel AI SDK)
+         │  "AI-driven STEM learning platform …
+         │  through generative UI"
+         │  first explicit "generative UI" pitch,
+         │  172 commits, xstate attempt → abandoned
+         ▼
+2024-06  synthoric (Svelte 5 + SvelteKit, Convex)
+         │  Svelte pivot — same pitch, new stack.
+         │  140 commits. `generateComponent` API,
+         │  `generateDynamic with orchestrator prompt`,
+         │  `ui builder v.01 with prefill`,
+         │  `split up dynamicinterface generation`
+         ▼
+2025-02-20  flowread (Svelte 5 + TS + Arktype)
+         │  "next gen reader app". 270 commits in 17 days.
+         │  `first step in eventsourcing` (b26b176),
+         │  `unified store` (290d6e3),
+         │  `schema simplification → mirror actual DOM …
+         │   semantic structure derived later` (45ca6d5),
+         │  `compress doc intent / action` (8b56fde),
+         │  `curry dispatch … store forwards curried
+         │   treeoperations` (32db096, eefa671).
+         │  /unified route = direct Svelte dry-run of
+         │  what became browsing's unified-ops kernel.
+         │
+         │  last commit 2025-03-09 14:24
+         └──────────────────── 3 days ────────────────────┐
+                                                          │
+                                                          ▼
 browsing                                              evo
 ──────────                                            ──────────
 2025-03-12  Initial Setup  (ed4126b)
@@ -99,9 +145,14 @@ The overlap is real: browsing's final main-branch commit is
 as a low-stakes scratch surface — the last commit is literally
 "scratch test for kernel CRUD operations."
 
+The TS/Svelte chain (savant → synth → synthoric → flowread) is
+described in **Part 8** — it predates browsing and carries the
+idea (AI-native UI, event sourcing, unified store, curried
+dispatch) but not the code.
+
 ---
 
-## Part 1 — The ancestor repo: `~/Projects/browsing/`
+## Part 1 — The code ancestor: `~/Projects/browsing/`
 
 ### What it was trying to be
 
@@ -563,49 +614,271 @@ place to try ideas before landing them.
 
 ---
 
-## Part 8 — The "second prototype" question
+## Part 8 — The TS/Svelte idea lineage (before browsing)
 
-The user recalled possibly *two* precursors. An exhaustive
-`~/Projects/` sweep by substance (not just filenames — grepping for
-`replicant`, `datascript`, `outliner`, CLJS files predating
-2025-09-22, `shadow-cljs.edn`, `deps.edn`) found exactly one:
-browsing.
+The earlier sweep only looked for **code** ancestors (CLJS / editor
+primitives / shadow-cljs). That framing missed the **idea** lineage:
+the "AI-native UI that rewrites itself from user behavior" thesis
+was chased for ~22 months in TypeScript and Svelte before the CLJS
+pivot. There are four repos in the chain, all on GitHub under
+`markusstrasser/*`, none currently cloned locally by default:
 
-Candidates ruled out with evidence:
+### savant (2023-06-08 → 2023-07-19) — TypeScript + Next.js
 
-- `scripting/` (2025-09-18, 4 days pre-evo) — pure Nushell/shell;
-  no CLJS, no editor concepts.
-- `anywidget-repl/`, `anywidget-svelte/` (2025-08-10) — Svelte/TS,
-  different stack, no editor concepts.
+41 days, ~60 commits. The earliest sketch. Chrome-extension +
+Next.js app; pulls pages via `@postlight/parser`, streams LLM
+inferences, groups UI by domain, keeps `history + inference` in a
+Zustand store. Commit messages that matter:
+
+- `feat: keep history in state but processedHistory in store`
+- `feat: group UI by domain`
+- `feat: save interactions to store`
+- `feat: save processed Ids in store to only process once`
+- `feat: dedup tree util`
+
+No explicit "generative UI" framing yet. But the shape is already
+there: *incoming content → LLM processes → store accumulates → UI
+renders from store*. The event-sourced idea in utero, without the
+word for it.
+
+### synth (2024-05-01 → 2024-06-24) — TypeScript + Next.js + Vercel AI SDK
+
+172 commits, 54 days. The first repo where the pitch is written
+down in the README:
+
+> "AI-driven STEM learning platform that adapts content and
+> interaction types to individual users, capturing and analyzing
+> user actions to optimize the content and representations **through
+> generative UI**."
+
+Stack: Next.js + Vercel AI SDK + Convex + shadcn + Clerk + Sentry +
+Posthog. An `xstate` FSM attempt (`feat: goddamn xstate machine
+mock`) was introduced and then ripped out three commits later
+(`chore: remove xstate for now ... too much`) — same "formalism
+that fights REPL-first workflow" lesson browsing would re-learn
+with zippers a year later.
+
+This is where "generative UI" enters the vocabulary. The sub-thesis
+is already the one browsing's README would repeat: *LLM emits the
+interface, user actions feed back into it.*
+
+### synthoric (2024-06-24 → 2024-12-04) — Svelte 5 + SvelteKit + Convex
+
+140 commits, 5 months. A *stack rewrite* of synth in Svelte 5. The
+README is almost identical ("AI-driven STEM learning platform …
+captures user actions and feeds them back into the content and ui
+generation process"). First commit literally: `copy files from
+NextJS project`.
+
+The commits where the generative-UI idea gets concrete:
+
+- `feat: ui builder v.01 with prefill`
+- `feat: split up dynamicinterface generation into subprompts`
+- `feat: generateDynamic with orchestrator prompt, p5, d3`
+- `prompts: new, examples and fixtures`
+- `refactor core components and showcase them`
+
+There's a live `src/routes/api/generateComponent/+server.ts` —
+LLM-produces-Svelte-component endpoint. This is the high-water
+mark of the pure "LLM emits UI code" approach. Repo stops 2024-12-04
+after a MathJax/Carta/markdown detour; no "it shipped" moment.
+
+The architectural lesson that didn't make it to a README but lived
+in the code: **LLM-generates-JSX-on-demand doesn't give you state
+continuity.** Each generation is a fresh component tree; user
+history has to be threaded through prompts; there's no single
+canonical document to diff, undo, or reason about. Synthoric
+plateaus without a data model underneath.
+
+### flowread (2025-02-20 → 2025-03-09) — Svelte 5 + TS + Arktype
+
+270 commits in **17 days**. The direct Svelte predecessor — it
+ends on a Sunday afternoon; browsing's `init` commit lands three
+days later on a Wednesday.
+
+The README framing narrows: "next gen reader app". The AI-native
+UI pitch is still there in the TODO ("Reply with custom AI generated
+visualizations for a post", "Run a custom KnowledgeCreator at Node",
+"UI stays dumb, store/convexDB is the source of truth"), but the
+focus has moved *underneath* the generation: what's the canonical
+data model that an LLM-generated view sits on top of?
+
+The commit arc answers that question in real time:
+
+- `b26b176 first step in eventsourcing`
+- `fa03130 design docs`
+- `8b56fde compress doc intent / action`
+- `290d6e3 unified store`
+- `45ca6d5 schema simplification → mirror actual DOM …
+   semantic structure derived later`
+- `c088ca1 unifeid demo node` (sic)
+- `f96b5a9 route: unified v1`
+- `a078dc4 Demoted ToC: just another pedestrian node now`
+- `32db096 store forwards curried treeoperations`
+- `eefa671 curry dispatch and give as prop instead of import`
+
+Files still in the repo (`~/Projects/flowread/src/routes/unified/`):
+`schema/documentStore.svelte.ts`, `schema/documentUtils.ts`,
+`components/DocumentView.svelte`, `components/NodeRenderer.svelte`,
+plus `src/lib/actions/dispatchDOMEvents.js` and
+`src/lib/components/RecursiveRender.svelte`. The shape is:
+*event-sourced unified store + recursive tree render + curried
+dispatch*. Read "curried treeoperations" ≈ "ops"; "unified store"
+≈ "single apply-ops dispatcher"; "schema simplification → mirror
+actual DOM, semantic structure derived later" ≈ "normalized flat
+graph with derived indexes". It's all there, in Svelte 5 runes,
+three days before the CLJS repo opens.
+
+### The chain
+
+```
+savant (2023, TS)
+  └→ early skeleton: LLM processes content, store accumulates
+  
+synth (2024, Next.js + Vercel AI SDK)
+  └→ "generative UI" enters the vocabulary
+  
+synthoric (2024, Svelte 5)
+  └→ `generateComponent` / `generateDynamic` / `ui-builder`
+  └→ peak "LLM emits UI code" approach
+  └→ hits the ceiling: no canonical state to diff/undo/reason over
+
+flowread (2025-02, Svelte 5)
+  └→ event sourcing + unified store + tree ops + dispatch
+  └→ same lesson browsing's `14823ac` would re-commit five months
+     later, but in Svelte instead of CLJS
+
+browsing (2025-03-12, CLJS)
+  └→ the CLJS re-do. `newschema`, `normalized-flat`, zipper pain,
+     then unified ops
+
+evo (2025-09-22, CLJS)
+  └→ three-op IR lock, session split, FR registry, extraction
+```
+
+### What the TS/Svelte chain settled (that browsing didn't have to rediscover)
+
+- **"LLM emits UI code" doesn't scale without a state model.**
+  synthoric burned through this approach; the next project started
+  by building the state model first.
+- **Event sourcing is the right shape.** flowread's
+  `first step in eventsourcing` commit (b26b176) precedes browsing's
+  `s2 working` (67e2e1b) by ~5.5 months.
+- **Unified store over scattered component state.** flowread's
+  `290d6e3 unified store` and `a078dc4 Demoted ToC: just another
+  pedestrian node now` are the Svelte version of browsing's
+  `14823ac` — the "one canonical data shape" decision.
+- **Schema mirrors the structure; semantics derive.** flowread
+  commit `45ca6d5` is the explicit phrasing of what became evo's
+  `:children-by-parent` + derived indexes.
+- **Curried dispatch passed as prop.** flowread's `eefa671` is
+  the shape of evo's `on-intent` and `executor/apply-intent!`.
+
+### What the TS/Svelte chain *didn't* settle (and browsing/evo did)
+
+- **No "kernel" as a named construct yet.** flowread has a "unified
+  store" but not the discipline that zero UI code imports from it.
+  Browsing's `2df4d91 working kernel: apply-ops` is the first time
+  "kernel" names a real boundary.
+- **No operation IR.** flowread's events are ad-hoc intent shapes
+  emitted from components. Browsing's `:patch/:place/:create/…`
+  ops are the first time the operation surface is explicit and
+  finite.
+- **No derived-index discipline.** flowread derives on the fly
+  inside components. Evo's `{:derived {:parent-of, :next-id-of,
+  :pre, :post, …}}` is the first time the derived layer is named
+  and recomputed in the pipeline.
+- **No property tests, no FR registry.** Both of these land only in
+  evo.
+
+### Why the chain went CLJS at step 5
+
+Not recorded in a commit message, but legible from the file system:
+flowread's last week is full of `curry dispatch … curried
+treeoperations … tree utils` — tree operations were already feeling
+awkward in TS. Browsing's first month repeats that pattern (hickory
+collisions, stack overflows, `prewalk` pain) and then pivots to
+ClojureScript's native idioms for nested data. The language change
+wasn't a pivot of the thesis; it was a pivot of the *medium* after
+TS's nominal/structural tension kept leaking into tree code.
+
+### Not in the main chain, adjacent in time
+
+These repos overlap calendar-wise with the ancestry but aren't
+load-bearing on the kernel idea:
+
+- **`reify`** (2025-01-23, TS) — despite the promising name, the
+  README is titled "Event Memory (em) CLI": a SQLite + vector-search
+  event store, not a UI evolver. Sibling infrastructure, not
+  ancestor.
+- **`mem` / `mem_old` / `mem_old2`** (2025-01-30 → 2025-08-07) —
+  "Knowledge Operating System (KOS) … differentiable mind
+  simulator." AI-native, but the axis is *memory / attention
+  traces*, not UI. Separate thread.
+- **`srsui`** (2025-01-29, JS + Svelte adapter) — SRS UI
+  experiment. No event-sourcing, no tree ops.
+- **`dl`** (2025-08-12, Svelte) — postdates browsing.
+- **`bun-svelte`** (2025-03-23, TS) — scaffolding, no editor
+  content.
+- **`uis`** (2024-05-13, TS) — React+Vite template.
+- **`anywidget-svelte/` / `anywidget-repl/`** (2025-08-10) —
+  different stack, Jupyter/anywidget thread.
+- **`clipper/`, `capture/`** — capture/scraper tools, not editors.
+- **`scripting/`** (2025-09-18) — Nushell; no UI content.
+
+### Candidates ruled out earlier (retained for completeness)
+
 - `chats/` (2025-10-27) — postdates evo, spawned from
-  `evo-template` (it's downstream, not upstream).
-- `demo-app/` — template derived from evo, no git history of its
-  own pre-evo.
-- `specs/` (files dated 2025-12-06) — near-duplicates of evo's own
-  `docs/STRUCTURAL_EDITING.md` and `docs/LOGSEQ_SPEC.md`.
-  Post-dates evo; not a conceptual ancestor.
-- `best/logseq/` (cloned 2025-12-09) — reference copy of Logseq for
-  study, cloned after evo was already running. Conceptually
-  important as the outliner whose UX evo targets, but not a
-  chronological ancestor.
-- `parsers/`, `synthoria.bio/`, `phys-*`, `markus_*`, `sean/`,
-  `intel/`, `meta/`, `flowread/`, `capture/`, `clipper/`,
-  `old_anki_cli/`, `anki/` — all either unrelated domain or no
-  CLJS / editor content.
+  `evo-template` (downstream, not upstream).
+- `demo-app/` — template derived from evo, no pre-evo history.
+- `specs/` (2025-12-06) — near-duplicates of evo's own docs.
+- `best/logseq/` (cloned 2025-12-09) — study artifact, not ancestor.
+- Domain-unrelated: `parsers/`, `synthoria.bio/`, `phys-*`,
+  `markus_*`, `sean/`, `intel/`, `meta/`, `old_anki_cli/`, etc.
 
-If there was a second prototype, it was likely:
+---
 
-1. **Browsing's earlier phases themselves.** The Clerk-notebook era
-   (Mar–Jul 2025) and the kernel era (Aug 2025+) feel distinct
-   enough from the inside that they could read as two projects in
-   memory. Both phases were inside one repo.
-2. **Private / deleted / scratch work.** Not visible to file-system
-   sweeps.
-3. **A misremembered sibling** — `scripting/` or one of the
-   `anywidget-*` projects being adjacent in time without being
-   related.
+## Part 8.5 — How to inspect the TS/Svelte chain
 
-If a name surfaces later, append it here.
+None of savant/synth/synthoric are cloned by default. They live on
+GitHub; one-shot inspection:
+
+```bash
+mkdir -p ~/Projects/_ancestry && cd ~/Projects/_ancestry
+gh repo clone markusstrasser/savant
+gh repo clone markusstrasser/synth
+gh repo clone markusstrasser/synthoric
+
+# flowread is already local at ~/Projects/flowread
+
+# Key commits to read
+git -C savant       log --reverse --oneline | head -30
+git -C synth        log --reverse --oneline | grep -iE 'generative|ui|xstate|interact'
+git -C synthoric    log --reverse --oneline | grep -iE 'generate|dynamic|builder|orchestrator'
+git -C ~/Projects/flowread log --reverse --oneline | grep -iE 'event|unified|schema|tree|dispatch'
+
+# The "generative UI" API endpoint in synthoric
+less synthoric/src/routes/api/generateComponent/+server.ts
+
+# The unified route in flowread — closest pre-browsing shape
+ls  ~/Projects/flowread/src/routes/unified/
+less ~/Projects/flowread/src/routes/unified/schema/documentStore.svelte.ts
+```
+
+If disk pressure ever requires freeing these, single-file bundles
+preserve full history:
+
+```bash
+for r in savant synth synthoric; do
+  git -C ~/Projects/_ancestry/$r bundle create \
+    ~/Projects/evo/docs/ancestry/$r.bundle --all
+done
+git -C ~/Projects/flowread bundle create \
+  ~/Projects/evo/docs/ancestry/flowread.bundle --all
+```
+
+No bundles have been created; all four live at their original paths
+(or on GitHub).
 
 ---
 
@@ -686,13 +959,17 @@ No bundle has been created; browsing lives at its original path.
 Git can show you a file's history inside one repo. It can't show
 you the *idea's* history across repos, and it can't narrate the
 architectural crystallization that happens between commits. The
-leap from "unified-ops multimethod on a flat normalized graph"
-(browsing, Aug 2025) to "three-op kernel with a transaction
-pipeline, a query layer, a defintent macro, an FR registry, and a
-session atom" (evo, Apr 2026) is crystallization that's invisible
-in `git log` but load-bearing for anyone asking *why* the kernel
-looks the way it does.
+leap from "AI-driven STEM platform with generative UI"
+(synth, May 2024) → "unified store + curried tree ops in Svelte"
+(flowread, Feb 2025) → "unified-ops multimethod on a flat
+normalized graph" (browsing, Aug 2025) → "three-op kernel with a
+transaction pipeline, a query layer, a defintent macro, an FR
+registry, and a session atom" (evo, Apr 2026) is two years of
+crystallization that's invisible in any single `git log` but
+load-bearing for anyone asking *why* the kernel looks the way it
+does.
 
-This file is the audit trail for that leap — both the prologue
-that happened in `browsing/` and the six-phase internal evolution
-inside evo itself.
+This file is the audit trail for that leap — the TS/Svelte idea
+lineage (Part 8), the prologue that happened in `browsing/`
+(Part 1), and the six-phase internal evolution inside evo itself
+(Part 2 onward).
