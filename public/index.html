@@ -32,6 +32,39 @@
 </head>
 <body>
 <div id="root"></div>
+
+<!-- Polish A/B toggle (experimental — removes cleanly by deleting this
+     button + the inline script + the html.polish-on block in styles.css).
+     Applies the class synchronously before first paint to avoid FOUC. -->
+<button class="polish-toggle" type="button" id="polish-toggle" aria-pressed="false">
+  Polish: Off
+</button>
+<script>
+  (function () {
+    var KEY = "evo.polish";
+    var root = document.documentElement;
+    if (localStorage.getItem(KEY) === "on") root.classList.add("polish-on");
+
+    function sync() {
+      var btn = document.getElementById("polish-toggle");
+      if (!btn) return;
+      var on = root.classList.contains("polish-on");
+      btn.textContent = on ? "Polish: On" : "Polish: Off";
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      sync();
+      document.getElementById("polish-toggle").addEventListener("click", function () {
+        root.classList.toggle("polish-on");
+        localStorage.setItem(KEY,
+          root.classList.contains("polish-on") ? "on" : "off");
+        sync();
+      });
+    });
+  })();
+</script>
+
 <script src="/js/blocks-ui/main.js"></script>
 </body>
 </html>
