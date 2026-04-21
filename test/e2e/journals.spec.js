@@ -72,6 +72,22 @@ async function createJournalPages(page, dates, { addContent = true } = {}) {
   await page.waitForTimeout(200);
 }
 
+/**
+ * Test-mode reset (`?test=true`) explicitly sets `:journals-view? false`
+ * and puts the user on `test-page` (see `reset-to-empty-db!` in
+ * `src/shell/editor.cljs`, commit 130525ad — the reset shields
+ * non-journals tests from auto-landing in the journals view). Journals
+ * tests therefore need to *explicitly* enter journals view, and need to
+ * wait for that enter to land in the DOM before asserting. Use this
+ * helper at the top of each test that expects `.journals-view`.
+ */
+async function enterJournalsView(page) {
+  await page.evaluate(() => {
+    window.TEST_HELPERS.dispatchIntent({ type: 'open-journals-view' });
+  });
+  await expect(page.locator('.journals-view')).toBeVisible({ timeout: 3000 });
+}
+
 test.describe('Journals View', () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage and load fresh
@@ -86,26 +102,31 @@ test.describe('Journals View', () => {
     await page.waitForTimeout(500);
   });
 
-  test.describe('Default View on Startup', () => {
-    test('journals view is the default view on startup', async ({ page }) => {
-      // Journals view should be visible immediately after load
-      await expect(page.locator('.journals-view')).toBeVisible({ timeout: 5000 });
+  test.describe('Journals View (explicit entry)', () => {
+    // `reset-to-empty-db!` turns journals-view off and puts tests on
+    // test-page. These tests assert that once we *enter* journals view
+    // (same user action as clicking the Journals nav) the view behaves
+    // like the real Logseq default: renders the header, auto-creates
+    // today's journal, highlights the sidebar link.
+
+    test('entering journals view shows the header and title', async ({ page }) => {
+      await enterJournalsView(page);
       await expect(page.locator('.journals-header')).toBeVisible();
       await expect(page.locator('.journals-title')).toHaveText('Journals');
     });
 
     test('auto-creates today journal if it does not exist', async ({ page }) => {
       const today = getTodayTitle();
-
-      // Wait for auto-creation
-      await page.waitForTimeout(500);
-
-      // Today's journal should be visible
-      await expect(page.locator('.journals-view')).toBeVisible();
-      await expect(page.locator('.journal-title').first()).toHaveText(today);
+      await enterJournalsView(page);
+      // The JournalsView's on-render hook dispatches :ensure-page-exists
+      // via setTimeout 0 — wait for today to materialize.
+      await expect(
+        page.locator('.journal-title').filter({ hasText: today })
+      ).toBeVisible({ timeout: 3000 });
     });
 
-    test('Journals nav link is active on startup', async ({ page }) => {
+    test('Journals nav link is active once journals view is open', async ({ page }) => {
+      await enterJournalsView(page);
       const journalsNav = page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' });
       await expect(journalsNav).toHaveClass(/active/);
     });
@@ -147,18 +168,12 @@ test.describe('Journals View', () => {
         'Dec 11th, 2025'
       ]);
 
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
-      await page.waitForTimeout(200);
+      await enterJournalsView(page);
 
-      await expect(page.locator('.journals-view')).toBeVisible();
-
-      const journalTitles = page.locator('.journal-title');
-      const titles = await journalTitles.allTextContents();
+      const titles = await page.locator('.journal-title').allTextContents();
 
       // Today (whatever the current date is) lands in its chronological
-      // slot — for any real test-run date in 2026+ that's ahead of
-      // Dec 2025, so today is first; but we don't hard-code that.
-      // Instead assert the seeded past-journal trio is descending.
+      // slot. Assert the seeded past-journal trio is descending.
       const dec10 = titles.indexOf('Dec 10th, 2025');
       const dec11 = titles.indexOf('Dec 11th, 2025');
       const dec12 = titles.indexOf('Dec 12th, 2025');
@@ -177,9 +192,7 @@ test.describe('Journals View', () => {
       // Use far-future dates so the assertion is date-independent.
       await createJournalPages(page, ['Dec 31st, 2099', 'Jan 1st, 2100']);
 
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
-      await page.waitForTimeout(200);
-      await expect(page.locator('.journals-view')).toBeVisible();
+      await enterJournalsView(page);
 
       const titles = await page.locator('.journal-title').allTextContents();
       const jan2100 = titles.indexOf('Jan 1st, 2100');
@@ -197,29 +210,27 @@ test.describe('Journals View', () => {
 
     test('shows header with title and count', async ({ page }) => {
       await createJournalPages(page, ['Dec 13th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
-      // Check header elements
       await expect(page.locator('.journals-title')).toHaveText('Journals');
       await expect(page.locator('.journals-count')).toBeVisible();
     });
 
-    test('shows helpful hint for empty journal', async ({ page }) => {
-      // Today's journal is auto-created empty
-      await expect(page.locator('.journals-view')).toBeVisible();
+    test('empty journal (childless) shows click-to-add hint', async ({ page }) => {
+      // `:ensure-page-exists` creates the page with no first block, so
+      // today's auto-created journal renders the empty-state hint.
+      await enterJournalsView(page);
 
-      // An empty journal shows "Click to add entries" hint
       const emptyHint = page.locator('.journal-empty');
-      if (await emptyHint.isVisible()) {
-        await expect(emptyHint).toContainText('Click to add entries');
-      }
+      await expect(emptyHint).toBeVisible({ timeout: 3000 });
+      await expect(emptyHint).toContainText('Click to add entries');
     });
   });
 
   test.describe('Navigation', () => {
     test('clicking journal title navigates to that page', async ({ page }) => {
       await createJournalPages(page, ['Dec 13th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
       // Click on a journal title (not today's)
       await page.locator('.journal-title').filter({ hasText: 'Dec 13th, 2025' }).click();
@@ -227,27 +238,26 @@ test.describe('Journals View', () => {
       // Should exit journals view and show the page
       await expect(page.locator('.journals-view')).not.toBeVisible();
 
-      // Page heading should show the journal date
-      const pageHeading = page.getByRole('heading', { level: 3 });
+      // Page title now renders as h1 (was h3 when this test was written).
+      const pageHeading = page.getByRole('heading', { level: 1 });
       await expect(pageHeading).toContainText('Dec 13th, 2025');
     });
 
-    test('global back button returns to journals view', async ({ page }) => {
-      // Start in journals view (default)
-      await expect(page.locator('.journals-view')).toBeVisible();
+    test('navigate-back returns to journals view', async ({ page }) => {
+      // Back/forward are keyboard-only now (Cmd+[ / Cmd+]); the old
+      // `.nav-arrow` chrome doesn't exist. Dispatch the intent directly.
+      await enterJournalsView(page);
 
-      // Navigate to a journal page
       await createJournalPages(page, ['Dec 13th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
       await page.locator('.journal-title').filter({ hasText: 'Dec 13th, 2025' }).click();
 
-      // Should be on page view now
       await expect(page.locator('.journals-view')).not.toBeVisible();
 
-      // Click global back button
-      await page.locator('.nav-arrow').first().click();
+      await page.evaluate(() => {
+        window.TEST_HELPERS.dispatchIntent({ type: 'navigate-back' });
+      });
 
-      // Should return to journals view
       await expect(page.locator('.journals-view')).toBeVisible();
     });
 
@@ -259,26 +269,29 @@ test.describe('Journals View', () => {
       await page.waitForTimeout(200);
 
       // Navigate: Journals -> My Notes -> Journals
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
-      await expect(page.locator('.journals-view')).toBeVisible();
+      await enterJournalsView(page);
 
       // Go to My Notes via sidebar
       await page.locator('.sidebar-page-item').filter({ hasText: 'My Notes' }).click();
       await expect(page.locator('.journals-view')).not.toBeVisible();
 
       // Back should go to journals
-      await page.locator('.nav-arrow').first().click();
+      await page.evaluate(() => {
+        window.TEST_HELPERS.dispatchIntent({ type: 'navigate-back' });
+      });
       await expect(page.locator('.journals-view')).toBeVisible();
 
       // Forward should go to My Notes
-      await page.locator('.nav-arrow').nth(1).click();
+      await page.evaluate(() => {
+        window.TEST_HELPERS.dispatchIntent({ type: 'navigate-forward' });
+      });
       await expect(page.locator('.journals-view')).not.toBeVisible();
     });
 
     test('Journals link loses active state when viewing a page', async ({ page }) => {
       // Click on a journal to navigate
       await createJournalPages(page, ['Dec 13th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
       await page.locator('.journal-title').filter({ hasText: 'Dec 13th, 2025' }).click();
 
       // Active class should be removed
@@ -290,20 +303,27 @@ test.describe('Journals View', () => {
   test.describe('Date Format Support', () => {
     test('recognizes human-readable date format (Dec 14th, 2025)', async ({ page }) => {
       await createJournalPages(page, ['Dec 10th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
-      // Should appear in journals
       await expect(page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
     });
 
     test('recognizes ISO date format (2025-12-10)', async ({ page }) => {
       await createJournalPages(page, ['2025-12-10']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
-      // Should appear in journals
       await expect(page.locator('.journal-title').filter({ hasText: '2025-12-10' })).toBeVisible();
     });
 
+    test('recognizes ordinal-less date format (Apr 19, 2026) — legacy page-ref compat', async ({ page }) => {
+      // The pre-fix page-ref generator produced `[[MMM d, yyyy]]` with
+      // no ordinal suffix. Journal pages created by clicking such refs
+      // must still classify as journals so the Journals view lists them.
+      await createJournalPages(page, ['Apr 19, 2026']);
+      await enterJournalsView(page);
+
+      await expect(page.locator('.journal-title').filter({ hasText: 'Apr 19, 2026' })).toBeVisible();
+    });
   });
 
   test.describe('Logseq Parity', () => {
@@ -312,9 +332,8 @@ test.describe('Journals View', () => {
       await createJournalPages(page, ['Dec 10th, 2025']);  // Has content
       await createJournalPages(page, ['Dec 9th, 2025'], { addContent: false });  // Empty
 
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
-      // Dec 10th should be visible, Dec 9th should not (empty)
       await expect(page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
       await expect(page.locator('.journal-title').filter({ hasText: 'Dec 9th, 2025' })).not.toBeVisible();
     });
@@ -322,20 +341,19 @@ test.describe('Journals View', () => {
     test('today journal shows even when empty', async ({ page }) => {
       const today = getTodayTitle();
 
-      // Should auto-create and show today's journal even though empty
-      await expect(page.locator('.journals-view')).toBeVisible();
-      await expect(page.locator('.journal-title').first()).toHaveText(today);
+      await enterJournalsView(page);
+      await expect(
+        page.locator('.journal-title').filter({ hasText: today })
+      ).toBeVisible({ timeout: 3000 });
     });
 
     test('journal titles are clickable links', async ({ page }) => {
       await createJournalPages(page, ['Dec 10th, 2025']);
-      await page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).click();
+      await enterJournalsView(page);
 
-      // Journal title should be clickable
       const journalTitle = page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' });
       await expect(journalTitle).toBeVisible();
 
-      // Click should navigate
       await journalTitle.click();
       await expect(page.locator('.journals-view')).not.toBeVisible();
     });

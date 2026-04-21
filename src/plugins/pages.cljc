@@ -87,6 +87,27 @@
   [db _session {:keys [title]}]
   (navigate-or-create-page db title))
 
+(defn- handle-ensure-page-exists
+  "Create a page with the given title if it doesn't exist — without
+   navigating to it, touching the current view (journals / single-page),
+   or seeding a first block.
+
+   Used by `components.journals/JournalsView` to auto-materialize today's
+   journal when it's missing. Two deliberate differences from
+   `:create-page`:
+   1. No navigation / session change. Using `:create-page` here
+      navigates away from the journals view the user is currently
+      looking at.
+   2. No first block. The JournalPage component only renders its
+      `.journal-empty` clickable placeholder when the page has zero
+      children. Seeding a blank block makes that placeholder
+      unreachable and defeats the click-to-add-entries UX."
+  [db _session {:keys [title]}]
+  (when-not (q/find-page-by-name db title)
+    (let [new-page-id (str "page-" (random-uuid))]
+      {:ops [{:op :create-node :id new-page-id :type :page :props {:title title}}
+             {:op :place :id new-page-id :under :doc :at :last}]})))
+
 (defn- collect-descendants
   "Recursively collect all descendant IDs of a node."
   [db node-id]
@@ -132,6 +153,14 @@
                          {:doc "Create a new page with given title"
                           :fr/ids #{:fr.pages/switch-page}
                           :handler handle-create-page})
+
+(intent/register-intent! :ensure-page-exists
+                         {:doc "Create the named page if missing — no navigation, no view change."
+                          :fr/ids #{:fr.pages/switch-page}
+                          :spec [:map
+                                 [:type [:= :ensure-page-exists]]
+                                 [:title :string]]
+                          :handler handle-ensure-page-exists})
 
 (intent/register-intent! :delete-page
                          {:doc "Delete a page and all its contents"
