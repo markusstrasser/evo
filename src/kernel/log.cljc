@@ -63,23 +63,36 @@
    :session-before (session-snapshot session)})
 
 (defn- trim-to-limit
-  "Enforce :limit by dropping oldest entries; keep :head pointing at the
-   same logical entry by also re-folding :root-db forward."
+  "Enforce :limit by absorbing the oldest ops into :root-db.
+
+   Only absorbs ops that are at or before the current :head — never drag
+   :root-db past the user's logical position. This means :limit is a
+   *soft* cap: when the user is rewound deep, we may retain more than
+   :limit ops, but head-db remains correct.
+
+   Regression guard for cross-model critique (2026-04-20): the earlier
+   implementation subtracted drop-n from :head blindly, causing :head to
+   go negative and head-db to silently advance past the user's position
+   after a set-limit call on a rewound log."
   [log]
   (let [{:keys [root-db ops head limit]} log
         n (count ops)]
     (if (and limit (> n limit))
-      (let [drop-n (- n limit)
-            absorbed (subvec ops 0 drop-n)
-            remaining (subvec ops drop-n)
-            new-root (reduce (fn [d entry]
-                               (:db (tx/interpret d (:ops entry))))
-                             root-db
-                             absorbed)]
-        {:root-db new-root
-         :ops (vec remaining)
-         :head (- head drop-n)
-         :limit limit})
+      (let [excess (- n limit)
+            safe-prefix (inc head) ; ops fully committed to the user's timeline
+            drop-n (max 0 (min excess safe-prefix))]
+        (if (zero? drop-n)
+          log
+          (let [absorbed (subvec (vec ops) 0 drop-n)
+                remaining (subvec (vec ops) drop-n)
+                new-root (reduce (fn [d entry]
+                                   (:db (tx/interpret d (:ops entry))))
+                                 root-db
+                                 absorbed)]
+            {:root-db new-root
+             :ops (vec remaining)
+             :head (- head drop-n)
+             :limit limit})))
       log)))
 
 (defn can-undo? [log] (>= (:head log) 0))

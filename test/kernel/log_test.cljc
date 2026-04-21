@@ -131,6 +131,37 @@
     (is (= -1 (:head log)))
     (is (not (L/can-undo? log)))))
 
+;; ── Trim safety when rewound ────────────────────────────────────────────────
+
+(deftest trim-preserves-head-db-when-head-trails
+  (testing "trim-to-limit must not advance :root-db past the user's current head.
+
+   Regression for cross-model critique (2026-04-20): with 4 ops, head=0,
+   limit=2 — old impl set head=-2 and absorbed ops 0..1 into :root-db,
+   causing head-db to return root+e1+e2 instead of root+e1. Fixed by
+   capping absorbed prefix at (inc head) so we never drag :root past the
+   user's logical position."
+    (let [db0 (db/empty-db)
+          log (-> (L/reset-root db0)
+                  (L/append (entry 1 "a" "A"))
+                  (L/append (entry 2 "b" "B"))
+                  (L/append (entry 3 "c" "C"))
+                  (L/append (entry 4 "d" "D")))
+          ;; User rewound to head=0 (after first op)
+          rewound (assoc log :head 0)
+          head-db-before (L/head-db rewound)
+          ;; Now trigger a trim via set-limit
+          trimmed (L/set-limit rewound 2)
+          head-db-after (L/head-db trimmed)]
+      ;; Core invariant: head-db visible to the user must not change
+      (is (= (get-in head-db-before [:children-by-parent :doc])
+             (get-in head-db-after [:children-by-parent :doc]))
+          "head-db must be identical before and after trim")
+      (is (contains? (:nodes head-db-after) "a")
+          "First op's effect survives (via :root-db)")
+      (is (not (contains? (:nodes head-db-after) "b"))
+          "Ops beyond user's head must NOT be absorbed into :root-db"))))
+
 ;; ── Session snapshot on undo ────────────────────────────────────────────────
 
 (deftest entry-at-head-exposes-session-snapshot

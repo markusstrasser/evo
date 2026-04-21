@@ -132,6 +132,30 @@
 
 ;; ── Multiline blocks still work ─────────────────────────────────────────────
 
+;; ── Block text containing literal `id:: ...` lines ─────────────────────────
+
+(deftest id-property-only-as-trailing-line
+  (testing "A continuation line mid-block that looks like `id:: foo` must NOT
+   be stolen as the block's property. Only the final id:: line (followed
+   by a bullet or EOF) is the real property.
+
+   Regression for cross-model critique (2026-04-20): the previous parser
+   ate the first `id:: ...`-looking continuation, dropping user content."
+    (let [md (str "title:: T\n"
+                  "- some text\n"
+                  "  id:: fake-in-middle\n"
+                  "  more text\n"
+                  "  id:: real-block-id\n")
+          ops (storage/markdown->ops "p" md)
+          block-op (first (filter #(and (= :create-node (:op %))
+                                        (= :block (:type %))) ops))]
+      (is (= "real-block-id" (:id block-op))
+          "Final id:: line is the property")
+      (is (str/includes? (get-in block-op [:props :text]) "fake-in-middle")
+          "Non-terminal id:: line survives as block text")
+      (is (str/includes? (get-in block-op [:props :text]) "more text")
+          "Text after the fake id:: is preserved"))))
+
 (deftest multiline-block-with-id
   (testing "id:: comes after continuation lines"
     (let [db (build-page "p" "Page"
