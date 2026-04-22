@@ -68,11 +68,13 @@
          :checking? true}))
 
 (defn- navigate-to-startup-page!
-  "Navigate to initial page based on URL param or default to today's journal.
+  "Navigate to initial surface based on URL param or default to the journals view.
 
    Priority:
    1. If ?page=PageName in URL, navigate to that page
-   2. Otherwise, open today's journal (creating if needed)"
+   2. Otherwise, open the stacked journals view (Logseq-style homepage).
+      The JournalsView component auto-materializes today's journal when
+      missing via :ensure-page-exists, so no page creation is needed here."
   []
   (if-let [url-page-name (url-sync/get-page-from-url)]
     ;; URL specifies a page - navigate there
@@ -82,12 +84,11 @@
                               {:type :navigate-to-page
                                :page-name url-page-name}
                               "URL"))
-    ;; No URL page - default to today's journal
+    ;; No URL page - default to journals view (stacked, newest first)
     (do
-      (js/console.log "📅 Opening today's journal:" (journal/today-title))
+      (js/console.log "📖 Opening journals view")
       (executor/apply-intent! !db
-                              {:type :go-to-journal
-                               :journal-title (journal/today-title)}
+                              {:type :open-journals-view}
                               "STARTUP"))))
 
 (defn load-from-folder!
