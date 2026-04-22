@@ -2204,13 +2204,6 @@
     font-style: italic;
   }
 
-  .journal-empty {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    font-style: italic;
-    padding-left: var(--space-4);
-  }
-
   .journals-empty {
     text-align: center;
     padding: var(--space-12) var(--space-6);

@@ -214,14 +214,17 @@ test.describe('Journals View', () => {
       await expect(page.locator('.journals-count')).toBeVisible();
     });
 
-    test('empty journal (childless) shows click-to-add hint', async ({ page }) => {
-      // `:ensure-page-exists` creates the page with no first block, so
-      // today's auto-created journal renders the empty-state hint.
+    test('empty journal auto-seeds a first block with cursor in edit mode', async ({ page }) => {
+      // `:ensure-page-exists` creates today's journal page with no first
+      // block. The JournalPage component's on-mount hook immediately
+      // dispatches `:create-block-in-page`, which seeds a single empty
+      // block and sets editing focus on it. No click-to-edit placeholder.
       await enterJournalsView(page);
 
-      const emptyHint = page.locator('.journal-empty');
-      await expect(emptyHint).toBeVisible({ timeout: 3000 });
-      await expect(emptyHint).toContainText('Click to add entries');
+      // An editable block appears under today's journal, already focused.
+      const editor = page.locator('.journal-item [contenteditable="true"]').first();
+      await expect(editor).toBeVisible({ timeout: 3000 });
+      await expect(editor).toBeFocused();
     });
   });
 

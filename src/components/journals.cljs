@@ -49,7 +49,11 @@
       {:on {:click navigate-to-page}
        :style {:cursor "pointer"}}
       title]
-     ;; Journal blocks - REAL Block components for full editing
+     ;; Journal blocks - REAL Block components for full editing.
+     ;; Empty-page branch auto-seeds a first block and puts the cursor in it
+     ;; on mount (no click-to-edit placeholder). Replicant's keyed mount hook
+     ;; fires exactly once per empty page; once the block exists the branch
+     ;; flips to the populated form below.
      (if has-any-content?
        (into [:div.journal-blocks]
              (map (fn [child-id]
@@ -62,22 +66,14 @@
                                   :is-folded (contains? folded-set child-id)
                                   :on-intent on-intent}))
                   children))
-       ;; Empty journal - clickable placeholder to create first block
-       [:div.journal-empty
-        {:style {:padding "20px"
-                 :text-align "center"
-                 :color "#9ca3af"
-                 :cursor "text"
-                 :border "1px dashed #e5e7eb"
-                 :border-radius "4px"
-                 :margin "10px 0"}
-         :on {:click (fn [e]
-                       (.stopPropagation e)
-                       (let [new-id (str "block-" (random-uuid))]
-                         (on-intent {:type :create-block-in-page
-                                     :page-id page-id
-                                     :block-id new-id})))}}
-        [:span.empty-hint "Click to add entries"]])]))
+       [:div.journal-blocks
+        {:replicant/key (str page-id "-empty")
+         :replicant/on-mount
+         (fn [_]
+           (when on-intent
+             (on-intent {:type :create-block-in-page
+                         :page-id page-id
+                         :block-id (str "block-" (random-uuid))})))}])]))
 
 ;; ── Main Journals View ─────────────────────────────────────────────────────────
 

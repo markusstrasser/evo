@@ -93,15 +93,10 @@
    or seeding a first block.
 
    Used by `components.journals/JournalsView` to auto-materialize today's
-   journal when it's missing. Two deliberate differences from
-   `:create-page`:
-   1. No navigation / session change. Using `:create-page` here
-      navigates away from the journals view the user is currently
-      looking at.
-   2. No first block. The JournalPage component only renders its
-      `.journal-empty` clickable placeholder when the page has zero
-      children. Seeding a blank block makes that placeholder
-      unreachable and defeats the click-to-add-entries UX."
+   journal when it's missing. Deliberately does not navigate (which would
+   flip out of journals view) and does not seed a first block — the
+   JournalPage component owns that on mount via `:create-block-in-page`,
+   which also focuses the block for immediate typing."
   [db _session {:keys [title]}]
   (when-not (q/find-page-by-name db title)
     (let [new-page-id (str "page-" (random-uuid))]
