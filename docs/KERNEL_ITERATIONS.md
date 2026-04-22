@@ -20,7 +20,7 @@ Eight waves total — listed at a glance, three detailed below.
 | **4** | **Session / DB split** | **Nov 21 – Dec 10, 2025** | **3 ops + session atom** | **`52fcd735`, `36f32747`, `fd6a5afe`** |
 | 5 | FR registry | Nov 18, 2025 – Jan 6, 2026 | — (specs-as-data) | `b6504c93`, `35fc95e9` |
 | 6 | Nexus detour | Nov 28 → Mar 8 | — (dispatch only) | removed `adc3a5b9` |
-| **7** | **Alignment with docs** | **Apr 20, 2026** | **3 ops, op-log canonical, stable ids** | **`3e3f5893`, `746da175`, `9f9b5b36`, `8c5686ca`, `d87c1ef7`** |
+| **7** | **Alignment with docs** | **Apr 20, 2026** | **3 ops, op-log canonical, stable ids, plugin protocol surface (no `:apply-tx` impls yet)** | **`3e3f5893`, `746da175`, `9f9b5b36`, `8c5686ca`, `d87c1ef7`** |
 
 ---
 
@@ -537,21 +537,51 @@ you implement it.
 
 ---
 
-## Part 4 — The not-yet-built: Phase D's `:apply-tx`
+## Part 4 — What Phase D shipped, and what it didn't
 
-Phase D introduced a plugin protocol with two slots:
+Phase D shipped a **protocol surface**, not an incremental
+maintenance system. Worth spelling out because the two are easy
+to conflate:
 
-```clojure
-{:initial  (fn [db] -> index-map)        ; MANDATORY oracle
- :apply-tx (fn [prev db-before tx-ops db-after]
-              -> index-map | ::recompute)} ; OPTIONAL incremental
-```
+**Shipped** (in `src/kernel/derived_registry.cljc`):
+- The spec-map shape `{:initial <fn> :apply-tx <fn?>}`
+- The `::recompute` sentinel value an `:apply-tx` returns to
+  fall back to `:initial`
+- Registration validation (rejects non-map specs, missing
+  `:initial`, non-fn `:apply-tx`)
+- The isolation rule (documented in §4 of the plan; a plugin's
+  `:initial` / `:apply-tx` can only read the db and its own
+  prior index, not other plugins' indexes)
+- The dispatcher that *would* call `:apply-tx` when provided
 
-**No plugin implements `:apply-tx` yet.** Every plugin returns
-`::recompute` (or omits the key), falling back to `:initial`.
-Today's behavior is identical to the pre-refactor version. The
-shape is in place so migrations can happen incrementally, as
-evidence demands.
+**Not shipped** (in any plugin):
+- A single `:apply-tx` implementation. Grep the source:
+
+  ```clojure
+  ;; src/plugins/backlinks_index.cljc:111
+  ;; :apply-tx not implemented — kernel falls back to :initial on every
+  ```
+
+  The docstring at `derived_registry.cljc:21` says it plainly:
+  *":apply-tx yet. The protocol surface is in place so
+  profile-driven [migrations can happen later]."*
+
+The commit body for Phase D (`8c5686ca`) names the distinction
+explicitly:
+
+> *"Lean first cut: no plugin implements :apply-tx. The protocol
+> surface is in place so per-plugin migration can happen
+> incrementally. Today's behavior is identical to the bare-
+> function registration it replaces — this is a pure rename."*
+
+Every plugin today either omits `:apply-tx` or would return
+`::recompute`; either way, the kernel falls back to `:initial`
+(full recompute). **No perf has actually changed.** What changed
+is that the codebase now has a shape the next migration can land
+into without refactoring the registry.
+
+Below, the shape of the migrations that *would* land — and the
+evidence that would trigger them.
 
 ### What Phase D's deferral actually costs
 
@@ -723,9 +753,12 @@ naming in the essay.
 
 ## Loose ends worth tracking
 
-- **Wave 7 Phase D's un-built half.** When it ships, it will be
-  the natural bookend to this research — the first plugin to
-  implement `:apply-tx` validates the protocol's shape.
+- **Phase D's payoff (the first `:apply-tx` implementation).**
+  Phase D shipped the protocol; no plugin uses it yet. When the
+  first plugin lands `:apply-tx` — likely backlinks-index when
+  scale forces it — that's the natural bookend to this research,
+  because it validates the protocol's shape against real
+  incremental work.
 - **Wave 4's cost in tests.** Five buffer-plugin tests were
   deleted as obsolete during Phase 3. It would be worth confirming
   that none of them covered behaviors that no longer have any
