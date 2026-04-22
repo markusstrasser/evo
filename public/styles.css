@@ -976,8 +976,11 @@
     }
 
     &.editing {
-      background: var(--color-surface-raised);
-      border-left-color: var(--color-border-strong);
+      /* No card chrome. Pure-white `--color-surface-raised` on the cream
+         `--color-bg` reads as a cold pasted card; the editing affordance
+         comes from the warm-amber left bar + the caret instead. */
+      background: transparent;
+      border-left-color: oklch(65% 0.12 55);
     }
 
     &.dragging {
@@ -1014,7 +1017,10 @@
     min-height: calc(var(--block-line-height) * 1em);
     display: block;
     width: 100%;
-    caret-color: var(--color-accent);
+    /* Desaturated vs full accent — a text cursor at full amber chroma
+       (0.16) reads as traffic-cone against prose. Same hue/lightness,
+       softer chroma. */
+    caret-color: oklch(55% 0.12 55);
 
     /* Editorial typography (gwern-inspired) */
     font-variant-numeric: oldstyle-nums proportional-nums; /* Elegant prose numerals */
