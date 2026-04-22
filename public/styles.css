@@ -428,6 +428,12 @@
     top: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Reserve space for the scrollbar even when absent — prevents horizontal
+       layout shift when the page list grows past the fold. */
+    scrollbar-gutter: stable;
+    /* Don't propagate scroll to the main editor (or bounce the page on
+       macOS trackpads) when the sidebar hits its end. */
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     
