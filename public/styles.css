@@ -523,7 +523,7 @@
     color: var(--sidebar-text-faint);
     cursor: pointer;
     opacity: 0;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
   }
 
   .storage-connected:hover .storage-disconnect {
@@ -549,7 +549,7 @@
     font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   }
 
   .storage-picker:hover {
@@ -683,7 +683,7 @@
     border-radius: var(--radius-sm);
     color: var(--sidebar-text-faint);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
     opacity: 0;
   }
 
@@ -781,7 +781,7 @@
     border-radius: var(--radius-sm);
     color: var(--sidebar-text-faint);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .star-button:hover {
@@ -891,7 +891,7 @@
     border-radius: var(--radius-sm);
     color: var(--sidebar-text-faint);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .restore-button:hover {
@@ -2100,7 +2100,7 @@
     font-size: var(--text-sm);
     color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 
     &:hover {
       background: oklch(95% 0.02 250);
