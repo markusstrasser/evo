@@ -10,6 +10,7 @@
             [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
             [parser.inline-format :as inline-format]
+            [parser.markdown-links :as md-links]
             [parser.images :as images]
             [components.page-ref :as page-ref]
             [components.image :as image]
@@ -1079,26 +1080,96 @@
     (let [result (text-segment->hiccup text)]
       (if (seq? result) (vec result) [result]))))
 
+(def ^:private evo-page-card-excerpt-limit 140)
+
+(defn- truncate-preview
+  "Collapse newlines/extra whitespace and trim preview text to a readable
+   one-line excerpt."
+  [text]
+  (let [normalized (some-> (or text "")
+                           (str/replace #"\s+" " ")
+                           (str/trim))]
+    (cond
+      (str/blank? normalized) nil
+      (<= (count normalized) evo-page-card-excerpt-limit) normalized
+      :else (str (subs normalized 0 (dec evo-page-card-excerpt-limit)) "…"))))
+
+(defn- first-page-excerpt
+  "Use the first non-blank top-level block as a compact page preview."
+  [db page-id]
+  (->> (q/children db page-id)
+       (map #(q/block-text db %))
+       (keep truncate-preview)
+       first))
+
+(defn- page-link-anchor
+  [{:keys [label page-name on-intent class title children]}]
+  (into [:a {:href (str "evo://page/" (js/encodeURIComponent page-name))
+             :class class
+             :title title
+             :on {:click (fn [e]
+                           (.preventDefault e)
+                           (.stopPropagation e)
+                           (when on-intent
+                             (on-intent {:type :navigate-to-page
+                                         :page-name page-name})))}}]
+        (or children [label])))
+
+(defn- render-markdown-link
+  "Render a markdown link target.
+
+   `evo://page/<title>` links navigate inside the current kb.
+   Everything else is rendered as a normal external link."
+  [_db label target on-intent]
+  (if-let [{:keys [type page-name]} (md-links/parse-evo-target target)]
+     (case type
+      :page [(page-link-anchor {:label label
+                                :page-name page-name
+                                :on-intent on-intent
+                                :class ["evo-link" "evo-page-link"]
+                                :title (str "Open page: " page-name)})]
+      [label])
+    [[:a.markdown-link {:href target
+                        :target "_blank"
+                        :rel "noopener noreferrer"
+                        :title target
+                        :on {:click (fn [e]
+                                      (.stopPropagation e))}}
+      label]]))
+
+(defn- render-text-fragment
+  "Render text with markdown links and inline formatting.
+
+   Links are handled before inline formatting so the link syntax itself does not
+   bleed into the formatting parser."
+  [db text on-intent]
+  (->> (md-links/split-with-links text)
+       (mapcat (fn [{:keys [type value label target]}]
+                 (case type
+                   :text (render-text-with-inline-formatting value)
+                   :link (render-markdown-link db label target on-intent))))))
+
 (defn- render-text-segment
   "Render a plain text segment with inline formatting and images.
    Returns vector of hiccup elements.
 
    Parses:
    - ![alt](url){width=N} → inline images with optional width
+   - [label](target) → inline links (including evo://page/<title>)
    - **bold**, __italic__, etc → inline formatting"
-  [text _on-intent]
+  [db text on-intent]
   (if (images/image? text)
     ;; Text has inline images - split and render each segment
     (->> (images/split-with-images text)
          (mapcat (fn [{:keys [type value alt path width]}]
                    (case type
-                     :text (render-text-with-inline-formatting value)
+                     :text (render-text-fragment db value on-intent)
                      :image [(image/Image {:path path
                                            :alt alt
                                            :width width
                                            :block-level? false})]))))
     ;; No images - just inline formatting
-    (render-text-with-inline-formatting text)))
+    (render-text-fragment db text on-intent)))
 
 (defn- render-text-with-page-refs
   "Render text with [[page-refs]] as components.
@@ -1111,10 +1182,31 @@
     (->> (page-refs/split-with-refs text)
          (mapcat (fn [{:keys [type value page]}]
                    (case type
-                     :text (render-text-segment value on-intent)
+                     :text (render-text-segment db value on-intent)
                      :page-ref [(page-ref/PageRef {:db db
                                                    :page-name page
                                                    :on-intent on-intent})]))))))
+
+(defn- evo-page-card
+  "Render a compact preview card for a link-only `evo://page/...` block."
+  [db label page-name on-intent]
+  (let [page-id (q/find-page-by-name db page-name)
+        page-title (if page-id (q/page-title db page-id) page-name)
+        excerpt (when page-id (first-page-excerpt db page-id))
+        preview-meta (cond
+                       page-id "Evo page"
+                       :else "Page not found yet")]
+    [:div.evo-page-card
+     (page-link-anchor {:label label
+                        :page-name page-name
+                        :on-intent on-intent
+                        :class ["evo-page-card-link"]
+                        :title (str "Open page: " page-name)
+                        :children [[:div.evo-page-card-label label]
+                                   [:div.evo-page-card-title page-title]
+                                   [:div.evo-page-card-meta preview-meta]
+                                   (when excerpt
+                                     [:div.evo-page-card-excerpt excerpt])]} )]))
 
 ;; ── Image Paste/Drop Handling ────────────────────────────────────────────────
 
@@ -1563,7 +1655,7 @@
         :tweet (tweet-embed {:block-id block-id :url url :is-focused is-focused
                              :on-intent on-intent :db db})
 
-        :video (video-embed {:block-id block-id :url url :is-focused is-focused
+            :video (video-embed {:block-id block-id :url url :is-focused is-focused
                              :on-intent on-intent :db db})
 
         ;; Default: quote, heading, or plain text.
@@ -1585,8 +1677,16 @@
 
                                              :else
                                              (on-intent {:type :selection :mode :replace :ids block-id})))}}
+              link-only (md-links/link-only? content)
+              evo-link-target (some-> link-only :target md-links/parse-evo-target)
               ;; Render content; empty blocks get zero-width space for a11y tree visibility
-              rendered (render-text-with-page-refs db content on-intent)
+              rendered (if (and (= :page (:type evo-link-target))
+                                link-only)
+                         [(evo-page-card db
+                                         (:label link-only)
+                                         (:page-name evo-link-target)
+                                         on-intent)]
+                         (render-text-with-page-refs db content on-intent))
               children (if (seq rendered)
                          rendered
                          ["\u200B"]) ; ZWS makes block visible to a11y tree
