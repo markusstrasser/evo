@@ -1547,6 +1547,71 @@
     }
   }
 
+  .markdown-link,
+  .evo-link {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in oklch, var(--color-accent-text) 45%, transparent);
+    text-underline-offset: 0.14em;
+
+    &:hover {
+      text-decoration-color: currentColor;
+    }
+  }
+
+  .evo-page-card {
+    margin: var(--space-1) 0;
+  }
+
+  .evo-page-card-link {
+    display: block;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in oklch, var(--color-accent-text) 18%, var(--color-border));
+    border-radius: var(--radius-lg);
+    background:
+      linear-gradient(180deg,
+                      color-mix(in oklch, var(--color-accent-subtle) 70%, white) 0%,
+                      color-mix(in oklch, var(--color-surface-raised) 88%, var(--color-accent-subtle)) 100%);
+    box-shadow: var(--shadow-sm);
+    text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+
+    &:hover {
+      border-color: color-mix(in oklch, var(--color-accent-text) 36%, var(--color-border-strong));
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+  }
+
+  .evo-page-card-label {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-tertiary);
+    margin-bottom: 4px;
+  }
+
+  .evo-page-card-title {
+    color: var(--color-text);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .evo-page-card-meta {
+    margin-top: 6px;
+    color: var(--color-accent-text);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .evo-page-card-excerpt {
+    margin-top: 8px;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+
   .block-ref {
     background: var(--color-accent-subtle);
     color: var(--color-accent-text);
