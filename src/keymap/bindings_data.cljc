@@ -102,9 +102,6 @@
             [{:key ";" :mod true} {:type :toggle-fold}]
             [{:key "ArrowDown" :mod true} {:type :expand-all}]
             [{:key "ArrowUp" :mod true} {:type :collapse}]
-                 ;; Zoom
-            [{:key "." :mod true} {:type :zoom-in}]
-            [{:key "," :mod true} {:type :zoom-out}]
                  ;; Smart editing
             [{:key "Enter" :mod true} {:type :toggle-checkbox}]
                  ;; Follow link (Logseq parity)

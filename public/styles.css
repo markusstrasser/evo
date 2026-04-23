@@ -536,9 +536,9 @@
     box-shadow: 0 1px 0 oklch(85% 0.01 250);
   }
 
-  /* When the hotkeys panel is open, shift the floating controls left
-     so they don't sit underneath it. */
-  body:has(.hotkeys-panel) .floating-controls { right: 296px; }
+  /* Floating controls stay put even when the hotkeys panel is open —
+     they render above it (z-index 50 > 45) so the toggle target doesn't
+     move under the user's cursor. */
 
   /* ─────────────────────────────────────────────────────────────────────────
      Sidebar - Editorial refinement with subtle depth

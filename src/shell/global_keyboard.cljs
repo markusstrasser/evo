@@ -75,7 +75,7 @@
   [intent-map focus-id editing-block-id]
   (let [effective-block-id (or focus-id editing-block-id)]
     (if (and effective-block-id
-             (#{:toggle-fold :collapse :expand-all :zoom-in} (:type intent-map)))
+             (#{:toggle-fold :collapse :expand-all} (:type intent-map)))
       (assoc intent-map :block-id effective-block-id)
       intent-map)))
 
