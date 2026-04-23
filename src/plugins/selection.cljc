@@ -258,11 +258,17 @@
      {:type :selection :mode :next}
      {:type :selection :mode :clear}"
 
-                          ;; FR Citations (Spec-as-Database pattern)
+                          ;; FR Citations (Spec-as-Database pattern).
+                          ;; Shift+click range implementation is the UI-side
+                          ;; `shift-click-select-range!` in components.block —
+                          ;; it computes the visible range and dispatches
+                          ;; :selection with :mode :extend, so the intent is
+                          ;; the canonical implementation surface.
                           :fr/ids #{:fr.selection/edit-view-exclusive
                                     :fr.selection/extend-boundary
                                     :fr.nav/view-arrows
-                                    :fr.nav/idle-first-last}
+                                    :fr.nav/idle-first-last
+                                    :fr.pointer/shift-click-range}
 
                           ;; Mode-conditional validation
                           :spec [:multi {:dispatch :mode}
