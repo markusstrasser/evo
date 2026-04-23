@@ -170,8 +170,6 @@
             (when is-journal? "journal")]
     :on {:click (fn [e]
                   (.preventDefault e)
-                  ;; Track in recents when clicking
-                  (vs/add-to-recents! page-id)
                   (when on-intent
                     (on-intent {:type :switch-page :page-id page-id})))}}
    ;; Title (no icon - cleaner UI)

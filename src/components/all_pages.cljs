@@ -50,7 +50,6 @@
    {:replicant/key id
     :on {:click (fn [e]
                   (.preventDefault e)
-                  (vs/add-to-recents! id)
                   (on-intent {:type :switch-page :page-id id}))}}
    [:span.pages-cell.pages-cell--title
     (when favorite? [:span.pages-star "★"])
