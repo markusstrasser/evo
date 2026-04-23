@@ -1,7 +1,6 @@
 (ns components.devtools
   "Dev tools UI component for debugging state and operations."
   (:require [dev.tooling :as devtools]
-            [kernel.query :as q]
             [shell.log :as slog]
             [shell.view-state :as vs]
             [clojure.string :as str]))
@@ -208,7 +207,7 @@
 
 (defn StateSnapshot
   "Current state snapshot (compact view)."
-  [{:keys [db]}]
+  [_]
   [:div.state-snapshot
    {:style {:padding "12px"
             :background-color "#f9fafb"
@@ -222,16 +221,16 @@
     [:div
      [:strong "Selection: "]
      [:span {:style {:color "#4f46e5"}}
-      (let [sel (q/selection db)]
+      (let [sel (vs/selection-nodes)]
         (if (empty? sel) "∅" (str/join ", " sel)))]]
     [:div
      [:strong "Focus: "]
      [:span {:style {:color "#4f46e5"}}
-      (or (q/focus db) "—")]]
+      (or (vs/focus-id) "—")]]
     [:div
      [:strong "Editing: "]
-     [:span {:style {:color (if (q/editing-block-id db) "#10b981" "#9ca3af")}}
-      (or (q/editing-block-id db) "—")]]]
+     [:span {:style {:color (if (vs/editing-block-id) "#10b981" "#9ca3af")}}
+      (or (vs/editing-block-id) "—")]]]
    [:div {:style {:display "flex"
                   :gap "15px"
                   :margin-top "10px"}}
