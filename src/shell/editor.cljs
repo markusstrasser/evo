@@ -33,7 +33,6 @@
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
             [kernel.intent :as intent]
-            [components.spec-viewer :as spec-viewer]
             [components.quick-switcher :as quick-switcher]
             [components.notification :as notification]
             [components.lightbox :as lightbox]
@@ -52,7 +51,6 @@
 
 (defn- test-mode? [] (query-param? "test=true"))
 (defn- devtools-enabled? [] (query-param? "devtools"))
-(defn- specs-mode? [] (query-param? "specs"))
 (defn- embed-mode? [] (query-param? "embed"))
 
 ;; Initial DB - starts with demo content, replaced when folder is loaded
@@ -588,9 +586,7 @@
 
 (defn render! []
   (d/render (js/document.getElementById "root")
-            (if (specs-mode?)
-              (spec-viewer/SpecViewer)
-              (App))))
+            (App)))
 
 ;; Batched render using requestAnimationFrame to prevent nested render warnings.
 ;; When multiple state changes (DB + session) happen in the same frame,

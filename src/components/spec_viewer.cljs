@@ -2,8 +2,7 @@
   "Spec-as-UI: browsable documentation for Functional Requirements.
 
    Renders specs.edn as a registry browser with row-aligned before/after
-   scenario diffs (outline + raw DSL views). Activated by adding ?specs
-   to the URL."
+   scenario diffs (outline + raw DSL views). Served from /specs.html."
   (:require [spec.registry :as fr]
             [kernel.intent :as intent]
             [clojure.set :as set]
@@ -30,7 +29,8 @@
   (js/URLSearchParams. (.-search js/location)))
 
 (defn- specviewer-route? []
-  (.has (current-search-params) "specs"))
+  (or (= "/specs.html" (.-pathname js/location))
+      (.has (current-search-params) "specs")))
 
 (defn- essay-mode? []
   (.has (current-search-params) "essay"))
@@ -186,7 +186,7 @@
     (name fr-id)))
 
 (defn- fr-handbook-href [fr-id]
-  (str "/?specs=&fr=" (js/encodeURIComponent (fr-slug fr-id)) "&all=1&view=dsl"))
+  (str "/specs.html?fr=" (js/encodeURIComponent (fr-slug fr-id)) "&all=1&view=dsl"))
 
 (defn- essay-reference-data [fr-id]
   (when-let [fr-data (fr/get-fr fr-id)]
@@ -311,7 +311,6 @@
 (defn- ui-state->search []
   (let [{:keys [selected-fr show-all? show-dsl? search-query]} @!ui-state
         params (current-search-params)]
-    (.set params "specs" "")
     (if selected-fr
       (.set params "fr" (if-let [fr-ns (namespace selected-fr)]
                           (str fr-ns "/" (name selected-fr))
