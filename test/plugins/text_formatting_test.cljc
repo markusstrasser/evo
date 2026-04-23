@@ -54,6 +54,40 @@
 
 ;; ── Basic Format Tests ───────────────────────────────────────────────────────
 
+;; Highlight (==) and strikethrough (~~) share the same :format-selection
+;; handler — the keymap just passes a different :marker. These asserts
+;; close the `fr.format/highlight-strikethrough` verification gap.
+
+(deftest ^{:fr/ids #{:fr.format/highlight-strikethrough}} format-selection-highlight
+  (testing "Wrapping plain text with == (highlight)"
+    (let [db (make-db-with-text "hello world")
+          session (empty-session)
+          {:keys [db]} (run-intent db session {:type :format-selection
+                                               :block-id "a"
+                                               :start 6 :end 11
+                                               :marker "=="})]
+      (is (= "hello ==world==" (get-in db [:nodes "a" :props :text]))))))
+
+(deftest ^{:fr/ids #{:fr.format/highlight-strikethrough}} format-selection-strikethrough
+  (testing "Wrapping plain text with ~~ (strikethrough)"
+    (let [db (make-db-with-text "hello world")
+          session (empty-session)
+          {:keys [db]} (run-intent db session {:type :format-selection
+                                               :block-id "a"
+                                               :start 0 :end 5
+                                               :marker "~~"})]
+      (is (= "~~hello~~ world" (get-in db [:nodes "a" :props :text]))))))
+
+(deftest ^{:fr/ids #{:fr.format/highlight-strikethrough}} format-selection-highlight-toggles-off
+  (testing "Highlight toggle: wrapped text unwraps"
+    (let [db (make-db-with-text "hello ==world==")
+          session (empty-session)
+          {:keys [db]} (run-intent db session {:type :format-selection
+                                               :block-id "a"
+                                               :start 6 :end 15
+                                               :marker "=="})]
+      (is (= "hello world" (get-in db [:nodes "a" :props :text]))))))
+
 (deftest format-selection-wrap-test
   (testing "Wrapping plain text with bold markers"
     (let [db (make-db-with-text "hello world")

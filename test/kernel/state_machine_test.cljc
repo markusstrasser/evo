@@ -43,7 +43,11 @@
 
 ;; ── State Detection Tests ───────────────────────────────────────────────────
 
-(deftest current-state-test
+;; current-state-test also verifies that editing takes precedence over
+;; selection when both are set — a softer form of selection-clears-edit.
+;; The stricter version (entering selection actively clears editing) is
+;; covered by plugins/selection_test.cljc via the :selection intent.
+(deftest ^{:fr/ids #{:fr.state/selection-clears-edit}} current-state-test
   (testing "Detects idle state"
     (is (= :idle (sm/current-state idle-session)))
     (is (sm/in-idle-state? idle-session))
@@ -70,7 +74,7 @@
 
 ;; ── Idle State Guard Tests ──────────────────────────────────────────────────
 
-(deftest idle-guard-test
+(deftest ^{:fr/ids #{:fr.state/idle-guard}} idle-guard-test
   (testing "Blocks editing intents in idle state"
     (is (sm/idle-guard idle-session {:type :enter-edit :block-id "a"}))
     (is (sm/idle-guard idle-session {:type :context-aware-enter :block-id "a"}))

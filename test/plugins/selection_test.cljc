@@ -82,9 +82,12 @@
       (is (not (q/selected? session' "b")))
       (is (q/selected? session' "c")))))
 
-(deftest 
+(deftest ^{:fr/ids #{:fr.pointer/shift-click-range}}
   extend-selection-test
-  (testing "Extend selection adds to selection"
+  (testing "Extend selection adds to selection — shift-click-select-range!
+           computes the visible range UI-side and dispatches this same
+           :selection :mode :extend, so this exercise covers the range
+           case end-to-end for the FR"
     (let [db (build-doc)
           session (empty-session)
           session1 (apply-selection-intent db session {:type :selection :mode :replace :ids "a"})

@@ -36,7 +36,11 @@
         matches (re-seq #":fr/ids\s+#\{([^}]+)\}" content)]
     (->> matches
          (mapcat (fn [[_ ids-str]]
-                   (re-seq #":[\\w./+-]+" ids-str)))
+                   ;; `\w` is the regex word-char class; prior version used
+                   ;; `\\w` which in a regex literal is a LITERAL backslash
+                   ;; and matched nothing in real keywords. That silently
+                   ;; zeroed the verified-frs set for every test citation.
+                   (re-seq #":[\w./+-]+" ids-str)))
          (map #(keyword (subs % 1)))
          set)))
 
