@@ -19,6 +19,27 @@ And although I realized these ideas as moot, the evo interface is perfect for ag
 - **Multi-select**, **undo/redo** over the full log, **autocomplete** for page refs and slash-commands, **backlinks** panel
 - **Local-first persistence** to a folder you pick; no server, no account
 
+## Prerequisites
+
+You need:
+
+- Node.js + npm
+- a JDK for `shadow-cljs`
+- Babashka if you want to use the `bb` task runner
+
+macOS:
+
+```bash
+brew install node openjdk babashka
+```
+
+Debian/Ubuntu:
+
+```bash
+sudo apt install nodejs npm default-jdk
+# install babashka separately if you want bb tasks
+```
+
 ## Quick start
 
 ```bash
@@ -84,6 +105,34 @@ Where things go:
 - render handlers live per AST tag, not per block-level mode
 - session state does not go in the document DB
 - [`src/kernel/`](src/kernel/) must not import `src/shell/`, `src/components/`, or `src/keymap/`
+
+### Plugins
+
+Plugins compile intents into ops. They read the current DB, decide what should
+happen, and return data for the kernel to apply.
+
+Indent is a simple example. The handler looks up the previous sibling of
+`node-B`, decides `node-B` should move under `node-A`, and emits:
+
+```clojure
+{:op :place :id "node-B" :under "node-A" :at :last}
+```
+
+That is the boundary. Plugins do not mutate the DB directly, do not bypass the
+transaction pipeline, and do not share hidden state. The useful mental model is
+`(db, intent) -> {:ops ... :session-updates ...}`.
+
+### Derived indexes
+
+The stored DB stays small: nodes, parent-owned child vectors, roots. Everything
+else is re-derived after each transaction.
+
+That is what makes reads cheap without pushing more state into the canonical
+model. Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` hit
+precomputed maps like `:parent-of`, `:index-of`, `:prev-id-of`, and
+`:next-id-of`. Because derivation runs inside the transaction pipeline, the UI
+never sees stale indexes. Plugins can also register their own derived views;
+backlinks are the main example.
 
 ## Code shape
 
