@@ -266,7 +266,7 @@
     text-rendering: optimizeLegibility;
     font-kerning: normal;
     font-optical-sizing: auto;
-    font-synthesis: none;
+    font-synthesis: style;
     font-feature-settings:
       "kern" 1,
       "liga" 1,
