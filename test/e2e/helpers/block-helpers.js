@@ -233,6 +233,14 @@ export async function updateBlockText(page, blockId, text) {
  * @param {number} [timeout=5000]
  */
 export async function waitForBlocks(page, timeout = 5000) {
+  await page.waitForFunction(() => Boolean(window.TEST_HELPERS), undefined, { timeout });
+
+  if ((await page.locator('[data-block-id]').count()) === 0) {
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.resetToEmptyDb?.();
+    });
+  }
+
   await page.waitForSelector('[data-block-id]', { timeout });
 }
 
