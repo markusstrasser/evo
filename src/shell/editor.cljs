@@ -488,7 +488,7 @@
        [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
                      :letter-spacing "0.05em" :color "#9ca3af"}} "UI"]
        (hotkey (kbd "⌘" "\\") "Toggle sidebar")
-       (hotkey (kbd "⌘" "P") "Toggle this panel")
+       (hotkey (kbd "⌘" "?") "Toggle this panel")
        (hotkey (kbd "⌘" "Shift" "E") "Toggle reading mode")]]]))
 
 (defn- FloatingControls
@@ -505,7 +505,7 @@
     "Aa"]
    [:button.floating-btn
     {:type "button"
-     :title "Keyboard shortcuts (⌘P)"
+     :title "Keyboard shortcuts (⌘?)"
      :aria-label "Toggle keyboard shortcuts"
      :aria-pressed (boolean hotkeys-visible?)
      :class (when hotkeys-visible? "is-active")
@@ -526,9 +526,9 @@
         reading-mode? (vs/reading-mode?)
         journals-view? (vs/journals-view?)
         quick-switcher-visible? (vs/quick-switcher-visible?)]
-    [:div {:class (str "app"
-                       (when embed? " app--embed")
-                       (when reading-mode? " reading-mode"))}
+    [:div {:class (cond-> ["app"]
+                    embed? (conj "app--embed")
+                    reading-mode? (conj "reading-mode"))}
      ;; Sidebar for page navigation (toggleable via Cmd+\)
      ;; Always show sidebar - it has the folder picker
      (when (and sidebar-visible? (not embed?) (not reading-mode?))
