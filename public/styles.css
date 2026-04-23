@@ -148,7 +148,7 @@
     /* Refined type scale */
     --text-xs: 0.75rem;    /* 12px */
     --text-sm: 0.8125rem;  /* 13px */
-    --text-base: 0.9375rem; /* 15px - optimal reading */
+    --text-base: 1.0625rem; /* 17px - comfortable default reading */
     --text-lg: 1.125rem;   /* 18px */
     --text-xl: 1.375rem;   /* 22px */
     --text-2xl: 1.75rem;   /* 28px */
@@ -403,14 +403,15 @@
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-     Reading mode — bigger type, tighter measure, sidebar hidden.
-     Measure ~60ch pairs well with 1.2rem body for comfortable saccades.
+     Reading mode — slightly larger type, optimized measure, sidebar hidden.
+     Intentionally close to the default scale so the transition is even,
+     not jarring. Tighter line-height keeps the rhythm balanced with bigger type.
      ───────────────────────────────────────────────────────────────────────── */
   .app.reading-mode .main-content {
-    max-width: clamp(520px, 62ch, 760px);
+    max-width: clamp(560px, 66ch, 780px);
     font-size: 1.15rem;
-    line-height: 1.7;
-    padding-top: 3rem;
+    line-height: 1.6;
+    padding-top: 2rem;
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
