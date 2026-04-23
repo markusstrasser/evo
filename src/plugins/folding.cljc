@@ -203,12 +203,20 @@
                                       {:ui {:sidebar-visible? (not (get-in session [:ui :sidebar-visible?] true))}}})})
 
 (intent/register-intent! :toggle-hotkeys
-                         {:doc "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
+                         {:doc "Toggle hotkeys reference panel visibility. Bound to Cmd+P."
                           :fr/ids #{:fr.ui/quick-switcher}
                           :spec [:map [:type [:= :toggle-hotkeys]]]
                           :handler (fn [_db session _intent]
                                      {:session-updates
                                       {:ui {:hotkeys-visible? (not (get-in session [:ui :hotkeys-visible?] false))}}})})
+
+(intent/register-intent! :toggle-reading-mode
+                         {:doc "Toggle reading/focus mode (bigger font, hide sidebar). Bound to Cmd+Shift+E."
+                          :fr/ids #{:fr.ui/quick-switcher}
+                          :spec [:map [:type [:= :toggle-reading-mode]]]
+                          :handler (fn [_db session _intent]
+                                     {:session-updates
+                                      {:ui {:reading-mode? (not (get-in session [:ui :reading-mode?] false))}}})})
 
 (intent/register-intent! :toggle-quick-switcher
                          {:doc "Toggle quick switcher (page search) visibility. Bound to Cmd+K."

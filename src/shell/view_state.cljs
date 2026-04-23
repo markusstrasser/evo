@@ -116,6 +116,7 @@
         :drag nil
         :sidebar-visible? true ; Left sidebar (pages) visibility
         :hotkeys-visible? false ; Hotkeys reference panel visibility
+        :reading-mode? false ; Focus/reading mode (bigger font, hide sidebar)
         :autocomplete nil ; Autocomplete popup state (see autocomplete-show!)
         :quick-switcher nil ; Quick switcher state {:query "" :selected-idx 0}
         :notification nil ; Toast notification {:message :type :action :timeout-id}
@@ -231,6 +232,11 @@
   "Check if the hotkeys reference panel is visible."
   []
   (get-in @!view-state [:ui :hotkeys-visible?] false))
+
+(defn reading-mode?
+  "Check if reading/focus mode is active."
+  []
+  (get-in @!view-state [:ui :reading-mode?] false))
 
 (defn journals-view?
   "Check if journals view is active (showing all journals stacked)."

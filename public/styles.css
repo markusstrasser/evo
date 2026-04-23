@@ -403,6 +403,58 @@
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
+     Reading mode — bigger type, tighter measure, sidebar hidden.
+     Measure ~60ch pairs well with 1.2rem body for comfortable saccades.
+     ───────────────────────────────────────────────────────────────────────── */
+  .app.reading-mode .main-content {
+    max-width: clamp(520px, 62ch, 760px);
+    font-size: 1.15rem;
+    line-height: 1.7;
+    padding-top: 3rem;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Floating controls (bottom-right)
+     ───────────────────────────────────────────────────────────────────────── */
+  .floating-controls {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 50;
+  }
+
+  .floating-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid oklch(90% 0.01 250);
+    background: white;
+    color: oklch(45% 0.02 260);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+
+  .floating-btn:hover {
+    background: oklch(98% 0.005 260);
+    color: oklch(30% 0.02 260);
+  }
+
+  .floating-btn.is-active {
+    background: oklch(92% 0.04 280);
+    border-color: oklch(82% 0.05 280);
+    color: oklch(35% 0.08 280);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
      Sidebar - Editorial refinement with subtle depth
      ───────────────────────────────────────────────────────────────────────── */
   .sidebar {
