@@ -66,7 +66,7 @@
    Returns: :copy | :cut | :kill | :unknown"
   [intent-type]
   (cond
-    (#{:copy-block :copy-selected} intent-type) :copy
+    (#{:copy-block :copy-selected :copy-block-reference} intent-type) :copy
     (#{:cut-block :cut-selected} intent-type) :cut
     (#{:kill-to-end :kill-to-beginning
        :kill-word-forward :kill-word-backward} intent-type) :kill

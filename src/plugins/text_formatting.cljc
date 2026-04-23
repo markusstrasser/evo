@@ -91,12 +91,15 @@
       (wrap-with-marker args))))
 
 (intent/register-intent! :format-selection
-                         {:doc "Format selected text with markdown markers (bold, italic).
+                         {:doc "Format selected text with markdown markers.
          Toggles formatting: wraps if not formatted, unwraps if already formatted.
+         Same handler covers bold (**), italic (*), highlight (==), strikethrough (~~)
+         — the keymap picks the marker per shortcut.
 
          Logseq parity: Automatically trims leading/trailing whitespace from selection
          before applying formatting. ' bold text ' → '**bold text**' (spaces preserved outside)."
-                          :fr/ids #{:fr.format/bold-italic}
+                          :fr/ids #{:fr.format/bold-italic
+                                    :fr.format/highlight-strikethrough}
                           :spec [:map
                                  [:type [:= :format-selection]]
                                  [:block-id :string]
