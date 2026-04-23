@@ -2,12 +2,14 @@
   "Handler for :link.
 
    Dispatches on `parse-evo-target` to pick intent and CSS class:
-     - evo://page/<name>     → :navigate-to-page
+     - evo://page/<name>     → :navigate-to-page (+ dead-link class if the
+                               page isn't in the current db)
      - evo://block/<id>      → :zoom-in
      - evo://journal/<iso>   → :go-to-journal
    External links open in a new tab; a plain click inside a link does
    not propagate to the block click handler."
-  (:require [parser.markdown-links :as md-links]
+  (:require [kernel.query :as q]
+            [parser.markdown-links :as md-links]
             [shell.render-registry :refer [register-render! render-all]]))
 
 (defn- internal-click [on-intent intent]
@@ -31,13 +33,19 @@
            evo (md-links/parse-evo-target target)]
        (case (:type evo)
          :page
-         (into [:a.evo-link.evo-page-link
-                {:href target
-                 :title (str "Open page: " (:page-name evo))
-                 :on {:click (internal-click on-intent
-                                             {:type :navigate-to-page
-                                              :page-name (:page-name evo)})}}]
-               label-children)
+         (let [db (:db ctx)
+               missing? (and db (nil? (q/find-page-by-name db (:page-name evo))))
+               classes (cond-> ["evo-link" "evo-page-link"]
+                         missing? (conj "evo-page-link--missing"))]
+           (into [:a {:href target
+                      :class classes
+                      :title (if missing?
+                               (str "Page not found yet: " (:page-name evo))
+                               (str "Open page: " (:page-name evo)))
+                      :on {:click (internal-click on-intent
+                                                  {:type :navigate-to-page
+                                                   :page-name (:page-name evo)})}}]
+                 label-children))
 
          :block
          (into [:a.evo-link.evo-block-link
