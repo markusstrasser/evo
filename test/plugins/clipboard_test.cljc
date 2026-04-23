@@ -266,3 +266,54 @@
       ;; Both are URLs, so just replace (no link formatting)
       (is (= "see https://new.com for more"
              (get-in db [:nodes "a" :props :text]))))))
+
+;; ── Block-reference copy ────────────────────────────────────────────────────
+;; FR-Clipboard-05: Cmd+Shift+C copies `((id))` for embedding.
+
+(deftest ^{:fr/ids #{:fr.clipboard/block-reference}}
+  copy-block-reference-explicit-id
+  (testing "explicit :block-id wins"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "hello"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (empty-session)
+          {:keys [session]} (run-intent db session
+                                        {:type :copy-block-reference :block-id "a"})]
+      (is (= "((a))" (get-in session [:ui :clipboard-text]))
+          "clipboard-text is the block-reference marker, not the block content")
+      (is (= [{:id "a" :depth 0 :text "((a))"}]
+             (get-in session [:ui :clipboard-blocks]))
+          "internal clipboard-blocks carry the reference text, not the source text"))))
+
+(deftest ^{:fr/ids #{:fr.clipboard/block-reference}}
+  copy-block-reference-editing-fallback
+  (testing "no :block-id → editing block is copied"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "x"}}
+                                 {:op :place :id "a" :under :doc :at :last}]))
+          session (assoc-in (empty-session) [:ui :editing-block-id] "a")
+          {:keys [session]} (run-intent db session {:type :copy-block-reference})]
+      (is (= "((a))" (get-in session [:ui :clipboard-text]))))))
+
+(deftest ^{:fr/ids #{:fr.clipboard/block-reference}}
+  copy-block-reference-single-selection-fallback
+  (testing "no :block-id + no editing → use sole selected block"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "b" :type :block :props {:text "y"}}
+                                 {:op :place :id "b" :under :doc :at :last}]))
+          session (assoc-in (empty-session) [:selection :nodes] #{"b"})
+          {:keys [session]} (run-intent db session {:type :copy-block-reference})]
+      (is (= "((b))" (get-in session [:ui :clipboard-text]))))))
+
+(deftest ^{:fr/ids #{:fr.clipboard/block-reference}}
+  copy-block-reference-multi-selection-noop
+  (testing "ambiguous target (multiple selected, no editing) → no clipboard write"
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [{:op :create-node :id "a" :type :block :props {:text "x"}}
+                                 {:op :create-node :id "b" :type :block :props {:text "y"}}
+                                 {:op :place :id "a" :under :doc :at :last}
+                                 {:op :place :id "b" :under :doc :at :last}]))
+          session (assoc-in (empty-session) [:selection :nodes] #{"a" "b"})
+          {:keys [session]} (run-intent db session {:type :copy-block-reference})]
+      (is (nil? (get-in session [:ui :clipboard-text]))
+          "multi-select with no explicit target and no editing block is ambiguous — don't guess"))))

@@ -486,6 +486,39 @@
                                                                                    :depth 0
                                                                                    :text text}]}}}))})
 
+(defn- resolve-block-for-copy
+  "Choose which block to copy a reference to. Prefer an explicit :block-id,
+   then the editing block, then a single-selected block. Returns nil if
+   there's no unambiguous target."
+  [session {:keys [block-id]}]
+  (or block-id
+      (get-in session [:ui :editing-block-id])
+      (let [sel (get-in session [:selection :nodes])]
+        (when (= 1 (count sel))
+          (first sel)))))
+
+(intent/register-intent! :copy-block-reference
+                         {:doc "Copy a block reference `((id))` to the system clipboard.
+
+         Logseq parity: Cmd+Shift+C copies `((block-id))` — paste anywhere
+         and the reference embeds that block inline. Source block is:
+         - the :block-id in the intent, if supplied, else
+         - the currently-editing block, else
+         - the sole selected block (no-op on multi-select)"
+                          :fr/ids #{:fr.clipboard/block-reference}
+                          :allowed-states #{:editing :selection}
+                          :spec [:map
+                                 [:type [:= :copy-block-reference]]
+                                 [:block-id {:optional true} [:maybe :string]]]
+                          :handler (fn [_db session intent]
+                                     (when-let [block-id (resolve-block-for-copy session intent)]
+                                       (let [ref-text (str "((" block-id "))")]
+                                         {:session-updates
+                                          {:ui {:clipboard-text ref-text
+                                                :clipboard-blocks [{:id block-id
+                                                                    :depth 0
+                                                                    :text ref-text}]}}})))})
+
 (intent/register-intent! :copy-selected
                          {:doc "Copy selected blocks with hierarchy preservation.
 

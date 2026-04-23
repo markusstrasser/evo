@@ -1,14 +1,14 @@
 # FR Coverage Matrix
 
-**Generated:** 2026-04-22T19:01:56.662078
+**Generated:** 2026-04-22T19:09:21.588812
 
 ## Summary
 
 - **Total FRs:** 50
 - **Complete:** 34 (68%)
-- **Implemented (not verified):** 8
+- **Implemented (not verified):** 10
 - **Verified (not implemented):** 0
-- **Missing:** 8
+- **Missing:** 6
 
 ## Legend
 
@@ -59,8 +59,8 @@
 | climb-descend | ⬆️ high | ✅ | ✅ | 🟢 complete | Cmd+Shift+Up/Down at boundaries climbs out to parent level / descends into next sibling |
 | create-sibling | ⬆️ high | ✅ | ✅ | 🟢 complete | Create new block as sibling of current/selected |
 | delete-block | ⬆️ high | ✅ | ✅ | 🟢 complete | Delete selected blocks (children move to trash with parent) |
-| block-reference | ➡️ medium | ❌ | ❌ | 🔴 missing | Cmd+Shift+C copies block reference ((id)) |
 | zoom-guards | ➡️ medium | ❌ | ❌ | 🔴 missing | Structural operations blocked by zoom boundary (can't indent/outdent zoom root) |
+| block-reference | ➡️ medium | ✅ | ❌ | 🟡 implemented-untested | Cmd+Shift+C copies block reference ((id)) |
 | shift-click-range | ➡️ medium | ✅ | ❌ | 🟡 implemented-untested | Shift+Click extends selection range from current to clicked block |
 | slash-close | ➡️ medium | ✅ | ❌ | 🟡 implemented-untested | Esc closes slash palette without side effects |
 | slash-filter | ➡️ medium | ✅ | ❌ | 🟡 implemented-untested | Slash palette search filters commands incrementally |
@@ -74,7 +74,7 @@
 | checkbox-toggle | ➡️ medium | ✅ | ✅ | 🟢 complete | Cmd+Enter toggles TODO/DOING/DONE markers |
 | focus-subtree | ➡️ medium | ✅ | ✅ | 🟢 complete | Cmd+. zooms into block as temporary root |
 | restore-scope | ➡️ medium | ✅ | ✅ | 🟢 complete | Escape from zoom restores normal scope |
-| highlight-strikethrough | ⬇️ low | ❌ | ❌ | 🔴 missing | Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~ |
+| highlight-strikethrough | ⬇️ low | ✅ | ❌ | 🟡 implemented-untested | Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~ |
 | grapheme-cursor-memory | ⬇️ low | ✅ | ❌ | 🟡 implemented-untested | Cursor column memory uses grapheme clusters (not UTF-16 code units) for proper emoji/CJK handling |
 | expand-collapse-all | ⬇️ low | ✅ | ✅ | 🟢 complete | Cmd+Shift+Up/Down expands/collapses all blocks in scope |
 | auto-increment | ⬇️ low | ✅ | ✅ | 🟢 complete | Enter on numbered list auto-increments next item |

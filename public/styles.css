@@ -1017,11 +1017,9 @@
     min-height: calc(var(--block-line-height) * 1em);
     display: block;
     width: 100%;
-    /* Bold, eye-catching caret. Full amber chroma + `caret-shape: block`
-       gives a thick blinking block in Chrome 134+ / Safari 18.2+
-       (falls back to a bar-shaped caret in Firefox). */
-    caret-color: oklch(55% 0.20 55);
-    caret-shape: block;
+    /* Thin bar, warmer than prose. Enough chroma to catch the eye
+       without the block-shape's traffic-cone quality. */
+    caret-color: oklch(52% 0.16 55);
 
     /* Editorial typography (gwern-inspired) */
     font-variant-numeric: oldstyle-nums proportional-nums; /* Elegant prose numerals */

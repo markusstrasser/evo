@@ -46,6 +46,9 @@
              [{:key "h" :shift true :mod true} {:type :format-selection :marker "=="}]  ; Highlight
              [{:key "s" :shift true :mod true} {:type :format-selection :marker "~~"}]  ; Strikethrough
 
+                 ;; === Copy block reference (Logseq parity) ===
+             [{:key "c" :shift true :mod true} {:type :copy-block-reference}]
+
                  ;; === Indent/Outdent ===
              [{:key "Tab"} :indent-selected]
              [{:key "Tab" :shift true} :outdent-selected]
