@@ -457,9 +457,7 @@
             (row (kbd "⌘" ";") "Toggle fold")
             (row (kbd "⌘" "↑") "Collapse")
             (row (kbd "⌘" "↓") "Expand all"))
-     (group "Zoom & Undo"
-            (row (kbd "⌘" ".") "Zoom in")
-            (row (kbd "⌘" ",") "Zoom out")
+     (group "History"
             (row (kbd "⌘" "Z") "Undo")
             (row (kbd "⌘" "⇧" "Z") "Redo"))
      (group "View"

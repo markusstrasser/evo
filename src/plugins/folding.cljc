@@ -1,18 +1,14 @@
 (ns plugins.folding
-  "Folding plugin: expand/collapse/zoom operations for outline navigation.
+  "Folding plugin: expand/collapse operations for outline navigation.
 
    Fold state stored in session/ui (ephemeral, not in history).
-   Zoom stack stored in session/ui (navigation history).
 
    Features:
    - Toggle fold: show/hide children of a block
    - Expand all: recursively show all descendants
-   - Collapse: hide children
-   - Zoom in: focus on a block (make it rendering root)
-   - Zoom out: return to parent context"
+   - Collapse: hide children"
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
-            [kernel.constants :as const]
             [utils.collection :as coll]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -129,57 +125,6 @@
                                                         (coll/add-all current-folded
                                                                       (get-in db [:children-by-parent root-id])))]
                                        {:session-updates {:ui {:folded new-folded}}}))})
-
-;; ── Zoom Intents ──────────────────────────────────────────────────────────────
-
-(intent/register-intent! :zoom-in
-                         {:doc "Zoom into a block (make it the rendering root)."
-                          :spec [:map [:type [:= :zoom-in]] [:block-id :string]]
-                          :fr/ids #{:fr.zoom/focus-subtree}
-                          :handler (fn [db session {:keys [block-id]}]
-                                     (when (has-children? db block-id)
-                                       (let [current-root (or (q/zoom-root session) const/root-doc)]
-                                         {:session-updates
-                                          {:ui {:zoom-stack (-> session
-                                                                q/zoom-stack
-                                                                (conj {:block-id current-root}))
-                                                :zoom-root block-id}}})))})
-
-(intent/register-intent! :zoom-out
-                         {:doc "Zoom out to previous level."
-                          :spec [:map [:type [:= :zoom-out]]]
-                          :fr/ids #{:fr.zoom/restore-scope}
-                          :handler (fn [_db session _intent]
-                                     (let [current-stack (q/zoom-stack session)]
-                                       (when (seq current-stack)
-                                         (let [new-root (-> current-stack peek :block-id (or const/root-doc))]
-                                           {:session-updates
-                                            {:ui {:zoom-stack (pop current-stack)
-                                                  :zoom-root new-root}}}))))})
-
-(intent/register-intent! :zoom-to
-                         {:doc "Zoom to specific block in zoom stack (breadcrumb click)."
-                          :spec [:map [:type [:= :zoom-to]] [:block-id :string]]
-                          :fr/ids #{:fr.zoom/focus-subtree}
-                          :handler (fn [_db session {:keys [block-id]}]
-                                     (let [current-stack (q/zoom-stack session)
-                                           target-idx (first (keep-indexed
-                                                              (fn [i level]
-                                                                (when (= (:block-id level) block-id) i))
-                                                              current-stack))]
-                                       (when target-idx
-                                         (let [new-stack (subvec current-stack 0 (inc target-idx))]
-                                           {:session-updates
-                                            {:ui {:zoom-stack new-stack
-                                                  :zoom-root block-id}}}))))})
-
-(intent/register-intent! :reset-zoom
-                         {:doc "Reset zoom to root (clear zoom stack)."
-                          :spec [:map [:type [:= :reset-zoom]]]
-                          :fr/ids #{:fr.zoom/restore-scope}
-                          :handler (fn [_db _session _intent]
-                                     {:session-updates {:ui {:zoom-stack []
-                                                             :zoom-root nil}}})})
 
 ;; ── Doc-mode Intent ──────────────────────────────────────────────────────────
 
