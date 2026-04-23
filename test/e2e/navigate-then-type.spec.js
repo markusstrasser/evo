@@ -353,11 +353,9 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
     expect(afterEsc.focus).toBe(sel.focus);
 
     await page.waitForFunction((blockId) => {
-      const el = document.activeElement;
-      const focusedBlockId =
-        el?.getAttribute?.('data-block-id') ||
-        el?.closest?.('[data-block-id]')?.getAttribute?.('data-block-id');
-      return focusedBlockId === blockId;
+      const s = window.TEST_HELPERS?.getSession();
+      const editingBlockId = s?.ui?.['editing-block-id'] ?? s?.ui?.editing_block_id;
+      return editingBlockId == null && s?.selection?.focus === blockId;
     }, sel.focus);
 
     await page.keyboard.press('b');
