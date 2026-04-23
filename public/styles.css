@@ -454,6 +454,21 @@
     color: oklch(35% 0.08 280);
   }
 
+  /* Pin the hotkey panel as a bottom-right popover so it's visible
+     regardless of page scroll position. Overrides the inline :style
+     margin via !important. */
+  .hotkeys-footer {
+    position: fixed !important;
+    bottom: 64px !important;
+    right: 16px !important;
+    margin: 0 !important;
+    width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    z-index: 45;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
+  }
+
   /* ─────────────────────────────────────────────────────────────────────────
      Sidebar - Editorial refinement with subtle depth
      ───────────────────────────────────────────────────────────────────────── */
