@@ -3,7 +3,7 @@
 
    Demonstrates testing navigation logic with the :visible-order index."
   (:require [clojure.test :refer [deftest is testing]]
-            [matcher-combinators.test]
+            [matcher-combinators.test :refer [match?]]
             [matcher-combinators.matchers :as m]
             [kernel.db :as db]
             [kernel.transaction :as tx]

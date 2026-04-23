@@ -49,10 +49,12 @@
    form for; see `italic-star-free?` below."
   [segments]
   (apply str
-         (map (fn [{:keys [type value]}]
+         (map (fn [{:keys [type value marker]}]
                 (if (= type :text)
                   value
-                  (let [[o c] (type->markers type)]
+                  (let [[o c] (if-let [m marker]
+                                [m m]
+                                (type->markers type))]
                     (str o value c))))
               segments)))
 

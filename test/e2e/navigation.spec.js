@@ -11,6 +11,7 @@ import {
   getCursorPosition,
   pressKeyOnContentEditable,
   setCursorPosition,
+  waitForBlocks,
 } from './helpers/index.js';
 
 const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
@@ -20,7 +21,7 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     // Use test mode for clean state
     await page.goto('/index.html?test=true');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await waitForBlocks(page);
     await enterEditModeAndClick(page);
   });
 
