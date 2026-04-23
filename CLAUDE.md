@@ -131,7 +131,10 @@ All state changes flow through a strict pipeline:
 4. **Derive**: Recompute indexes (`:parent-of`, `:next-id-of`, `:prev-id-of`, traversal orders)
 
 ```clojure
-;; Three-op kernel primitives
+;; Three-op kernel primitives.
+;; :create-node and :update-node mutate a node's identity/content.
+;; :place mutates tree structure (children-by-parent), not the node.
+;; The -node suffix marks node-ops; :place is bare because it's a tree-op.
 {:op :create-node :id "a" :type :block :props {:text "Hello"}}
 {:op :place       :id "a" :under :doc :at :last}
 {:op :update-node :id "a" :props {:text "World"}}
