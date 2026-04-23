@@ -1451,9 +1451,30 @@
                               is-markdown? (boolean (re-find #"(?m)^\s*[-*+]\s+" pasted-text))
                               has-blank-lines? (boolean (re-find #"\n\n" pasted-text))
                               is-multi-block? (or use-internal? is-markdown? has-blank-lines?)
-                              current-text (extract-text-with-newlines target)]
+                              current-text (extract-text-with-newlines target)
+                              ;; URL WRAP: bare URL + non-empty selection → wrap selection as [label](url).
+                              ;; Runs BEFORE multi-block detection so URL-only clipboards take the
+                              ;; wrap path, not paste-text. Only fires when not using internal clipboard.
+                              trimmed-clip (str/trim plain-text)
+                              bare-url? (boolean (re-matches #"^https?://\S+$" trimmed-clip))
+                              has-selection? (< selection-start selection-end)
+                              url-wrap? (and bare-url? has-selection? (not use-internal?))]
 
-                          (if is-multi-block?
+                          (cond
+                            url-wrap?
+                            ;; Wrap selection as markdown link: [selected](url)
+                            (let [before (subs current-text 0 selection-start)
+                                  selected (subs current-text selection-start selection-end)
+                                  after (subs current-text selection-end)
+                                  wrapped (str "[" selected "](" trimmed-clip ")")
+                                  new-text (str before wrapped after)
+                                  new-cursor-pos (+ selection-start (count wrapped))]
+                              (apply-edit! target block-id new-text new-cursor-pos true)
+                              (on-intent {:type :update-content
+                                          :block-id block-id
+                                          :text new-text}))
+
+                            is-multi-block?
                         ;; Multi-block paste: Commit DOM text first, then dispatch intent
                         ;; CRITICAL: :paste-text requires :editing state - do NOT exit first!
                             (do
@@ -1470,6 +1491,7 @@
                                                   :pasted-text pasted-text}
                                            use-internal? (assoc :clipboard-blocks internal-blocks))))
 
+                            :else
                         ;; Simple inline paste: Update DOM/buffer directly for responsiveness
                             (let [before (subs current-text 0 selection-start)
                                   after (subs current-text selection-end)
