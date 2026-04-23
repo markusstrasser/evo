@@ -8,32 +8,6 @@ ClojureScript outliner with a tiny tree algebra.
 
 And although I realized these ideas as moot, the evo interface is perfect for agents to evolve and extend it live via sending or creating intents (or the Clojure REPL). 
 
-## Principles
-
-- **Kernel is pure.** Zero imports from `shell/`, `components/`, `keymap/` in `src/kernel/`.
-- **Three-op invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
-- **Data-driven dispatch.** Intents are EDN maps. Handlers register into data registries, not multimethod-as-main-dispatch (multimethods fine for local sub-dispatch, e.g. autocomplete).
-- **Session state separate from DB.** Ephemeral UI state lives in the session atom, not polluting the persistent doc.
-- **Docs are facts.** Delete executed plans, stale proposals, session artifacts. Git preserves history.
-- **Domains don't abstract.** Text, video, audio, CAD share architectural *principles* but not *primitives*. Don't build toward universality — it's a mirage.
-
-
-
-## Scope
-
-- Outliner, not PKM platform.
-- Repo, not library product.
-- Explicit state model, small mutation surface, local-first storage.
-- Current project stance: [`docs/GOALS.md`](docs/GOALS.md), [`AGENTS.md`](AGENTS.md).
-
-## Constraints
-
-- **Kernel purity.** [`src/kernel/`](src/kernel/) does not import `shell/`, `components/`, or `keymap/`.
-- **Three-op invariant.** Durable state changes reduce to `create-node`, `place`, and `update-node`.
-- **Data-driven dispatch.** Intents are data maps. Behavior is added by registration, not by spreading conditionals through the core.
-- **Session separate from DB.** Persistent document graph in the DB; ephemeral UI state in [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
-- **Docs are facts.** Indexed docs describe current behavior. Plans and review packets are historical material.
-
 ## What it does
 
 - **Nested blocks** with indent/outdent, drag & drop, and fold
@@ -54,6 +28,62 @@ npm start             # clean build + watch CLJS + watch CSS
 ```
 
 `npm run dev:fast` skips the clean step when caches are healthy. `npm run build` produces a release build into `public/js/blocks-ui`.
+
+## Scope
+
+- Outliner, not PKM platform.
+- Repo, not library product.
+- Explicit state model, small mutation surface, local-first storage.
+- Current project stance: [`docs/GOALS.md`](docs/GOALS.md), [`AGENTS.md`](AGENTS.md).
+
+## Principles
+
+- **Kernel is pure.** Zero imports from `shell/`, `components/`, `keymap/` in `src/kernel/`.
+- **Three-op invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
+- **Data-driven dispatch.** Intents are EDN maps. Handlers register into data registries, not multimethod-as-main-dispatch (multimethods fine for local sub-dispatch, e.g. autocomplete).
+- **Session state separate from DB.** Ephemeral UI state lives in the session atom, not polluting the persistent doc.
+- **Docs are facts.** Delete executed plans, stale proposals, session artifacts. Git preserves history.
+- **Domains don't abstract.** Text, video, audio, CAD share architectural *principles* but not *primitives*. Don't build toward universality — it's a mirage.
+
+## Constraints
+
+- **Kernel purity.** [`src/kernel/`](src/kernel/) does not import `shell/`, `components/`, or `keymap/`.
+- **Three-op invariant.** Durable state changes reduce to `create-node`, `place`, and `update-node`.
+- **Data-driven dispatch.** Intents are data maps. Behavior is added by registration, not by spreading conditionals through the core.
+- **Session separate from DB.** Persistent document graph in the DB; ephemeral UI state in [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
+- **Docs are facts.** Indexed docs describe current behavior. Plans and review packets are historical material.
+
+## Architecture
+
+At runtime the path is: intent map -> plugin handler -> three-op transaction -> canonical DB + derived indexes -> parser/render -> Replicant DOM. [`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops and session updates. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
+
+The extension surface is explicit: [`kernel.intent/register-intent!`](src/kernel/intent.cljc), [`kernel.derived-registry/register!`](src/kernel/derived_registry.cljc), and [`shell.render-registry/register-render!`](src/shell/render_registry.cljc). All three follow the same shape: a `defonce` atom, a registration function that validates and swaps in a map entry, and a dispatch path. Re-registering the same key replaces the old handler, which keeps hot reload and test fixtures idempotent. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
+
+The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading. Rule of thumb: new inline syntax means parser + render work, new editing behavior means plugin work, and kernel edits are only for changes to the document machine itself.
+
+Two non-registry layers matter. [`src/shell/view_state.cljs`](src/shell/view_state.cljs) holds ephemeral UI state that should not enter the undo log: cursor, selection, zoom stack, fold set, editing block id, drag state. [`src/shell/log.cljs`](src/shell/log.cljs) is the append-only transaction journal used for undo/redo, persistence, and replay.
+
+A typical feature spans registries without crossing their boundaries. Backlinks are the concrete example:
+
+- derived index in [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc)
+- UI in [`src/components/backlinks.cljs`](src/components/backlinks.cljs)
+- navigation intent in [`src/plugins/pages.cljc`](src/plugins/pages.cljc)
+- page-ref render handler in [`src/shell/render/page_ref.cljs`](src/shell/render/page_ref.cljs)
+
+Inline content is parsed into a uniform AST shape:
+
+```clojure
+[:tag {attrs} content]
+```
+
+Common tags include `:doc`, `:text`, `:bold`, `:italic`, `:highlight`, `:strikethrough`, `:math-inline`, `:math-block`, `:link`, `:page-ref`, and `:image`. See [`src/parser/ast.cljc`](src/parser/ast.cljc).
+
+Where things go:
+
+- components render views and panels; they do not parse content or own per-tag logic
+- render handlers live per AST tag, not per block-level mode
+- session state does not go in the document DB
+- [`src/kernel/`](src/kernel/) must not import `src/shell/`, `src/components/`, or `src/keymap/`
 
 ## Code shape
 
@@ -106,12 +136,6 @@ Contract surfaces:
 - [`src/spec/registry.cljc`](src/spec/registry.cljc)
 - [`src/spec/runner.cljc`](src/spec/runner.cljc)
 
-## Architecture
-
-At runtime the path is: intent map -> plugin handler -> three-op transaction -> canonical DB + derived indexes -> parser/render -> Replicant DOM. [`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops and session updates. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
-
-The extension surface is explicit: [`kernel.intent/register-intent!`](src/kernel/intent.cljc), [`kernel.derived-registry/register!`](src/kernel/derived_registry.cljc), and [`shell.render-registry/register-render!`](src/shell/render_registry.cljc). Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs). Rule of thumb: new inline format means parser + render changes; new editing behavior means plugin changes; kernel changes only when the document machine itself changes. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full version.
-
 ## Project layout
 
 ```
@@ -126,7 +150,7 @@ src/spec/           FR registry loading, tree DSL, spec runner.
 test/               Unit, property, integration (ClojureScript) + Playwright E2E.
 resources/          FR registry (specs.edn), failure modes, seed data.
 public/             index.html, styles.css, MathJax shim, build output.
-docs/               ARCHITECTURE.md, STRUCTURAL_EDITING.md, RENDERING_AND_DISPATCH.md, and more.
+docs/               STRUCTURAL_EDITING.md, RENDERING_AND_DISPATCH.md, TESTING.md, and more.
 ```
 
 Open these first:
