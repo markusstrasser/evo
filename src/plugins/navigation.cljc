@@ -87,7 +87,8 @@
          render together. The optional :dom-adjacent-id provides a fallback
          target when the normal DB query finds no adjacent block (page boundary)."
 
-                          :fr/ids #{:fr.nav/vertical-cursor-memory}
+                          :fr/ids #{:fr.nav/vertical-cursor-memory
+                                    :fr.nav/grapheme-cursor-memory}
                           :allowed-states #{:editing}
 
                           :spec [:map
