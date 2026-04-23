@@ -5,11 +5,16 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  schedule:
+    # 02:00 America/Los_Angeles during PDT, 01:00 during PST.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
 
 jobs:
   # Fast quality gates + unit tests (all pushes)
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -56,6 +61,7 @@ jobs:
   e2e-smoke:
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -97,11 +103,12 @@ jobs:
             playwright-report/
             test-results/
 
-  # Full E2E suite (main only) - ~285 tests, ~5min
+  # Full E2E suite (nightly/manual only) - broader non-gating coverage
   e2e-full:
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 30
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
