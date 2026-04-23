@@ -976,10 +976,10 @@
     }
 
     &.editing {
-      /* No card chrome. Pure-white `--color-surface-raised` on the cream
-         `--color-bg` reads as a cold pasted card; the editing affordance
-         comes from the warm-amber left bar + the caret instead. */
-      background: transparent;
+      /* Subtle warm tint to lift the edited block off the page —
+         shallower than `--color-focused-bg`, still readable under prose.
+         Editing affordance: tint + warm-amber left bar + bold caret. */
+      background: oklch(98.5% 0.012 55);
       border-left-color: oklch(65% 0.12 55);
     }
 
@@ -1017,10 +1017,11 @@
     min-height: calc(var(--block-line-height) * 1em);
     display: block;
     width: 100%;
-    /* Desaturated vs full accent — a text cursor at full amber chroma
-       (0.16) reads as traffic-cone against prose. Same hue/lightness,
-       softer chroma. */
-    caret-color: oklch(55% 0.12 55);
+    /* Bold, eye-catching caret. Full amber chroma + `caret-shape: block`
+       gives a thick blinking block in Chrome 134+ / Safari 18.2+
+       (falls back to a bar-shaped caret in Firefox). */
+    caret-color: oklch(55% 0.20 55);
+    caret-shape: block;
 
     /* Editorial typography (gwern-inspired) */
     font-variant-numeric: oldstyle-nums proportional-nums; /* Elegant prose numerals */
