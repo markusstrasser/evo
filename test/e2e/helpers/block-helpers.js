@@ -233,7 +233,16 @@ export async function updateBlockText(page, blockId, text) {
  * @param {number} [timeout=5000]
  */
 export async function waitForBlocks(page, timeout = 15000) {
-  await page.waitForFunction(() => Boolean(window.TEST_HELPERS), undefined, { timeout });
+  await page.waitForLoadState('domcontentloaded');
+
+  try {
+    await page.waitForFunction(() => Boolean(window.TEST_HELPERS), undefined, { timeout });
+  } catch (_error) {
+    // CI occasionally serves the shell before the test harness finishes booting.
+    // Retry once with a clean reload instead of burning the whole smoke retry budget.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => Boolean(window.TEST_HELPERS), undefined, { timeout });
+  }
 
   if ((await page.locator('[data-block-id]').count()) === 0) {
     await page.evaluate(() => {
