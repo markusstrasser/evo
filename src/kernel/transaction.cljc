@@ -335,7 +335,12 @@
                         (str "Unknown operation: " (:op op)))])]))
 
 (defn- apply-op
-  "Apply a single operation to the database."
+  "Apply a single operation to the database.
+
+   Two ops mutate a node's identity/content (:create-node, :update-node);
+   :place mutates tree structure (children-by-parent), not the node itself.
+   The naming asymmetry (-node suffix on two, bare verb on one) reflects
+   this semantic split — it is intentional, not a mistake."
   [db {:keys [op id props under at] node-type :type}]
   (case op
     :create-node (ops/create-node db id node-type props)
