@@ -488,7 +488,7 @@
        [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
                      :letter-spacing "0.05em" :color "#9ca3af"}} "UI"]
        (hotkey (kbd "⌘" "\\") "Toggle sidebar")
-       (hotkey (kbd "⌘" "?") "Toggle this panel")
+       (hotkey (kbd "⌘" "/") "Toggle this panel")
        (hotkey (kbd "⌘" "Shift" "E") "Toggle reading mode")]]]))
 
 (defn- FloatingControls
@@ -505,7 +505,7 @@
     "Aa"]
    [:button.floating-btn
     {:type "button"
-     :title "Keyboard shortcuts (⌘?)"
+     :title "Keyboard shortcuts (⌘/)"
      :aria-label "Toggle keyboard shortcuts"
      :aria-pressed (boolean hotkeys-visible?)
      :class (when hotkeys-visible? "is-active")
