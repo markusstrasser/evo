@@ -21,7 +21,14 @@
 (defn register-render!
   "Register a render handler for an AST node tag.
 
-   Spec: {:handler (fn [node ctx]) → hiccup}
+   Spec: {:handler (fn [node ctx]) → one of
+           - a string (valid hiccup child)
+           - a single hiccup element [:tag attrs? & children]   (first is keyword)
+           - a vector of sibling hiccup children — flattened by
+             `render-all` into the parent container. Use this when the
+             handler needs to emit multiple siblings (e.g. hidden
+             marker spans around a `<strong>`), since Replicant 0.x
+             has no `:<>` fragment.}
    Optional: :doc, :fragment? (informational)
 
    Returns the tag."
