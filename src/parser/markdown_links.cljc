@@ -65,10 +65,38 @@
 (defn parse-evo-target
   "Parse an Evo-owned link target.
 
-   Currently supported:
-   - evo://page/<url-encoded-page-title>"
+   Supported shapes:
+   - evo://page/<url-encoded-page-title>      → {:type :page    :page-name s}
+   - evo://block/<uuid-ish-id>                → {:type :block   :block-id s}
+   - evo://journal/<yyyy-mm-dd>               → {:type :journal :iso-date s}"
   [target]
   (when (string? target)
-    (when-let [[_ encoded-title] (re-matches #"^evo://page/(.+)$" target)]
-      {:type :page
-       :page-name (decode-url-component encoded-title)})))
+    (cond
+      (re-matches #"^evo://page/(.+)$" target)
+      (let [[_ encoded-title] (re-matches #"^evo://page/(.+)$" target)]
+        {:type :page :page-name (decode-url-component encoded-title)})
+
+      (re-matches #"^evo://block/([^/\s]+)$" target)
+      (let [[_ id] (re-matches #"^evo://block/([^/\s]+)$" target)]
+        {:type :block :block-id id})
+
+      (re-matches #"^evo://journal/(\d{4}-\d{2}-\d{2})$" target)
+      (let [[_ iso] (re-matches #"^evo://journal/(\d{4}-\d{2}-\d{2})$" target)]
+        {:type :journal :iso-date iso})
+
+      :else nil)))
+
+;; ── AST adapter ──────────────────────────────────────────────────────────────
+
+(defn- segment->ast-node
+  [{:keys [type value label target]}]
+  (case type
+    :text [:text {} (or value "")]
+    :link [:link {:target target} [[:text {} (or label "")]]]))
+
+(defn parse
+  "Parse TEXT into a vector of AST nodes, extracting markdown links.
+
+   See `parser.ast` for the node shape."
+  [text]
+  (mapv segment->ast-node (split-with-links text)))

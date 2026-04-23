@@ -194,6 +194,23 @@
        (str base "{width=" width "}")
        base))))
 
+;; ── AST adapter ──────────────────────────────────────────────────────────────
+
+(defn- segment->ast-node
+  [{:keys [type value alt path width]}]
+  (case type
+    :text  [:text {} (or value "")]
+    :image [:image (cond-> {:path path :alt (or alt "")}
+                     width (assoc :width width))
+            []]))
+
+(defn parse
+  "Parse TEXT into a vector of AST nodes, extracting ![alt](path){width=N}.
+
+   See `parser.ast` for the node shape."
+  [text]
+  (mapv segment->ast-node (split-with-images text)))
+
 (defn update-image-width
   "Update or add width attribute to every image in text.
 
