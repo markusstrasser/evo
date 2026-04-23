@@ -25,7 +25,7 @@ npm start             # clean build + watch CLJS + watch CSS
 
 `npm run dev:fast` skips the clean step when caches are healthy. `npm run build` produces a release build into `public/js/blocks-ui`.
 
-## What's distinctive
+## Architecture
 
 All code routes through one of three registries plus a session atom. Nothing in the kernel knows about any of them.
 
@@ -70,10 +70,10 @@ The kernel has a round-trip property test for the parser, boundary tests for cur
 
 ## What this is not
 
-- **Not a PKM product.** See `docs/GOALS.md` for the reasoning; short version: the structured-note-taking thesis hasn't held up, and the author isn't using it for daily notes.
+- **Not a PKM product.** See `docs/GOALS.md` for the reasoning; short version: the structured-note-taking has low RoI.
 - **Not a packaged library.** No Clojars artifact, no API stability. If a concrete consumer shows up wanting to reuse the kernel, extraction happens then.
 - **Not chasing Logseq parity.** Close enough that Logseq users feel at home; not trying to match every feature.
-- **Not feature-breadth maximized.** Kernel purity, deletion, and extension-surface cleanliness take priority over new content types.
+- **Not feature-breadth maximized.** Kernel purity, deletion, and a narrow extension surface take priority over new content types.
 
 ## Further reading
 
