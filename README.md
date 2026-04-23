@@ -14,7 +14,7 @@ I conceived the kernel and plugin sys more as an **MLIR (Multi-Level Intermediat
 
 - **Rich Text editing** as in any markdown editor in each node of the outliner tree
 - **Nested blocks** with indent/outdent, drag & drop, and fold
-- **Inline markdown** — `**bold**`, `_italic_`, `==highlight==`, `~~strike~~`, `$inline math$`, `$$block math$$`, with word-boundary guards so code like `cljs$core$key` stays literal
+- **Inline markdown** — `**bold**`, `_italic_`, `==highlight==`, `~~strike~~`, `$inline math$`, `$$block math$$`
 - **Wiki-style refs** `[[Page Name]]` and markdown links `[label](target)`, including custom `evo://` schemes: `evo://page/<name>` and `evo://journal/<iso-date>`
 - **Inline images** `![alt](path){width=N}` with paste-from-clipboard upload, resize handles, and a lightbox
 - **Math via MathJax** with a scanner contract that refuses to typeset prose dollars (see `.claude/rules/global-dom-scanners.md`)
@@ -63,10 +63,9 @@ npm start             # clean build + watch CLJS + watch CSS
 ## Principles
 
 - **Kernel is pure.** Zero imports from `shell/`, `components/`, `keymap/` in `src/kernel/`.
-- **Three-op invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
-- **Data-driven dispatch.** Intents are EDN maps. Handlers register into data registries, not multimethod-as-main-dispatch (multimethods fine for local sub-dispatch, e.g. autocomplete).
+- **Three-operation (ops) invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
+- **Data-driven dispatch.** Intents are EDN maps.
 - **Session state separate from DB.** Ephemeral UI state lives in the session atom, not polluting the persistent doc.
-- **Docs are facts.** Delete executed plans, stale proposals, session artifacts. Git preserves history.
 - **Domains don't abstract.** Text, video, audio, CAD share architectural *principles* but not *primitives*. Universality is a mirage.
 
 ## Non-goals
@@ -74,6 +73,53 @@ npm start             # clean build + watch CLJS + watch CSS
 - **Not a PKM**: structured-note-taking is a low RoI nerd trap.
 - **Not a packaged library.** No Clojars artifact, no API stability. People can reuse the kernel if it fits other domains.
 - **Not trying to have parity with text editors**: I wanted to have the full “structural editing spec” of other outliners but not more. I did not implement block embeds and page embeds by design: they are counterproductive in general.
+
+## Spec as contract
+
+- The persistent model is a small tree-plus-derived-indices database. See [`src/kernel/db.cljc`](src/kernel/db.cljc).
+- All durable changes reduce to three ops: `create-node`, `place`, `update-node`. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc).
+- The transaction (tx) pipeline is the real contract: `normalize -> validate -> apply -> derive`.
+- Ephemeral UI state stays out of the document DB. Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), not in [`src/kernel/db.cljc`](src/kernel/db.cljc). This is not pure FP per se but a perf compromise
+
+Canonical DB shape:
+
+```clojure
+{:nodes {"a" {:type :block :props {:text "I am a node"}}}
+ :children-by-parent {:doc ["a"]}
+ :roots [:doc :trash]
+ :derived {:parent-of {"a" :doc}
+           :next-id-of {}
+           :prev-id-of {}
+           :index-of {"a" 0}}}
+```
+
+Kernel ops:
+
+```clojure
+{:op :create-node :id "a" :type :block :props {:text "I am a node"}}
+{:op :place       :id "a" :under :doc :at :last}
+{:op :update-node :id "a" :props {:text "being updated"}}
+```
+
+### Derived indexes
+
+The stored DB stays small: nodes, parent-owned child vectors, roots. Everything else is re-derived after each transaction.
+
+That is what makes reads cheap without pushing more state into the canonical model. Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` hit precomputed maps like `:parent-of`, `:index-of`, `:prev-id-of`, and `:next-id-of`. Because derivation runs inside the transaction pipeline, the UI never sees stale indexes. Plugins can also register their own derived views; backlinks are the main example.
+
+### Plugins
+
+Plugins compile intents into a vector of ops. They read the current DB, decide what should happen, and return data for the kernel to apply. Indent is a simple example. The handler looks up the previous sibling of `node-B`, decides `node-B` should move under `node-A`, and emits:
+
+```clojure
+{:op :place :id "node-B" :under "node-A" :at :last}
+```
+
+That is the boundary. Plugins do not mutate the DB directly, do not bypass the transaction pipeline, and do not share hidden state. The useful mental model is `(db, intent) -> {:ops ... :session-updates ...}`.
+
+The point is that more complex features still collapse to the same shape. Page refs, backlinks, and graph-ish features are not special kernel machinery. A plugin can interpret a ref-oriented intent, emit normal ops, and a derived-index plugin can materialize the extra view over the same document graph. The kernel still just sees nodes, placements, updates, and re-derived indexes.
+
+
 
 ## Architecture
 
@@ -107,45 +153,6 @@ Where things go:
 - session state does not go in the document DB
 - [`src/kernel/`](src/kernel/) must not import `src/shell/`, `src/components/`, or `src/keymap/`
 
-## Spec as contract
-
-- The persistent model is a small tree-plus-derived-indices database. See [`src/kernel/db.cljc`](src/kernel/db.cljc).
-- All durable changes reduce to three ops: `create-node`, `place`, `update-node`. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc).
-- The transaction (tx) pipeline is the real contract: `normalize -> validate -> apply -> derive`.
-- Ephemeral UI state stays out of the document DB. Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), not in [`src/kernel/db.cljc`](src/kernel/db.cljc). This is not pure FP per se but a perf compromise
-
-Canonical DB shape:
-
-```clojure
-{:nodes {"a" {:type :block :props {:text "I am a node"}}}
- :children-by-parent {:doc ["a"]}
- :roots [:doc :trash]
- :derived {:parent-of {"a" :doc}
-           :next-id-of {}
-           :prev-id-of {}
-           :index-of {"a" 0}}}
-```
-
-Kernel ops:
-
-```clojure
-{:op :create-node :id "a" :type :block :props {:text "I am a node"}}
-{:op :place       :id "a" :under :doc :at :last}
-{:op :update-node :id "a" :props {:text "being updated"}}
-```
-
-### Plugins
-
-Plugins compile intents into a vector of ops. They read the current DB, decide what should happen, and return data for the kernel to apply. Indent is a simple example. The handler looks up the previous sibling of `node-B`, decides `node-B` should move under `node-A`, and emits:
-
-```clojure
-{:op :place :id "node-B" :under "node-A" :at :last}
-```
-
-That is the boundary. Plugins do not mutate the DB directly, do not bypass the transaction pipeline, and do not share hidden state. The useful mental model is `(db, intent) -> {:ops ... :session-updates ...}`.
-
-The point is that more complex features still collapse to the same shape. Page refs, backlinks, and graph-ish features are not special kernel machinery. A plugin can interpret a ref-oriented intent, emit normal ops, and a derived-index plugin can materialize the extra view over the same document graph. The kernel still just sees nodes, placements, updates, and re-derived indexes.
-
 ## Breakdown
 
 | Area                                 | Code LoC | What lives there                                             |
@@ -162,11 +169,7 @@ The point is that more complex features still collapse to the same shape. Page r
 
 The center of gravity is the editor path. Core behavior is mostly [`src/kernel/`](src/kernel/) plus [`src/plugins/`](src/plugins/).
 
-### Derived indexes
 
-The stored DB stays small: nodes, parent-owned child vectors, roots. Everything else is re-derived after each transaction.
-
-That is what makes reads cheap without pushing more state into the canonical model. Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` hit precomputed maps like `:parent-of`, `:index-of`, `:prev-id-of`, and `:next-id-of`. Because derivation runs inside the transaction pipeline, the UI never sees stale indexes. Plugins can also register their own derived views; backlinks are the main example.
 
 ## Project layout
 
@@ -200,11 +203,25 @@ npm run test:e2e              # full Playwright suite (~4min)
 
 [1] This is out of scope, but in short: Creative interfaces are better designed than evolved/interpolated. There's only a handful of creative modalities and a few dozen decades-old, proven primitives. We've seen close to no changes to these. Yes, there's might be subdomain niches in the creative tooling space and sure, it's technically possible to evolve an image editor into a game engine purely via AI driven iteration (user-intent/events as signal and UI patches as variants/tests) but it's the wrong paradigm and shouldn't be the outermost control loop. At best this kind of live meta-iteration is as embed inside larger, stable paradigms.
 
+### References
+
 - Ben Shneiderman, “Direct Manipulation: A Step Beyond Programming Languages” (1983)  
   https://www.cs.umd.edu/users/ben/papers/Shneiderman1983Direct.pdf
 - Brad A. Myers, “A Brief History of Human Computer Interaction Technology” (1998)  
   https://www.cs.cmu.edu/~amulet/papers/uihistory.tr.html
 - Ben Shneiderman, “Creativity Support Tools: Accelerating Discovery and Innovation” (2007)  
   https://www.cs.umd.edu/users/ben/papers/Shneiderman2007Creativity.pdf
+- Donald A. Norman, *The Design of Everyday Things*, revised and expanded edition (2013)  
+  https://jnd.org/books/the-design-of-everyday-things-revised-and-expanded-edition/
+- Donald A. Norman, *Things That Make Us Smart: Defending Human Attributes in the Age of the Machine* (1994)  
+  https://jnd.org/books/things-that-make-us-smart-defending-human-attributes-in-the-age-of-the-machine/
 - Donald T. Campbell, “Assessing the Impact of Planned Social Change” (1976/1979)  
   https://www.humanlearning.systems/uploads/08%20Assessing%20the%20Impact%20of%20Planned%20Social%20Change.pdf
+
+### Related 
+
+- **Logseq**: Closest on outliner semantics, but its core mutations ride on Datascript transactions and app-level outliner ops. Evo makes the mutation algebra itself smaller and more explicit.
+- **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and pushes more behavior into plugin compilation down to a few ops.
+- **Slate**: Also operation-based, but the center of gravity is the mutable `Editor` object plus normalization/history plugins. Evo puts those semantics in a standalone kernel instead of editor-instance methods.
+- **Tiptap**: Mainly an extension layer over ProseMirror's transaction and plugin system. Evo owns the kernel directly instead of wrapping another editor core.
+- **xi-editor**: Strong core/plugin split too, but for a rope-based text engine with RPC plugins. Evo is a structural tree kernel first, not a text-buffer architecture.
