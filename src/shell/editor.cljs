@@ -643,16 +643,23 @@
 (defn request-render!
   "Request a render on the next animation frame.
    Multiple calls in the same frame are coalesced into one render.
-   Also processes auto-trash queue after render completes."
+   Also processes auto-trash queue after render completes.
+
+   Uses a setTimeout safety net: if rAF is throttled (backgrounded tab,
+   suspended frame loop), the flag would otherwise stay stuck at true
+   and wedge all future state changes. Whichever fires first wins; the
+   ran? latch prevents a double-render."
   []
   (when-not @render-scheduled?
     (reset! render-scheduled? true)
-    (js/requestAnimationFrame
-     (fn []
-       (reset! render-scheduled? false)
-       (render!)
-       ;; Process auto-trash queue after render completes
-       (js/setTimeout process-auto-trash-queue! 100)))))
+    (let [ran? (atom false)
+          run-once (fn []
+                     (when (compare-and-set! ran? false true)
+                       (reset! render-scheduled? false)
+                       (render!)
+                       (js/setTimeout process-auto-trash-queue! 100)))]
+      (js/requestAnimationFrame run-once)
+      (js/setTimeout run-once 250))))
 
 ;; ── Test Helpers ──────────────────────────────────────────────────────────────
 
