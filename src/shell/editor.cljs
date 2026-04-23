@@ -427,69 +427,45 @@
         page-title]])))
 
 (defn HotkeysReference []
-  (let [kbd (fn [& key-names]
-              (into [:span.kbd-group {:style {:display "inline-flex" :gap "2px" :align-items "center"}}]
-                    (interpose [:span {:style {:color "#9ca3af" :font-size "10px"}} "+"]
-                               (map (fn [k] [:kbd k]) key-names))))
-        hotkey (fn [key-combo desc]
-                 [:div.hotkey-item {:style {:display "flex" :align-items "center" :gap "8px" :margin "4px 0"}}
-                  [:span {:style {:min-width "90px"}} key-combo]
-                  [:span {:style {:color "#6b7280"}} desc]])]
-    [:div.hotkeys-footer
-     {:style {:margin-top "30px"
-              :padding "24px"
-              :background "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)"
-              :border-radius "8px"
-              :border "1px solid #e2e8f0"}}
-     [:h4 {:style {:margin "0 0 16px 0" :font-size "14px" :font-weight "600" :color "#374151"}}
-      "⌨️ Keyboard Shortcuts"]
-     [:div {:style {:display "grid"
-                    :grid-template-columns "repeat(auto-fit, minmax(220px, 1fr))"
-                    :gap "20px"}}
-      ;; Navigation
-      [:div
-       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
-                     :letter-spacing "0.05em" :color "#9ca3af"}} "Navigation"]
-       (hotkey (kbd "↑") "Previous block")
-       (hotkey (kbd "↓") "Next block")
-       (hotkey (kbd "Shift" "↑") "Extend selection up")
-       (hotkey (kbd "Shift" "↓") "Extend selection down")
-       (hotkey (kbd "Esc") "Exit edit mode")
-       (hotkey (kbd "Enter") "Edit selected block")]
-      ;; Editing
-      [:div
-       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
-                     :letter-spacing "0.05em" :color "#9ca3af"}} "Editing"]
-       (hotkey (kbd "Enter") "Split / new block")
-       (hotkey (kbd "Shift" "Enter") "New line in block")
-       (hotkey (kbd "⌫") "Delete / merge")
-       (hotkey (kbd "Tab") "Indent")
-       (hotkey (kbd "Shift" "Tab") "Outdent")
-       (hotkey (kbd "⌘" "Enter") "Toggle checkbox")]
-      ;; Structure
-      [:div
-       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
-                     :letter-spacing "0.05em" :color "#9ca3af"}} "Structure"]
-       (hotkey (kbd "⌘" "Shift" "↑") "Move block up")
-       (hotkey (kbd "⌘" "Shift" "↓") "Move block down")
-       (hotkey (kbd "⌘" ";") "Toggle fold")
-       (hotkey (kbd "⌘" "↑") "Collapse")
-       (hotkey (kbd "⌘" "↓") "Expand all")]
-      ;; Zoom & Undo
-      [:div
-       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
-                     :letter-spacing "0.05em" :color "#9ca3af"}} "Zoom & Undo"]
-       (hotkey (kbd "⌘" ".") "Zoom in")
-       (hotkey (kbd "⌘" ",") "Zoom out")
-       (hotkey (kbd "⌘" "Z") "Undo")
-       (hotkey (kbd "⌘" "Shift" "Z") "Redo")]
-      ;; UI
-      [:div
-       [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
-                     :letter-spacing "0.05em" :color "#9ca3af"}} "UI"]
-       (hotkey (kbd "⌘" "\\") "Toggle sidebar")
-       (hotkey (kbd "⌘" "/") "Toggle this panel")
-       (hotkey (kbd "⌘" "Shift" "E") "Toggle reading mode")]]]))
+  (let [kbd   (fn [& key-names]
+                (into [:span.hotkeys-keys]
+                      (interpose [:span.hotkeys-plus "+"]
+                                 (map (fn [k] [:kbd k]) key-names))))
+        row   (fn [combo desc]
+                [:div.hotkeys-row [:span.hotkeys-desc desc] combo])
+        group (fn [title & items]
+                (into [:section.hotkeys-group [:h5 title]] items))]
+    [:aside.hotkeys-panel
+     [:header.hotkeys-head "Shortcuts"]
+     (group "Navigation"
+            (row (kbd "↑") "Previous block")
+            (row (kbd "↓") "Next block")
+            (row (kbd "Shift" "↑") "Extend up")
+            (row (kbd "Shift" "↓") "Extend down")
+            (row (kbd "Esc") "Exit edit")
+            (row (kbd "Enter") "Edit selected"))
+     (group "Editing"
+            (row (kbd "Enter") "Split / new")
+            (row (kbd "Shift" "Enter") "New line")
+            (row (kbd "⌫") "Delete / merge")
+            (row (kbd "Tab") "Indent")
+            (row (kbd "Shift" "Tab") "Outdent")
+            (row (kbd "⌘" "Enter") "Toggle checkbox"))
+     (group "Structure"
+            (row (kbd "⌘" "⇧" "↑") "Move up")
+            (row (kbd "⌘" "⇧" "↓") "Move down")
+            (row (kbd "⌘" ";") "Toggle fold")
+            (row (kbd "⌘" "↑") "Collapse")
+            (row (kbd "⌘" "↓") "Expand all"))
+     (group "Zoom & Undo"
+            (row (kbd "⌘" ".") "Zoom in")
+            (row (kbd "⌘" ",") "Zoom out")
+            (row (kbd "⌘" "Z") "Undo")
+            (row (kbd "⌘" "⇧" "Z") "Redo"))
+     (group "View"
+            (row (kbd "⌘" "\\") "Toggle sidebar")
+            (row (kbd "⌘" "/") "This panel")
+            (row (kbd "⌘" "⇧" "E") "Reading mode"))]))
 
 (defn- FloatingControls
   "Bottom-right floating buttons: reading mode + hotkey panel toggle."
