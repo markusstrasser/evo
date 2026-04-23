@@ -28,6 +28,8 @@
             [utils.text-selection :as text-sel]
             [debug-api]
             [plugins.manifest :as plugins]
+            #_{:clj-kondo/ignore [:unused-namespace]} ; load-time registration
+            [shell.render-manifest :as render-manifest]
             [keymap.bindings :as bindings]
             [kernel.state-machine :as sm]
             [kernel.intent :as intent]
