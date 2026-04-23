@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Git pre-push hook: Generate all three overviews before pushing
+# Git pre-push hook.
+#
+# Overview generation used to run on every push, which made the hot path noisy
+# and slow for trivial commits. Keep pushes fast by default.
+#
+# Opt in when wanted:
+#   EVO_GENERATE_OVERVIEWS_ON_PUSH=1 git push
 
-# Check if there are any changes being pushed
-if git diff --quiet origin/main...HEAD 2>/dev/null; then
-  echo "ℹ️  No changes to push - skipping overview generation"
+if [ "${EVO_GENERATE_OVERVIEWS_ON_PUSH:-0}" != "1" ]; then
   exit 0
 fi
 
 echo "📦 Generating all overviews (source, project, dev)..."
 ./scripts/generate-overview.sh --auto
 
-# Check if overviews were generated
 if [ -f "dev/overviews/AUTO-SOURCE-OVERVIEW.md" ] || \
    [ -f "dev/overviews/AUTO-PROJECT-OVERVIEW.md" ] || \
    [ -f "dev/overviews/AUTO-DEV-OVERVIEW.md" ]; then
