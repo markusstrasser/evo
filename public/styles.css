@@ -1571,6 +1571,15 @@
     }
   }
 
+  /* Dead-link styling: evo://page/ to a page that doesn't exist yet.
+     Click still navigates (the :navigate-to-page intent creates the page),
+     but the muted color signals the missing target. */
+  .evo-page-link--missing {
+    color: var(--color-text-tertiary);
+    text-decoration-style: dashed;
+    text-decoration-color: color-mix(in oklch, var(--color-text-tertiary) 55%, transparent);
+  }
+
   .evo-page-card {
     margin: var(--space-1) 0;
   }
