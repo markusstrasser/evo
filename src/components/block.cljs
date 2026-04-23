@@ -7,13 +7,16 @@
    - Buffer: High-velocity keystroke storage (no history/indexing overhead)"
   (:require [replicant.dom :as d]
             [kernel.query :as q]
-            [parser.page-refs :as page-refs]
             [parser.block-format :as block-format]
             [parser.inline-format :as inline-format]
             [parser.markdown-links :as md-links]
             [parser.images :as images]
-            [components.page-ref :as page-ref]
+            [parser.parse :as parse]
             [components.image :as image]
+            [shell.render-registry :as render-registry]
+            ;; load-time handler registration — shell.editor already
+            ;; requires this, repeated here for local clarity
+            [shell.render-manifest]
             [components.autocomplete :as autocomplete]
             [utils.text-selection :as text-sel]
             [utils.cursor-boundaries :as bounds]
@@ -1019,66 +1022,12 @@
 
             :else nil))))))
 
-;; ── Content Rendering with Page Refs ─────────────────────────────────────────
-
-(defn- text-segment->hiccup
-  "Convert a text string to hiccup, replacing \\n with [:br]."
-  [text]
-  (if (str/includes? text "\n")
-    (let [parts (str/split text #"\n" -1)] ; -1 keeps trailing empties
-      (interpose [:br] (map #(if (empty? %) "" %) parts)))
-    text))
-
-(defn- marker-span
-  "Visually-hidden span that carries a markdown marker (e.g. `**`, `_`)
-   into the DOM so native partial-text selection + clipboard copy sees
-   the marker and preserves markdown round-trips. Hidden from screen
-   readers via aria-hidden (the semantic <strong>/<em>/<mark>/<del>
-   tag already communicates the intent).
-
-   CSS class `.marker` is defined in public/styles.css with the
-   standard clip/position:absolute pattern so the span takes zero
-   visual space but is part of selection and clipboard output."
-  [text]
-  [:span.marker {:aria-hidden "true"} text])
-
-(defn- render-formatted-segment
-  "Render a single formatted segment as hiccup.
-   Returns a vector of siblings. Formatted segments carry hidden marker
-   spans on either side so native copy produces round-trippable markdown;
-   math segments intentionally do not (MathJax is the source of truth).
-
-   The marker-span text preserves the exact marker the user typed (`*` vs
-   `_`, `**` vs `__`), not a canonical form — so `*italic*` round-trips
-   as `*italic*`, not `_italic_`."
-  [{:keys [type value marker]}]
-  (case type
-    :bold (let [m (or marker "**")] [(marker-span m) [:strong value] (marker-span m)])
-    :italic (let [m (or marker "_")] [(marker-span m) [:em value] (marker-span m)])
-    :highlight [(marker-span "==") [:mark value] (marker-span "==")]
-    :strikethrough [(marker-span "~~") [:del value] (marker-span "~~")]
-    ;; Math - wrap with delimiters for MathJax (class="math" triggers processing).
-    ;; No hidden markers: MathJax typesets the delimited source and partial
-    ;; copies of the rendered output are inherently lossy.
-    :math-block [[:div.math {:style {:text-align "center" :margin "0.5em 0"}}
-                  (str "$$" value "$$")]]
-    :math-inline [[:span.math (str "$" value "$")]]
-    ;; Plain text - handle newlines
-    :text (let [result (text-segment->hiccup value)]
-            (if (seq? result)
-              (vec result) ; Sequence with [:br] elements
-              [result])))) ; Single string
-
-(defn- render-text-with-inline-formatting
-  "Parse and render inline formatting (bold, italic, highlight, strikethrough).
-   Returns vector of hiccup elements."
-  [text]
-  (if (inline-format/has-formatting? text)
-    (vec (mapcat render-formatted-segment
-                 (inline-format/split-with-formatting text)))
-    ;; No formatting - just handle newlines
-    (let [result (text-segment->hiccup text)]
-      (if (seq? result) (vec result) [result]))))
+;; ── Content Rendering — delegates to shell.render-registry ──────────────────
+;;
+;; Block text → `parser.parse/parse` AST → `render-registry/render-node`.
+;; Individual tag handlers live under src/shell/render/*. This component
+;; composes the AST root and the container; it no longer knows how to
+;; render bold, links, or page refs.
 
 (def ^:private evo-page-card-excerpt-limit 140)
 
@@ -1102,111 +1051,44 @@
        (keep truncate-preview)
        first))
 
-(defn- page-link-anchor
-  [{:keys [label page-name on-intent class title children]}]
-  (into [:a {:href (str "evo://page/" (js/encodeURIComponent page-name))
-             :class class
-             :title title
-             :on {:click (fn [e]
-                           (.preventDefault e)
-                           (.stopPropagation e)
-                           (when on-intent
-                             (on-intent {:type :navigate-to-page
-                                         :page-name page-name})))}}]
-        (or children [label])))
-
-(defn- render-markdown-link
-  "Render a markdown link target.
-
-   `evo://page/<title>` links navigate inside the current kb.
-   Everything else is rendered as a normal external link."
-  [_db label target on-intent]
-  (if-let [{:keys [type page-name]} (md-links/parse-evo-target target)]
-     (case type
-      :page [(page-link-anchor {:label label
-                                :page-name page-name
-                                :on-intent on-intent
-                                :class ["evo-link" "evo-page-link"]
-                                :title (str "Open page: " page-name)})]
-      [label])
-    [[:a.markdown-link {:href target
-                        :target "_blank"
-                        :rel "noopener noreferrer"
-                        :title target
-                        :on {:click (fn [e]
-                                      (.stopPropagation e))}}
-      label]]))
-
-(defn- render-text-fragment
-  "Render text with markdown links and inline formatting.
-
-   Links are handled before inline formatting so the link syntax itself does not
-   bleed into the formatting parser."
-  [db text on-intent]
-  (->> (md-links/split-with-links text)
-       (mapcat (fn [{:keys [type value label target]}]
-                 (case type
-                   :text (render-text-with-inline-formatting value)
-                   :link (render-markdown-link db label target on-intent))))))
-
-(defn- render-text-segment
-  "Render a plain text segment with inline formatting and images.
-   Returns vector of hiccup elements.
-
-   Parses:
-   - ![alt](url){width=N} → inline images with optional width
-   - [label](target) → inline links (including evo://page/<title>)
-   - **bold**, __italic__, etc → inline formatting"
-  [db text on-intent]
-  (if (images/image? text)
-    ;; Text has inline images - split and render each segment
-    (->> (images/split-with-images text)
-         (mapcat (fn [{:keys [type value alt path width]}]
-                   (case type
-                     :text (render-text-fragment db value on-intent)
-                     :image [(image/Image {:path path
-                                           :alt alt
-                                           :width width
-                                           :block-level? false})]))))
-    ;; No images - just inline formatting
-    (render-text-fragment db text on-intent)))
-
-(defn- render-text-with-page-refs
-  "Render text with [[page-refs]] as components.
-
-   Uses canonical parser from parser.page-refs for links.
-   Handles newlines (converts to [:br]).
-   Returns hiccup children for a span container."
-  [db text on-intent]
-  (when text
-    (->> (page-refs/split-with-refs text)
-         (mapcat (fn [{:keys [type value page]}]
-                   (case type
-                     :text (render-text-segment db value on-intent)
-                     :page-ref [(page-ref/PageRef {:db db
-                                                   :page-name page
-                                                   :on-intent on-intent})]))))))
-
 (defn- evo-page-card
-  "Render a compact preview card for a link-only `evo://page/...` block."
+  "Render a compact preview card for a link-only `evo://page/...` block.
+
+   Distinct from the inline `:link` handler — this wraps the ENTIRE block
+   as a card with title/excerpt/status, because the link is the whole
+   block's content."
   [db label page-name on-intent]
   (let [page-id (q/find-page-by-name db page-name)
         page-title (if page-id (q/page-title db page-id) page-name)
         excerpt (when page-id (first-page-excerpt db page-id))
-        preview-meta (cond
-                       page-id "Evo page"
-                       :else "Page not found yet")]
+        preview-meta (if page-id "Evo page" "Page not found yet")]
     [:div.evo-page-card
-     (page-link-anchor {:label label
-                        :page-name page-name
-                        :on-intent on-intent
-                        :class ["evo-page-card-link"]
-                        :title (str "Open page: " page-name)
-                        :children [[:div.evo-page-card-label label]
-                                   [:div.evo-page-card-title page-title]
-                                   [:div.evo-page-card-meta preview-meta]
-                                   (when excerpt
-                                     [:div.evo-page-card-excerpt excerpt])]} )]))
+     [:a {:href (str "evo://page/" (js/encodeURIComponent page-name))
+          :class ["evo-page-card-link"]
+          :title (str "Open page: " page-name)
+          :on {:click (fn [e]
+                        (.preventDefault e)
+                        (.stopPropagation e)
+                        (when on-intent
+                          (on-intent {:type :navigate-to-page
+                                      :page-name page-name})))}}
+      [:div.evo-page-card-label label]
+      [:div.evo-page-card-title page-title]
+      [:div.evo-page-card-meta preview-meta]
+      (when excerpt
+        [:div.evo-page-card-excerpt excerpt])]]))
+
+(defn- render-block-content
+  "Parse BLOCK TEXT as AST and render through the registry. Returns a
+   vector of hiccup children ready to splat into the block's container
+   (span/blockquote/h{1..6}). The :doc handler already emits ZWSP for
+   empty content."
+  [db block-id text on-intent]
+  (render-registry/render-node
+    (parse/parse text)
+    {:on-intent on-intent
+     :db db
+     :block-id block-id}))
 
 ;; ── Image Paste/Drop Handling ────────────────────────────────────────────────
 
@@ -1701,14 +1583,16 @@
                                              (on-intent {:type :selection :mode :replace :ids block-id})))}}
               link-only (md-links/link-only? content)
               evo-link-target (some-> link-only :target md-links/parse-evo-target)
-              ;; Render content; empty blocks get zero-width space for a11y tree visibility
-              rendered (if (and (= :page (:type evo-link-target))
-                                link-only)
+              ;; Special case: a block whose whole content is a single
+              ;; evo://page/ link renders as a preview card. Every other
+              ;; content flows through the render-registry pipeline and
+              ;; the :doc handler takes care of ZWSP-on-empty.
+              rendered (if (and link-only (= :page (:type evo-link-target)))
                          [(evo-page-card db
                                          (:label link-only)
                                          (:page-name evo-link-target)
                                          on-intent)]
-                         (render-text-with-page-refs db content on-intent))
+                         (render-block-content db block-id content on-intent))
               children (if (seq rendered)
                          rendered
                          ["\u200B"]) ; ZWS makes block visible to a11y tree
