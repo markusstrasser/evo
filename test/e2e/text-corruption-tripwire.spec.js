@@ -1,10 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  waitForBlocks,
-  getFirstBlockId,
-  exitEditMode
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { exitEditMode, getFirstBlockId, waitForBlocks } from './helpers/index.js';
 
 /**
  * Write-side Tripwire E2E
@@ -35,7 +31,9 @@ test.describe('Write-side tripwire — transaction layer', () => {
     // Establish a known-clean baseline.
     await page.evaluate((id) => {
       window.TEST_HELPERS?.dispatchIntent({
-        type: 'update-content', 'block-id': id, text: 'baseline'
+        type: 'update-content',
+        'block-id': id,
+        text: 'baseline',
       });
     }, blockId);
     await page.waitForTimeout(80);
@@ -47,26 +45,37 @@ test.describe('Write-side tripwire — transaction layer', () => {
   // control chars before they reach the kernel. Building the string in
   // the browser guarantees the tripwire sees the raw bytes.
   async function dispatchCorruptText(page, id, codepoint, wrap) {
-    return page.evaluate(({ id, codepoint, wrap }) => {
-      const corrupt = wrap ? wrap.replace('__CH__', String.fromCodePoint(codepoint))
-                           : String.fromCodePoint(codepoint);
-      window.TEST_HELPERS?.dispatchIntent({
-        type: 'update-content', 'block-id': id, text: corrupt
-      });
-      return corrupt;
-    }, { id, codepoint, wrap });
+    return page.evaluate(
+      ({ id, codepoint, wrap }) => {
+        const corrupt = wrap
+          ? wrap.replace('__CH__', String.fromCodePoint(codepoint))
+          : String.fromCodePoint(codepoint);
+        window.TEST_HELPERS?.dispatchIntent({
+          type: 'update-content',
+          'block-id': id,
+          text: corrupt,
+        });
+        return corrupt;
+      },
+      { id, codepoint, wrap }
+    );
   }
 
   async function dispatchLiteralText(page, id, text) {
-    return page.evaluate(({ id, text }) => {
-      window.TEST_HELPERS?.dispatchIntent({
-        type: 'update-content', 'block-id': id, text
-      });
-    }, { id, text });
+    return page.evaluate(
+      ({ id, text }) => {
+        window.TEST_HELPERS?.dispatchIntent({
+          type: 'update-content',
+          'block-id': id,
+          text,
+        });
+      },
+      { id, text }
+    );
   }
 
   test('private-use-area glyph is rejected; DB text unchanged', async ({ page }) => {
-    const sent = await dispatchCorruptText(page, blockId, 0xE001, 'hello __CH__ world');
+    const sent = await dispatchCorruptText(page, blockId, 0xe001, 'hello __CH__ world');
     await page.waitForTimeout(100);
     const dbText = await page.evaluate((id) => window.TEST_HELPERS?.getBlockText(id), blockId);
     // Sanity: the browser did build the corrupt string — if this fails
@@ -92,11 +101,16 @@ test.describe('Write-side tripwire — transaction layer', () => {
 
   test('legitimate math, unicode, code-like text still writes cleanly', async ({ page }) => {
     const clean = 'cljs$core$key(map_entry) — $x^2$ — привет_мир';
-    await page.evaluate(({ id, text }) => {
-      window.TEST_HELPERS?.dispatchIntent({
-        type: 'update-content', 'block-id': id, text
-      });
-    }, { id: blockId, text: clean });
+    await page.evaluate(
+      ({ id, text }) => {
+        window.TEST_HELPERS?.dispatchIntent({
+          type: 'update-content',
+          'block-id': id,
+          text,
+        });
+      },
+      { id: blockId, text: clean }
+    );
     await page.waitForTimeout(100);
 
     const dbText = await page.evaluate((id) => window.TEST_HELPERS?.getBlockText(id), blockId);

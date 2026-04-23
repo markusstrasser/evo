@@ -10,8 +10,8 @@
  * FR: None (architectural refactor, behavior should be unchanged)
  */
 
-import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable, pressHome, pressEnd } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { pressEnd, pressHome, pressKeyOnContentEditable } from './helpers/index.js';
 
 /**
  * Helper: Enter edit mode on a block by double-clicking and waiting for contenteditable

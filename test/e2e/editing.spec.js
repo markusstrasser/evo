@@ -5,8 +5,8 @@
  * Based on bugs found in BROWSER_TESTING_BUGS.md
  */
 
-import { test, expect } from '@playwright/test';
-import { getCursorPosition, typeAndVerifyCursor, enterEditModeAndClick } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { enterEditModeAndClick, getCursorPosition, typeAndVerifyCursor } from './helpers/index.js';
 
 test.describe('Text Editing', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
@@ -31,7 +31,7 @@ test.describe('Text Editing', { tag: '@smoke' }, () => {
       { char: 'T', offsetBefore: 3, offsetAfter: 4, advanced: true },
       { char: 'I', offsetBefore: 4, offsetAfter: 5, advanced: true },
       { char: 'N', offsetBefore: 5, offsetAfter: 6, advanced: true },
-      { char: 'G', offsetBefore: 6, offsetAfter: 7, advanced: true }
+      { char: 'G', offsetBefore: 6, offsetAfter: 7, advanced: true },
     ]);
   });
 

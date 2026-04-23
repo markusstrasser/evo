@@ -1,6 +1,6 @@
 # Daily Journal Specification
 
-Based on Logseq's implementation. Source: `~/Projects/best/logseq`
+Based on Logseq's implementation. Source: a local upstream Logseq checkout.
 
 ## Overview
 

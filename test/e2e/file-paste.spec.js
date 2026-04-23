@@ -1,5 +1,5 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { enterEditModeAndClick } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -34,39 +34,43 @@ test.describe('File Paste Upload', () => {
    * Creates a small PNG blob for testing
    */
   async function simulatePasteWithImageFile(page, filename = 'test-image.png') {
-    return await page.evaluate(async ({ fname }) => {
-      const editable = document.querySelector('[contenteditable="true"]');
-      if (!editable) return { success: false, error: 'No contenteditable' };
+    return await page.evaluate(
+      async ({ fname }) => {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (!editable) return { success: false, error: 'No contenteditable' };
 
-      // Create a small 1x1 PNG blob (minimal valid PNG)
-      const base64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-      const binaryString = atob(base64Png);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: 'image/png' });
-      const file = new File([blob], fname, { type: 'image/png' });
+        // Create a small 1x1 PNG blob (minimal valid PNG)
+        const base64Png =
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        const binaryString = atob(base64Png);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'image/png' });
+        const file = new File([blob], fname, { type: 'image/png' });
 
-      // Create DataTransfer with the file
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(file);
+        // Create DataTransfer with the file
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
 
-      const pasteEvent = new ClipboardEvent('paste', {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dataTransfer
-      });
+        const pasteEvent = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dataTransfer,
+        });
 
-      editable.dispatchEvent(pasteEvent);
-      return { success: true, filename: fname };
-    }, { fname: filename });
+        editable.dispatchEvent(pasteEvent);
+        return { success: true, filename: fname };
+      },
+      { fname: filename }
+    );
   }
 
   test('pasting image without folder shows alert', async ({ page }) => {
     // Set up dialog handler to capture alert
     let alertMessage = '';
-    page.on('dialog', async dialog => {
+    page.on('dialog', async (dialog) => {
       alertMessage = dialog.message();
       await dialog.accept();
     });
@@ -98,7 +102,7 @@ test.describe('File Paste Upload', () => {
     test('image paste calls upload function', async ({ page }) => {
       // Track console logs for upload
       const logs = [];
-      page.on('console', msg => {
+      page.on('console', (msg) => {
         if (msg.text().includes('📷')) {
           logs.push(msg.text());
         }
@@ -108,7 +112,7 @@ test.describe('File Paste Upload', () => {
       await wait(page, 500);
 
       // Should have attempted upload (logged the attempt)
-      const uploadLogs = logs.filter(l => l.includes('upload-and-insert-images'));
+      const uploadLogs = logs.filter((l) => l.includes('upload-and-insert-images'));
       expect(uploadLogs.length).toBeGreaterThan(0);
     });
   });
@@ -116,7 +120,8 @@ test.describe('File Paste Upload', () => {
   test('image file detection works for PNG', async ({ page }) => {
     // Test the get-image-files function directly
     const result = await page.evaluate(() => {
-      const base64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const base64Png =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
       const binaryString = atob(base64Png);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -128,7 +133,7 @@ test.describe('File Paste Upload', () => {
       // Check if it's detected as an image
       return {
         type: file.type,
-        isImage: file.type.startsWith('image/')
+        isImage: file.type.startsWith('image/'),
       };
     });
 
@@ -150,7 +155,7 @@ test.describe('File Paste Upload', () => {
       const pasteEvent = new ClipboardEvent('paste', {
         bubbles: true,
         cancelable: true,
-        clipboardData: dataTransfer
+        clipboardData: dataTransfer,
       });
 
       editable.dispatchEvent(pasteEvent);

@@ -1,15 +1,12 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   enterEditMode,
-  selectBlock,
   getBlockIdAt,
-  waitForBlocks,
-  pressKeyCombo,
+  getCursorState,
   getSelectionState,
-  assertSelectionState,
-  waitForSelectionState,
-  getCursorState
+  selectBlock,
+  waitForBlocks,
 } from './helpers/index.js';
 
 /**
@@ -81,7 +78,7 @@ test.describe('Selection Direction Reversal', () => {
     test('Contract selection to single block then extend opposite direction', async ({ page }) => {
       const blockA = await getBlockIdAt(page, 0);
       const blockB = await getBlockIdAt(page, 1);
-      const blockC = await getBlockIdAt(page, 2);
+      const _blockC = await getBlockIdAt(page, 2);
 
       // Start with B selected
       await selectBlock(page, blockB);
@@ -114,7 +111,7 @@ test.describe('Selection Direction Reversal', () => {
 
   test.describe('Extend Up Then Contract Down', () => {
     test('Shift+Up×2 then Shift+Down contracts selection', async ({ page }) => {
-      const blockA = await getBlockIdAt(page, 0);
+      const _blockA = await getBlockIdAt(page, 0);
       const blockB = await getBlockIdAt(page, 1);
       const blockC = await getBlockIdAt(page, 2);
 
@@ -154,9 +151,11 @@ test.describe('Selection Direction Reversal', () => {
   });
 
   test.describe('Edit Mode to Selection Transition', () => {
-    test('Shift+Arrow from edit mode seeds selection with current block as anchor', async ({ page }) => {
+    test('Shift+Arrow from edit mode seeds selection with current block as anchor', async ({
+      page,
+    }) => {
       const blockB = await getBlockIdAt(page, 1);
-      const blockC = await getBlockIdAt(page, 2);
+      const _blockC = await getBlockIdAt(page, 2);
 
       // Enter edit mode on block B
       await enterEditMode(page, blockB);
@@ -223,8 +222,8 @@ test.describe('Selection Direction Reversal', () => {
   test.describe('Multiple Extension-Contraction Cycles', () => {
     test('Repeated extend/contract maintains anchor stability', async ({ page }) => {
       const blockA = await getBlockIdAt(page, 0);
-      const blockB = await getBlockIdAt(page, 1);
-      const blockC = await getBlockIdAt(page, 2);
+      const _blockB = await getBlockIdAt(page, 1);
+      const _blockC = await getBlockIdAt(page, 2);
 
       // Start with A selected
       await selectBlock(page, blockA);

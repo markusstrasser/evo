@@ -8,12 +8,12 @@ All three follow the same shape: a `defonce` atom, a `register-X!` function that
 
 ### Intent registry — `kernel.intent`
 
-Maps intent keywords (`:indent`, `:zoom-in`, `:navigate-to-page`, …) to Malli-validated handlers that return operations or session updates.
+Maps intent keywords (`:indent`, `:navigate-to-page`, `:collapse`, …) to Malli-validated handlers that return operations or session updates.
 
 ```clojure
-(intent/register-intent! :zoom-in
-  {:spec    [:map [:type [:= :zoom-in]] [:block-id :string]]
-   :handler (fn [db session {:keys [block-id]}] …)})
+(intent/register-intent! :navigate-to-page
+  {:spec    [:map [:type [:= :navigate-to-page]] [:page-name :string]]
+   :handler (fn [db session {:keys [page-name]}] …)})
 ```
 
 A handler returns `{:ops [...] :session-updates {…}}`. Ops go through `kernel.transaction/interpret`; session-updates land on the view-state atom. See `src/plugins/` for the live manifest.

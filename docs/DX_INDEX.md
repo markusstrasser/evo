@@ -24,9 +24,7 @@ npm start        # Clean + watch CLJS + watch CSS
 |-----|---------|
 | [README.md](../README.md) | Project quick start + constraints |
 | [GOALS.md](GOALS.md) | Project mission, strategy, success metrics |
-| [VISION.md](../VISION.md) | Product north star |
 | [AGENTS.md](../AGENTS.md) | Canonical agent guidance |
-| [ANCESTRY.md](ANCESTRY.md) | Prior-repo lineage — what fed into evo from `browsing` |
 | [LESSONS.md](LESSONS.md) | Thematic rules extracted from the subtraction-heavy git history |
 | [LOGSEQ_BEHAVIOR_TRIADS.md](LOGSEQ_BEHAVIOR_TRIADS.md) | Behavior triads: keymap → intent → scenario |
 

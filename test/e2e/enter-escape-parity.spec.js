@@ -19,23 +19,20 @@
  * - logseq/modules/shortcut/config.cljs:196 (escape binding)
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
-  selectPage,
-  selectBlock,
-  clearSelection,
+  countBlocks,
+  countSelectedBlocks,
   enterEditMode,
   exitEditMode,
-  isBlockSelected,
-  countSelectedBlocks,
-  countBlocks,
   getBlockText,
   getEditingBlockId,
-  isEditing,
   getFirstBlockId,
-  getBlockIdAt,
+  isBlockSelected,
+  isEditing,
+  selectBlock,
   updateBlockText,
-  waitForBlocks
+  waitForBlocks,
 } from './helpers/index.js';
 
 test.describe('Enter Key - Selected Block Behavior', () => {
@@ -46,7 +43,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 
   test('Enter on selected block enters edit mode at END of text', async ({ page }) => {
     const blockId = await getFirstBlockId(page);
-    
+
     // Set actual text content (test seed data creates empty blocks with ZWS for a11y)
     const testText = 'Hello World';
     await updateBlockText(page, blockId, testText);
@@ -70,7 +67,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     await expect(editableInput).toBeFocused();
 
     // Verify: Cursor is at END of text
-    const cursorPos = await editableInput.evaluate((el) => {
+    const cursorPos = await editableInput.evaluate((_el) => {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return -1;
       const range = selection.getRangeAt(0);
@@ -102,7 +99,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     const editableInput = page.locator(`[data-block-id="${blockId}"] [contenteditable="true"]`);
     await expect(editableInput).toBeFocused();
 
-    const cursorPos = await editableInput.evaluate((el) => {
+    const cursorPos = await editableInput.evaluate((_el) => {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return -1;
       return selection.getRangeAt(0).startOffset;
@@ -210,7 +207,9 @@ test.describe('Escape Key - Editing Behavior', () => {
     await enterEditMode(page, blockId);
 
     // Ensure contenteditable is focused
-    const editableInput = page.locator(`div.block[data-block-id="${blockId}"] [contenteditable="true"]`);
+    const editableInput = page.locator(
+      `div.block[data-block-id="${blockId}"] [contenteditable="true"]`
+    );
     await expect(editableInput).toBeFocused();
 
     // Set new text content
@@ -218,13 +217,16 @@ test.describe('Escape Key - Editing Behavior', () => {
     const newContent = originalText + appendText;
 
     // Use direct intent dispatch to update content (bypasses keyboard unreliability)
-    await page.evaluate(({ id, text }) => {
-      window.TEST_HELPERS?.dispatchIntent({
-        type: 'update-content',
-        'block-id': id,
-        text: text
-      });
-    }, { id: blockId, text: newContent });
+    await page.evaluate(
+      ({ id, text }) => {
+        window.TEST_HELPERS?.dispatchIntent({
+          type: 'update-content',
+          'block-id': id,
+          text: text,
+        });
+      },
+      { id: blockId, text: newContent }
+    );
     await page.waitForTimeout(50);
 
     // Exit edit mode via intent
@@ -314,7 +316,9 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
    *
    * See commit that fixed this for full details.
    */
-  test('Enter in edit mode creates new block AND keeps focus (blur race guard)', async ({ page }) => {
+  test('Enter in edit mode creates new block AND keeps focus (blur race guard)', async ({
+    page,
+  }) => {
     const blockId = await getFirstBlockId(page);
 
     // Set some text first (empty blocks have different Enter behavior)
@@ -343,7 +347,7 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
     // CRITICAL: Verify contenteditable is focused (can type immediately)
     const activeElement = await page.evaluate(() => ({
       tagName: document.activeElement?.tagName,
-      isContentEditable: document.activeElement?.contentEditable === 'true'
+      isContentEditable: document.activeElement?.contentEditable === 'true',
     }));
     expect(activeElement.isContentEditable).toBe(true);
 
@@ -443,25 +447,31 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     // Setup: Create parent-child structure directly via transact (more reliable than Enter+indent)
     const parentId = 'test-block-1';
     const existingChildId = 'existing-child';
-    
+
     // Create the structure directly: parent with one child
-    await page.evaluate(({ parentId, childId }) => {
-      // First update parent text
-      window.TEST_HELPERS?.setBlockText(parentId, 'Parent A');
-      // Create and place child under parent
-      window.TEST_HELPERS?.transact([
-        { op: 'create-node', id: childId, type: 'block', props: { text: 'Child B' } },
-        { op: 'place', id: childId, under: parentId, at: 'last' }
-      ]);
-    }, { parentId, childId: existingChildId });
+    await page.evaluate(
+      ({ parentId, childId }) => {
+        // First update parent text
+        window.TEST_HELPERS?.setBlockText(parentId, 'Parent A');
+        // Create and place child under parent
+        window.TEST_HELPERS?.transact([
+          { op: 'create-node', id: childId, type: 'block', props: { text: 'Child B' } },
+          { op: 'place', id: childId, under: parentId, at: 'last' },
+        ]);
+      },
+      { parentId, childId: existingChildId }
+    );
     await page.waitForTimeout(100);
 
     // Verify setup: child is under parent
-    const setupCorrect = await page.evaluate(({ parentId, childId }) => {
-      const db = window.TEST_HELPERS?.getDb();
-      const children = db?.['children-by-parent']?.[parentId] || [];
-      return children.includes(childId);
-    }, { parentId, childId: existingChildId });
+    const setupCorrect = await page.evaluate(
+      ({ parentId, childId }) => {
+        const db = window.TEST_HELPERS?.getDb();
+        const children = db?.['children-by-parent']?.[parentId] || [];
+        return children.includes(childId);
+      },
+      { parentId, childId: existingChildId }
+    );
     expect(setupCorrect).toBe(true);
 
     // Count blocks before test action
@@ -470,7 +480,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     // Enter edit mode on parent - click the contenteditable to ensure DOM cursor is at end
     await enterEditMode(page, parentId, 'end');
     await page.waitForTimeout(100);
-    
+
     // Click at end of text to ensure DOM cursor is properly positioned
     const editableInput = page.locator(`[data-block-id="${parentId}"] [contenteditable="true"]`);
     await editableInput.click();
@@ -495,33 +505,39 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     expect(newBlockId).not.toBe(existingChildId);
 
     // Verify: New block is a child of parent (check DOM structure)
-    const isChildOfParent = await page.evaluate(({ parentId, newId }) => {
-      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
-      const childrenContainer = parentBlock?.querySelector('.block-children');
-      const newBlock = childrenContainer?.querySelector(`[data-block-id="${newId}"]`);
-      return newBlock !== null;
-    }, { parentId, newId: newBlockId });
+    const isChildOfParent = await page.evaluate(
+      ({ parentId, newId }) => {
+        const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+        const childrenContainer = parentBlock?.querySelector('.block-children');
+        const newBlock = childrenContainer?.querySelector(`[data-block-id="${newId}"]`);
+        return newBlock !== null;
+      },
+      { parentId, newId: newBlockId }
+    );
 
     expect(isChildOfParent).toBe(true);
 
     // Verify: New block is FIRST child (comes before existing child)
-    const childOrder = await page.evaluate(({ parentId, newId, childId }) => {
-      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
-      const childrenContainer = parentBlock?.querySelector('.block-children');
-      if (!childrenContainer) return { newIndex: -1, existingIndex: -1 };
+    const childOrder = await page.evaluate(
+      ({ parentId, newId, childId }) => {
+        const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+        const childrenContainer = parentBlock?.querySelector('.block-children');
+        if (!childrenContainer) return { newIndex: -1, existingIndex: -1 };
 
-      const children = childrenContainer.querySelectorAll(':scope > [data-block-id]');
-      let newIndex = -1;
-      let existingIndex = -1;
+        const children = childrenContainer.querySelectorAll(':scope > [data-block-id]');
+        let newIndex = -1;
+        let existingIndex = -1;
 
-      children.forEach((child, idx) => {
-        const id = child.getAttribute('data-block-id');
-        if (id === newId) newIndex = idx;
-        if (id === childId) existingIndex = idx;
-      });
+        children.forEach((child, idx) => {
+          const id = child.getAttribute('data-block-id');
+          if (id === newId) newIndex = idx;
+          if (id === childId) existingIndex = idx;
+        });
 
-      return { newIndex, existingIndex };
-    }, { parentId, newId: newBlockId, childId: existingChildId });
+        return { newIndex, existingIndex };
+      },
+      { parentId, newId: newBlockId, childId: existingChildId }
+    );
 
     // New block should come before existing child (lower index)
     expect(childOrder.newIndex).toBeLessThan(childOrder.existingIndex);
@@ -580,30 +596,36 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     expect(newBlockId).not.toBe(parentId);
 
     // Verify: New block is a sibling of parent (not a child)
-    const isSiblingOfParent = await page.evaluate(({ parentId, newId }) => {
-      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
-      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+    const isSiblingOfParent = await page.evaluate(
+      ({ parentId, newId }) => {
+        const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+        const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
 
-      // Both should have the same parent container
-      const parentContainer = parentBlock?.parentElement;
-      const newContainer = newBlock?.parentElement;
+        // Both should have the same parent container
+        const parentContainer = parentBlock?.parentElement;
+        const newContainer = newBlock?.parentElement;
 
-      return parentContainer === newContainer && parentContainer !== null;
-    }, { parentId, newId: newBlockId });
+        return parentContainer === newContainer && parentContainer !== null;
+      },
+      { parentId, newId: newBlockId }
+    );
 
     expect(isSiblingOfParent).toBe(true);
 
     // Verify: New block comes after parent in DOM order
-    const order = await page.evaluate(({ parentId, newId }) => {
-      const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
-      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
-      if (!parentBlock || !newBlock) return null;
+    const order = await page.evaluate(
+      ({ parentId, newId }) => {
+        const parentBlock = document.querySelector(`[data-block-id="${parentId}"]`);
+        const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+        if (!parentBlock || !newBlock) return null;
 
-      // Check DOM order using compareDocumentPosition
-      const position = parentBlock.compareDocumentPosition(newBlock);
-      // DOCUMENT_POSITION_FOLLOWING = 4 means newBlock comes after parentBlock
-      return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-    }, { parentId, newId: newBlockId });
+        // Check DOM order using compareDocumentPosition
+        const position = parentBlock.compareDocumentPosition(newBlock);
+        // DOCUMENT_POSITION_FOLLOWING = 4 means newBlock comes after parentBlock
+        return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      },
+      { parentId, newId: newBlockId }
+    );
 
     expect(order).toBe(true);
   });
@@ -633,15 +655,18 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     expect(newBlockId).not.toBe(blockId);
 
     // Verify: New block is a sibling (same parent container)
-    const isSibling = await page.evaluate(({ blockId, newId }) => {
-      const originalBlock = document.querySelector(`[data-block-id="${blockId}"]`);
-      const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
+    const isSibling = await page.evaluate(
+      ({ blockId, newId }) => {
+        const originalBlock = document.querySelector(`[data-block-id="${blockId}"]`);
+        const newBlock = document.querySelector(`[data-block-id="${newId}"]`);
 
-      const originalParent = originalBlock?.parentElement;
-      const newParent = newBlock?.parentElement;
+        const originalParent = originalBlock?.parentElement;
+        const newParent = newBlock?.parentElement;
 
-      return originalParent === newParent && originalParent !== null;
-    }, { blockId, newId: newBlockId });
+        return originalParent === newParent && originalParent !== null;
+      },
+      { blockId, newId: newBlockId }
+    );
 
     expect(isSibling).toBe(true);
   });
@@ -653,20 +678,22 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await waitForBlocks(page);
   });
 
-  test('Natural navigation flow: Select -> Enter -> Edit -> Escape -> Selected (Logseq parity)', async ({ page }) => {
+  test('Natural navigation flow: Select -> Enter -> Edit -> Escape -> Selected (Logseq parity)', async ({
+    page,
+  }) => {
     // Reset to test DB to get predictable structure
     await page.evaluate(() => window.TEST_HELPERS?.resetToEmptyDb());
     await page.waitForTimeout(100);
-    
+
     // Create a second block for navigation testing
     await page.evaluate(() => {
       window.TEST_HELPERS?.transact([
         { op: 'create-node', id: 'test-block-2', type: 'block', props: { text: 'Second Block' } },
-        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' }
+        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' },
       ]);
     });
     await waitForBlocks(page);
-    
+
     const blockId = 'test-block-1';
 
     // 1. Select block
@@ -724,12 +751,12 @@ test.describe('Enter and Escape - Integration Flow', () => {
     // Reset to test DB to get predictable structure
     await page.evaluate(() => window.TEST_HELPERS?.resetToEmptyDb());
     await page.waitForTimeout(100);
-    
+
     // Create a second block
     await page.evaluate(() => {
       window.TEST_HELPERS?.transact([
         { op: 'create-node', id: 'test-block-2', type: 'block', props: { text: 'Second Block' } },
-        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' }
+        { op: 'place', id: 'test-block-2', under: 'test-page', at: 'last' },
       ]);
     });
     await waitForBlocks(page);

@@ -6,10 +6,10 @@ The point is the shape of the code, not the product. Evo is meant to be legible 
 
 ## What it does
 
-- **Nested blocks** with indent/outdent, drag & drop, fold, and zoom-to-block
+- **Nested blocks** with indent/outdent, drag & drop, and fold
 - **Pages and daily journals** (Logseq-compatible title format: `Apr 22nd, 2026`); journals open stacked on startup
 - **Inline markdown** — `**bold**`, `_italic_`, `==highlight==`, `~~strike~~`, `$inline math$`, `$$block math$$`, with word-boundary guards so code like `cljs$core$key` stays literal
-- **Wiki-style refs** `[[Page Name]]` and markdown links `[label](target)`, including custom `evo://` schemes: `evo://page/<name>`, `evo://block/<id>`, `evo://journal/<iso-date>`
+- **Wiki-style refs** `[[Page Name]]` and markdown links `[label](target)`, including custom `evo://` schemes: `evo://page/<name>` and `evo://journal/<iso-date>`
 - **Inline images** `![alt](path){width=N}` with paste-from-clipboard upload, resize handles, and a lightbox
 - **Math via MathJax** with a scanner contract that refuses to typeset prose dollars (see `.claude/rules/global-dom-scanners.md`)
 - **Multi-select**, **undo/redo** over the full log, **autocomplete** for page refs and slash-commands, **backlinks** panel
@@ -31,7 +31,7 @@ All code routes through one of three registries plus a session atom. Nothing in 
 
 | Layer | Registry | Example |
 |---|---|---|
-| Intents | `kernel.intent/register-intent!` | `:indent`, `:zoom-in`, `:navigate-to-page` |
+| Intents | `kernel.intent/register-intent!` | `:indent`, `:navigate-to-page`, `:collapse` |
 | Derived indexes | `kernel.derived-registry/register!` | `:backlinks`, `:parent-of`, `:next-id-of` |
 | Render handlers | `shell.render-registry/register-render!` | `:bold`, `:link`, `:page-ref`, `:math-inline` |
 

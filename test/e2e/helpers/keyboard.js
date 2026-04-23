@@ -51,21 +51,16 @@
  * });
  */
 export async function pressKeyOnContentEditable(page, key, options = {}) {
-  const {
-    shiftKey = false,
-    ctrlKey = false,
-    metaKey = false,
-    altKey = false
-  } = options;
+  const { shiftKey = false, ctrlKey = false, metaKey = false, altKey = false } = options;
 
   // Verify contenteditable is focused
   await page.evaluate(() => {
     const elem = document.activeElement;
-    if (!elem || !elem.getAttribute('contenteditable')) {
+    if (!elem?.getAttribute('contenteditable')) {
       throw new Error(
         `No contenteditable element is focused. ` +
-        `Active element: ${elem?.tagName || 'none'}\n` +
-        `Tip: Use page.keyboard.press() for non-contenteditable elements.`
+          `Active element: ${elem?.tagName || 'none'}\n` +
+          `Tip: Use page.keyboard.press() for non-contenteditable elements.`
       );
     }
   });
@@ -81,9 +76,7 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
   if (metaKey) modifierParts.push('Meta');
   if (altKey) modifierParts.push('Alt');
 
-  const keyCombo = modifierParts.length > 0
-    ? `${modifierParts.join('+')}+${key}`
-    : key;
+  const keyCombo = modifierParts.length > 0 ? `${modifierParts.join('+')}+${key}` : key;
 
   await page.keyboard.press(keyCombo);
 }
@@ -112,7 +105,7 @@ export async function pressKeyCombo(page, key, modifiers = []) {
     shiftKey: modifiers.includes('Shift'),
     ctrlKey: modifiers.includes('Control'),
     metaKey: modifiers.includes('Meta'),
-    altKey: modifiers.includes('Alt')
+    altKey: modifiers.includes('Alt'),
   };
 
   await pressKeyOnContentEditable(page, key, options);

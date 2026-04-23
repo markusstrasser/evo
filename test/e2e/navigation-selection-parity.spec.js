@@ -1,5 +1,9 @@
-import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable, pressKeyCombo, setCursorPosition as setExactCursor } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import {
+  pressKeyCombo,
+  pressKeyOnContentEditable,
+  setCursorPosition as setExactCursor,
+} from './helpers/index.js';
 
 let navIds;
 
@@ -17,7 +21,7 @@ let navIds;
 async function findBlockByText(page, text) {
   const blockId = await page.evaluate((searchText) => {
     const blocks = Array.from(document.querySelectorAll('[data-block-id]'));
-    const target = blocks.find(el => {
+    const target = blocks.find((el) => {
       const contentEl = el.querySelector('.block-content');
       return contentEl?.textContent?.trim() === searchText;
     });
@@ -71,7 +75,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         last: proj?.['last-block'] ?? 'proj-3',
         firstChild: proj?.['first-child'] ?? 'proj-1-1',
         secondChild: proj?.['second-child'] ?? 'proj-1-2',
-        sibling: proj?.['adjacent-sibling'] ?? 'proj-2'
+        sibling: proj?.['adjacent-sibling'] ?? 'proj-2',
       };
     });
   });
@@ -93,7 +97,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           return session.ui.current_page;
         }
         // Fallback: check DOM for active page indicator
-        const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
+        const activePageItem = document.querySelector(
+          '.page-item[style*="background-color: rgb(219, 234, 254)"]'
+        );
         return activePageItem?.textContent?.trim();
       });
 
@@ -129,7 +135,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           return session.ui.current_page;
         }
         // Fallback: check DOM for active page indicator (strip emoji)
-        const activePageItem = document.querySelector('.page-item[style*="background-color: rgb(219, 234, 254)"]');
+        const activePageItem = document.querySelector(
+          '.page-item[style*="background-color: rgb(219, 234, 254)"]'
+        );
         const text = activePageItem?.textContent?.trim()?.toLowerCase() || '';
         // Strip emoji (match only letters)
         return text.match(/[a-z]+/)?.[0] || text;
@@ -158,7 +166,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(currentBlockId).toBe(navIds.first);
     });
 
-    test.skip('vertical navigation respects zoom boundaries', async ({ page }) => {
+    test.skip('vertical navigation respects zoom boundaries', async () => {
       // TODO: Zoom functionality not yet implemented
       // When implemented, test that zooming into a block makes that block the navigation root
     });
@@ -167,7 +175,10 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   test.describe('§4.2: Horizontal Boundary Traversal (DOM Order)', () => {
     test('Left arrow at start navigates to parent at end', async ({ page }) => {
       // Find a child block and enter edit mode
-      const block = page.locator('div.block').filter({ hasText: 'Building a Logseq-inspired outliner' }).first();
+      const block = page
+        .locator('div.block')
+        .filter({ hasText: 'Building a Logseq-inspired outliner' })
+        .first();
       await enterEditModeOn(page, block);
 
       // Position at start
@@ -185,7 +196,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         return {
           text: el?.textContent,
           cursorPos: sel?.rangeCount > 0 ? sel.getRangeAt(0).startOffset : null,
-          textLength: el?.textContent?.length || 0
+          textLength: el?.textContent?.length || 0,
         };
       });
 
@@ -212,7 +223,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           text: el?.textContent,
           cursorPos: sel.anchorOffset,
           textLength: el?.textContent?.length || 0,
-          blockId: el?.closest('[data-block-id]')?.getAttribute('data-block-id')
+          blockId: el?.closest('[data-block-id]')?.getAttribute('data-block-id'),
         };
       });
 
@@ -224,7 +235,10 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
     test('Right arrow at end of leaf navigates to next sibling', async ({ page }) => {
       // Double-click on a leaf block to enter edit mode
-      const block = page.locator('div.block').filter({ hasText: 'Building a Logseq-inspired outliner' }).first();
+      const block = page
+        .locator('div.block')
+        .filter({ hasText: 'Building a Logseq-inspired outliner' })
+        .first();
       await enterEditModeOn(page, block);
 
       // Position cursor at end
@@ -248,7 +262,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     test('Right arrow at end of parent navigates to first child', async ({ page }) => {
       // SPEC: Right at block end → first child at start (if children exist)
       // Click once to select the block (focus), then click again to enter edit mode
-      const contentView = page.locator(`div.block[data-block-id="${navIds.first}"] > .block-content`);
+      const contentView = page.locator(
+        `div.block[data-block-id="${navIds.first}"] > .block-content`
+      );
       await contentView.click(); // Select block
       await contentView.click(); // Enter edit mode on focused block
       await page.waitForSelector('[contenteditable="true"]');
@@ -274,7 +290,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         const selection = window.getSelection();
         return {
           text: el?.textContent,
-          cursorPos: selection?.anchorOffset || 0
+          cursorPos: selection?.anchorOffset || 0,
         };
       });
 
@@ -285,88 +301,110 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   });
 
   // NOTE: Skipped - flaky test, relies on specific demo data layout which can vary
-  test.describe.skip('§4.3: Shift+Click Range Selection (Visibility-Aware)', () => {
-    test('Shift+Click between visible blocks selects only visible range', async ({ page }) => {
-      // Select first block
-      await page.locator('div.block').filter({ hasText: 'Evolver - Outliner Project' }).first().click();
+  test.describe
+    .skip('§4.3: Shift+Click Range Selection (Visibility-Aware)', () => {
+      test('Shift+Click between visible blocks selects only visible range', async ({ page }) => {
+        // Select first block
+        await page
+          .locator('div.block')
+          .filter({ hasText: 'Evolver - Outliner Project' })
+          .first()
+          .click();
 
-      // Shift+Click on third visible block
-      await page.keyboard.down('Shift');
-      await page.locator('div.block').filter({ hasText: 'Tech Stack: ClojureScript + Replicant' }).first().click();
-      await page.keyboard.up('Shift');
+        // Shift+Click on third visible block
+        await page.keyboard.down('Shift');
+        await page
+          .locator('div.block')
+          .filter({ hasText: 'Tech Stack: ClojureScript + Replicant' })
+          .first()
+          .click();
+        await page.keyboard.up('Shift');
 
-      // Count selected blocks
-      const selectedCount = await page.evaluate(() => {
-        return document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]').length;
+        // Count selected blocks
+        const selectedCount = await page.evaluate(() => {
+          return document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]')
+            .length;
+        });
+
+        // Should select exactly 3 blocks (parent + 2 children + 1 sibling)
+        // NOT including any hidden/folded blocks
+        expect(selectedCount).toBeGreaterThanOrEqual(2);
       });
 
-      // Should select exactly 3 blocks (parent + 2 children + 1 sibling)
-      // NOT including any hidden/folded blocks
-      expect(selectedCount).toBeGreaterThanOrEqual(2);
-    });
+      test('Shift+Click skips folded descendants', async ({ page }) => {
+        // SPEC REQUIREMENT (§4.3): "Shift+Click between folded nodes → skips folded descendants; selection only spans visible nodes"
+        // CURRENT BEHAVIOR: Shift+Click DOES include folded children (regression described in spec)
+        // EXPECTED: This test should FAIL until §4.3 is implemented
+        // Implementation needed: Replace tree/doc-range with visibility-aware range helper
 
-    test('Shift+Click skips folded descendants', async ({ page }) => {
-      // SPEC REQUIREMENT (§4.3): "Shift+Click between folded nodes → skips folded descendants; selection only spans visible nodes"
-      // CURRENT BEHAVIOR: Shift+Click DOES include folded children (regression described in spec)
-      // EXPECTED: This test should FAIL until §4.3 is implemented
-      // Implementation needed: Replace tree/doc-range with visibility-aware range helper
+        // Fold proj-1 by clicking the toggle icon (▾)
+        const toggleIcon = page
+          .locator(`div.block[data-block-id="${navIds.first}"] > span`)
+          .first();
+        await toggleIcon.click();
+        await page.waitForTimeout(300);
 
-      // Fold proj-1 by clicking the toggle icon (▾)
-      const toggleIcon = page.locator(`div.block[data-block-id="${navIds.first}"] > span`).first();
-      await toggleIcon.click();
-      await page.waitForTimeout(300);
+        // Verify children are actually hidden in DOM
+        const _childrenHidden = await page.evaluate((ids) => {
+          const child1 = document.querySelector(`[data-block-id="${ids.firstChild}"]`);
+          const child2 = document.querySelector(`[data-block-id="${ids.secondChild}"]`);
+          return (
+            (!child1 && !child2) ||
+            (child1?.style?.display === 'none' && child2?.style?.display === 'none')
+          );
+        }, navIds);
 
-      // Verify children are actually hidden in DOM
-      const childrenHidden = await page.evaluate((ids) => {
-        const child1 = document.querySelector(`[data-block-id="${ids.firstChild}"]`);
-        const child2 = document.querySelector(`[data-block-id="${ids.secondChild}"]`);
-        return (!child1 && !child2) ||
-               (child1?.style?.display === 'none' && child2?.style?.display === 'none');
-      }, navIds);
-
-      // Select the parent block first by clicking its content
-      const parentContent = page.locator(`div.block[data-block-id="${navIds.first}"] > span.block-content`);
-      await parentContent.click();
-      await page.waitForTimeout(100);
-
-      // Shift+Click from the folded parent to a later block
-      // NOTE: Must click on .block-content specifically (not div.block) because clicking
-      // on the bullet doesn't trigger Shift+Click selection - it only toggles fold
-      const siblingContent = page.locator(`div.block[data-block-id="${navIds.sibling}"] > span.block-content`);
-      await page.keyboard.down('Shift');
-      await siblingContent.click();
-      await page.keyboard.up('Shift');
-      await page.waitForTimeout(100);
-
-      // Count selected blocks - should NOT include the hidden children
-      // NOTE: Selected blocks may have either selection color (230, 242, 255) or focus color (179, 217, 255)
-      const selection = await page.evaluate((ids) => {
-        const selectedOrFocused = Array.from(
-          document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"], [style*="background-color: rgb(179, 217, 255)"]')
+        // Select the parent block first by clicking its content
+        const parentContent = page.locator(
+          `div.block[data-block-id="${navIds.first}"] > span.block-content`
         );
-        return {
-          count: selectedOrFocused.length,
-          blockIds: selectedOrFocused.map(el => el.getAttribute('data-block-id')),
-          childrenInDom: {
-            first: !!document.querySelector(`[data-block-id="${ids.firstChild}"]`),
-            second: !!document.querySelector(`[data-block-id="${ids.secondChild}"]`)
-          }
-        };
-      }, navIds);
+        await parentContent.click();
+        await page.waitForTimeout(100);
 
-      // CRITICAL: Should select parent (proj-1) and proj-2, but NOT the folded children
-      // If this fails, it means the implementation doesn't respect fold state in selection
-      expect(selection.count).toBe(2);
-      expect(selection.blockIds).toContain(navIds.first);
-      expect(selection.blockIds).toContain(navIds.sibling);
-      // Should NOT contain the folded children
-      expect(selection.blockIds).not.toContain(navIds.firstChild);
-      expect(selection.blockIds).not.toContain(navIds.secondChild);
+        // Shift+Click from the folded parent to a later block
+        // NOTE: Must click on .block-content specifically (not div.block) because clicking
+        // on the bullet doesn't trigger Shift+Click selection - it only toggles fold
+        const siblingContent = page.locator(
+          `div.block[data-block-id="${navIds.sibling}"] > span.block-content`
+        );
+        await page.keyboard.down('Shift');
+        await siblingContent.click();
+        await page.keyboard.up('Shift');
+        await page.waitForTimeout(100);
+
+        // Count selected blocks - should NOT include the hidden children
+        // NOTE: Selected blocks may have either selection color (230, 242, 255) or focus color (179, 217, 255)
+        const selection = await page.evaluate((ids) => {
+          const selectedOrFocused = Array.from(
+            document.querySelectorAll(
+              '[style*="background-color: rgb(230, 242, 255)"], [style*="background-color: rgb(179, 217, 255)"]'
+            )
+          );
+          return {
+            count: selectedOrFocused.length,
+            blockIds: selectedOrFocused.map((el) => el.getAttribute('data-block-id')),
+            childrenInDom: {
+              first: !!document.querySelector(`[data-block-id="${ids.firstChild}"]`),
+              second: !!document.querySelector(`[data-block-id="${ids.secondChild}"]`),
+            },
+          };
+        }, navIds);
+
+        // CRITICAL: Should select parent (proj-1) and proj-2, but NOT the folded children
+        // If this fails, it means the implementation doesn't respect fold state in selection
+        expect(selection.count).toBe(2);
+        expect(selection.blockIds).toContain(navIds.first);
+        expect(selection.blockIds).toContain(navIds.sibling);
+        // Should NOT contain the folded children
+        expect(selection.blockIds).not.toContain(navIds.firstChild);
+        expect(selection.blockIds).not.toContain(navIds.secondChild);
+      });
     });
-  });
 
   test.describe('§4.4: Shift+Arrow Anchoring in Edit Mode', () => {
-    test('Shift+ArrowDown at boundary extends from current block (not page top)', async ({ page }) => {
+    test('Shift+ArrowDown at boundary extends from current block (not page top)', async ({
+      page,
+    }) => {
       // Enter edit mode on the exact block (not parent)
       const block = await findBlockByText(page, 'Using event sourcing architecture');
       await enterEditModeOn(page, block);
@@ -395,7 +433,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           count: nodes.length,
           includesStartBlock: nodes.includes(blockId),
           anchor: sess?.selection?.anchor,
-          focus: sess?.selection?.focus
+          focus: sess?.selection?.focus,
         };
       }, startBlockId);
 
@@ -404,7 +442,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(selection.count).toBeGreaterThanOrEqual(2);
     });
 
-    test('Shift+ArrowUp at boundary extends from current block (not page bottom)', async ({ page }) => {
+    test('Shift+ArrowUp at boundary extends from current block (not page bottom)', async ({
+      page,
+    }) => {
       // Enter edit mode on the exact block (not parent)
       const block = await findBlockByText(page, 'Using event sourcing architecture');
       await enterEditModeOn(page, block);
@@ -431,7 +471,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         return {
           count: nodes.length,
           includesStartBlock: nodes.includes(blockId),
-          anchor: sess?.selection?.anchor
+          anchor: sess?.selection?.anchor,
         };
       }, startBlockId);
 
@@ -445,7 +485,10 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       await page.click('body', { position: { x: 10, y: 10 } });
 
       // Double-click to enter edit mode
-      const block = page.locator('div.block').filter({ hasText: 'Tech Stack: ClojureScript + Replicant' }).first();
+      const block = page
+        .locator('div.block')
+        .filter({ hasText: 'Tech Stack: ClojureScript + Replicant' })
+        .first();
       await enterEditModeOn(page, block);
       await setCursorPosition(page, 'end');
 
@@ -454,7 +497,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         const sess = window.TEST_HELPERS?.getSession?.();
         return {
           selectionCount: sess?.selection?.nodes?.length || 0,
-          isEditing: !!sess?.ui?.['editing-block-id']
+          isEditing: !!sess?.ui?.['editing-block-id'],
         };
       });
       expect(beforeState.selectionCount).toBe(0);
@@ -469,7 +512,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         const sess = window.TEST_HELPERS?.getSession?.();
         return {
           selectionCount: sess?.selection?.nodes?.length || 0,
-          isEditing: !!sess?.ui?.['editing-block-id']
+          isEditing: !!sess?.ui?.['editing-block-id'],
         };
       });
 
@@ -478,7 +521,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(afterState.selectionCount).toBeGreaterThanOrEqual(2);
     });
 
-    test('Shift+Arrow always exits edit mode and starts block selection (Logseq parity)', async ({ page }) => {
+    test('Shift+Arrow always exits edit mode and starts block selection (Logseq parity)', async ({
+      page,
+    }) => {
       // LOGSEQ PARITY: Shift+Arrow ALWAYS exits edit and starts block selection
       // (No text selection within blocks via Shift+Arrow - use mouse drag for that)
 
@@ -492,7 +537,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         const sess = window.TEST_HELPERS?.getSession?.();
         return {
           isEditing: !!sess?.ui?.['editing-block-id'],
-          blockSelectionCount: sess?.selection?.nodes?.length || 0
+          blockSelectionCount: sess?.selection?.nodes?.length || 0,
         };
       });
       expect(beforeState.isEditing).toBe(true);
@@ -507,7 +552,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         const sess = window.TEST_HELPERS?.getSession?.();
         return {
           isEditing: !!sess?.ui?.['editing-block-id'],
-          blockSelectionCount: sess?.selection?.nodes?.length || 0
+          blockSelectionCount: sess?.selection?.nodes?.length || 0,
         };
       });
 
@@ -534,7 +579,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
         return {
           count: sess?.selection?.nodes?.length || 0,
           anchor: sess?.selection?.anchor,
-          focus: sess?.selection?.focus
+          focus: sess?.selection?.focus,
         };
       });
       expect(selection.count).toBeGreaterThanOrEqual(2);
@@ -565,7 +610,7 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
           count: nodes.length,
           isEditing: !!sess?.ui?.['editing-block-id'],
           anchor: sess?.selection?.anchor,
-          focus: sess?.selection?.focus
+          focus: sess?.selection?.focus,
         };
       });
 

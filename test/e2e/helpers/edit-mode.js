@@ -13,7 +13,7 @@ export async function selectPage(page, pageName = 'Projects') {
   // Use create-page so the helper works in both demo data and ?test=true mode.
   await page.evaluate((name) => {
     if (window.TEST_HELPERS?.dispatchIntent) {
-      window.TEST_HELPERS.dispatchIntent({type: 'create-page', title: name});
+      window.TEST_HELPERS.dispatchIntent({ type: 'create-page', title: name });
     } else {
       console.error('TEST_HELPERS.dispatchIntent not found - is the app loaded?');
     }
@@ -46,8 +46,8 @@ export async function enterEditMode(page) {
   await page.evaluate((id) => {
     if (window.TEST_HELPERS?.dispatchIntent) {
       // First select the block, then enter edit mode
-      window.TEST_HELPERS.dispatchIntent({type: 'selection', mode: 'replace', ids: id});
-      window.TEST_HELPERS.dispatchIntent({type: 'enter-edit', 'block-id': id});
+      window.TEST_HELPERS.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
+      window.TEST_HELPERS.dispatchIntent({ type: 'enter-edit', 'block-id': id });
     }
   }, blockId);
 

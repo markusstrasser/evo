@@ -10,7 +10,7 @@
  * FR: LOGSEQ_PARITY - Shift+Enter inserts literal newline
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { enterEditModeAndClick, pressKeyOnContentEditable } from './helpers/index.js';
 
 test.describe('Newline Persistence (Shift+Enter)', () => {
@@ -35,11 +35,11 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     await page.keyboard.type('Line 2');
 
     // Verify DOM contains <br> element
-    const innerHTML = await editor.evaluate(el => el.innerHTML);
+    const innerHTML = await editor.evaluate((el) => el.innerHTML);
     expect(innerHTML).toContain('<br>');
 
     // Verify text content has both lines
-    const textContent = await editor.evaluate(el => el.textContent);
+    const textContent = await editor.evaluate((el) => el.textContent);
     expect(textContent).toContain('Line 1');
     expect(textContent).toContain('Line 2');
   });
@@ -93,7 +93,7 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
 
     // The content span is the one that shows the text (not the bullet)
     // Check for innerHTML with <br> for visual line break
-    const viewHTML = await blockContainer.evaluate(el => {
+    const viewHTML = await blockContainer.evaluate((el) => {
       // Find the span that contains the block content (not the bullet)
       const spans = el.querySelectorAll('span');
       for (const span of spans) {
@@ -108,7 +108,7 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     expect(viewHTML).toContain('<br>');
 
     // Both lines should be visible in the text
-    const viewText = await blockContainer.evaluate(el => el.textContent);
+    const viewText = await blockContainer.evaluate((el) => el.textContent);
     expect(viewText).toContain('View line 1');
     expect(viewText).toContain('View line 2');
   });
@@ -132,9 +132,9 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     // Re-enter edit mode: first select the block, then enter edit
     await page.evaluate((id) => {
       // Select the block first (required by state machine)
-      window.TEST_HELPERS?.dispatchIntent({type: 'selection', mode: 'replace', ids: id});
+      window.TEST_HELPERS?.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
       // Then enter edit mode
-      window.TEST_HELPERS?.dispatchIntent({type: 'enter-edit', 'block-id': id});
+      window.TEST_HELPERS?.dispatchIntent({ type: 'enter-edit', 'block-id': id });
     }, blockId);
 
     // Wait for contenteditable
@@ -142,11 +142,11 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
 
     // Verify edit mode has <br> for the newline
     const reenteredEditor = page.locator('[contenteditable="true"]');
-    const innerHTML = await reenteredEditor.evaluate(el => el.innerHTML);
+    const innerHTML = await reenteredEditor.evaluate((el) => el.innerHTML);
     expect(innerHTML).toContain('<br>');
 
     // Both lines should be present
-    const textContent = await reenteredEditor.evaluate(el => el.textContent);
+    const textContent = await reenteredEditor.evaluate((el) => el.textContent);
     expect(textContent).toContain('Edit line 1');
     expect(textContent).toContain('Edit line 2');
   });

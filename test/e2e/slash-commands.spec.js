@@ -1,5 +1,5 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { enterEditModeAndClick, pressHome } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -189,7 +189,9 @@ test.describe('Slash Commands', () => {
 
       // Should show Tomorrow option
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Tomorrow' })).toBeVisible();
+      await expect(
+        popup.locator('.autocomplete-item').filter({ hasText: 'Tomorrow' })
+      ).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);
@@ -206,7 +208,9 @@ test.describe('Slash Commands', () => {
       await wait(page);
 
       const popup = page.locator('#autocomplete-popup');
-      await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Yesterday' })).toBeVisible();
+      await expect(
+        popup.locator('.autocomplete-item').filter({ hasText: 'Yesterday' })
+      ).toBeVisible();
 
       await page.keyboard.press('Enter');
       await wait(page);

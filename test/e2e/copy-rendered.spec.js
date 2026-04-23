@@ -1,11 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  waitForBlocks,
-  getFirstBlockId,
-  updateBlockText,
-  exitEditMode
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { exitEditMode, getFirstBlockId, updateBlockText, waitForBlocks } from './helpers/index.js';
 
 /**
  * Phase 4 probe: when rendered **bold** / *italic* / $math$ is partially
@@ -34,17 +29,20 @@ test.describe('Phase 4 probe: native copy of rendered formatting', () => {
   });
 
   async function selectFullBlockAndCopy(page) {
-    return page.evaluate(({ id }) => {
-      const root = document.querySelector(`[data-block-id="${id}"] .block-content`);
-      if (!root) return { err: 'no-block-content', textContent: null, selection: null };
-      const textContent = root.textContent;
-      const range = document.createRange();
-      range.selectNodeContents(root);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      return { err: null, textContent, selection: sel.toString() };
-    }, { id: blockId });
+    return page.evaluate(
+      ({ id }) => {
+        const root = document.querySelector(`[data-block-id="${id}"] .block-content`);
+        if (!root) return { err: 'no-block-content', textContent: null, selection: null };
+        const textContent = root.textContent;
+        const range = document.createRange();
+        range.selectNodeContents(root);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return { err: null, textContent, selection: sel.toString() };
+      },
+      { id: blockId }
+    );
   }
 
   test('rendered **bold** preserves ** markers in textContent for copy', async ({ page }) => {

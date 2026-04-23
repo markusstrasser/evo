@@ -9,7 +9,7 @@
    - targets cannot contain whitespace
    - nested parentheses in targets are not supported
 
-   That is sufficient for the initial `evo://page/<url-encoded-title>` flow."
+   That is sufficient for the current `evo://page/<url-encoded-title>` flow."
   (:require [clojure.string :as str]))
 
 (def ^:private link-pattern
@@ -73,24 +73,17 @@
 
    Supported shapes:
    - evo://page/<url-encoded-page-title>      → {:type :page    :page-name s}
-   - evo://block/<id>                         → {:type :block   :block-id s}
    - evo://journal/<yyyy-mm-dd>               → {:type :journal :iso-date s}
 
-   Page and block IDs reject path separators — `evo://page/Foo/` would
-   otherwise slip through and let the navigate-to-page handler create a
-   ghost page titled `Foo/`. Block IDs are single-segment by design
-   (UUIDs). If nested IDs are ever introduced, rewrite the regex here
-   and audit navigation targets at the same time."
+   Page IDs reject path separators — `evo://page/Foo/` would otherwise
+   slip through and let the navigate-to-page handler create a ghost page
+   titled `Foo/`."
   [target]
   (when (string? target)
     (cond
       (re-matches #"^evo://page/([^/\s]+)$" target)
       (let [[_ encoded-title] (re-matches #"^evo://page/([^/\s]+)$" target)]
         {:type :page :page-name (decode-url-component encoded-title)})
-
-      (re-matches #"^evo://block/([^/\s]+)$" target)
-      (let [[_ id] (re-matches #"^evo://block/([^/\s]+)$" target)]
-        {:type :block :block-id id})
 
       (re-matches #"^evo://journal/(\d{4}-\d{2}-\d{2})$" target)
       (let [[_ iso] (re-matches #"^evo://journal/(\d{4}-\d{2}-\d{2})$" target)]

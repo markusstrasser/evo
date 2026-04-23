@@ -2,7 +2,7 @@
 
 Canonical, implementation-agnostic description of the Logseq desktop "feel" (macOS build 0.10.x). Every statement below comes from observing and reading upstream Logseq; use it as the ground truth before mapping behavior into another client.
 
-_Last verification:_ 2025‑12‑12 against `~/Projects/best/logseq` (main). Re-run the walkthrough any time upstream changes.
+_Last verification:_ 2025‑12‑12 against a local checkout of upstream Logseq (main). Re-run the walkthrough any time upstream changes.
 
 ---
 
@@ -47,7 +47,7 @@ This spec has been split into focused documents for easier reference:
 
 ## 2. Observation Workflow
 
-1. `cd ~/Projects/best/logseq` (main branch). Use `OVERVIEW.md` there as your file map.
+1. Open a local checkout of upstream Logseq on the `main` branch. Use its `OVERVIEW.md` as your file map.
 2. For each interaction area (state machine, navigation, selection, editing, structural moves, folding/zoom, clipboard, slash palette, quick switcher, undo/redo, mouse gestures) inspect the upstream files listed in §3.
 3. When uncertain, run the Logseq desktop app and reproduce the scenario manually; record any edge cases in this spec with links back to the upstream code you verified.
 
@@ -181,7 +181,7 @@ Scenario: Zoom boundary
 | FR-Undo-01..04 | Undo/redo stack, cursor restore, batching, edge cases | §7.8 | `state.cljs`, `handler/history.cljs`, `undo_redo.cljs` |
 | FR-Plugin-01..03 | Plugin hooks, command extension, renderer hooks | §8 | `handler/plugin.cljs`, `state.cljs`, `logseq/api.cljs` |
 
-> **Verification note:** Behaviors confirmed against `~/Projects/best/logseq` (main, 2025‑12‑12). Re-run validation whenever upstream changes.
+> **Verification note:** Behaviors confirmed against a local checkout of upstream Logseq (main, 2025‑12‑12). Re-run validation whenever upstream changes.
 
 **Target application:** Logseq desktop (macOS build 0.10.x).  \n**Purpose:** Canonical record of user-observable behavior—implementation-specific notes live elsewhere.
 

@@ -1,7 +1,7 @@
 # LESSONS.md
 
 Thematic distillation from 1661 commits. Chronology lives in
-[ANCESTRY.md](ANCESTRY.md); this doc extracts the rules.
+the repo's development history; this doc extracts the rules.
 
 ## The dominant pattern: build → use → subtract
 

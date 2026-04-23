@@ -796,7 +796,7 @@ Make sure `set-dispatch!` handles your handler type correctly.
 - **Event Handlers**: https://replicant.fun/event-handlers/
 - **Lifecycle Hooks**: https://replicant.fun/life-cycle-hooks/
 - **API Docs**: https://cljdoc.org/d/no.cjohansen/replicant/
-- **Source Code**: `~/Projects/best/replicant/src/replicant/core.cljc`
+- **Source Code**: local checkout of `replicant`, `src/replicant/core.cljc`
 - **Example Usage**: `src/lab/app.cljs` (interpolate-actions), `src/components/block.cljs` (lifecycle hooks)
 
 

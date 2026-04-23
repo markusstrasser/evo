@@ -1,6 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick, getBlockText } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { enterEditModeAndClick } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
@@ -34,7 +34,7 @@ test.describe('Clipboard Operations', () => {
           const pasteEvent = new ClipboardEvent('paste', {
             bubbles: true,
             cancelable: true,
-            clipboardData: new DataTransfer()
+            clipboardData: new DataTransfer(),
           });
           pasteEvent.clipboardData.setData('text/plain', 'pasted text');
           el.dispatchEvent(pasteEvent);
@@ -61,7 +61,7 @@ test.describe('Clipboard Operations', () => {
           const pasteEvent = new ClipboardEvent('paste', {
             bubbles: true,
             cancelable: true,
-            clipboardData: new DataTransfer()
+            clipboardData: new DataTransfer(),
           });
           pasteEvent.clipboardData.setData('text/plain', '\n\nSecond\n\nThird');
           el.dispatchEvent(pasteEvent);
@@ -93,7 +93,7 @@ test.describe('Clipboard Operations', () => {
       await wait(page, 200);
 
       // Check internal clipboard state via window.DEBUG
-      const clipboardText = await page.evaluate(() => {
+      const _clipboardText = await page.evaluate(() => {
         return window.TEST_HELPERS?.getSession()?.ui?.clipboard_text;
       });
 
@@ -107,7 +107,7 @@ test.describe('Clipboard Operations', () => {
     test('selecting block and pressing Cmd+C stores clipboard text', async ({ page }) => {
       // Get first block
       const firstBlock = page.locator('[data-block-id]').first();
-      const blockId = await firstBlock.getAttribute('data-block-id');
+      const _blockId = await firstBlock.getAttribute('data-block-id');
 
       // Click block content to focus it (use first() as block may have child content)
       const content = firstBlock.locator('> .block-content').first();
@@ -134,7 +134,7 @@ test.describe('Clipboard Operations', () => {
       await wait(page);
 
       // Get initial text
-      let block = page.locator('[contenteditable="true"]');
+      const block = page.locator('[contenteditable="true"]');
       const initialText = await block.textContent();
       expect(initialText).toBe('Text to cut');
 
@@ -168,7 +168,7 @@ test.describe('Clipboard Operations', () => {
           const pasteEvent = new ClipboardEvent('paste', {
             bubbles: true,
             cancelable: true,
-            clipboardData: new DataTransfer()
+            clipboardData: new DataTransfer(),
           });
           pasteEvent.clipboardData.setData('text/plain', '');
           el.dispatchEvent(pasteEvent);

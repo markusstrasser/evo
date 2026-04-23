@@ -1,11 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  enterEditModeAndClick,
-  getBlockText,
-  waitForState,
-  getFirstBlockId
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { enterEditModeAndClick, getBlockText, getFirstBlockId } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
@@ -38,7 +33,7 @@ test.describe('Kill Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'update-cursor-state',
           blockId: id,
-          cursorPos: 6
+          cursorPos: 6,
         });
       }, blockId);
       await wait(page);
@@ -47,7 +42,7 @@ test.describe('Kill Operations', () => {
       await page.evaluate((id) => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'kill-to-end',
-          blockId: id
+          blockId: id,
         });
       }, blockId);
       await wait(page, 200);
@@ -76,7 +71,7 @@ test.describe('Kill Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'update-cursor-state',
           blockId: id,
-          cursorPos: 5
+          cursorPos: 5,
         });
       }, blockId);
       await wait(page);
@@ -85,7 +80,7 @@ test.describe('Kill Operations', () => {
       await page.evaluate((id) => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'kill-to-end',
-          blockId: id
+          blockId: id,
         });
       }, blockId);
       await wait(page, 200);
@@ -114,7 +109,7 @@ test.describe('Kill Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'update-cursor-state',
           blockId: id,
-          cursorPos: 6
+          cursorPos: 6,
         });
       }, blockId);
       await wait(page);
@@ -123,7 +118,7 @@ test.describe('Kill Operations', () => {
       await page.evaluate((id) => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'kill-to-beginning',
-          blockId: id
+          blockId: id,
         });
       }, blockId);
       await wait(page, 200);
@@ -152,7 +147,7 @@ test.describe('Kill Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'update-cursor-state',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page);
@@ -161,7 +156,7 @@ test.describe('Kill Operations', () => {
       await page.evaluate((id) => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'kill-word-forward',
-          blockId: id
+          blockId: id,
         });
       }, blockId);
       await wait(page, 200);
@@ -190,7 +185,7 @@ test.describe('Kill Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'update-cursor-state',
           blockId: id,
-          cursorPos: 16 // Length of "Hello World Test"
+          cursorPos: 16, // Length of "Hello World Test"
         });
       }, blockId);
       await wait(page);
@@ -199,7 +194,7 @@ test.describe('Kill Operations', () => {
       await page.evaluate((id) => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'kill-word-backward',
-          blockId: id
+          blockId: id,
         });
       }, blockId);
       await wait(page, 200);
@@ -251,15 +246,15 @@ test.describe('DEBUG API Verification', () => {
     await wait(page, 200);
 
     // Assert correct text
-    const result = await page.evaluate((id) =>
-      window.DEBUG?.assertBlockText?.(id, 'Test content'),
+    const result = await page.evaluate(
+      (id) => window.DEBUG?.assertBlockText?.(id, 'Test content'),
       blockId
     );
     expect(result?.ok).toBe(true);
 
     // Assert incorrect text
-    const failResult = await page.evaluate((id) =>
-      window.DEBUG?.assertBlockText?.(id, 'Wrong content'),
+    const failResult = await page.evaluate(
+      (id) => window.DEBUG?.assertBlockText?.(id, 'Wrong content'),
       blockId
     );
     expect(failResult?.ok).toBe(false);
@@ -283,7 +278,7 @@ test.describe('DEBUG API Verification', () => {
     await wait(page, 200);
 
     // Now undo should be available
-    const canUndoAfter = await page.evaluate(() => window.DEBUG?.canUndo?.());
+    const _canUndoAfter = await page.evaluate(() => window.DEBUG?.canUndo?.());
     // Note: depends on whether Enter creates history entry
   });
 
@@ -301,9 +296,9 @@ test.describe('DEBUG API Verification', () => {
     const blockId = await getFirstBlockId(page);
 
     // Perform a copy
-    await page.evaluate((id) => {
+    await page.evaluate((_id) => {
       window.TEST_HELPERS.dispatchIntent({
-        type: 'copy-selected'
+        type: 'copy-selected',
       });
     }, blockId);
     await wait(page, 200);
@@ -327,7 +322,7 @@ test.describe('DEBUG API Verification', () => {
     await page.evaluate((id) => {
       window.TEST_HELPERS.dispatchIntent({
         type: 'enter-edit',
-        blockId: id
+        blockId: id,
       });
     }, blockId);
     await wait(page, 100);

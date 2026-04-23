@@ -1,6 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick, pressHome } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { enterEditModeAndClick } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
@@ -72,7 +72,7 @@ test.describe('Block Formats', () => {
         const cs = window.getComputedStyle(el);
         return {
           borderLeftWidth: cs.borderLeftWidth,
-          fontStyle: cs.fontStyle
+          fontStyle: cs.fontStyle,
         };
       });
 
@@ -284,7 +284,9 @@ test.describe('Block Formats', () => {
       await expect(h6).not.toBeVisible();
 
       // Should render as plain span (use text filter for specificity)
-      const span = page.locator('span.block-content').filter({ hasText: '####### Too many hashes' });
+      const span = page
+        .locator('span.block-content')
+        .filter({ hasText: '####### Too many hashes' });
       await expect(span).toBeVisible();
       expect(await span.textContent()).toBe('####### Too many hashes');
     });

@@ -13,41 +13,44 @@
 
 // ── Re-exports from existing helpers ─────────────────────────────────────────
 
-export { selectPage, enterEditModeAndClick } from './edit-mode.js';
-
-export { getCursorPosition, setCursorPosition, typeAndVerifyCursor, expectCursorAt } from './cursor.js';
+export {
+  clearSelection,
+  countBlocks,
+  countSelectedBlocks,
+  enterEditMode,
+  exitEditMode,
+  getAllBlocks,
+  getBlockIdAt,
+  getBlockText,
+  getEditingBlockId,
+  getFirstBlockId,
+  isBlockSelected,
+  isEditing,
+  selectBlock,
+  updateBlockText,
+  waitForBlocks,
+} from './block-helpers.js';
 
 export {
-  pressKeyOnContentEditable,
-  pressKeyCombo,
+  expectCursorAt,
+  getCursorPosition,
+  setCursorPosition,
+  typeAndVerifyCursor,
+} from './cursor.js';
+export { enterEditModeAndClick, selectPage } from './edit-mode.js';
+export {
   // Cross-platform helpers
   isMac,
   modKey,
-  pressHome,
   pressEnd,
+  pressHome,
+  pressKeyCombo,
+  pressKeyOnContentEditable,
+  pressSelectToEnd,
+  pressSelectToStart,
   pressWordLeft,
   pressWordRight,
-  pressSelectToStart,
-  pressSelectToEnd
 } from './keyboard.js';
-
-export {
-  selectBlock,
-  clearSelection,
-  enterEditMode,
-  exitEditMode,
-  isBlockSelected,
-  countSelectedBlocks,
-  getBlockText,
-  getEditingBlockId,
-  isEditing,
-  getFirstBlockId,
-  getBlockIdAt,
-  countBlocks,
-  updateBlockText,
-  waitForBlocks,
-  getAllBlocks
-} from './block-helpers.js';
 
 // ── Session State Helpers ────────────────────────────────────────────────────
 
@@ -72,7 +75,8 @@ export async function getStateMachineState(page) {
     const session = window.TEST_HELPERS?.getSession();
     if (!session) return 'unknown';
     if (session.ui?.editing_block_id) return 'editing';
-    if (session.selection?.nodes && Object.keys(session.selection.nodes).length > 0) return 'selection';
+    if (session.selection?.nodes && Object.keys(session.selection.nodes).length > 0)
+      return 'selection';
     return 'idle';
   });
 }
@@ -113,8 +117,9 @@ export async function waitForState(page, expectedState, timeout = 5000) {
       const session = window.TEST_HELPERS?.getSession();
       if (!session) return false;
       const editing = session.ui?.editing_block_id;
-      const hasSelection = session.selection?.nodes && Object.keys(session.selection.nodes).length > 0;
-      const current = editing ? 'editing' : (hasSelection ? 'selection' : 'idle');
+      const hasSelection =
+        session.selection?.nodes && Object.keys(session.selection.nodes).length > 0;
+      const current = editing ? 'editing' : hasSelection ? 'selection' : 'idle';
       return current === state;
     },
     expectedState,
@@ -154,7 +159,7 @@ export async function waitForSelection(page, blockIds, timeout = 5000) {
       const session = window.TEST_HELPERS?.getSession();
       if (!session?.selection?.nodes) return false;
       const selected = Object.keys(session.selection.nodes);
-      return expectedIds.every(id => selected.includes(id));
+      return expectedIds.every((id) => selected.includes(id));
     },
     ids,
     { timeout }
@@ -183,7 +188,8 @@ export async function waitForIdle(page, timeout = 5000) {
 export async function assertIntentAllowed(page, intent) {
   const debug = await debugIntent(page, intent);
   if (!debug?.allowed) {
-    const reason = debug?.reason || `Intent ${intent.type} not allowed in state ${debug?.currentState}`;
+    const reason =
+      debug?.reason || `Intent ${intent.type} not allowed in state ${debug?.currentState}`;
     throw new Error(`Intent blocked: ${reason}`);
   }
 }
@@ -219,13 +225,15 @@ export async function getSelectionState(page) {
     // Handle both array and set representations
     const nodeList = Array.isArray(nodes)
       ? nodes
-      : (nodes instanceof Set ? Array.from(nodes) : Object.keys(nodes || {}));
+      : nodes instanceof Set
+        ? Array.from(nodes)
+        : Object.keys(nodes || {});
 
     return {
       nodes: nodeList,
       anchor: session.selection.anchor || null,
       focus: session.selection.focus || null,
-      direction: session.selection.direction || null
+      direction: session.selection.direction || null,
     };
   });
 }
@@ -248,8 +256,8 @@ export async function assertSelectionState(page, expected) {
   if (expected.nodes !== undefined) {
     const expectedSet = new Set(expected.nodes);
     const actualSet = new Set(actual.nodes);
-    const missing = expected.nodes.filter(id => !actualSet.has(id));
-    const extra = actual.nodes.filter(id => !expectedSet.has(id));
+    const missing = expected.nodes.filter((id) => !actualSet.has(id));
+    const extra = actual.nodes.filter((id) => !expectedSet.has(id));
     if (missing.length > 0) errors.push(`Missing blocks: ${missing.join(', ')}`);
     if (extra.length > 0) errors.push(`Extra blocks: ${extra.join(', ')}`);
   }
@@ -269,7 +277,7 @@ export async function assertSelectionState(page, expected) {
   return {
     pass: errors.length === 0,
     actual,
-    message: errors.length > 0 ? errors.join('; ') : 'Selection state matches'
+    message: errors.length > 0 ? errors.join('; ') : 'Selection state matches',
   };
 }
 
@@ -281,7 +289,7 @@ export async function assertSelectionState(page, expected) {
  * @param {number} [timeout=5000]
  */
 export async function waitForSelectionState(page, expected, timeout = 5000) {
-  const expectedNodes = expected.nodes ? new Set(expected.nodes) : null;
+  const _expectedNodes = expected.nodes ? new Set(expected.nodes) : null;
 
   await page.waitForFunction(
     ({ nodes, anchor, focus, direction }) => {
@@ -291,7 +299,9 @@ export async function waitForSelectionState(page, expected, timeout = 5000) {
       const currentNodes = session.selection.nodes;
       const nodeList = Array.isArray(currentNodes)
         ? currentNodes
-        : (currentNodes instanceof Set ? Array.from(currentNodes) : Object.keys(currentNodes || {}));
+        : currentNodes instanceof Set
+          ? Array.from(currentNodes)
+          : Object.keys(currentNodes || {});
       const currentSet = new Set(nodeList);
 
       // Check nodes if specified
@@ -318,7 +328,7 @@ export async function waitForSelectionState(page, expected, timeout = 5000) {
       nodes: expected.nodes || null,
       anchor: expected.anchor,
       focus: expected.focus,
-      direction: expected.direction
+      direction: expected.direction,
     },
     { timeout }
   );
@@ -335,7 +345,7 @@ export async function getCursorState(page) {
     const session = window.TEST_HELPERS?.getSession();
     return {
       editingBlockId: session?.ui?.editing_block_id || session?.ui?.['editing-block-id'] || null,
-      cursorPosition: session?.ui?.cursor_position || session?.ui?.['cursor-position'] || null
+      cursorPosition: session?.ui?.cursor_position || session?.ui?.['cursor-position'] || null,
     };
   });
 }
@@ -354,16 +364,20 @@ export async function assertCursorState(page, expected) {
   const errors = [];
 
   if (expected.editingBlockId !== undefined && actual.editingBlockId !== expected.editingBlockId) {
-    errors.push(`Editing block: expected '${expected.editingBlockId}', got '${actual.editingBlockId}'`);
+    errors.push(
+      `Editing block: expected '${expected.editingBlockId}', got '${actual.editingBlockId}'`
+    );
   }
 
   if (expected.cursorPosition !== undefined && actual.cursorPosition !== expected.cursorPosition) {
-    errors.push(`Cursor position: expected ${expected.cursorPosition}, got ${actual.cursorPosition}`);
+    errors.push(
+      `Cursor position: expected ${expected.cursorPosition}, got ${actual.cursorPosition}`
+    );
   }
 
   return {
     pass: errors.length === 0,
     actual,
-    message: errors.length > 0 ? errors.join('; ') : 'Cursor state matches'
+    message: errors.length > 0 ? errors.join('; ') : 'Cursor state matches',
   };
 }

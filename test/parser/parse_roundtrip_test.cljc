@@ -31,7 +31,6 @@
                "![cat](cat.png){width=200}"
                "text [label](https://x.com) trailing"
                "See [Foo](evo://page/Foo)"
-               "See [sec](evo://block/abc-123)"
                "See [today](evo://journal/2026-04-22)"
                "mix ==hi== and ~~bye~~ end"
                "math $E=mc^2$ inline"

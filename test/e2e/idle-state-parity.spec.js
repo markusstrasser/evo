@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { selectPage } from './helpers/index.js';
 
 /**
@@ -50,7 +50,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       return {
         editing: !!editingId,
         hasSelection: selectionNodes.length > 0 || !!focus,
-        idle: !editingId && selectionNodes.length === 0 && !focus
+        idle: !editingId && selectionNodes.length === 0 && !focus,
       };
     });
 
@@ -61,9 +61,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
    * Helper: Count total blocks on the page
    */
   async function countBlocks(page) {
-    return await page.evaluate(() =>
-      document.querySelectorAll('[data-block-id]').length
-    );
+    return await page.evaluate(() => document.querySelectorAll('[data-block-id]').length);
   }
 
   test.describe('FR-Idle-01: Idle guard - no accidental edits', () => {
@@ -170,12 +168,13 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       // Should NOT toggle checkbox or create blocks
       expect(afterCount).toBe(beforeCount);
     });
-
   });
 
   test.describe('FR-Idle-02: ArrowDown/Up select first/last', () => {
     // Logseq parity: Shift+Arrow in idle also starts selection (same as plain Arrow)
-    test('Shift+ArrowUp in idle state selects last visible block (Logseq parity)', async ({ page }) => {
+    test('Shift+ArrowUp in idle state selects last visible block (Logseq parity)', async ({
+      page,
+    }) => {
       await ensureIdleState(page);
 
       await page.keyboard.press('Shift+ArrowUp');
@@ -191,7 +190,9 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       expect(hasSelection).toBe(true);
     });
 
-    test('Shift+ArrowDown in idle state selects first visible block (Logseq parity)', async ({ page }) => {
+    test('Shift+ArrowDown in idle state selects first visible block (Logseq parity)', async ({
+      page,
+    }) => {
       await ensureIdleState(page);
 
       await page.keyboard.press('Shift+ArrowDown');
@@ -224,7 +225,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
         return {
           selectedCount: focus ? 1 : 0,
-          isFirst: focus === allBlocks[0]
+          isFirst: focus === allBlocks[0],
         };
       });
 
@@ -250,7 +251,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
 
         return {
           selectedCount: focus ? 1 : 0,
-          isLast: focus === allBlocks[allBlocks.length - 1]
+          isLast: focus === allBlocks[allBlocks.length - 1],
         };
       });
 
@@ -288,7 +289,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
         if (!sess) return { editing: false, hasFocus: false };
         return {
           editing: !!sess.ui?.['editing-block-id'],
-          hasFocus: !!sess.selection?.focus
+          hasFocus: !!sess.selection?.focus,
         };
       });
 
@@ -305,10 +306,10 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
         const db = window.TEST_HELPERS?.getDb?.();
         if (!sess) return { editing: false, text: '' };
         const editingId = sess.ui?.['editing-block-id'];
-        const text = editingId && db ? (db.nodes?.[editingId]?.props?.text || '') : '';
+        const text = editingId && db ? db.nodes?.[editingId]?.props?.text || '' : '';
         return {
           editing: !!editingId,
-          text
+          text,
         };
       });
 
