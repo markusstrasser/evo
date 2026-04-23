@@ -19,10 +19,16 @@
   #"^\s*\[([^\]]+)\]\(([^)\s]+)\)\s*$")
 
 (defn- decode-url-component
+  "Percent-decode S. Returns the decoded string, or S unchanged if decoding
+   throws (e.g. `%ZZ`, stray `%` at end). Render path must never crash on
+   malformed user input — a broken link should degrade to its raw form,
+   not unmount the block."
   [s]
   (when s
-    #?(:clj (java.net.URLDecoder/decode s "UTF-8")
-       :cljs (js/decodeURIComponent s))))
+    #?(:clj  (try (java.net.URLDecoder/decode s "UTF-8")
+                  (catch Exception _ s))
+       :cljs (try (js/decodeURIComponent s)
+                  (catch :default _ s)))))
 
 (defn split-with-links
   "Split text into markdown text/link segments.
@@ -67,13 +73,19 @@
 
    Supported shapes:
    - evo://page/<url-encoded-page-title>      → {:type :page    :page-name s}
-   - evo://block/<uuid-ish-id>                → {:type :block   :block-id s}
-   - evo://journal/<yyyy-mm-dd>               → {:type :journal :iso-date s}"
+   - evo://block/<id>                         → {:type :block   :block-id s}
+   - evo://journal/<yyyy-mm-dd>               → {:type :journal :iso-date s}
+
+   Page and block IDs reject path separators — `evo://page/Foo/` would
+   otherwise slip through and let the navigate-to-page handler create a
+   ghost page titled `Foo/`. Block IDs are single-segment by design
+   (UUIDs). If nested IDs are ever introduced, rewrite the regex here
+   and audit navigation targets at the same time."
   [target]
   (when (string? target)
     (cond
-      (re-matches #"^evo://page/(.+)$" target)
-      (let [[_ encoded-title] (re-matches #"^evo://page/(.+)$" target)]
+      (re-matches #"^evo://page/([^/\s]+)$" target)
+      (let [[_ encoded-title] (re-matches #"^evo://page/([^/\s]+)$" target)]
         {:type :page :page-name (decode-url-component encoded-title)})
 
       (re-matches #"^evo://block/([^/\s]+)$" target)

@@ -1587,15 +1587,14 @@
               ;; evo://page/ link renders as a preview card. Every other
               ;; content flows through the render-registry pipeline and
               ;; the :doc handler takes care of ZWSP-on-empty.
-              rendered (if (and link-only (= :page (:type evo-link-target)))
+              ;; :doc handler already emits ZWSP for empty content and
+              ;; evo-page-card is always non-empty — no fallback needed.
+              children (if (and link-only (= :page (:type evo-link-target)))
                          [(evo-page-card db
                                          (:label link-only)
                                          (:page-name evo-link-target)
                                          on-intent)]
                          (render-block-content db block-id content on-intent))
-              children (if (seq rendered)
-                         rendered
-                         ["\u200B"]) ; ZWS makes block visible to a11y tree
               ;; Delegate math detection to the parser — avoids
               ;; false-positive typeset passes on inputs like
               ;; `cljs$core$key` that the parser rejects.
