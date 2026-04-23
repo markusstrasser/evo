@@ -173,7 +173,7 @@
 
 (deftest ^{:fr/ids #{:fr.ui/slash-close}} dismiss-closes-without-insert
   (testing ":autocomplete/dismiss clears palette state, no DB op"
-    (let [db (seed-pages "A")
+    (let [initial-db (seed-pages "A")
           session (-> (empty-session)
                       (assoc-in [:ui :autocomplete]
                                 {:type :page-ref
@@ -182,9 +182,9 @@
                                  :query "a"
                                  :selected 0
                                  :items [{:title "A"}]}))
-          {:keys [db session]} (run db session {:type :autocomplete/dismiss})]
+          {:keys [db session]} (run initial-db session {:type :autocomplete/dismiss})]
       (is (nil? (get-in session [:ui :autocomplete])))
-      (is (= (seed-pages "A") db) "no DB mutation"))))
+      (is (= initial-db db) "no DB mutation"))))
 
 ;; ── :toggle-quick-switcher — FR.ui/quick-switcher ───────────────────────────
 
