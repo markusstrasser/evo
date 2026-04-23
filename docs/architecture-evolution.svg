@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Evo architecture evolution</title>
+  <desc id="desc">Timeline showing the main architectural narrowing decisions in Evo from September 2025 through April 2026.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f6f2ea; }
+      .axis { stroke: #2e2a26; stroke-width: 2; }
+      .tick { stroke: #2e2a26; stroke-width: 2; }
+      .card { fill: #fffdf8; stroke: #2e2a26; stroke-width: 2; rx: 10; ry: 10; }
+      .date { font: 700 16px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #2e2a26; }
+      .label { font: 700 20px Georgia, "Times New Roman", serif; fill: #2e2a26; }
+      .body { font: 14px Georgia, "Times New Roman", serif; fill: #2e2a26; }
+      .small { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #5b524b; }
+      .accent1 { fill: #d2e5d0; }
+      .accent2 { fill: #f3d7b8; }
+      .accent3 { fill: #d7dff3; }
+      .accent4 { fill: #efd5d2; }
+      .accent5 { fill: #d8eceb; }
+      .accent6 { fill: #eadcb3; }
+      .accent7 { fill: #e2d8ef; }
+      .arrow { stroke: #2e2a26; stroke-width: 2; fill: none; marker-end: url(#m); }
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2e2a26"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="560"/>
+  <text x="48" y="50" class="label">Evo: how the architecture narrowed</text>
+  <text x="48" y="76" class="body">Not every experiment matters. These are the decisions that still show up in the current code.</text>
+
+  <line class="axis" x1="70" y1="280" x2="1130" y2="280"/>
+
+  <line class="tick" x1="120" y1="268" x2="120" y2="292"/>
+  <text x="88" y="320" class="date">2025-09</text>
+
+  <line class="tick" x1="270" y1="268" x2="270" y2="292"/>
+  <text x="238" y="320" class="date">2025-10</text>
+
+  <line class="tick" x1="430" y1="268" x2="430" y2="292"/>
+  <text x="398" y="320" class="date">2025-11</text>
+
+  <line class="tick" x1="590" y1="268" x2="590" y2="292"/>
+  <text x="558" y="320" class="date">2025-12</text>
+
+  <line class="tick" x1="760" y1="268" x2="760" y2="292"/>
+  <text x="728" y="320" class="date">2026-01</text>
+
+  <line class="tick" x1="900" y1="268" x2="900" y2="292"/>
+  <text x="868" y="320" class="date">2026-03</text>
+
+  <line class="tick" x1="1060" y1="268" x2="1060" y2="292"/>
+  <text x="1028" y="320" class="date">2026-04</text>
+
+  <rect class="card accent1" x="60" y="110" width="180" height="108"/>
+  <text x="76" y="138" class="date">2025-09</text>
+  <text x="76" y="166" class="body">Tree DB settles around</text>
+  <text x="76" y="186" class="small">:nodes</text>
+  <text x="140" y="186" class="small">+</text>
+  <text x="156" y="186" class="small">:children-by-parent</text>
+  <text x="76" y="206" class="small">+</text>
+  <text x="92" y="206" class="small">:derived</text>
+  <line class="arrow" x1="150" y1="218" x2="150" y2="262"/>
+
+  <rect class="card accent2" x="220" y="350" width="180" height="116"/>
+  <text x="236" y="378" class="date">2025-09 → 10</text>
+  <text x="236" y="406" class="body">Three-op IR wins:</text>
+  <text x="236" y="426" class="small">create-node</text>
+  <text x="236" y="444" class="small">place</text>
+  <text x="236" y="462" class="small">update-node</text>
+  <line class="arrow" x1="310" y1="350" x2="310" y2="298"/>
+
+  <rect class="card accent3" x="360" y="110" width="200" height="116"/>
+  <text x="376" y="138" class="date">2025-10 → 11</text>
+  <text x="376" y="166" class="body">Query layer and intent</text>
+  <text x="376" y="186" class="body">registry become explicit.</text>
+  <text x="376" y="210" class="small">kernel.query</text>
+  <text x="376" y="228" class="small">kernel.intent</text>
+  <line class="arrow" x1="460" y1="226" x2="460" y2="262"/>
+
+  <rect class="card accent4" x="520" y="350" width="214" height="116"/>
+  <text x="536" y="378" class="date">2025-11 → 12</text>
+  <text x="536" y="406" class="body">Session leaves the DB.</text>
+  <text x="536" y="426" class="body">Uncontrolled editing lands.</text>
+  <text x="536" y="450" class="small">shell.view-state</text>
+  <line class="arrow" x1="628" y1="350" x2="628" y2="298"/>
+
+  <rect class="card accent5" x="700" y="110" width="180" height="108"/>
+  <text x="716" y="138" class="date">2025-11 → 2026-01</text>
+  <text x="716" y="166" class="body">FR registry grows into</text>
+  <text x="716" y="186" class="body">an executable spec layer.</text>
+  <text x="716" y="210" class="small">resources/specs.edn</text>
+  <line class="arrow" x1="790" y1="218" x2="790" y2="262"/>
+
+  <rect class="card accent6" x="820" y="350" width="190" height="116"/>
+  <text x="836" y="378" class="date">2026-03</text>
+  <text x="836" y="406" class="body">Runtime story narrows</text>
+  <text x="836" y="426" class="body">around shell.executor.</text>
+  <text x="836" y="450" class="small">adapter cleanup, docs truth</text>
+  <line class="arrow" x1="915" y1="350" x2="915" y2="298"/>
+
+  <rect class="card accent7" x="980" y="110" width="180" height="132"/>
+  <text x="996" y="138" class="date">2026-04-22</text>
+  <text x="996" y="166" class="body">Mission resets to</text>
+  <text x="996" y="186" class="body">solid outliner + clean</text>
+  <text x="996" y="206" class="body">extension surface.</text>
+  <text x="996" y="226" class="small">AST + render registry land</text>
+  <line class="arrow" x1="1070" y1="242" x2="1070" y2="262"/>
+
+  <text x="48" y="516" class="body">Current code shape: small kernel, explicit intent layer, session outside the DB, parser AST feeding a shell-side render registry.</text>
+</svg>
