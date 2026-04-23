@@ -112,6 +112,7 @@
                  ;; UI Chrome toggles
             [{:key "\\" :mod true} {:type :toggle-sidebar}]
             [{:key "p" :mod true} {:type :toggle-hotkeys}]
+            [{:key "?" :mod true :shift true} {:type :toggle-hotkeys}]
             [{:key "e" :mod true :shift true} {:type :toggle-reading-mode}]
             [{:key "k" :mod true} {:type :toggle-quick-switcher}]
                  ;; Navigation history (browser-style back/forward)
