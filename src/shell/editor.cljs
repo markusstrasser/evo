@@ -487,8 +487,30 @@
       [:div
        [:h5 {:style {:margin "0 0 8px 0" :font-size "11px" :text-transform "uppercase"
                      :letter-spacing "0.05em" :color "#9ca3af"}} "UI"]
-       (hotkey (kbd "⌘" "B") "Toggle sidebar")
-       (hotkey (kbd "⌘" "?") "Toggle this panel")]]]))
+       (hotkey (kbd "⌘" "\\") "Toggle sidebar")
+       (hotkey (kbd "⌘" "P") "Toggle this panel")
+       (hotkey (kbd "⌘" "Shift" "E") "Toggle reading mode")]]]))
+
+(defn- FloatingControls
+  "Bottom-right floating buttons: reading mode + hotkey panel toggle."
+  [{:keys [on-intent reading-mode? hotkeys-visible?]}]
+  [:div.floating-controls
+   [:button.floating-btn
+    {:type "button"
+     :title "Reading mode (⌘⇧E)"
+     :aria-label "Toggle reading mode"
+     :aria-pressed (boolean reading-mode?)
+     :class (when reading-mode? "is-active")
+     :on {:click (fn [_] (on-intent {:type :toggle-reading-mode}))}}
+    "Aa"]
+   [:button.floating-btn
+    {:type "button"
+     :title "Keyboard shortcuts (⌘P)"
+     :aria-label "Toggle keyboard shortcuts"
+     :aria-pressed (boolean hotkeys-visible?)
+     :class (when hotkeys-visible? "is-active")
+     :on {:click (fn [_] (on-intent {:type :toggle-hotkeys}))}}
+    "?"]])
 
 (defn App
   "Main app - pure composition, no business logic."
@@ -501,12 +523,15 @@
         page-title (when current-page-id (q/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
+        reading-mode? (vs/reading-mode?)
         journals-view? (vs/journals-view?)
         quick-switcher-visible? (vs/quick-switcher-visible?)]
-    [:div {:class (str "app" (when embed? " app--embed"))}
-     ;; Sidebar for page navigation (toggleable via Cmd+B)
+    [:div {:class (str "app"
+                       (when embed? " app--embed")
+                       (when reading-mode? " reading-mode"))}
+     ;; Sidebar for page navigation (toggleable via Cmd+\)
      ;; Always show sidebar - it has the folder picker
-     (when (and sidebar-visible? (not embed?))
+     (when (and sidebar-visible? (not embed?) (not reading-mode?))
        (sidebar/Sidebar {:db db
                          :on-intent handle-intent
                          :on-pick-folder pick-folder!
@@ -577,7 +602,13 @@
 
      ;; Lightbox overlay for fullscreen image viewing
      (when-not embed?
-       (lightbox/Lightbox))]))
+       (lightbox/Lightbox))
+
+     ;; Floating controls (bottom-right): reading-mode + hotkeys toggles
+     (when-not embed?
+       (FloatingControls {:on-intent handle-intent
+                          :reading-mode? reading-mode?
+                          :hotkeys-visible? hotkeys-visible?}))]))
 
 ;; ── Main ──────────────────────────────────────────────────────────────────────
 
