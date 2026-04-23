@@ -1016,24 +1016,24 @@
        2px-of-transparent gutter that shifted text rightward on every block. */
     border-left: 1px solid transparent;
 
-    /* State visuals split across two scopes:
-         - `.block.{selected,focused,editing}` paints ONLY the left-bar rail
-           (signals subtree scope — the blast-radius of structural ops — without
-           a background tint that would stack with descendant row tints).
-         - `.block-content.{selected,focused,editing}` paints the ROW tint
-           (signals "this node is literally the focused/selected/editing node").
-       One hue per region, no overlap: rail shows scope, row shows identity. */
+    /* State visuals: rail on .block, background on the direct-child
+       .block-content. The `>` combinator keeps the tint off descendants
+       (no bleed), so state classes stay on .block where they've always
+       been — no cljs plumbing required. */
 
     &.selected {
       border-left-color: var(--color-selected-border);
+      & > .block-content { background: var(--color-selected-bg); border-radius: var(--radius-sm); }
     }
 
     &.focused {
       border-left-color: oklch(70% 0.06 55);
+      & > .block-content { background: var(--color-focused-bg); border-radius: var(--radius-sm); }
     }
 
     &.editing {
       border-left-color: oklch(65% 0.12 55);
+      & > .block-content { background: oklch(98.5% 0.012 55); border-radius: var(--radius-sm); }
     }
 
     &.dragging {
@@ -1099,28 +1099,6 @@
     &:empty::before {
       content: "\00a0";
       color: transparent;
-    }
-
-    /* Row-scoped state visuals — mirror kernel semantics: these are point
-       states (single-node), vs. the subtree wash on .block.selected. */
-    &.selected,
-    &.focused,
-    &.editing {
-      border-radius: var(--radius-sm);
-    }
-
-    &.selected {
-      /* Direct selection — this row is literally in selection-nodes */
-      background: var(--color-selected-bg);
-    }
-
-    &.focused {
-      background: var(--color-focused-bg);
-    }
-
-    &.editing {
-      /* Warm editing tint — same hue as the left-bar rail */
-      background: oklch(98.5% 0.012 55);
     }
   }
 
