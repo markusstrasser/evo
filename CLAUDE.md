@@ -117,7 +117,7 @@ src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Page refs
 src/components/      # Replicant UI components
 src/spec/registry.cljc  # FR loader + validation
-resources/specs.edn  # FR registry (44 FRs with :scenarios keys)
+resources/specs.edn  # FR registry (50 FRs with :scenarios keys)
 resources/failure_modes.edn # Known bugs/anti-patterns with symptoms and fixes
 ```
 
