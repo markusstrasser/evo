@@ -71,7 +71,10 @@ bb check:kernel  # Kernel extraction harness
 
 | File | Scope |
 |------|-------|
-| **[specs.edn](../resources/specs.edn)** | FR registry (44 functional requirements with scenarios) |
+| **[specs.edn](../resources/specs.edn)** | FR registry (50 functional requirements with scenarios) |
+
+The browsable spec handbook is served separately from the editor shell at
+`/specs.html` when the `:spec-viewer` Shadow build is running.
 | **[failure_modes.edn](../resources/failure_modes.edn)** | Known bugs/anti-patterns with symptoms and fixes |
 
 ---

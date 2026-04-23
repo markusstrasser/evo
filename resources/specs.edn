@@ -1269,49 +1269,21 @@
  {:desc "Cmd+. zooms into block as temporary root"
   :priority :medium
   :type :intent-level
-  :status :active
+  :status :future
   :version 1
-  :tags [:zoom :navigation]
+  :tags [:zoom :navigation :future]
   :spec-ref "LOGSEQ_SPEC.md §6"
-
-  :behaviors
-  [{:context "Block selected or editing"
-    :behavior "Set block as zoom root, hide all other top-level blocks"
-    :scenario :ZOOM-IN}]
-
-  :scenarios
-  {:ZOOM-IN
-   {:name "Zoom into block"
-    :setup {:tree [:doc
-                   [:a "Other"]
-                   [:b "Target" {:selected true}
-                    [:c "Child"]]]}
-    :action {:type :zoom-in :block-id "b"}
-    :expect {:zoom-root "b"}}}}
+  :notes "Zoom root remains an internal visibility mechanism for existing navigation and selection tests. No user-facing :zoom-in intent is registered."}
 
  :fr.zoom/restore-scope
  {:desc "Escape from zoom restores normal scope"
   :priority :medium
   :type :intent-level
-  :status :active
+  :status :future
   :version 1
-  :tags [:zoom]
+  :tags [:zoom :future]
   :spec-ref "LOGSEQ_SPEC.md §6 FR-Scope-03"
-
-  :behaviors
-  [{:context "Currently zoomed into a block"
-    :behavior "Clear zoom root, show all top-level blocks"
-    :scenario :ZOOM-OUT}]
-
-  :scenarios
-  {:ZOOM-OUT
-   {:name "Zoom out restores full view"
-    :setup {:tree [:doc
-                   [:a "Other"]
-                   [:b "Target"]]
-            :zoom-root "b"}
-    :action {:type :zoom-out}
-    :expect {:zoom-root nil}}}}
+  :notes "Restoring scope is currently handled indirectly when page navigation clears :zoom-root; no user-facing :zoom-out intent is registered."}
 
  ;; Structural (additional)
  :fr.struct/delete-block

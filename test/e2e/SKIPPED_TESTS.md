@@ -4,14 +4,16 @@ This document tracks all skipped tests in the E2E test suite, categorized by rea
 
 ## Categories
 
-### 1. Not Implemented Features (Valid Skips)
-Tests for features that are planned but not yet implemented. These should remain skipped until the feature is built.
+### 1. Out-of-Scope or Explicit Product Gaps
+These are valid skips because the current project direction is a solid outliner,
+not open-ended Logseq parity. Re-enable only when the feature becomes a real
+product requirement, not because the parity fixture exists.
 
 | Test | File | Feature | Priority |
 |------|------|---------|----------|
 | arrow navigation stops at current page boundaries | navigation-selection-parity.spec.js:82 | Page scope isolation (§4.1) | HIGH |
-| vertical navigation respects zoom boundaries | navigation-selection-parity.spec.js:161 | Zoom navigation guards | MEDIUM |
-| Cmd+Shift+A selects all blocks in view | editing-parity.spec.js:348 | Select all blocks | LOW |
+| vertical navigation respects zoom boundaries | navigation-selection-parity.spec.js:161 | User-facing zoom is not registered | MEDIUM |
+| Cmd+Shift+A selects all blocks in view | editing-parity.spec.js:348 | Select-all-blocks is not a current product surface | LOW |
 
 ### 2. Flaky Tests (Need Investigation)
 Tests that fail intermittently due to timing, browser behavior, or test infrastructure issues.
@@ -34,14 +36,15 @@ These tests were removed because they tested implementation details or were dupl
 | cursor positioning after navigation | text-selection.spec.js:285 | Duplicate - covered by navigation.spec.js |
 | maintains cursor during block operations | text-selection.spec.js:309 | Duplicate - covered by editing-parity.spec.js |
 
-### 3. Feature Parity Tests (Deferred)
-Tests for Logseq features that are intentionally different or lower priority in this implementation.
+### 3. Feature Parity Tests (Divergent)
+Tests for Logseq behaviors that are intentionally different or not worth
+carrying as backlog.
 
 | Test | File | Reason | Action |
 |------|------|--------|--------|
 | Word Navigation | editing-parity.spec.js:162 | Uses Ctrl+Shift+F/B (Emacs-style, not in Logseq spec) | Keep skipped |
-| Kill Commands | editing-parity.spec.js:216 | Conflicts with Cmd+K (quick-switcher) | Keep skipped until keybinding resolved |
-| Text Formatting - Highlight & Strikethrough | editing-parity.spec.js:478 | Relies on word selection | Implement after word selection |
+| Kill Commands | editing-parity.spec.js:216 | Conflicts with Cmd+K (quick-switcher) | Keep skipped unless kill commands become a real requirement |
+| Text Formatting - Highlight & Strikethrough | editing-parity.spec.js:478 | Relies on word selection | Keep skipped unless word selection becomes a real requirement |
 | UI Feel - No Regressions | editing-parity.spec.js:528 | Uses word nav and kill commands | Keep skipped |
 | Undo/Redo | editing-parity.spec.js:375 | History system tracks DB ops, not text edits | Document as expected behavior |
 
@@ -57,20 +60,19 @@ Tests for Logseq features that are intentionally different or lower priority in 
 2. **Remove DOM extraction test** (text-selection.spec.js:150) - Covered by unit tests
 3. **Add TODO comments** to valid skips with issue references
 
-### Short-term (Next Sprint)
+### Short-term
 1. **Fix typing flakiness** - Add helper that types slowly with verification
 2. **Fix cursor tracking** - Update tests to follow cursor to new elements
-3. **Implement page scope isolation** (§4.1) - High priority feature gap
+3. **Reassess page scope isolation** (§4.1) only if it reproduces as a current editor bug
 
 ### Long-term
-1. **Implement zoom boundaries**
-2. **Resolve Cmd+K conflict** for kill commands
-3. **Add word selection** then re-enable dependent tests
+1. Delete parity skips that no longer match the product scope
+2. Convert real current bugs into focused E2E specs
 
 ## Test Count Summary
 
 - **Total skipped tests**: ~14 (reduced from ~18)
-- **Valid skips (unimplemented features)**: 3
+- **Valid skips (out-of-scope/product gaps)**: 3
 - **Flaky tests (need fixes)**: 5 (reduced from 9)
 - **Intentionally different behavior**: 5
 - **Known limitations**: 1
