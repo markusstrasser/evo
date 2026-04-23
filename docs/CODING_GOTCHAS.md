@@ -497,10 +497,6 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:collapse` | Collapse a block (hide children). |
 | `:toggle-subtree` | Toggle entire subtree (Alt+Click on bullet - Logse... |
 | `:toggle-all-folds` | Toggle all folds on a page. Expand all if any coll... |
-| `:zoom-in` | Zoom into a block (make it the rendering root). |
-| `:zoom-out` | Zoom out to previous level. |
-| `:zoom-to` | Zoom to specific block in zoom stack (breadcrumb c... |
-| `:reset-zoom` | Reset zoom to root (clear zoom stack). |
 | `:toggle-doc-mode` | Toggle doc-mode (swap Enter/Shift+Enter behavior).... |
 | `:toggle-sidebar` | Toggle left sidebar (pages) visibility. Bound to C... |
 | `:toggle-hotkeys` | Toggle hotkeys reference panel visibility. Bound t... |

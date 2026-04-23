@@ -64,17 +64,22 @@ export async function enterEditMode(page, blockId, cursorAt = 'end') {
   await page.waitForTimeout(50);
 
   // Then enter edit mode
-  await page.evaluate(({ id, cursor }) => {
-    window.TEST_HELPERS?.dispatchIntent({
-      type: 'enter-edit',
-      'block-id': id,
-      'cursor-at': cursor === 'start' ? 'start' : 'end'
-    });
-  }, { id: blockId, cursor: cursorAt });
+  await page.evaluate(
+    ({ id, cursor }) => {
+      window.TEST_HELPERS?.dispatchIntent({
+        type: 'enter-edit',
+        'block-id': id,
+        'cursor-at': cursor === 'start' ? 'start' : 'end',
+      });
+    },
+    { id: blockId, cursor: cursorAt }
+  );
 
   // Wait for the contenteditable to appear (lifecycle hook handles focus)
   // Note: data-block-id is on parent div.block, not on the contenteditable span
-  await page.waitForSelector(`div.block[data-block-id="${blockId}"] [contenteditable="true"]`, { timeout: 5000 });
+  await page.waitForSelector(`div.block[data-block-id="${blockId}"] [contenteditable="true"]`, {
+    timeout: 5000,
+  });
   await page.waitForTimeout(50);
 }
 
@@ -212,9 +217,12 @@ export async function countBlocks(page) {
  * @param {string} text
  */
 export async function updateBlockText(page, blockId, text) {
-  await page.evaluate(({ id, content }) => {
-    window.TEST_HELPERS?.setBlockText(id, content);
-  }, { id: blockId, content: text });
+  await page.evaluate(
+    ({ id, content }) => {
+      window.TEST_HELPERS?.setBlockText(id, content);
+    },
+    { id: blockId, content: text }
+  );
   await page.waitForTimeout(100);
 }
 
@@ -238,13 +246,14 @@ export async function getAllBlocks(page) {
   return await page.evaluate(() => {
     const blocks = document.querySelectorAll('[data-block-id]');
     return Array.from(blocks).map((block, idx) => {
-      const editable = block.querySelector('[contenteditable="true"]') ||
-                       (block.getAttribute('contenteditable') === 'true' ? block : null);
+      const editable =
+        block.querySelector('[contenteditable="true"]') ||
+        (block.getAttribute('contenteditable') === 'true' ? block : null);
       return {
         index: idx,
         id: block.getAttribute('data-block-id'),
         text: editable?.textContent || block.textContent?.replace(/^•\s*/, ''),
-        isFocused: editable === document.activeElement || block.contains(document.activeElement)
+        isFocused: editable === document.activeElement || block.contains(document.activeElement),
       };
     });
   });

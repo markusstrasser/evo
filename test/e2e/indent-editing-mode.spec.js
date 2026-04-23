@@ -1,6 +1,12 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable, waitForBlocks, getFirstBlockId, enterEditMode, getEditingBlockId } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import {
+  enterEditMode,
+  getEditingBlockId,
+  getFirstBlockId,
+  pressKeyOnContentEditable,
+  waitForBlocks,
+} from './helpers/index.js';
 
 /**
  * Tests for Tab/Shift+Tab while in editing mode.
@@ -50,12 +56,15 @@ test.describe('Indent/Outdent in Editing Mode', () => {
     const childId = 'test-child-block';
 
     // Create a child block under the first block using transact
-    await page.evaluate(({ parentId, childId }) => {
-      window.TEST_HELPERS?.transact([
-        { op: 'create-node', id: childId, type: 'block', props: { text: 'Child block' } },
-        { op: 'place', id: childId, under: parentId, at: 'last' }
-      ]);
-    }, { parentId: firstBlockId, childId });
+    await page.evaluate(
+      ({ parentId, childId }) => {
+        window.TEST_HELPERS?.transact([
+          { op: 'create-node', id: childId, type: 'block', props: { text: 'Child block' } },
+          { op: 'place', id: childId, under: parentId, at: 'last' },
+        ]);
+      },
+      { parentId: firstBlockId, childId }
+    );
     await page.waitForTimeout(100);
 
     // Enter edit mode on the CHILD block
@@ -86,9 +95,12 @@ test.describe('Indent/Outdent in Editing Mode', () => {
     const firstBlockId = await getFirstBlockId(page);
 
     // Set some text on first block
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'Hello world');
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.setBlockText(id, 'Hello world');
+      },
+      { id: firstBlockId }
+    );
     await page.waitForTimeout(50);
 
     // Enter edit mode at end of first block

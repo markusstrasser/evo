@@ -8,7 +8,7 @@ What's NOT yet implemented, what we deliberately diverge from, and implementatio
 
 ## Deliberate Divergences from Logseq
 
-Features we intentionally don't implement. See `VISION.md` for philosophy.
+Features we intentionally don't implement. See `docs/GOALS.md` for project philosophy and scope.
 
 ### No Block References `(())`
 

@@ -4,7 +4,7 @@
  * Tests for the Logseq-style quick page search overlay.
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Quick Switcher', () => {
   test.beforeEach(async ({ page }) => {
@@ -83,11 +83,11 @@ test.describe('Quick Switcher', () => {
     // Open quick switcher and search for Tasks
     await page.keyboard.press('Meta+k');
     await page.getByPlaceholder('Search pages...').fill('ta');
-    
+
     // Wait for the filtered result to appear
     await expect(page.locator('.quick-switcher-item')).toHaveCount(1);
     await expect(page.locator('.quick-switcher-results')).toContainText('Tasks');
-    
+
     await page.keyboard.press('Enter');
 
     // Should navigate to Tasks page
@@ -99,7 +99,7 @@ test.describe('Quick Switcher', () => {
     await expect(page.getByRole('heading', { name: '📄 Projects' })).toBeVisible();
 
     await page.keyboard.press('Meta+k');
-    
+
     // Click on Notes in results
     await page.locator('.quick-switcher-item').filter({ hasText: 'Notes' }).click();
 
@@ -112,11 +112,11 @@ test.describe('Quick Switcher', () => {
     await page.keyboard.press('Meta+k');
 
     // Get initial selection (first item should be selected)
-    const firstItem = page.locator('.quick-switcher-item').first();
-    
+    const _firstItem = page.locator('.quick-switcher-item').first();
+
     // Arrow down should move selection
     await page.keyboard.press('ArrowDown');
-    
+
     // Arrow up should move back
     await page.keyboard.press('ArrowUp');
 
@@ -161,12 +161,12 @@ test.describe('Quick Switcher', () => {
     // Enter edit mode using TEST_HELPERS (more reliable than dblclick)
     const blockWithText = page.locator('[data-block-id]').filter({ hasText: 'Evolver' });
     const blockId = await blockWithText.getAttribute('data-block-id');
-    
+
     await page.evaluate((id) => {
-      window.TEST_HELPERS.dispatchIntent({type: 'selection', mode: 'replace', ids: id});
-      window.TEST_HELPERS.dispatchIntent({type: 'enter-edit', 'block-id': id});
+      window.TEST_HELPERS.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
+      window.TEST_HELPERS.dispatchIntent({ type: 'enter-edit', 'block-id': id });
     }, blockId);
-    
+
     await expect(page.locator('[contenteditable="true"]')).toBeVisible({ timeout: 2000 });
 
     // Cmd+K should still open quick switcher

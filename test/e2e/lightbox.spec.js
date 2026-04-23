@@ -1,5 +1,5 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 const appReady = async (page) => {
   await page.goto('/index.html');
@@ -8,9 +8,12 @@ const appReady = async (page) => {
 };
 
 const openLightbox = async (page, src = 'blob:mock-lightbox', alt = 'Mock image') => {
-  await page.evaluate(([imageSrc, imageAlt]) => {
-    window.TEST_HELPERS.showLightbox(imageSrc, imageAlt);
-  }, [src, alt]);
+  await page.evaluate(
+    ([imageSrc, imageAlt]) => {
+      window.TEST_HELPERS.showLightbox(imageSrc, imageAlt);
+    },
+    [src, alt]
+  );
   await expect(page.locator('.lightbox-overlay')).toBeVisible();
   await expect(page.locator('body')).toHaveClass(/lightbox-open/);
 };

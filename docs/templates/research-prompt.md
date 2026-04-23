@@ -110,13 +110,13 @@ For large repos (>100MB), use tree exploration first:
 
 ```bash
 # 1. Explore structure
-tree -L 3 -d ~/Projects/best/clojurescript
+tree -L 3 -d <local-clojurescript-checkout>
 
 # 2. Check size with tokei
-tokei ~/Projects/best/clojurescript
+tokei <local-clojurescript-checkout>
 
 # 3. Zoom into specific subdirectory
-repomix ~/Projects/best/clojurescript/src/main/clojure/cljs \
+repomix <local-clojurescript-checkout>/src/main/clojure/cljs \
   --include "compiler.clj,analyzer.cljc" \
   --copy --output /dev/null
 ```

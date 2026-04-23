@@ -10,12 +10,8 @@
  * Tests actual keyboard behavior (the critical functionality).
  */
 
-import { test, expect } from '@playwright/test';
-import {
-  enterEditMode,
-  waitForBlocks,
-  getFirstBlockId
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { getFirstBlockId, waitForBlocks } from './helpers/index.js';
 
 // Helper to get tree structure from DOM
 async function getTreeStructure(page) {
@@ -24,8 +20,9 @@ async function getTreeStructure(page) {
     const blockElements = document.querySelectorAll('.block[data-block-id]');
 
     blockElements.forEach((el) => {
-      const contentEl = el.querySelector(':scope > [contenteditable="true"]') ||
-                        el.querySelector(':scope > .block-content');
+      const contentEl =
+        el.querySelector(':scope > [contenteditable="true"]') ||
+        el.querySelector(':scope > .block-content');
       if (contentEl) {
         // Calculate depth by counting ancestor .block-children elements
         let depth = 0;
@@ -44,7 +41,7 @@ async function getTreeStructure(page) {
           text: contentEl.textContent.trim(),
           depth: depth,
           hasChildren: hasChildren,
-          id: el.getAttribute('data-block-id')
+          id: el.getAttribute('data-block-id'),
         });
       }
     });
@@ -55,28 +52,34 @@ async function getTreeStructure(page) {
 
 // Helper to create a block with specific ID and text
 async function createBlock(page, id, text, parentId, afterId = null) {
-  await page.evaluate(({ id, text, parentId, afterId }) => {
-    // First create and place the block
-    window.TEST_HELPERS?.dispatchIntent({
-      type: 'create-and-place',
-      id: id,
-      parent: parentId,
-      ...(afterId ? { after: afterId } : {})
-    });
-  }, { id, text, parentId, afterId });
+  await page.evaluate(
+    ({ blockId, parentId, afterId }) => {
+      // First create and place the block
+      window.TEST_HELPERS?.dispatchIntent({
+        type: 'create-and-place',
+        id: blockId,
+        parent: parentId,
+        ...(afterId ? { after: afterId } : {}),
+      });
+    },
+    { blockId: id, parentId, afterId }
+  );
   await page.waitForTimeout(50);
 
   // Then set the text
   if (text) {
-    await page.evaluate(({ id, text }) => {
-      window.TEST_HELPERS?.setBlockText(id, text);
-    }, { id, text });
+    await page.evaluate(
+      ({ id, text }) => {
+        window.TEST_HELPERS?.setBlockText(id, text);
+      },
+      { id, text }
+    );
     await page.waitForTimeout(50);
   }
 }
 
 // Helper to indent a block (make it child of prev sibling)
-async function indentBlock(page, id) {
+async function _indentBlock(page, id) {
   await page.evaluate((id) => {
     window.TEST_HELPERS?.dispatchIntent({ type: 'indent', id: id });
   }, id);
@@ -99,9 +102,12 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smok
     const firstBlockId = await getFirstBlockId(page);
 
     // Set text for existing first block
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'Block A');
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.setBlockText(id, 'Block A');
+      },
+      { id: firstBlockId }
+    );
 
     // Create Block B after Block A
     await createBlock(page, 'block-b', 'Block B', 'test-page', firstBlockId);
@@ -117,8 +123,16 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smok
     const totalBefore = beforeMerge.length;
 
     // Verify children exist before merge
-    await expect(page.locator('[contenteditable="true"]:has-text("Child B1"), .block-content:has-text("Child B1")')).toBeVisible();
-    await expect(page.locator('[contenteditable="true"]:has-text("Child B2"), .block-content:has-text("Child B2")')).toBeVisible();
+    await expect(
+      page.locator(
+        '[contenteditable="true"]:has-text("Child B1"), .block-content:has-text("Child B1")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '[contenteditable="true"]:has-text("Child B2"), .block-content:has-text("Child B2")'
+      )
+    ).toBeVisible();
 
     // Enter edit mode in Block B at START (position 0)
     await page.evaluate(() => {
@@ -126,7 +140,11 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smok
     });
     await page.waitForTimeout(50);
     await page.evaluate(() => {
-      window.TEST_HELPERS?.dispatchIntent({ type: 'enter-edit', 'block-id': 'block-b', 'cursor-at': 'start' });
+      window.TEST_HELPERS?.dispatchIntent({
+        type: 'enter-edit',
+        'block-id': 'block-b',
+        'cursor-at': 'start',
+      });
     });
     await page.waitForSelector('div.block[data-block-id="block-b"] [contenteditable="true"]');
     await page.waitForTimeout(100);
@@ -139,11 +157,23 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smok
     await page.waitForTimeout(300);
 
     // CRITICAL VERIFICATION: Children should still be visible (not deleted)
-    await expect(page.locator('.block-content:has-text("Child B1"), [contenteditable="true"]:has-text("Child B1")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child B1"), [contenteditable="true"]:has-text("Child B1")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")'
+      )
+    ).toBeVisible();
 
     // Verify merged block exists
-    await expect(page.locator('[contenteditable="true"]:has-text("Block ABlock B"), .block-content:has-text("Block ABlock B")')).toBeVisible();
+    await expect(
+      page.locator(
+        '[contenteditable="true"]:has-text("Block ABlock B"), .block-content:has-text("Block ABlock B")'
+      )
+    ).toBeVisible();
 
     // Verify total blocks decreased by 1 (only Block B was removed, children preserved)
     const afterMerge = await getTreeStructure(page);
@@ -154,22 +184,35 @@ test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smok
     const firstBlockId = await getFirstBlockId(page);
 
     // Set text for first block
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'First block');
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.setBlockText(id, 'First block');
+      },
+      { id: firstBlockId }
+    );
 
     // Dispatch merge-with-prev (should be no-op since there's no previous block)
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
+      },
+      { id: firstBlockId }
+    );
     await page.waitForTimeout(50);
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.dispatchIntent({ type: 'merge-with-prev', 'block-id': id });
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.dispatchIntent({ type: 'merge-with-prev', 'block-id': id });
+      },
+      { id: firstBlockId }
+    );
     await page.waitForTimeout(100);
 
     // Block should still exist with content intact
-    await expect(page.locator('[contenteditable="true"]:has-text("First block"), .block-content:has-text("First block")')).toBeVisible();
+    await expect(
+      page.locator(
+        '[contenteditable="true"]:has-text("First block"), .block-content:has-text("First block")'
+      )
+    ).toBeVisible();
   });
 });
 
@@ -205,9 +248,12 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     const firstBlockId = await getFirstBlockId(page);
 
     // Use first block as Parent
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'Parent');
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.setBlockText(id, 'Parent');
+      },
+      { id: firstBlockId }
+    );
 
     // Create children under Parent
     await createBlock(page, 'child-a', 'Child A', firstBlockId);
@@ -219,9 +265,9 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
 
     // Get structure before outdenting
     const before = await getTreeStructure(page);
-    const childBBefore = before.find(b => b.text === 'Child B');
-    const childCBefore = before.find(b => b.text === 'Child C');
-    const childDBefore = before.find(b => b.text === 'Child D');
+    const childBBefore = before.find((b) => b.text === 'Child B');
+    const childCBefore = before.find((b) => b.text === 'Child C');
+    const childDBefore = before.find((b) => b.text === 'Child D');
 
     // First select the block (outdent requires :editing or :selection state)
     await page.evaluate(() => {
@@ -237,17 +283,35 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     await page.waitForTimeout(300);
 
     // Verify all blocks still visible
-    await expect(page.locator('.block-content:has-text("Parent"), [contenteditable="true"]:has-text("Parent")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child A"), [contenteditable="true"]:has-text("Child A")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child B"), [contenteditable="true"]:has-text("Child B")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child C"), [contenteditable="true"]:has-text("Child C")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child D"), [contenteditable="true"]:has-text("Child D")')).toBeVisible();
+    await expect(
+      page.locator('.block-content:has-text("Parent"), [contenteditable="true"]:has-text("Parent")')
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child A"), [contenteditable="true"]:has-text("Child A")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child B"), [contenteditable="true"]:has-text("Child B")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child C"), [contenteditable="true"]:has-text("Child C")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child D"), [contenteditable="true"]:has-text("Child D")'
+      )
+    ).toBeVisible();
 
     // Get structure after outdenting
     const after = await getTreeStructure(page);
-    const childBAfter = after.find(b => b.text === 'Child B');
-    const childCAfter = after.find(b => b.text === 'Child C');
-    const childDAfter = after.find(b => b.text === 'Child D');
+    const childBAfter = after.find((b) => b.text === 'Child B');
+    const childCAfter = after.find((b) => b.text === 'Child C');
+    const childDAfter = after.find((b) => b.text === 'Child D');
 
     // Child B should be outdented (less depth - now sibling of Parent)
     expect(childBAfter.depth).toBeLessThan(childBBefore.depth);
@@ -263,7 +327,7 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
 
     // Get tree structure - first block is at root level (depth 0)
     const before = await getTreeStructure(page);
-    const firstBlockBefore = before.find(b => b.id === firstBlockId);
+    const firstBlockBefore = before.find((b) => b.id === firstBlockId);
     const depthBefore = firstBlockBefore?.depth ?? 0;
 
     // First select the block (outdent requires :editing or :selection state)
@@ -279,7 +343,7 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     await page.waitForTimeout(200);
 
     const after = await getTreeStructure(page);
-    const firstBlockAfter = after.find(b => b.id === firstBlockId);
+    const firstBlockAfter = after.find((b) => b.id === firstBlockId);
     const depthAfter = firstBlockAfter?.depth ?? 0;
 
     // Depth should not have changed (can't outdent at root)
@@ -296,9 +360,12 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     const firstBlockId = await getFirstBlockId(page);
 
     // Use first block as Parent2
-    await page.evaluate(({ id }) => {
-      window.TEST_HELPERS?.setBlockText(id, 'Parent2');
-    }, { id: firstBlockId });
+    await page.evaluate(
+      ({ id }) => {
+        window.TEST_HELPERS?.setBlockText(id, 'Parent2');
+      },
+      { id: firstBlockId }
+    );
 
     // Create children
     await createBlock(page, 'child-a2', 'Child A2', firstBlockId);
@@ -307,7 +374,7 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     await page.waitForTimeout(200);
 
     const before = await getTreeStructure(page);
-    const childBBefore = before.find(b => b.text === 'Child B2');
+    const childBBefore = before.find((b) => b.text === 'Child B2');
 
     // First select the block (outdent requires :editing or :selection state)
     await page.evaluate(() => {
@@ -322,13 +389,25 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
     await page.waitForTimeout(300);
 
     // Verify all blocks visible
-    await expect(page.locator('.block-content:has-text("Parent2"), [contenteditable="true"]:has-text("Parent2")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child A2"), [contenteditable="true"]:has-text("Child A2")')).toBeVisible();
-    await expect(page.locator('.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")')).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Parent2"), [contenteditable="true"]:has-text("Parent2")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child A2"), [contenteditable="true"]:has-text("Child A2")'
+      )
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '.block-content:has-text("Child B2"), [contenteditable="true"]:has-text("Child B2")'
+      )
+    ).toBeVisible();
 
     // Child B should be outdented
     const after = await getTreeStructure(page);
-    const childBAfter = after.find(b => b.text === 'Child B2');
+    const childBAfter = after.find((b) => b.text === 'Child B2');
     expect(childBAfter.depth).toBeLessThan(childBBefore.depth);
 
     // Child B should have no children (no right siblings to capture)

@@ -1,9 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  waitForBlocks,
-  getSelectionState,
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { getSelectionState, waitForBlocks } from './helpers/index.js';
 
 // Read block text from the DB, not the rendered DOM. View-mode renders
 // a ZWSP (`​`) for empty blocks so the a11y tree sees the block;
@@ -69,9 +66,7 @@ async function seedPage(page, title) {
   }, title);
   await page.waitForFunction((t) => {
     const db = window.TEST_HELPERS.getDb();
-    return Object.values(db.nodes || {}).some(
-      (n) => n?.type === 'page' && n?.props?.title === t
-    );
+    return Object.values(db.nodes || {}).some((n) => n?.type === 'page' && n?.props?.title === t);
   }, title);
   // Stamp the first block with non-blank text so auto-trash leaves it alone.
   await page.evaluate((t) => {
@@ -180,8 +175,9 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
 
     await seedPage(page, 'AwayPage');
     await page.waitForFunction(
-      (id) => (window.TEST_HELPERS?.getSession()?.ui?.['current-page'] ??
-               window.TEST_HELPERS?.getSession()?.ui?.current_page) !== id,
+      (id) =>
+        (window.TEST_HELPERS?.getSession()?.ui?.['current-page'] ??
+          window.TEST_HELPERS?.getSession()?.ui?.current_page) !== id,
       target.pageId
     );
 
@@ -197,7 +193,9 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
     await expect.poll(() => getBlockText(page, sel.focus)).toBe('z');
   });
 
-  test('navigate-back / navigate-forward: first block accepts typing after step', async ({ page }) => {
+  test('navigate-back / navigate-forward: first block accepts typing after step', async ({
+    page,
+  }) => {
     await seedPage(page, 'PageA');
     await seedPage(page, 'PageB');
     const a = await getFirstChildOfPage(page, 'PageA');
@@ -257,7 +255,13 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
     // `;` and `$` are historically significant: they were signals the
     // MathJax math-content predicate rejected. Typing them as prose
     // must still produce the literal character.
-    const cases = [['1', '1'], [',', ','], [';', ';'], ['$', '$'], [' ', ' ']];
+    const cases = [
+      ['1', '1'],
+      [',', ','],
+      [';', ';'],
+      ['$', '$'],
+      [' ', ' '],
+    ];
 
     for (const [key, expected] of cases) {
       const title = `Punct-${key.charCodeAt(0)}`;
@@ -321,7 +325,7 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
     const alphaBefore = await getBlockText(page, alpha.firstBlockId);
     const betaBefore = await getBlockText(page, beta.firstBlockId);
     await page.keyboard.press('q');
-    await expect.poll(() => getBlockText(page, beta.firstBlockId)).toBe(betaBefore + 'q');
+    await expect.poll(() => getBlockText(page, beta.firstBlockId)).toBe(`${betaBefore}q`);
     expect(await getBlockText(page, alpha.firstBlockId)).toBe(alphaBefore);
   });
 

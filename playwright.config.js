@@ -13,8 +13,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - npm run test:e2e:debug    → debug mode with browser visible
  * - npm run test:e2e:ui       → Playwright UI mode
  */
-const headless =
-  process.env.PLAYWRIGHT_HEADLESS !== 'false';  // Default to headless=true
+const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false'; // Default to headless=true
 
 const shouldStartWebServer = process.env.PW_SKIP_WEB_SERVER !== '1';
 
@@ -31,9 +30,9 @@ export default defineConfig({
 
   // Structured output for AI parsing
   reporter: [
-    ['list'],  // Console output
+    ['list'], // Console output
     ['json', { outputFile: 'test-results/e2e-results.json' }],
-    ['html', { open: 'never' }]  // HTML report for manual review
+    ['html', { open: 'never' }], // HTML report for manual review
   ],
 
   use: {
@@ -49,7 +48,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
 
     // Browser viewport
-    viewport: { width: 1280, height: 720 }
+    viewport: { width: 1280, height: 720 },
   },
 
   // Test tiers via projects
@@ -63,19 +62,21 @@ export default defineConfig({
     {
       name: 'smoke',
       use: { ...devices['Desktop Chrome'] },
-      grep: /@smoke/  // Only run tests tagged with @smoke
+      grep: /@smoke/, // Only run tests tagged with @smoke
     },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
-    }
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 
   // Dev server
-  webServer: shouldStartWebServer ? {
-    command: 'bb dev',
-    url: 'http://localhost:8080',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000
-  } : undefined
+  webServer: shouldStartWebServer
+    ? {
+        command: 'bb dev',
+        url: 'http://localhost:8080',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+      }
+    : undefined,
 });

@@ -11,11 +11,10 @@
  * - Position tracking during editing
  */
 
-import { test, expect } from '@playwright/test';
-import { pressKeyOnContentEditable, selectPage, enterEditModeAndClick } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { pressKeyOnContentEditable } from './helpers/index.js';
 
 test.describe('Text Selection Utilities', () => {
-
   test.beforeEach(async ({ page }) => {
     // Use test mode for empty database with clean state
     await page.goto('/index.html?test=true');
@@ -59,7 +58,7 @@ test.describe('Text Selection Utilities', () => {
     // Set cursor to start via browser API (Home key not supported)
     await page.evaluate(() => {
       const elem = document.activeElement;
-      if (elem && elem.firstChild) {
+      if (elem?.firstChild) {
         const range = document.createRange();
         range.setStart(elem.firstChild, 0);
         range.setEnd(elem.firstChild, 5); // Select "Hello"
@@ -117,7 +116,7 @@ test.describe('Text Selection Utilities', () => {
     // Move cursor to start via browser API (Home key not supported)
     await page.evaluate(() => {
       const elem = document.activeElement;
-      if (elem && elem.firstChild) {
+      if (elem?.firstChild) {
         const range = document.createRange();
         range.setStart(elem.firstChild, 0);
         range.collapse(true);
@@ -258,7 +257,6 @@ test.describe('Text Selection Utilities', () => {
 });
 
 test.describe('Text Selection Integration with Block Component', () => {
-
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state (avoids demo data interference)
     await page.goto('/blocks.html?test=true');

@@ -2,29 +2,29 @@
  :deps
  {no.cjohansen/replicant {:mvn/version "2025.12.1"}
   org.clojure/clojurescript {:mvn/version "1.12.134"}
-  metosin/malli {:mvn/version "0.20.0"}
-  org.clojure/core.match {:mvn/version "1.1.0"}
-  thheller/shadow-cljs {:mvn/version "3.3.4"}
+  metosin/malli {:mvn/version "0.20.1"}
+  org.clojure/core.match {:mvn/version "1.1.1"}
+  thheller/shadow-cljs {:mvn/version "3.4.4"}
   medley/medley {:mvn/version "1.4.0"}
 
   binaryage/devtools {:mvn/version "1.0.7"}
-  no.cjohansen/dataspex {:mvn/version "2025.10.2"}
+  no.cjohansen/dataspex {:mvn/version "2026.04.1"}
   hiccup/hiccup {:mvn/version "2.0.0"}
   markdown-to-hiccup/markdown-to-hiccup {:mvn/version "0.6.2"}
-  org.clojure/test.check {:mvn/version "1.1.1"}
-  org.clojure/data.json {:mvn/version "2.5.1"}
+  org.clojure/test.check {:mvn/version "1.1.3"}
+  org.clojure/data.json {:mvn/version "2.5.2"}
   com.cognitect/transit-cljs {:mvn/version "0.8.280"}
-  com.cognitect/transit-clj {:mvn/version "1.0.333"}
-  io.github.tonsky/clojure-plus {:mvn/version "1.7.0"}
+  com.cognitect/transit-clj {:mvn/version "1.1.357"}
+  io.github.tonsky/clojure-plus {:mvn/version "1.7.2"}
 
   ;; New additions - high value for event sourcing + testing
-  nubank/matcher-combinators {:mvn/version "3.9.2"}
-  juji/editscript {:mvn/version "0.6.6"}}
+  nubank/matcher-combinators {:mvn/version "3.10.0"}
+  juji/editscript {:mvn/version "0.7.0"}}
 
  :aliases {;; nREPL server for AI to connect to
            ;; Include all paths you want available for development
            :nrepl {:extra-paths ["src" "test" "dev" "agent"]
-                   :extra-deps {nrepl/nrepl {:mvn/version "1.5.1"}}
+                   :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}}
                              ;; this allows nrepl to interrupt runaway repl evals
                    :jvm-opts ["-Djdk.attach.allowAttachSelf"]
                    :main-opts ["-m" "nrepl.cmdline" "--port" "7888"]}
@@ -33,7 +33,7 @@
            ;; live nREPL bridge into the shadow-cljs browser runtime (:blocks-ui).
            ;; Pure Clojure stdio JSON-RPC; no external MCP SDK.
            :mcp {:extra-paths ["mcp"]
-                 :extra-deps {nrepl/nrepl {:mvn/version "1.5.1"}}
+                 :extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}}
                  :main-opts ["-m" "servers.dev-diagnostics"]}
 
            ;; bhauman/clojure-mcp — REPL + shadow-cljs bridge, v0.3.1 (2026-03-14).
@@ -51,4 +51,3 @@
            ;; Test utilities (fipp for pretty printing in CLJ)
            :test {:extra-paths ["test"]
                   :extra-deps {fipp/fipp {:mvn/version "0.6.29"}}}}}
-

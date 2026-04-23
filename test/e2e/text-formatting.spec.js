@@ -1,5 +1,5 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { enterEditModeAndClick } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -37,25 +37,31 @@ test.describe('Inline Text Formatting', () => {
    */
   async function setTextSelectAndFormat(page, text, startOffset, endOffset, marker) {
     // Commit text to DB first (format-selection reads from DB)
-    await page.evaluate(({ bid, txt }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'update-content',
-        'block-id': bid,
-        text: txt
-      });
-    }, { bid: blockId, txt: text });
+    await page.evaluate(
+      ({ bid, txt }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'update-content',
+          'block-id': bid,
+          text: txt,
+        });
+      },
+      { bid: blockId, txt: text }
+    );
     await wait(page);
 
     // Format the selection
-    await page.evaluate(({ bid, start, end, mkr }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'format-selection',
-        'block-id': bid,
-        start: start,
-        end: end,
-        marker: mkr
-      });
-    }, { bid: blockId, start: startOffset, end: endOffset, mkr: marker });
+    await page.evaluate(
+      ({ bid, start, end, mkr }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'format-selection',
+          'block-id': bid,
+          start: start,
+          end: end,
+          marker: mkr,
+        });
+      },
+      { bid: blockId, start: startOffset, end: endOffset, mkr: marker }
+    );
     await wait(page);
 
     // Get the result from DB
@@ -146,25 +152,28 @@ test.describe('Inline Text Formatting', () => {
           window.TEST_HELPERS.dispatchIntent({
             type: 'update-content',
             'block-id': bid,
-            text: editable.textContent
+            text: editable.textContent,
           });
         }
       }, blockId);
       await wait(page);
 
       // Create selection
-      await page.evaluate(({ start, end }) => {
-        const editable = document.querySelector('[contenteditable="true"]');
-        if (editable && editable.firstChild) {
-          editable.focus();
-          const range = document.createRange();
-          range.setStart(editable.firstChild, start);
-          range.setEnd(editable.firstChild, end);
-          const selection = window.getSelection();
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-      }, { start: selectStart, end: selectEnd });
+      await page.evaluate(
+        ({ start, end }) => {
+          const editable = document.querySelector('[contenteditable="true"]');
+          if (editable?.firstChild) {
+            editable.focus();
+            const range = document.createRange();
+            range.setStart(editable.firstChild, start);
+            range.setEnd(editable.firstChild, end);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        },
+        { start: selectStart, end: selectEnd }
+      );
       await wait(page);
 
       // Press the key combo

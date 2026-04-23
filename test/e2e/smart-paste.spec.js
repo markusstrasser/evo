@@ -1,5 +1,5 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { enterEditModeAndClick } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -28,25 +28,31 @@ test.describe('Smart URL Paste', () => {
 
   test('pasting URL over selected text creates markdown link', async ({ page }) => {
     // Set up text in DB
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'update-content',
-        'block-id': bid,
-        text: 'click here for info'
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'update-content',
+          'block-id': bid,
+          text: 'click here for info',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Paste URL over selection "here" (positions 6-10)
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'paste-text',
-        'block-id': bid,
-        'cursor-pos': 6,
-        'selection-end': 10,
-        'pasted-text': 'https://example.com'
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'paste-text',
+          'block-id': bid,
+          'cursor-pos': 6,
+          'selection-end': 10,
+          'pasted-text': 'https://example.com',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Verify result
@@ -60,25 +66,31 @@ test.describe('Smart URL Paste', () => {
 
   test('pasting text over selected URL creates markdown link', async ({ page }) => {
     // Set up text with URL
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'update-content',
-        'block-id': bid,
-        text: 'Visit https://example.com today'
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'update-content',
+          'block-id': bid,
+          text: 'Visit https://example.com today',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Paste text over selected URL (positions 6-25)
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'paste-text',
-        'block-id': bid,
-        'cursor-pos': 6,
-        'selection-end': 25,
-        'pasted-text': 'my site'
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'paste-text',
+          'block-id': bid,
+          'cursor-pos': 6,
+          'selection-end': 25,
+          'pasted-text': 'my site',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Verify result
@@ -92,24 +104,30 @@ test.describe('Smart URL Paste', () => {
 
   test('pasting URL without selection pastes inline', async ({ page }) => {
     // Set up text
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'update-content',
-        'block-id': bid,
-        text: 'Check out '
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'update-content',
+          'block-id': bid,
+          text: 'Check out ',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Paste URL without selection
-    await page.evaluate(({ bid }) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'paste-text',
-        'block-id': bid,
-        'cursor-pos': 10,
-        'pasted-text': 'https://example.com'
-      });
-    }, { bid: blockId });
+    await page.evaluate(
+      ({ bid }) => {
+        window.TEST_HELPERS.dispatchIntent({
+          type: 'paste-text',
+          'block-id': bid,
+          'cursor-pos': 10,
+          'pasted-text': 'https://example.com',
+        });
+      },
+      { bid: blockId }
+    );
     await wait(page);
 
     // Verify just inline paste

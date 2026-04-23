@@ -5,7 +5,7 @@
  * This is separate from undo/redo (Cmd+Z) which tracks content changes.
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { modKey } from './helpers/keyboard.js';
 
 test.describe('Navigation History (Cmd+[/])', () => {
@@ -32,13 +32,15 @@ test.describe('Navigation History (Cmd+[/])', () => {
    * Helper to create a new page and return its ID
    */
   async function createNewPage(page, title) {
-    const pageId = `page-${Date.now()}`;
-    await page.evaluate(({ id, title }) => {
-      window.TEST_HELPERS?.dispatchIntent?.({
-        type: 'create-page',
-        title: title
-      });
-    }, { id: pageId, title });
+    await page.evaluate(
+      ({ title }) => {
+        window.TEST_HELPERS?.dispatchIntent?.({
+          type: 'create-page',
+          title,
+        });
+      },
+      { title }
+    );
     // Wait for page switch
     await page.waitForTimeout(100);
     return getCurrentPageId(page);
@@ -51,7 +53,7 @@ test.describe('Navigation History (Cmd+[/])', () => {
     await page.evaluate((id) => {
       window.TEST_HELPERS?.dispatchIntent?.({
         type: 'switch-page',
-        'page-id': id
+        'page-id': id,
       });
     }, pageId);
     await page.waitForTimeout(100);
@@ -121,7 +123,7 @@ test.describe('Navigation History (Cmd+[/])', () => {
   });
 
   test('navigating to new page truncates forward history', async ({ page }) => {
-    const page1Id = await getCurrentPageId(page);
+    const _page1Id = await getCurrentPageId(page);
 
     // Create page 2
     const page2Id = await createNewPage(page, `Page Two ${Date.now()}`);

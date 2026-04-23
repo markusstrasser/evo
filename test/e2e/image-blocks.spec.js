@@ -1,11 +1,10 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
 import {
-  getFirstBlockId,
   enterEditMode,
   exitEditMode,
-  updateBlockText
+  getFirstBlockId,
+  updateBlockText,
 } from './helpers/block-helpers.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -142,8 +141,11 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
 
     test('multiple inline images render correctly', async ({ page }) => {
       const blockId = await getFirstBlockId(page);
-      await updateBlockText(page, blockId,
-        '![a](https://example.com/a.png) and ![b](https://example.com/b.png)');
+      await updateBlockText(
+        page,
+        blockId,
+        '![a](https://example.com/a.png) and ![b](https://example.com/b.png)'
+      );
       await wait(page, 200);
 
       const imgs = page.locator(`div.block[data-block-id="${blockId}"] img.inline-image`);
@@ -207,7 +209,7 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
       await enterEditMode(page, blockId);
       await wait(page, 100);
 
-      const editable = page.locator('[contenteditable="true"]');
+      const _editable = page.locator('[contenteditable="true"]');
       // Select all and retype with alt text but keep width
       await page.keyboard.press('Meta+a');
       await page.keyboard.type('![updated](https://example.com/img.png){width=500}');

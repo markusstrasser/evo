@@ -1,11 +1,11 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   enterEditMode,
-  getFirstBlockId,
-  waitForBlocks,
   getBlockText,
-  updateBlockText
+  getFirstBlockId,
+  updateBlockText,
+  waitForBlocks,
 } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
@@ -27,7 +27,7 @@ async function dispatchPaste(page, text) {
     const evt = new ClipboardEvent('paste', {
       bubbles: true,
       cancelable: true,
-      clipboardData: new DataTransfer()
+      clipboardData: new DataTransfer(),
     });
     evt.clipboardData.setData('text/plain', clip);
     el.dispatchEvent(evt);
@@ -35,21 +35,24 @@ async function dispatchPaste(page, text) {
 }
 
 async function selectRange(page, start, end) {
-  await page.evaluate(({ s, e }) => {
-    const el = document.querySelector('[contenteditable="true"]');
-    if (!el) throw new Error('no contenteditable');
-    // Walk to the first text descendant
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    const textNode = walker.nextNode();
-    if (!textNode) throw new Error('no text node');
-    const sel = window.getSelection();
-    const range = document.createRange();
-    const maxLen = textNode.data.length;
-    range.setStart(textNode, Math.min(s, maxLen));
-    range.setEnd(textNode, Math.min(e, maxLen));
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }, { s: start, e: end });
+  await page.evaluate(
+    ({ s, e }) => {
+      const el = document.querySelector('[contenteditable="true"]');
+      if (!el) throw new Error('no contenteditable');
+      // Walk to the first text descendant
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const textNode = walker.nextNode();
+      if (!textNode) throw new Error('no text node');
+      const sel = window.getSelection();
+      const range = document.createRange();
+      const maxLen = textNode.data.length;
+      range.setStart(textNode, Math.min(s, maxLen));
+      range.setEnd(textNode, Math.min(e, maxLen));
+      sel.removeAllRanges();
+      sel.addRange(range);
+    },
+    { s: start, e: end }
+  );
 }
 
 async function placeCursorAtEnd(page) {

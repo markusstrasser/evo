@@ -18,10 +18,6 @@
            (md-links/parse-evo-target "evo://page/Foo%20Bar"))
         "URL-encoded spaces decode to literal spaces"))
 
-  (testing "block targets"
-    (is (= {:type :block :block-id "abc-123"}
-           (md-links/parse-evo-target "evo://block/abc-123"))))
-
   (testing "journal targets"
     (is (= {:type :journal :iso-date "2026-04-22"}
            (md-links/parse-evo-target "evo://journal/2026-04-22"))))
@@ -37,8 +33,6 @@
     ;; page-name as \"Foo/\", which the navigate handler would have
     ;; created as a ghost page. Tightened regex must refuse it.
     (is (nil? (md-links/parse-evo-target "evo://page/Foo/"))))
-  (testing "trailing slash in block target rejected"
-    (is (nil? (md-links/parse-evo-target "evo://block/abc/"))))
   (testing "journal already regex-bound, no trailing-slash case"
     (is (nil? (md-links/parse-evo-target "evo://journal/2026-04-22/")))))
 

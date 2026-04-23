@@ -13,7 +13,7 @@
  * - Favorites appear below navigation
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Sidebar', () => {
   test.beforeEach(async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe('Sidebar', () => {
       const count = allPagesNav.locator('.nav-count');
       await expect(count).toBeVisible();
       const countText = await count.textContent();
-      expect(parseInt(countText)).toBeGreaterThanOrEqual(2);
+      expect(parseInt(countText, 10)).toBeGreaterThanOrEqual(2);
     });
 
     test('clicking All Pages opens all pages view', async ({ page }) => {
@@ -94,7 +94,9 @@ test.describe('Sidebar', () => {
       await allPagesNav.click();
 
       // Both should be visible
-      await expect(page.locator('.all-pages-item').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
+      await expect(
+        page.locator('.all-pages-item').filter({ hasText: 'Dec 10th, 2025' })
+      ).toBeVisible();
       await expect(page.locator('.all-pages-item').filter({ hasText: 'My Notes' })).toBeVisible();
     });
 
@@ -140,7 +142,9 @@ test.describe('Sidebar', () => {
       // Find the page in recents and favorite it
       const recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
       if (await recentsSection.isVisible()) {
-        const pageItem = recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Favorite Me' });
+        const pageItem = recentsSection
+          .locator('.sidebar-page-item')
+          .filter({ hasText: 'Favorite Me' });
         await pageItem.hover();
 
         // Click star button
@@ -169,7 +173,9 @@ test.describe('Sidebar', () => {
 
       const recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
       if (await recentsSection.isVisible()) {
-        const pageItem = recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Persist Test' });
+        const pageItem = recentsSection
+          .locator('.sidebar-page-item')
+          .filter({ hasText: 'Persist Test' });
         await pageItem.hover();
         await pageItem.locator('.star-button').click();
 
@@ -226,7 +232,9 @@ test.describe('Sidebar', () => {
 
       // If recents section exists, check it doesn't have journals
       if (await recentsSection.isVisible()) {
-        await expect(recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Dec 10th, 2025' })).not.toBeVisible();
+        await expect(
+          recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Dec 10th, 2025' })
+        ).not.toBeVisible();
       }
     });
 
@@ -244,7 +252,7 @@ test.describe('Sidebar', () => {
       });
 
       // Verify it's in recents
-      let recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
+      const recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
       await expect(recentsSection).toContainText('Persist Recent');
 
       // Verify localStorage has the recent
@@ -313,7 +321,9 @@ test.describe('Sidebar', () => {
 
       // Find in recents
       const recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
-      const pageItem = recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Delete Me' });
+      const pageItem = recentsSection
+        .locator('.sidebar-page-item')
+        .filter({ hasText: 'Delete Me' });
 
       // Hover and click delete
       await pageItem.hover();
@@ -334,7 +344,9 @@ test.describe('Sidebar', () => {
 
       // Delete the page
       const recentsSection = page.locator('.sidebar-section').filter({ hasText: 'Recents' });
-      const pageItem = recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Undo Test' });
+      const pageItem = recentsSection
+        .locator('.sidebar-page-item')
+        .filter({ hasText: 'Undo Test' });
       await pageItem.hover();
       await pageItem.locator('.delete-button').click();
 

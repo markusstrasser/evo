@@ -1,12 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  enterEditModeAndClick,
-  getBlockText,
-  getFirstBlockId,
-  countBlocks,
-  waitForState
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { countBlocks, enterEditModeAndClick, getFirstBlockId } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
@@ -67,7 +61,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 11 // After "First block"
+          cursorPos: 11, // After "First block"
         });
       }, blockId);
       await wait(page, 200);
@@ -95,7 +89,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -123,7 +117,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -142,14 +136,14 @@ test.describe('Undo/Redo Operations', () => {
         const focusId = session?.selection?.focus;
         if (focusId) {
           window.TEST_HELPERS.dispatchIntent({
-            type: 'delete-selected'
+            type: 'delete-selected',
           });
         }
       });
       await wait(page, 200);
 
       // Verify deletion occurred
-      const afterDelete = await countBlocks(page);
+      const _afterDelete = await countBlocks(page);
 
       // Undo the deletion
       await page.keyboard.press('Meta+z');
@@ -172,7 +166,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -208,7 +202,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -227,7 +221,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, newBlockId);
       await wait(page, 200);
@@ -253,7 +247,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -275,7 +269,7 @@ test.describe('Undo/Redo Operations', () => {
         window.TEST_HELPERS.dispatchIntent({
           type: 'split-at-cursor',
           blockId: id,
-          cursorPos: 0
+          cursorPos: 0,
         });
       }, blockId);
       await wait(page, 200);
@@ -293,23 +287,23 @@ test.describe('Undo/Redo Operations', () => {
         const focusId = session?.selection?.focus;
         return {
           focusId,
-          parent: db?.derived?.parent_of?.[focusId]
+          parent: db?.derived?.parent_of?.[focusId],
         };
       });
 
       // Indent the block
       await page.evaluate(() => {
         window.TEST_HELPERS.dispatchIntent({
-          type: 'indent-selected'
+          type: 'indent-selected',
         });
       });
       await wait(page, 200);
 
       // Verify parent changed
-      const afterIndent = await page.evaluate(() => {
+      const _afterIndent = await page.evaluate(() => {
         const db = window.TEST_HELPERS.getDb();
         return {
-          parent: db?.derived?.parent_of?.[beforeIndent?.focusId]
+          parent: db?.derived?.parent_of?.[beforeIndent?.focusId],
         };
       });
 
@@ -320,7 +314,7 @@ test.describe('Undo/Redo Operations', () => {
       const afterUndo = await page.evaluate((focusId) => {
         const db = window.TEST_HELPERS.getDb();
         return {
-          parent: db?.derived?.parent_of?.[focusId]
+          parent: db?.derived?.parent_of?.[focusId],
         };
       }, beforeIndent.focusId);
 

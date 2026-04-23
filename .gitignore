@@ -140,3 +140,10 @@ CLAUDE.md
 test-screenshots/
 .mcp.json
 .model-review/
+.claude/
+.agents/
+.architect/review-ledger.jsonl
+private-docs/
+opencode.json
+bin/keychain-add-env.sh
+bin/keychain-load-env.sh

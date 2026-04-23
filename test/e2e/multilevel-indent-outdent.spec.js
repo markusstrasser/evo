@@ -17,8 +17,7 @@
  * FR: :fr.struct/indent-outdent
  */
 
-import { test, expect } from '@playwright/test';
-import { enterEditModeAndClick } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
 
 test.describe('Multi-Level Indent/Outdent', () => {
   test.beforeEach(async ({ page }) => {
@@ -35,13 +34,13 @@ test.describe('Multi-Level Indent/Outdent', () => {
       return Array.from(allBlocks).map((b, i) => ({
         id: b.getAttribute('data-block-id'),
         text: b.querySelector('.block-content')?.textContent?.trim().substring(0, 30),
-        index: i
+        index: i,
       }));
     });
 
     // Use a block that's not the first (has a previous sibling)
     const targetBlock = blocks.find((b, i) => i > 0 && b.text && !b.text.includes('Navigation'));
-    
+
     if (!targetBlock) {
       test.skip();
       return;
@@ -56,7 +55,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
     await page.waitForTimeout(100);
 
     // Verify in edit mode
-    const isEditing = await page.evaluate(() => !!document.querySelector('[contenteditable="true"]'));
+    const isEditing = await page.evaluate(
+      () => !!document.querySelector('[contenteditable="true"]')
+    );
     expect(isEditing).toBe(true);
 
     // Dispatch indent intent directly (Tab doesn't always work in test)
@@ -68,7 +69,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
     await page.waitForTimeout(100);
 
     // Should still be in edit mode after indent
-    const stillEditing = await page.evaluate(() => !!document.querySelector('[contenteditable="true"]'));
+    const stillEditing = await page.evaluate(
+      () => !!document.querySelector('[contenteditable="true"]')
+    );
     expect(stillEditing).toBe(true);
   });
 
@@ -82,7 +85,7 @@ test.describe('Multi-Level Indent/Outdent', () => {
         if (block) {
           return {
             id: block.getAttribute('data-block-id'),
-            text: block.querySelector('.block-content')?.textContent?.trim().substring(0, 30)
+            text: block.querySelector('.block-content')?.textContent?.trim().substring(0, 30),
           };
         }
       }
@@ -103,7 +106,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
     await page.waitForTimeout(100);
 
     // Verify in edit mode
-    const isEditing = await page.evaluate(() => !!document.querySelector('[contenteditable="true"]'));
+    const isEditing = await page.evaluate(
+      () => !!document.querySelector('[contenteditable="true"]')
+    );
     expect(isEditing).toBe(true);
 
     // Dispatch outdent intent
@@ -115,7 +120,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
     await page.waitForTimeout(100);
 
     // Should still be in edit mode after outdent
-    const stillEditing = await page.evaluate(() => !!document.querySelector('[contenteditable="true"]'));
+    const stillEditing = await page.evaluate(
+      () => !!document.querySelector('[contenteditable="true"]')
+    );
     expect(stillEditing).toBe(true);
   });
 
@@ -129,7 +136,7 @@ test.describe('Multi-Level Indent/Outdent', () => {
         if (parentBlock && childBlock && parentBlock !== childBlock) {
           return {
             parentId: parentBlock.getAttribute('data-block-id'),
-            childId: childBlock.getAttribute('data-block-id')
+            childId: childBlock.getAttribute('data-block-id'),
           };
         }
       }
@@ -160,7 +167,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
 
     // Dispatch outdent - should NOT fail silently anymore
     const beforeStructure = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('[data-block-id]')).map(b => b.getAttribute('data-block-id'));
+      return Array.from(document.querySelectorAll('[data-block-id]')).map((b) =>
+        b.getAttribute('data-block-id')
+      );
     });
 
     await page.evaluate(() => {
@@ -172,7 +181,9 @@ test.describe('Multi-Level Indent/Outdent', () => {
 
     // Structure should still have all the blocks (no data loss)
     const afterStructure = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('[data-block-id]')).map(b => b.getAttribute('data-block-id'));
+      return Array.from(document.querySelectorAll('[data-block-id]')).map((b) =>
+        b.getAttribute('data-block-id')
+      );
     });
 
     // All blocks should still exist

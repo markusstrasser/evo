@@ -1,23 +1,21 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "include": [
-      "test/e2e/**/*.js",
-      "test/e2e/**/*.ts",
-      "scripts/**/*.js",
-      "scripts/**/*.mjs",
-      "playwright.config.js"
-    ],
-    "ignore": [
-      "node_modules",
-      "out",
-      "public",
-      ".shadow-cljs"
+    "includes": [
+      "**/test/e2e/**/*.js",
+      "**/test/e2e/**/*.ts",
+      "**/scripts/**/*.js",
+      "**/scripts/**/*.mjs",
+      "**/playwright.config.js",
+      "!**/node_modules",
+      "!**/out",
+      "!**/public",
+      "!**/.shadow-cljs"
     ]
   },
   "formatter": {
@@ -33,11 +31,11 @@
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "off",
+        "noVar": "error"
       },
       "style": {
-        "useConst": "warn",
-        "noVar": "error"
+        "useConst": "warn"
       },
       "correctness": {
         "noUnusedVariables": "warn",

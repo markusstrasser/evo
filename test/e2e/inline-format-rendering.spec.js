@@ -1,11 +1,6 @@
 // @ts-check
-import { test, expect } from '@playwright/test';
-import {
-  waitForBlocks,
-  getFirstBlockId,
-  updateBlockText,
-  exitEditMode
-} from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import { exitEditMode, getFirstBlockId, updateBlockText, waitForBlocks } from './helpers/index.js';
 
 /**
  * Inline Format Rendering E2E
@@ -28,7 +23,7 @@ async function getBlockFormatCounts(page, blockId) {
       strong: content.querySelectorAll('strong').length,
       mark: content.querySelectorAll('mark').length,
       del: content.querySelectorAll('del').length,
-      math: content.querySelectorAll('.math').length
+      math: content.querySelectorAll('.math').length,
     };
   }, blockId);
 }

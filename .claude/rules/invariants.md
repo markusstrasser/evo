@@ -11,14 +11,18 @@ These constraints MUST be maintained at all times, including after compaction.
 5. **Canonical DB shape owned by kernel.** Adapters at edges only.
 6. **Tests travel with the kernel.** `test/kernel/` and `test/scripts/` must work without shell, view, or component dependencies.
 
-## Project Mode: Extraction
+## Project Mode: Solid Outliner With Clean Extension Surface
 
-Evo is in extraction mode. Agent work should trend toward:
-- Separating kernel from shell/UI concerns
-- Cleaning the kernel API surface
-- Ensuring property tests and specs are self-contained
+*Updated 2026-04-22. Supersedes earlier "Extraction" and "Reference Implementation" framings.*
 
-Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure.
+Evo is a solid outliner with a clean, data-driven extension surface. See `docs/GOALS.md` and `VISION.md`.
+
+Agent work should trend toward:
+- Kernel purity (zero shell/UI imports in `src/kernel/`)
+- Clean extension surface (three registries + session atom — see VISION.md)
+- Deletion (remove dead code, consolidate redundancy)
+
+Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording infrastructure, replayable datasets, universal adapter shells, LLVM-of-UI IRs, library extraction on speculation).
 
 ## Protected Files (require human approval)
 

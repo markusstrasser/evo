@@ -17,8 +17,8 @@
  *   1: Found problematic keyboard usage
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Keys that are known to cause issues with contenteditable when using page.keyboard.press()
 const RISKY_KEYS = [
@@ -29,14 +29,15 @@ const RISKY_KEYS = [
   'Enter',
   'Backspace',
   'Delete',
-  'Tab'
+  'Tab',
 ];
 
 // Pattern to detect page.keyboard.press() calls
 const KEYBOARD_PRESS_PATTERN = /page\.keyboard\.press\(['"](\w+)['"]\)/g;
 
 // Pattern to detect imports of our safe helper
-const SAFE_HELPER_IMPORT = /import\s+{[^}]*pressKeyOnContentEditable[^}]*}\s+from\s+['"]\.\/helpers\/keyboard\.js['"]/;
+const SAFE_HELPER_IMPORT =
+  /import\s+{[^}]*pressKeyOnContentEditable[^}]*}\s+from\s+['"]\.\/helpers\/keyboard\.js['"]/;
 
 function lintFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -46,15 +47,15 @@ function lintFile(filePath) {
   const usesSafeHelper = SAFE_HELPER_IMPORT.test(content);
 
   // Find all page.keyboard.press() calls
-  let match;
   const keyPressPattern = new RegExp(KEYBOARD_PRESS_PATTERN.source, 'g');
+  let match = keyPressPattern.exec(content);
 
-  while ((match = keyPressPattern.exec(content)) !== null) {
+  while (match !== null) {
     const key = match[1];
     const line = content.substring(0, match.index).split('\n').length;
 
     // Check if this is a risky key
-    if (RISKY_KEYS.some(riskyKey => key.includes(riskyKey))) {
+    if (RISKY_KEYS.some((riskyKey) => key.includes(riskyKey))) {
       issues.push({
         file: filePath,
         line,
@@ -62,9 +63,11 @@ function lintFile(filePath) {
         message: `Found page.keyboard.press('${key}') which may not trigger handlers on contenteditable elements`,
         suggestion: usesSafeHelper
           ? `Use pressKeyOnContentEditable(page, '${key}') instead`
-          : `Import and use pressKeyOnContentEditable from './helpers/keyboard.js'`
+          : `Import and use pressKeyOnContentEditable from './helpers/keyboard.js'`,
       });
     }
+
+    match = keyPressPattern.exec(content);
   }
 
   return issues;
@@ -94,13 +97,13 @@ function main() {
 
   let totalIssues = 0;
 
-  testFiles.forEach(fullPath => {
+  testFiles.forEach((fullPath) => {
     const relativePath = path.relative(path.join(__dirname, '..'), fullPath);
     const issues = lintFile(fullPath);
 
     if (issues.length > 0) {
       console.log(`\n❌ ${relativePath}`);
-      issues.forEach(issue => {
+      issues.forEach((issue) => {
         console.log(`   Line ${issue.line}: ${issue.message}`);
         console.log(`   💡 ${issue.suggestion}`);
       });
@@ -114,7 +117,7 @@ function main() {
   } else {
     console.log(`\n❌ Found ${totalIssues} potential issue(s)\n`);
     console.log('ℹ️  See docs/TESTING.md for details\n');
-    console.log('   Playwright\'s page.keyboard.press() does NOT reliably trigger');
+    console.log("   Playwright's page.keyboard.press() does NOT reliably trigger");
     console.log('   keyboard event handlers on contenteditable elements.');
     console.log('   Use pressKeyOnContentEditable() from test/e2e/helpers/keyboard.js instead.\n');
     process.exit(1);

@@ -48,16 +48,6 @@
   (and (has-children? db block-id)
        (folded? db session block-id)))
 
-(defn zoom-level
-  "Get current zoom level (0 = root, 1+ = zoomed in)."
-  [session]
-  (count (q/zoom-stack session)))
-
-(defn in-zoom?
-  "Check if currently zoomed into a block."
-  [session]
-  (pos? (zoom-level session)))
-
 ;; ── Fold Intents ──────────────────────────────────────────────────────────────
 
 (intent/register-intent! :toggle-fold

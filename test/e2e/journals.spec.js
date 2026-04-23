@@ -16,17 +16,31 @@
  * - Visual: Borders between journals
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 /**
  * Helper to get today's date in human-readable format (Dec 14th, 2025)
  */
 function getTodayTitle() {
   const d = new Date();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   const day = d.getDate();
-  const suffix = [11, 12, 13].includes(day % 100) ? 'th' :
-                 { 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] || 'th';
+  const suffix = [11, 12, 13].includes(day % 100)
+    ? 'th'
+    : { 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] || 'th';
   return `${months[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
 }
 
@@ -60,7 +74,7 @@ async function createJournalPages(page, dates, { addContent = true } = {}) {
             window.TEST_HELPERS.dispatchIntent({
               type: 'update-content',
               'block-id': firstBlockId,
-              text: `Entry for ${date}`
+              text: `Entry for ${date}`,
             });
           }
         }
@@ -118,9 +132,9 @@ test.describe('Journals View', () => {
       await enterJournalsView(page);
       // The JournalsView's on-render hook dispatches :ensure-page-exists
       // via setTimeout 0 — wait for today to materialize.
-      await expect(
-        page.locator('.journal-title').filter({ hasText: today })
-      ).toBeVisible({ timeout: 3000 });
+      await expect(page.locator('.journal-title').filter({ hasText: today })).toBeVisible({
+        timeout: 3000,
+      });
     });
 
     test('Journals nav link is active once journals view is open', async ({ page }) => {
@@ -147,11 +161,14 @@ test.describe('Journals View', () => {
       await createJournalPages(page, ['Dec 13th, 2025', 'Dec 12th, 2025']);
 
       // Check for count badge - should show 3 (today + 2 created)
-      const navCount = page.locator('.sidebar-nav-item').filter({ hasText: 'Journals' }).locator('.nav-count');
+      const navCount = page
+        .locator('.sidebar-nav-item')
+        .filter({ hasText: 'Journals' })
+        .locator('.nav-count');
       await expect(navCount).toBeVisible();
       // Count may be 3 (today + 2) or just 2 depending on test timing
       const count = await navCount.textContent();
-      expect(parseInt(count)).toBeGreaterThanOrEqual(2);
+      expect(parseInt(count, 10)).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -160,11 +177,7 @@ test.describe('Journals View', () => {
       // Create journals in random order (all past, to stay independent
       // of today's date). Pure-chronological contract: sort descending
       // by date regardless of today's position.
-      await createJournalPages(page, [
-        'Dec 10th, 2025',
-        'Dec 12th, 2025',
-        'Dec 11th, 2025'
-      ]);
+      await createJournalPages(page, ['Dec 10th, 2025', 'Dec 12th, 2025', 'Dec 11th, 2025']);
 
       await enterJournalsView(page);
 
@@ -306,7 +319,9 @@ test.describe('Journals View', () => {
       await createJournalPages(page, ['Dec 10th, 2025']);
       await enterJournalsView(page);
 
-      await expect(page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
+      await expect(
+        page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })
+      ).toBeVisible();
     });
 
     test('recognizes ISO date format (2025-12-10)', async ({ page }) => {
@@ -316,36 +331,44 @@ test.describe('Journals View', () => {
       await expect(page.locator('.journal-title').filter({ hasText: '2025-12-10' })).toBeVisible();
     });
 
-    test('recognizes ordinal-less date format (Apr 19, 2026) — legacy page-ref compat', async ({ page }) => {
+    test('recognizes ordinal-less date format (Apr 19, 2026) — legacy page-ref compat', async ({
+      page,
+    }) => {
       // The pre-fix page-ref generator produced `[[MMM d, yyyy]]` with
       // no ordinal suffix. Journal pages created by clicking such refs
       // must still classify as journals so the Journals view lists them.
       await createJournalPages(page, ['Apr 19, 2026']);
       await enterJournalsView(page);
 
-      await expect(page.locator('.journal-title').filter({ hasText: 'Apr 19, 2026' })).toBeVisible();
+      await expect(
+        page.locator('.journal-title').filter({ hasText: 'Apr 19, 2026' })
+      ).toBeVisible();
     });
   });
 
   test.describe('Logseq Parity', () => {
     test('empty journals (except today) are hidden from view', async ({ page }) => {
       // Create journals - one with content, one without
-      await createJournalPages(page, ['Dec 10th, 2025']);  // Has content
-      await createJournalPages(page, ['Dec 9th, 2025'], { addContent: false });  // Empty
+      await createJournalPages(page, ['Dec 10th, 2025']); // Has content
+      await createJournalPages(page, ['Dec 9th, 2025'], { addContent: false }); // Empty
 
       await enterJournalsView(page);
 
-      await expect(page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
-      await expect(page.locator('.journal-title').filter({ hasText: 'Dec 9th, 2025' })).not.toBeVisible();
+      await expect(
+        page.locator('.journal-title').filter({ hasText: 'Dec 10th, 2025' })
+      ).toBeVisible();
+      await expect(
+        page.locator('.journal-title').filter({ hasText: 'Dec 9th, 2025' })
+      ).not.toBeVisible();
     });
 
     test('today journal shows even when empty', async ({ page }) => {
       const today = getTodayTitle();
 
       await enterJournalsView(page);
-      await expect(
-        page.locator('.journal-title').filter({ hasText: today })
-      ).toBeVisible({ timeout: 3000 });
+      await expect(page.locator('.journal-title').filter({ hasText: today })).toBeVisible({
+        timeout: 3000,
+      });
     });
 
     test('journal titles are clickable links', async ({ page }) => {

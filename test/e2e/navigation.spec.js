@@ -4,8 +4,14 @@
  * Tests for arrow key navigation and cursor position preservation.
  */
 
-import { test, expect } from '@playwright/test';
-import { getCursorPosition, setCursorPosition, getAllBlocks, enterEditModeAndClick, pressKeyOnContentEditable } from './helpers/index.js';
+import { expect, test } from '@playwright/test';
+import {
+  enterEditModeAndClick,
+  getAllBlocks,
+  getCursorPosition,
+  pressKeyOnContentEditable,
+  setCursorPosition,
+} from './helpers/index.js';
 
 const NAV_PARENT_HOP = 'NAV-BOUNDARY-LEFT-01';
 
@@ -39,7 +45,9 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     await page.waitForFunction(
       (fromId) => {
         const el = document.activeElement;
-        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        const blockId =
+          el?.getAttribute('data-block-id') ||
+          el?.closest('[data-block-id]')?.getAttribute('data-block-id');
         return blockId && blockId !== fromId;
       },
       blocks[0].id,
@@ -72,7 +80,9 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     await page.waitForFunction(
       (fromId) => {
         const el = document.activeElement;
-        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        const blockId =
+          el?.getAttribute('data-block-id') ||
+          el?.closest('[data-block-id]')?.getAttribute('data-block-id');
         return blockId && blockId !== fromId;
       },
       blocks[1].id,
@@ -105,18 +115,22 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     await page.keyboard.type('Second');
 
     // Clear events
-    await page.evaluate(() => { window.navigationEvents = []; });
+    await page.evaluate(() => {
+      window.navigationEvents = [];
+    });
 
     // Get initial block (we're in the second block after typing)
     const initialBlocks = await getAllBlocks(page);
-    const initialFocused = initialBlocks.find(b => b.isFocused);
+    const initialFocused = initialBlocks.find((b) => b.isFocused);
 
     // Navigate up and wait for focus to move
     await page.keyboard.press('ArrowUp');
     await page.waitForFunction(
       (fromId) => {
         const el = document.activeElement;
-        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        const blockId =
+          el?.getAttribute('data-block-id') ||
+          el?.closest('[data-block-id]')?.getAttribute('data-block-id');
         return blockId && blockId !== fromId;
       },
       initialFocused?.id,
@@ -125,14 +139,16 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
 
     // Check that only one block change occurred
     const blocksBefore = await getAllBlocks(page);
-    const focusedBefore = blocksBefore.find(b => b.isFocused);
+    const focusedBefore = blocksBefore.find((b) => b.isFocused);
 
     // Navigate down and wait for focus to move
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(
       (fromId) => {
         const el = document.activeElement;
-        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        const blockId =
+          el?.getAttribute('data-block-id') ||
+          el?.closest('[data-block-id]')?.getAttribute('data-block-id');
         return blockId && blockId !== fromId;
       },
       focusedBefore?.id,
@@ -140,7 +156,7 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     );
 
     const blocksAfter = await getAllBlocks(page);
-    const focusedAfter = blocksAfter.find(b => b.isFocused);
+    const focusedAfter = blocksAfter.find((b) => b.isFocused);
 
     // Should have moved exactly one block (not two)
     expect(focusedAfter.index).toBe(focusedBefore.index + 1);
@@ -151,8 +167,7 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     await page.keyboard.type('Hello world');
 
     const blockBefore = await page.evaluate(() => {
-      return document.activeElement.getAttribute('data-block-id') ||
-             document.activeElement.id;
+      return document.activeElement.getAttribute('data-block-id') || document.activeElement.id;
     });
 
     // Move cursor within block
@@ -161,8 +176,7 @@ test.describe('Block Navigation', { tag: '@smoke' }, () => {
     await page.keyboard.press('ArrowRight');
 
     const blockAfter = await page.evaluate(() => {
-      return document.activeElement.getAttribute('data-block-id') ||
-             document.activeElement.id;
+      return document.activeElement.getAttribute('data-block-id') || document.activeElement.id;
     });
 
     // Should still be in same block
@@ -212,11 +226,9 @@ test.describe('Empty Block Navigation', () => {
 
     // Go down again - should go to third block
     await page.keyboard.press('ArrowDown');
-    await page.waitForFunction(
-      (prevText) => document.activeElement?.textContent !== prevText,
-      '',
-      { timeout: 3000 }
-    );
+    await page.waitForFunction((prevText) => document.activeElement?.textContent !== prevText, '', {
+      timeout: 3000,
+    });
 
     text = await page.evaluate(() => document.activeElement?.textContent);
     expect(text).toBe('Third block');
@@ -224,7 +236,7 @@ test.describe('Empty Block Navigation', () => {
 });
 
 test.describe('Cross-Page Navigation (Journals)', () => {
-  test.skip('arrow down navigates from one journal page to the next', async ({ page }) => {
+  test.skip('arrow down navigates from one journal page to the next', async () => {
     // TODO: This test requires a more complex setup with multiple journal pages.
     // The cross-page navigation feature is implemented and works manually.
     // A proper test would need:
@@ -258,16 +270,14 @@ test.describe('Navigation State Sync Edge Cases', () => {
 
     // Navigate up twice (with waits to ensure each navigation completes)
     await page.keyboard.press('ArrowUp');
-    await page.waitForFunction(
-      () => document.activeElement?.textContent === 'Second',
-      { timeout: 3000 }
-    );
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Second', {
+      timeout: 3000,
+    });
 
     await page.keyboard.press('ArrowUp');
-    await page.waitForFunction(
-      () => document.activeElement?.textContent === 'First',
-      { timeout: 3000 }
-    );
+    await page.waitForFunction(() => document.activeElement?.textContent === 'First', {
+      timeout: 3000,
+    });
 
     // Verify kernel state matches DOM
     const kernelState = await page.evaluate(() => {
@@ -276,8 +286,10 @@ test.describe('Navigation State Sync Edge Cases', () => {
     });
     const domFocusedId = await page.evaluate(() => {
       const el = document.activeElement;
-      return el?.getAttribute('data-block-id') ||
-             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      return (
+        el?.getAttribute('data-block-id') ||
+        el?.closest('[data-block-id]')?.getAttribute('data-block-id')
+      );
     });
 
     expect(kernelState).toBe(domFocusedId);
@@ -298,14 +310,16 @@ test.describe('Navigation State Sync Edge Cases', () => {
 
     const domFocusedId = await page.evaluate(() => {
       const el = document.activeElement;
-      return el?.getAttribute('data-block-id') ||
-             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      return (
+        el?.getAttribute('data-block-id') ||
+        el?.closest('[data-block-id]')?.getAttribute('data-block-id')
+      );
     });
 
     expect(domFocusedId).toBe(firstBlockId);
     // Focus should still be on contenteditable
-    const isFocused = await page.evaluate(() =>
-      document.activeElement?.getAttribute('contenteditable') === 'true'
+    const isFocused = await page.evaluate(
+      () => document.activeElement?.getAttribute('contenteditable') === 'true'
     );
     expect(isFocused).toBe(true);
   });
@@ -325,8 +339,10 @@ test.describe('Navigation State Sync Edge Cases', () => {
 
     const domFocusedId = await page.evaluate(() => {
       const el = document.activeElement;
-      return el?.getAttribute('data-block-id') ||
-             el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      return (
+        el?.getAttribute('data-block-id') ||
+        el?.closest('[data-block-id]')?.getAttribute('data-block-id')
+      );
     });
 
     expect(domFocusedId).toBe(lastBlockId);
@@ -348,8 +364,9 @@ test.describe('Navigation State Sync Edge Cases', () => {
     const focusInfo = await page.evaluate(() => ({
       isContentEditable: document.activeElement?.getAttribute('contenteditable') === 'true',
       tagName: document.activeElement?.tagName,
-      hasBlockId: !!document.activeElement?.getAttribute('data-block-id') ||
-                  !!document.activeElement?.closest('[data-block-id]')
+      hasBlockId:
+        !!document.activeElement?.getAttribute('data-block-id') ||
+        !!document.activeElement?.closest('[data-block-id]'),
     }));
 
     expect(focusInfo.isContentEditable).toBe(true);
@@ -367,18 +384,18 @@ test.describe('Navigation State Sync Edge Cases', () => {
 
     // Navigate to middle block
     await page.keyboard.press('ArrowUp');
-    await page.waitForFunction(
-      () => document.activeElement?.textContent === 'Beta',
-      { timeout: 3000 }
-    );
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Beta', {
+      timeout: 3000,
+    });
 
     // Check state consistency
     const { kernelId, domId, match } = await page.evaluate(() => {
       const session = window.TEST_HELPERS?.getSession();
       const kernelId = session?.ui?.editing_block_id || session?.ui?.['editing-block-id'] || null;
       const el = document.activeElement;
-      const domId = el?.getAttribute('data-block-id') ||
-                   el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+      const domId =
+        el?.getAttribute('data-block-id') ||
+        el?.closest('[data-block-id]')?.getAttribute('data-block-id');
       return { kernelId, domId, match: kernelId === domId };
     });
 
@@ -397,9 +414,10 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     // Create parent block
     const parentText = 'Parent nav target';
     await page.keyboard.type(parentText);
-    const parentId = await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-block-id') ||
-      document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
+    const parentId = await page.evaluate(
+      () =>
+        document.activeElement?.getAttribute('data-block-id') ||
+        document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
     );
     await page.keyboard.press('Enter');
     // Wait for second block to exist
@@ -408,9 +426,10 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     // Create child block
     const childText = 'Child boundary test';
     await page.keyboard.type(childText);
-    const childIdRaw = await page.evaluate(() =>
-      document.activeElement?.getAttribute('data-block-id') ||
-      document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
+    const childIdRaw = await page.evaluate(
+      () =>
+        document.activeElement?.getAttribute('data-block-id') ||
+        document.activeElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
     );
 
     // Indent the child under parent by dispatching the intent directly
@@ -425,7 +444,9 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     expect(childIdRaw).toBeTruthy();
 
     // Wait for re-render after indent - child should still be in edit mode
-    await page.waitForSelector(`[data-block-id="${childIdRaw}"] [contenteditable="true"]`, { timeout: 5000 });
+    await page.waitForSelector(`[data-block-id="${childIdRaw}"] [contenteditable="true"]`, {
+      timeout: 5000,
+    });
 
     // Set cursor at start
     await setCursorPosition(page, childIdRaw, 0);
@@ -436,7 +457,9 @@ test.describe(`${NAV_PARENT_HOP}`, () => {
     await page.waitForFunction(
       (expectedId) => {
         const el = document.activeElement;
-        const blockId = el?.getAttribute('data-block-id') || el?.closest('[data-block-id]')?.getAttribute('data-block-id');
+        const blockId =
+          el?.getAttribute('data-block-id') ||
+          el?.closest('[data-block-id]')?.getAttribute('data-block-id');
         return blockId === expectedId;
       },
       parentId,

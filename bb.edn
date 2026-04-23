@@ -1,6 +1,6 @@
 {:paths ["dev" "src" "test"]
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        org.clojure/clojurescript {:mvn/version "1.11.60"}}
+ :deps {org.clojure/clojure {:mvn/version "1.12.4"}
+        org.clojure/clojurescript {:mvn/version "1.12.134"}}
 
  :tasks
  {:requires ([babashka.fs :as fs]
@@ -176,8 +176,6 @@
                  (shell "ck --clean-orphans .")
                  (println "Indexing source files...")
                  (shell "ck --sem --threshold 0.0 --limit 1 'test' src/")
-                 (println "Indexing session files...")
-                 (shell "ck --sem --threshold 0.0 --limit 1 'test' ~/.claude/projects/-Users-alien-Projects-evo/")
                  (println "✓ Index rebuilt"))}
 
    ;; REPL helpers
