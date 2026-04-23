@@ -1522,7 +1522,10 @@
     &.bullet-collapsed::before {
       width: calc(var(--block-bullet-size) + 0.2em);
       height: calc(var(--block-bullet-size) + 0.2em);
-      background: var(--color-text-secondary);
+      /* Distinct from leaf dots (warm gray) and from focused/selected accents —
+         pulls from the lavender 280-hue selection family but saturated enough
+         to read as its own signal: "collapsed parent has hidden children". */
+      background: oklch(55% 0.14 280);
     }
 
     &.bullet-expanded::before {
