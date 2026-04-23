@@ -2,7 +2,7 @@
 
 ClojureScript outliner with a tiny tree algebra.
 
-`TLDR`: Evo is a structural text editor in the family of outliners or tree-based text editors. *You can try it here* (link). I evolved the kernel, renderer and plugin system a few dozen times. This was in 2023/2024 before workable coding agents!  The final source code is around ~18K LoC and is the predecessor of another archived Clojure repo and various, wasted Javascript/Svelte prototypes.
+`TLDR`: Evo is a structural text editor in the family of outliners or tree-based text editors. *[You can try it here](https://markusstrasser.org/evo-demo)*. I evolved the kernel, renderer and plugin system a few dozen times. This was in 2023/2024 before workable coding agents!  The final source code is around ~18K LoC and is the predecessor of another archived Clojure repo and various, wasted Javascript/Svelte prototypes.
 
 **I did not set out to make a text editor**.  It fell out of a much larger idea that I now see as moot: user interfaces that evolve directly from user events[^1] ...or "differential interfaces"
 
