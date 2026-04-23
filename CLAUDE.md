@@ -127,7 +127,7 @@ All state changes flow through a strict pipeline:
 
 1. **Normalize**: Filter no-ops, resolve position anchors
 2. **Validate**: Check schema, invariants (cycles, missing refs)
-3. **Apply**: Execute via three primitives (create, place, update)
+3. **Apply**: Execute via three primitives (`create-node`, `place`, `update-node`)
 4. **Derive**: Recompute indexes (`:parent-of`, `:next-id-of`, `:prev-id-of`, traversal orders)
 
 ```clojure
@@ -545,7 +545,7 @@ const db = await page.evaluate(() => window.DEBUG.state());
 See `docs/DX_INDEX.md` for the full doc map with task routing. Key files:
 
 - `docs/GOALS.md` - Project mission, strategy, success metrics
-- `VISION.md` - Product philosophy and architectural ideas
+- `README.md` - Project quick start and repo structure
 - `docs/STRUCTURAL_EDITING.md` - Core editor spec
 - `docs/CODING_GOTCHAS.md` - Common pitfalls
 - `dev/repl/init.cljc` - REPL utilities
@@ -594,15 +594,19 @@ Key task categories:
 
 Every design decision, refactoring choice, and documentation edit should be evaluated against: "Does this make the kernel smaller, more correct, or more legible?" If none of the three, don't do it.
 
-### Project Mode: Extraction
+### Project Mode: Solid Outliner With Clean Extension Surface
 
-Evo is in **extraction mode**. The kernel (`src/kernel/`) is the valuable artifact. Agent work should trend toward:
-1. Separating kernel from shell/UI concerns
-2. Cleaning the kernel API surface (three-op primitives, transaction pipeline, derived indexes)
-3. Ensuring property tests and specs are self-contained with the kernel
-4. Removing dead code, consolidating redundant patterns
+*Updated 2026-04-22. Supersedes earlier "Extraction" and "Reference Implementation + Trace Substrate" framings, which were over-claims.*
 
-Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure. Bug fixes and improvements to existing kernel code are welcome.
+Evo is a solid outliner with a clean, data-driven extension surface. Kernel stays pure so the code is readable and agents can patch by emitting intents. That's the whole thing. See `docs/GOALS.md` for details.
+
+Agent work should trend toward:
+1. **Kernel purity.** Zero imports from `shell/`/`components/`/`keymap/` in `src/kernel/`.
+2. **Clean extension surface.** Three registries (intent, derived, render) + session atom. Adding a feature = registering handlers, not editing core.
+3. **Deletion.** Remove dead code, consolidate redundant patterns.
+4. **Test portability.** Property tests and specs self-contained with the kernel.
+
+Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording, replayable datasets, library extraction, universal adapters, LLVM-of-UI IRs). Bug fixes and extension-surface cleanup are welcome.
 
 ### Principles
 
@@ -632,4 +636,5 @@ Do NOT: add new outliner features, chase Logseq parity, or build speculative inf
 
 ### Known Limitations
 
-- Extraction readiness is not measurable yet — no metric for "how close to standalone"
+- Render-registry (Tier 2 of the parser refactor plan) not yet built; per-format rendering currently lives in a `case` in `block.cljs`.
+- Library extractability is not measurable — gated on a concrete consumer requesting it.
