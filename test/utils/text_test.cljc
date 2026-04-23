@@ -21,15 +21,17 @@
 
 ;; ── Count Graphemes Tests ─────────────────────────────────────────────────────
 
-(deftest count-graphemes-ascii-test
+(deftest ^{:fr/ids #{:fr.nav/grapheme-cursor-memory}} count-graphemes-ascii-test
   (testing "ASCII string counts correctly"
     (is (= 5 (text/count-graphemes "Hello")))
     (is (= 0 (text/count-graphemes "")))))
 
 #?(:cljs
-   (deftest count-graphemes-emoji-test
+   (deftest ^{:fr/ids #{:fr.nav/grapheme-cursor-memory}} count-graphemes-emoji-test
      (testing "String with emoji counts grapheme clusters"
-       ;; "Hi😀" = 3 graphemes (H, i, 😀)
+       ;; "Hi😀" = 3 graphemes (H, i, 😀) — the invariant that
+       ;; cursor-memory uses: ArrowDown from column 3 lands at column 3
+       ;; in graphemes, not UTF-16 code units.
        (is (= 3 (text/count-graphemes "Hi😀"))))))
 
 ;; ── Cursor Position to Grapheme Index Tests ──────────────────────────────────

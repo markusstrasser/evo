@@ -1195,7 +1195,7 @@
    Without it, MathJax would process $...$ patterns and strip delimiters."
   [{:keys [block-id text on-intent db]}]
   (let [edit-key (str block-id "-edit")]
-    [:span.block-content.math-ignore
+    [:span.block-content.math-ignore.editing
      {:contentEditable true
       :suppressContentEditableWarning true
       :replicant/key edit-key
@@ -1544,7 +1544,7 @@
 
    In view mode, the prefix is hidden and content is styled appropriately.
    In edit mode (edit-content), the raw markdown is shown."
-  [{:keys [block-id text is-focused on-intent db]}]
+  [{:keys [block-id text is-focused is-selected on-intent db]}]
   ;; Check for image-only block first (special handling with resize)
   (if (image-only-block? text)
     (image-block-content {:block-id block-id :text text :is-focused is-focused
@@ -1600,7 +1600,14 @@
               ;; `cljs$core$key` that the parser rejects.
               has-math? (inline-format/has-math? content)
               ;; Add on-render hook to typeset math when present
+              ;; Row-scoped affordances live on .block-content, not on the
+              ;; outer .block wrapper — otherwise the tint bleeds into
+              ;; descendants that aren't focused/selected themselves.
+              row-classes (cond-> []
+                            is-focused (conj "focused")
+                            is-selected (conj "selected"))
               container-props (cond-> (merge {:replicant/key view-key} click-handler)
+                                (seq row-classes) (assoc :class row-classes)
                                 has-math? (assoc :replicant/on-render
                                                  (fn [_] (typeset-math!))))]
           (into [container-tag container-props] children))))))
@@ -1696,7 +1703,7 @@
                   ;; Default: text block with edit/view modes
                   (if is-editing
                     (edit-content {:block-id block-id :text text :on-intent on-intent :db db})
-                    (view-content {:block-id block-id :text text :is-focused is-focused :on-intent on-intent :db db})))
+                    (view-content {:block-id block-id :text text :is-focused is-focused :is-selected is-selected :on-intent on-intent :db db})))
 
         ;; Autocomplete popup - only show when editing text blocks
         autocomplete-state (vs/autocomplete)

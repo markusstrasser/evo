@@ -396,7 +396,7 @@
     (assert (empty? issues) (str "Fixture setup failed: " (pr-str issues)))
     db))
 
-(deftest 
+(deftest ^{:fr/ids #{:fr.scope/zoom-guards}}
   outdent-blocked-by-zoom-boundary
   (testing "FR-Scope-02: Outdent is no-op when grandparent is outside zoom root"
     (let [db (build-zoomed-doc)
@@ -409,7 +409,7 @@
       (is (= ["child-a" "child-b"] (get-in result [:db :children-by-parent "parent"]))
           "Structure should remain unchanged"))))
 
-(deftest move-up-climb-blocked-by-zoom-boundary
+(deftest ^{:fr/ids #{:fr.scope/zoom-guards}} move-up-climb-blocked-by-zoom-boundary
   (testing "FR-Scope-02: Move up (climb) is no-op when grandparent is outside zoom root"
     (let [db (build-zoomed-doc)
           ;; Set child-a as editing block (first child, will try to climb out)

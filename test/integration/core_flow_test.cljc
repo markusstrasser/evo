@@ -66,7 +66,7 @@
       (is (= (count (:ops log0)) (count (:ops log)))
           "Ephemeral ops (edit mode) should not add log entries"))))
 
-(deftest delete-moves-to-trash
+(deftest ^{:fr/ids #{:fr.kernel/derive-indexes}} delete-moves-to-trash
   (testing "Delete moves nodes to trash (archive by design)"
     (let [db0 (demo-db)
           ;; :delete intent requires editing state

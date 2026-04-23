@@ -15,7 +15,7 @@
   ([db ops]
    (:db (tx/interpret db ops))))
 
-(deftest visible-siblings-test
+(deftest ^{:fr/ids #{:fr.scope/visible-outline}} visible-siblings-test
   (testing "Returns all visible siblings including self"
     (let [db (apply-ops
               [{:op :create-node :id "b1" :type :block :props {:text "Child 1"}}
@@ -28,7 +28,7 @@
 
       (is (= ["b1" "b2" "b3"] (nav/visible-siblings db session "b2"))))))
 
-(deftest sibling-navigation-test
+(deftest ^{:fr/ids #{:fr.scope/visible-outline}} sibling-navigation-test
   (testing "Navigate between visible siblings"
     (let [db (apply-ops
               [{:op :create-node :id "b1" :type :block :props {:text "First"}}

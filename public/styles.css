@@ -964,22 +964,28 @@
        2px-of-transparent gutter that shifted text rightward on every block. */
     border-left: 1px solid transparent;
 
+    /* State visuals split across two scopes:
+         - `.block.{selected,focused,editing}` paints the SUBTREE rail (left-bar,
+           and for selection a faint wash — signals blast-radius of structural ops).
+         - `.block-content.{selected,focused,editing}` paints the ROW only
+           (signals "this node is literally the focused/selected/editing node").
+       This matches the kernel: editing/focus are points (single IDs), while
+       selection is a set whose structural ops act under subtree closure. */
+
     &.selected {
-      background: var(--color-selected-bg);
+      /* Faint subtree wash — "this subtree will be affected by structural ops".
+         The directly-selected row gets the stronger tint via .block-content.selected. */
+      background: oklch(97.5% 0.018 280);
       border-left-color: var(--color-selected-border);
     }
 
     &.focused {
-      background: var(--color-focused-bg);
-      /* Desaturated accent — present but doesn't compete with text */
+      /* Rail only — row tint lives on .block-content.focused */
       border-left-color: oklch(70% 0.06 55);
     }
 
     &.editing {
-      /* Subtle warm tint to lift the edited block off the page —
-         shallower than `--color-focused-bg`, still readable under prose.
-         Editing affordance: tint + warm-amber left bar + bold caret. */
-      background: oklch(98.5% 0.012 55);
+      /* Rail only — row tint lives on .block-content.editing */
       border-left-color: oklch(65% 0.12 55);
     }
 
@@ -1046,6 +1052,28 @@
     &:empty::before {
       content: "\00a0";
       color: transparent;
+    }
+
+    /* Row-scoped state visuals — mirror kernel semantics: these are point
+       states (single-node), vs. the subtree wash on .block.selected. */
+    &.selected,
+    &.focused,
+    &.editing {
+      border-radius: var(--radius-sm);
+    }
+
+    &.selected {
+      /* Direct selection — this row is literally in selection-nodes */
+      background: var(--color-selected-bg);
+    }
+
+    &.focused {
+      background: var(--color-focused-bg);
+    }
+
+    &.editing {
+      /* Warm editing tint — same hue as the left-bar rail */
+      background: oklch(98.5% 0.012 55);
     }
   }
 
