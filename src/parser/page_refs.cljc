@@ -76,3 +76,18 @@
     (-> page-name
         str/trim
         str/lower-case)))
+
+;; ── AST adapter ──────────────────────────────────────────────────────────────
+
+(defn- segment->ast-node
+  [{:keys [type value page]}]
+  (case type
+    :text     [:text {} (or value "")]
+    :page-ref [:page-ref {:name page} [[:text {} page]]]))
+
+(defn parse
+  "Parse TEXT into a vector of AST nodes, extracting [[page-refs]].
+
+   See `parser.ast` for the node shape."
+  [text]
+  (mapv segment->ast-node (or (split-with-refs text) [])))

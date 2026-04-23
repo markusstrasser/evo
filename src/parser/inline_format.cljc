@@ -228,3 +228,23 @@
        (boolean (some #(or (= :math-inline (:type %))
                            (= :math-block (:type %)))
                       (split-with-formatting text)))))
+
+;; ── AST adapter ──────────────────────────────────────────────────────────────
+
+(defn- segment->ast-node
+  [{:keys [type value marker]}]
+  (case type
+    :text           [:text {} (or value "")]
+    :bold           [:bold          {:marker (or marker "**")} [[:text {} value]]]
+    :italic         [:italic        {:marker (or marker "_")}  [[:text {} value]]]
+    :highlight      [:highlight     {:marker "=="}             [[:text {} value]]]
+    :strikethrough  [:strikethrough {:marker "~~"}             [[:text {} value]]]
+    :math-inline    [:math-inline {} value]
+    :math-block     [:math-block {} value]))
+
+(defn parse
+  "Parse TEXT into a vector of AST nodes. Pure, no Replicant/DOM.
+
+   See `parser.ast` for the node shape."
+  [text]
+  (mapv segment->ast-node (split-with-formatting text)))
