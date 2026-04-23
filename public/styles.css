@@ -965,27 +965,22 @@
     border-left: 1px solid transparent;
 
     /* State visuals split across two scopes:
-         - `.block.{selected,focused,editing}` paints the SUBTREE rail (left-bar,
-           and for selection a faint wash — signals blast-radius of structural ops).
-         - `.block-content.{selected,focused,editing}` paints the ROW only
+         - `.block.{selected,focused,editing}` paints ONLY the left-bar rail
+           (signals subtree scope — the blast-radius of structural ops — without
+           a background tint that would stack with descendant row tints).
+         - `.block-content.{selected,focused,editing}` paints the ROW tint
            (signals "this node is literally the focused/selected/editing node").
-       This matches the kernel: editing/focus are points (single IDs), while
-       selection is a set whose structural ops act under subtree closure. */
+       One hue per region, no overlap: rail shows scope, row shows identity. */
 
     &.selected {
-      /* Faint subtree wash — "this subtree will be affected by structural ops".
-         The directly-selected row gets the stronger tint via .block-content.selected. */
-      background: oklch(97.5% 0.018 280);
       border-left-color: var(--color-selected-border);
     }
 
     &.focused {
-      /* Rail only — row tint lives on .block-content.focused */
       border-left-color: oklch(70% 0.06 55);
     }
 
     &.editing {
-      /* Rail only — row tint lives on .block-content.editing */
       border-left-color: oklch(65% 0.12 55);
     }
 
