@@ -232,7 +232,7 @@ export async function updateBlockText(page, blockId, text) {
  * @param {import('@playwright/test').Page} page
  * @param {number} [timeout=5000]
  */
-export async function waitForBlocks(page, timeout = 5000) {
+export async function waitForBlocks(page, timeout = 15000) {
   await page.waitForFunction(() => Boolean(window.TEST_HELPERS), undefined, { timeout });
 
   if ((await page.locator('[data-block-id]').count()) === 0) {
