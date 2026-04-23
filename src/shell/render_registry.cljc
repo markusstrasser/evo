@@ -48,11 +48,33 @@
                        :registered (set (keys @registry))
                        :hint "Did the corresponding shell.render.* namespace load?"})))))
 
+(defn- hiccup-element?
+  "A vector that is one hiccup element (keyword tag first).
+   Distinguishes a single element like `[:strong \"x\"]` from a
+   sibling list like `[(marker-span) [:strong \"x\"] (marker-span)]`."
+  [v]
+  (and (vector? v) (pos? (count v)) (keyword? (nth v 0))))
+
 (defn render-all
-  "Map `render-node` across a sibling vector. Returns a vector of
-   hiccup elements ready to splat into a parent container."
+  "Map `render-node` across a sibling vector and flatten.
+
+   Handler returns are normalized:
+     - string           → one child
+     - hiccup element   → one child
+     - sibling vector   → splatted in order
+     - anything else    → one child (number, nil, …)
+
+   Returns a flat vector of hiccup children ready to splat into a parent."
   [nodes ctx]
-  (mapv #(render-node % ctx) nodes))
+  (vec
+    (mapcat (fn [node]
+              (let [r (render-node node ctx)]
+                (cond
+                  (string? r)        [r]
+                  (hiccup-element? r) [r]
+                  (vector? r)        r
+                  :else              [r])))
+            nodes)))
 
 #?(:clj
    (defn clear!

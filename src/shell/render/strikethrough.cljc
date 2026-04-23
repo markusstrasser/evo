@@ -1,8 +1,12 @@
 (ns shell.render.strikethrough
-  "TODO (Tier 3): :strikethrough handler — hidden marker spans + <del>."
-  (:require [shell.render-registry :refer [register-render!]]))
+  "Handler for :strikethrough. Hidden `~~` markers + <del>."
+  (:require [shell.render-registry :refer [register-render! render-all]]
+            [shell.render.marker :refer [marker-span]]))
 
 (register-render! :strikethrough
   {:handler
-   (fn [_node _ctx]
-     (throw (ex-info "TODO :strikethrough handler not yet migrated" {})))})
+   (fn [node ctx]
+     (let [children (nth node 2)]
+       [(marker-span "~~")
+        (into [:del] (render-all children ctx))
+        (marker-span "~~")]))})

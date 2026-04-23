@@ -50,6 +50,7 @@
      [2 (gen/elements [\space \space \space \tab])]
      [1 (gen/elements [\* \_ \= \~ \$ \[ \] \( \) \! \{ \} \| \. \, \; \:])]]))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; used inside defspec macro body
 (def ^:private source-gen
   (gen/fmap #(apply str %) (gen/vector source-char-gen 0 60)))
 

@@ -1,8 +1,17 @@
 (ns shell.render.text
-  "TODO (Tier 3): handler for :text nodes. Newlines become [:br]."
-  (:require [shell.render-registry :refer [register-render!]]))
+  "Render handler for :text nodes.
+
+   Single-line → return the raw string.
+   Multi-line  → return a sibling vector with [:br] interposed — the
+   `render-registry/render-all` flattener splats it into the parent."
+  (:require [clojure.string :as str]
+            [shell.render-registry :refer [register-render!]]))
 
 (register-render! :text
   {:handler
-   (fn [_node _ctx]
-     (throw (ex-info "TODO :text handler not yet migrated" {})))})
+   (fn [node _ctx]
+     (let [s (nth node 2)]
+       (if (and (string? s) (str/includes? s "\n"))
+         (let [parts (str/split s #"\n" -1)]
+           (vec (interpose [:br] parts)))
+         (or s ""))))})
