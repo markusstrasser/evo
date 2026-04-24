@@ -46,7 +46,7 @@ The simpler version is this: Evo compiles editor behavior down to three document
   ```
 
 - **The edit algebra is only three ops.** I explicitly removed extra structural primitives and kept `create-node`, `place`, and `update-node` as the whole mutation surface. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc), [`docs/GOALS.md`](docs/GOALS.md).
-- **Structural editing means tree edits, not visual whitespace.** `Tab` and `Shift+Tab` change parent-child relationships. Indent moves a block under its previous sibling; outdent moves it after its parent.
+- **Structural editing means tree edits, not visual whitespace.** `Tab` and `Shift+Tab` change parent-child relationships. Indent moves a block under its previous sibling; outdent moves it after its parent. In an outline, parentage carries meaning; changing one block's level should not silently reparent its siblings.
 
   ```text
   Before Shift+Tab:
