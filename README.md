@@ -60,7 +60,7 @@ The simpler version is this: Evo compiles editor behavior down to three document
   Child A
   ```
 
-- **A small mutation surface is easier to audit.** Undo/redo, tests, logs, and debugging all get simpler when every structural change has to pass through the same tiny vocabulary.
+- **A small mutation surface is easier to audit.** Undo/redo, tests, logs, and debugging all get simpler when every structural change has to pass through the same three operations.
 - **Reads are centralized.** [`src/kernel/query.cljc`](src/kernel/query.cljc) is the explicit read surface.
 - **Session state moved out of the DB.** Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), while the persistent document graph stays in [`src/kernel/db.cljc`](src/kernel/db.cljc).
 - **The browser owns text while you type.** Evo does not write every keystroke into the DB; that path causes cursor and render churn. During edit mode, `contenteditable` owns the live text and the view-state buffer mirrors it. Evo commits back to the document graph at controlled boundaries. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
@@ -295,7 +295,7 @@ npm run test:e2e              # full Playwright suite (~4min)
 
 ## Notes and References
 
-[1] The longer version: I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. You can use AI to patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
+A note on the old interface idea: I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. You can use AI to patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
 
 ### References
 
