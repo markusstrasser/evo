@@ -46,6 +46,20 @@ The simpler version is this: Evo compiles editor behavior down to three document
   ```
 
 - **The edit algebra is only three ops.** I explicitly removed extra structural primitives and kept `create-node`, `place`, and `update-node` as the whole mutation surface. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc), [`docs/GOALS.md`](docs/GOALS.md).
+- **Structural editing means tree edits, not visual whitespace.** `Tab` moves a block under its previous sibling. `Shift+Tab` moves a block after its parent. Logseq exposes this as a logical-outdenting option; Evo uses the logical behavior as the only mode.
+
+  ```text
+  Before Shift+Tab:
+  Parent
+    Child A
+    Child B
+
+  After Shift+Tab on Child A:
+  Parent
+    Child B
+  Child A
+  ```
+
 - **A small mutation surface is easier to audit.** Undo/redo, tests, logs, and debugging all get simpler when every structural change has to pass through the same tiny vocabulary.
 - **Reads are centralized.** [`src/kernel/query.cljc`](src/kernel/query.cljc) is the explicit read surface.
 - **Session state moved out of the DB.** Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), while the persistent document graph stays in [`src/kernel/db.cljc`](src/kernel/db.cljc).
