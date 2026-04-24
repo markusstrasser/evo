@@ -2,33 +2,54 @@
 
 ClojureScript outliner with a tiny tree algebra.
 
-`TLDR`: Evo is a structural text editor in the family of outliners or tree-based text editors. *[You can try it here](https://markusstrasser.org/evo-demo)*. I evolved the kernel, renderer and plugin system a few dozen times. This was in 2023/2024 before workable coding agents!  The final source code is around ~18K LoC and is the predecessor of another archived Clojure repo and various, wasted Javascript/Svelte prototypes.
+Evo is a working structural text editor: nested blocks, inline markdown, page refs, images, math, multi-select, undo/redo, backlinks, and local-folder persistence. You can try it here: [markusstrasser.org/evo-demo](https://markusstrasser.org/evo-demo).
 
-**I did not set out to make a text editor**.  It fell out of a much larger idea that I now see as moot: user interfaces that evolve directly from user events[^1] ...or "differential interfaces"
+I evolved the kernel, renderer, and plugin system a few dozen times in 2023/2024, before coding agents were useful for this kind of work. The current source is about 18K LoC. It also led to another archived Clojure repo and several discarded JavaScript/Svelte prototypes.
 
-And although I realized these ideas as moot, the **evo interface contract is perfect for agents to evolve and extend it live** via sending or creating intents as pure maps. The UI is also evolvable live via the Clojure REPL and agents are great at using it.
+**I did not set out to make a text editor.** Evo fell out of a larger experiment: could user interfaces change directly from user events?
 
-I conceived the kernel and plugin sys more as an **MLIR (Multi-Level Intermediate Representation)** for DOM/Tree editing. Although compilation and UI interactions don’t map perfectly.
+I now think that idea was too broad. Creative tools need stable primitives more than they need live meta-evolution. But the experiment left behind something useful: a small outliner kernel with a narrow mutation surface.
+
+The agent angle matters because Evo exposes editor behavior as data.
+
+A user action becomes an intent map. A plugin turns that intent into ops. The kernel validates and applies those ops through one transaction path. That gives coding agents a clean place to work: change intent handlers, inspect the emitted ops, and test the result without inventing DOM behavior from scratch.
+
+I used to think of the kernel and plugin system as something like an IR for tree editing. That analogy is too heavy.
+
+The simpler version is this: Evo compiles editor behavior down to three document operations: `create-node`, `place`, and `update-node`.
 
 ## What it does
 
-- **Rich Text editing** as in any markdown editor in each node of the outliner tree
-- **Nested blocks** with indent/outdent, drag & drop, and fold
-- **Inline markdown** — `**bold**`, `_italic_`, `==highlight==`, `~~strike~~`, `$inline math$`, `$$block math$$`
-- **Wiki-style refs** `[[Page Name]]` and markdown links `[label](target)`, including custom `evo://` schemes: `evo://page/<name>` and `evo://journal/<iso-date>`
-- **Inline images** `![alt](path){width=N}` with paste-from-clipboard upload, resize handles, and a lightbox
-- **Math via MathJax** with a scanner contract that refuses to typeset prose dollars (see `.claude/rules/global-dom-scanners.md`)
-- **Multi-select**, **undo/redo** over the full log, **autocomplete** for page refs and slash-commands, **backlinks** panel
-- **Local-first persistence** to a folder you pick; no server, no account
+| Area | Support |
+| --- | --- |
+| Blocks | nesting, indent/outdent, drag/drop, fold |
+| Inline text | `**bold**`, `_italic_`, `==highlight==`, `~~strike~~` |
+| Links and refs | `[[Page Name]]`, `[label](target)`, `evo://page/<name>`, `evo://journal/<iso-date>` |
+| Media | images with paste upload, resize handles, lightbox |
+| Math | `$inline math$`, `$$block math$$` through MathJax |
+| Editor state | multi-select, undo/redo, autocomplete, backlinks |
+| Persistence | local folder, no server, no account |
 
 ### Design decisions
 
-- **Tree DB, plus derived indexes works better than positional schemes.** The current shape in [`src/kernel/db.cljc`](src/kernel/db.cljc) is parent-owned child vectors plus derived indexes such as `:parent-of`, `:next-id-of`, and `:index-of`.
+- **The DB stores a tree, not positions.** [`src/kernel/db.cljc`](src/kernel/db.cljc) stores parent-owned child vectors. The transaction pipeline derives lookup maps such as `:parent-of`, `:next-id-of`, and `:index-of`.
+
+  ```clojure
+  {:children-by-parent {:doc ["a" "b"]
+                        "a" ["c"]}
+   :derived {:parent-of {"a" :doc
+                         "b" :doc
+                         "c" "a"}
+             :index-of {"a" 0
+                        "b" 1
+                        "c" 0}}}
+  ```
+
 - **The edit algebra is only three ops.** I explicitly removed extra structural primitives and kept `create-node`, `place`, and `update-node` as the whole mutation surface. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc), [`docs/GOALS.md`](docs/GOALS.md).
 - **A small mutation surface is easier to audit.** Undo/redo, tests, logs, and debugging all get simpler when every structural change has to pass through the same tiny vocabulary.
 - **Reads are centralized.** [`src/kernel/query.cljc`](src/kernel/query.cljc) is the explicit read surface.
 - **Session state moved out of the DB.** Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), while the persistent document graph stays in [`src/kernel/db.cljc`](src/kernel/db.cljc).
-- **Uncontrolled editing replaces keystroke-by-keystroke DB writes.** Although it’s technically not purely functional programming: the browser owns contenteditable during edit mode, the buffer mirrors high-velocity text … commits happen at the controlled boundary. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
+- **The browser owns text while you type.** Evo does not write every keystroke into the DB; that path causes cursor and render churn. During edit mode, `contenteditable` owns the live text and the view-state buffer mirrors it. Evo commits back to the document graph at controlled boundaries. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
 
 ## Prerequisites
 
@@ -67,20 +88,21 @@ npm start             # clean build + watch CLJS + watch CSS
 - **Three-operation (ops) invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
 - **Data-driven dispatch.** Intents are EDN maps.
 - **Session state separate from DB.** Ephemeral UI state lives in the session atom, not polluting the persistent doc.
-- **Domains don't abstract.** Text, video, audio, CAD share architectural *principles* but not *primitives*. Universality is a mirage.
+- **No universal editor primitive.** Evo abstracts over tree editing, not text, video, audio, CAD, or every creative domain.
 
 ## Non-goals
 
-- **Not a PKM**: structured-note-taking is a low RoI nerd trap.
-- **Not a packaged library.** No Clojars artifact, no API stability. People can reuse the kernel if it fits other domains.
-- **Not trying to have parity with text editors**: I wanted to have the full “structural editing spec” of other outliners but not more. I did not implement block embeds and page embeds by design: they are counterproductive in general.
+- **Not a PKM product.** Structured note-taking is a low-ROI trap for this project. Evo cares about the outliner mechanics, not the life system around them.
+- **Not a packaged library.** There is no Clojars artifact and no API stability promise. Reuse the kernel if it fits, but this repo does not pretend to be a stable dependency.
+- **Not full editor parity.** Evo aims for a solid structural editing spec, not every feature from rich-text editors or PKM apps. I skipped block embeds and page embeds on purpose.
 
 ## Spec as contract
 
-- The persistent model is a small tree-plus-derived-indices database. See [`src/kernel/db.cljc`](src/kernel/db.cljc).
-- All durable changes reduce to three ops: `create-node`, `place`, `update-node`. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc).
-- The transaction (tx) pipeline is the real contract: `normalize -> validate -> apply -> derive`.
-- Ephemeral UI state stays out of the document DB. Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), not in [`src/kernel/db.cljc`](src/kernel/db.cljc). This is not pure FP per se but a perf compromise
+- [`src/kernel/db.cljc`](src/kernel/db.cljc) stores the persistent document graph.
+- [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc) owns the write path.
+- All durable changes reduce to three ops: `create-node`, `place`, `update-node`.
+- The transaction contract is: `normalize -> validate -> apply -> derive`.
+- [`src/shell/view_state.cljs`](src/shell/view_state.cljs) owns cursor, selection, folding, autocomplete, and edit mode. That state changes too often to belong in the replayable document DB.
 
 Canonical DB shape:
 
@@ -104,43 +126,112 @@ Kernel ops:
 
 ### Derived indexes
 
-The stored DB stays small: nodes, parent-owned child vectors, roots. Everything else is re-derived after each transaction.
+The DB stores only the source facts:
 
-That is what makes reads cheap without pushing more state into the canonical model. Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` hit precomputed maps like `:parent-of`, `:index-of`, `:prev-id-of`, and `:next-id-of`. Because derivation runs inside the transaction pipeline, the UI never sees stale indexes. Plugins can also register their own derived views; backlinks are the main example.
+```clojure
+:nodes
+:children-by-parent
+:roots
+```
+
+The transaction pipeline derives the lookup maps after each write:
+
+```clojure
+:parent-of
+:index-of
+:prev-id-of
+:next-id-of
+```
+
+Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` read those maps. Plugins can add derived views too; backlinks use that path.
 
 ### Plugins
 
-Plugins compile intents into a vector of ops. They read the current DB, decide what should happen, and return data for the kernel to apply. Indent is a simple example. The handler looks up the previous sibling of `node-B`, decides `node-B` should move under `node-A`, and emits:
+Plugins turn user intent into kernel ops.
+
+Example intent:
+
+```clojure
+{:type :indent
+ :id "node-B"}
+```
+
+The indent plugin reads the current tree, finds `node-B`'s previous sibling, and emits one placement:
 
 ```clojure
 {:op :place :id "node-B" :under "node-A" :at :last}
 ```
 
-That is the boundary. Plugins do not mutate the DB directly, do not bypass the transaction pipeline, and do not share hidden state. The useful mental model is `(db, intent) -> {:ops ... :session-updates ...}`.
+That is the boundary:
 
-The point is that more complex features still collapse to the same shape. Page refs, backlinks, and graph-ish features are not special kernel machinery. A plugin can interpret a ref-oriented intent, emit normal ops, and a derived-index plugin can materialize the extra view over the same document graph. The kernel still just sees nodes, placements, updates, and re-derived indexes.
+```clojure
+(db, intent) -> {:ops [...]
+                 :session-updates {...}}
+```
 
+Plugins do not mutate the DB. They return data. The executor sends that data through the transaction pipeline and applies session updates separately.
 
+More complex features still use the same path. Page refs and backlinks do not get special kernel machinery. Plugins interpret the intent, emit normal ops, and add derived views when they need faster reads.
 
 ## Architecture
 
-At runtime the path is: intent map -> plugin handler -> three-op transaction -> canonical DB + derived indexes -> parser/render -> DOM. [`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops and session updates. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
+Runtime path:
 
-The extension surface is explicit: [`kernel.intent/register-intent!`](src/kernel/intent.cljc), [`kernel.derived-registry/register!`](src/kernel/derived_registry.cljc), and [`shell.render-registry/register-render!`](src/shell/render_registry.cljc). All three follow the same shape: a `defonce` atom, a registration function that validates and swaps in a map entry, and a dispatch path. Re-registering the same key replaces the old handler, which keeps hot reload and test fixtures idempotent. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
+```text
+DOM event
+  -> intent map
+  -> plugin handler
+  -> kernel ops
+  -> transaction pipeline
+  -> canonical DB + derived indexes
+  -> parser/render
+  -> DOM
+```
 
-The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading. Rule of thumb: new inline syntax means parser + render work, new editing behavior means plugin work, and kernel edits are only for changes to the document machine itself.
+[`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops and session updates. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
 
-Two non-registry layers matter. [`src/shell/view_state.cljs`](src/shell/view_state.cljs) holds ephemeral UI state that should not enter the undo log: cursor, selection, fold set, editing block id, drag state. [`src/shell/log.cljs`](src/shell/log.cljs) is the append-only transaction journal used for undo/redo, persistence, and replay.
-That matters because undo, persistence, and replay are not three separate subsystems here. They are the same transaction history seen through different entry points.
+The extension surface has three registries:
 
-[`src/scripts/`](src/scripts/) exists for the small class of edits where step 2 depends on step 1. Those cases run against a scratch DB first, accumulate normalized ops, and then commit once, so the outer system still sees one atomic edit.
+| Registry | Adds | File |
+| --- | --- | --- |
+| Intent | editing/navigation behavior | [`kernel.intent/register-intent!`](src/kernel/intent.cljc) |
+| Derived index | materialized read views | [`kernel.derived-registry/register!`](src/kernel/derived_registry.cljc) |
+| Render | AST tag rendering | [`shell.render-registry/register-render!`](src/shell/render_registry.cljc) |
 
-A typical feature spans registries without crossing boundaries. Backlinks are the concrete example:
+Each registry has the same shape: a `defonce` atom, a validating registration function, and a dispatch path. Re-registering a key replaces the old handler, which keeps hot reload and test fixtures simple. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
 
-- derived index in [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc)
-- UI in [`src/components/backlinks.cljs`](src/components/backlinks.cljs)
-- navigation intent in [`src/plugins/pages.cljc`](src/plugins/pages.cljc)
-- page-ref render handler in [`src/shell/render/page_ref.cljs`](src/shell/render/page_ref.cljs)
+The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading.
+
+Where a change belongs:
+
+| Change | Touch |
+| --- | --- |
+| New inline syntax | parser + render handler |
+| New editing behavior | plugin intent handler |
+| New materialized read view | derived-index plugin |
+| New document invariant | kernel |
+
+Two non-registry files matter:
+
+| File | Owns |
+| --- | --- |
+| [`src/shell/view_state.cljs`](src/shell/view_state.cljs) | cursor, selection, folds, edit mode, drag state |
+| [`src/shell/log.cljs`](src/shell/log.cljs) | append-only transaction journal |
+
+Undo, persistence, and replay all read the same transaction history. They are not separate subsystems.
+
+[`src/scripts/`](src/scripts/) handles edits where one step needs the result of a previous step.
+
+A script runs against a scratch DB, collects normalized ops, and commits once. The runtime still sees one atomic edit.
+
+Backlinks show the split:
+
+| Part | File |
+| --- | --- |
+| Derived index | [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) |
+| UI panel | [`src/components/backlinks.cljs`](src/components/backlinks.cljs) |
+| Navigation intent | [`src/plugins/pages.cljc`](src/plugins/pages.cljc) |
+| Page-ref rendering | [`src/shell/render/page_ref.cljs`](src/shell/render/page_ref.cljs) |
 
 Inline content is parsed into a uniform AST shape:
 
@@ -157,40 +248,25 @@ Where things go:
 - session state does not go in the document DB
 - [`src/kernel/`](src/kernel/) must not import `src/shell/`, `src/components/`, or `src/keymap/`
 
-## Breakdown
-
-| Area                                 | Code LoC | What lives there                                             |
-| ------------------------------------ | -------: | ------------------------------------------------------------ |
-| [`src/components/`](src/components/) |    ~4.3k | UI, especially [`block.cljs`](src/components/block.cljs)     |
-| [`src/plugins/`](src/plugins/)       |    ~3.7k | Intent handlers and derived-index plugins                    |
-| [`src/kernel/`](src/kernel/)         |    ~3.2k | Pure document model, ops, transaction pipeline, queries      |
-| [`src/shell/`](src/shell/)           |    ~3.0k | Runtime wiring: startup, storage, executor, view state, URL sync |
-| [`src/utils/`](src/utils/)           |    ~1.8k | DOM, text, cursor, image, and helper code                    |
-| [`src/spec/`](src/spec/)             |    ~0.8k | FR/spec runner and registry glue                             |
-| [`src/parser/`](src/parser/)         |    ~0.8k | Inline text parsing into AST nodes                           |
-| [`src/scripts/`](src/scripts/)       |    ~0.4k | Scratch-DB multi-step edits                                  |
-| [`src/keymap/`](src/keymap/)         |    ~0.2k | Keybinding tables and dispatch glue                          |
-
-The center of gravity is the editor path. Core behavior is mostly [`src/kernel/`](src/kernel/) plus [`src/plugins/`](src/plugins/).
-
-
-
 ## Project layout
 
-```
-src/kernel/         Pure kernel: db, ops, transaction, schema, query. Zero UI imports.
-src/parser/         Text -> AST. parse.cljc does page refs, images, links, inline format.
-src/plugins/        Intent handlers + derived-index plugins. Manifest bootstraps both.
-src/shell/          Runtime wiring, session state, render registry & handlers, storage, executor.
-src/components/     UI (Block, Sidebar, Backlinks, Image, Lightbox, ...).
-src/keymap/         Keybindings & dispatch.
-src/scripts/        Multi-step operations that need simulation (smart backspace, paste).
-src/spec/           FR registry loading, tree DSL, spec runner.
-test/               Unit, property, integration (ClojureScript) + Playwright E2E.
-resources/          FR registry (specs.edn), failure modes, seed data.
-public/             index.html, styles.css, MathJax shim, build output.
-docs/               STRUCTURAL_EDITING.md, RENDERING_AND_DISPATCH.md, TESTING.md, etc.
-```
+The center of gravity is the editor path: [`src/kernel/`](src/kernel/) plus [`src/plugins/`](src/plugins/).
+
+| Path | Approx. LoC | Owns |
+| --- | ---: | --- |
+| [`src/components/`](src/components/) | ~4.3k | UI, especially [`block.cljs`](src/components/block.cljs) |
+| [`src/plugins/`](src/plugins/) | ~3.7k | intent handlers and derived-index plugins |
+| [`src/kernel/`](src/kernel/) | ~3.2k | pure document model, ops, transaction pipeline, queries |
+| [`src/shell/`](src/shell/) | ~3.0k | startup, storage, executor, view state, URL sync |
+| [`src/utils/`](src/utils/) | ~1.8k | DOM, text, cursor, image, helper code |
+| [`src/spec/`](src/spec/) | ~0.8k | FR/spec runner and registry glue |
+| [`src/parser/`](src/parser/) | ~0.8k | inline text parsing into AST nodes |
+| [`src/scripts/`](src/scripts/) | ~0.4k | scratch-DB multi-step edits |
+| [`src/keymap/`](src/keymap/) | ~0.2k | keybinding tables and dispatch glue |
+| [`test/`](test/) | - | unit, property, integration, and Playwright E2E tests |
+| [`resources/`](resources/) | - | FR registry, failure modes, seed data |
+| [`public/`](public/) | - | HTML, CSS, MathJax shim, build output |
+| [`docs/`](docs/) | - | structural editing, rendering, dispatch, testing docs |
 
 ## Tests
 
@@ -203,9 +279,9 @@ npm run test:e2e:smoke        # Playwright smoke (~10s)
 npm run test:e2e              # full Playwright suite (~4min)
 ```
 
-## Appendix / Footer / Refs
+## Notes and References
 
-[1] This is out of scope, but in short: Creative interfaces are better designed than evolved/interpolated. There's only a handful of creative modalities and a few dozen decades-old, proven primitives. We've seen close to no changes to these. Yes, there's might be subdomain niches in the creative tooling space and sure, it's technically possible to evolve an image editor into a game engine purely via AI driven iteration (user-intent/events as signal and UI patches as variants/tests) but it's the wrong paradigm and shouldn't be the outermost control loop. At best this kind of live meta-iteration is as embed inside larger, stable paradigms.
+[1] The longer version: I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. You can use AI to patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
 
 ### References
 
@@ -222,7 +298,9 @@ npm run test:e2e              # full Playwright suite (~4min)
 - Donald T. Campbell, “Assessing the Impact of Planned Social Change” (1976/1979)  
   https://www.humanlearning.systems/uploads/08%20Assessing%20the%20Impact%20of%20Planned%20Social%20Change.pdf
 
-### Related 
+### Related
+
+These comparisons are about architecture, not product scope:
 
 - **Logseq**: Closest on outliner semantics, but its core mutations ride on Datascript transactions and app-level outliner ops. Evo makes the mutation algebra itself smaller and more explicit.
 - **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and pushes more behavior into plugin compilation down to a few ops.
