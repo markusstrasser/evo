@@ -189,9 +189,9 @@
   repomix {:doc "Pack the repo into repomix-output.txt for long-context review"
            :task (shell "repomix --style plain --output repomix-output.txt .")}
 
-   ;; Development server
+  ;; Development server
   dev {:doc "Start shadow-cljs dev server + watch"
-       :task (shell "npx shadow-cljs watch :blocks-ui")}
+       :task (shell "npm run dev:fast")}
 
    ;; Git hooks
   install-hooks {:doc "Install git pre-commit hooks"
