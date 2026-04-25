@@ -2,20 +2,10 @@
   "Shared utilities for intent handlers.
 
    Common patterns for building operations and session updates
-   across multiple plugins (editing, context-editing, etc.).")
+   across multiple plugins (editing, context-editing, etc.)."
+  (:require [utils.session-patch :as session-patch]))
 
 ;; ── Session Update Composition ───────────────────────────────────────────────
-
-(defn- deep-merge-session-value
-  "Recursively merge nested session maps.
-
-   Session updates describe final leaf values, so non-map leaves are
-   last-write-wins. This preserves deep map fragments like
-   [:ui :cursor-memory ...] without unioning sets such as :folded."
-  [left right]
-  (if (and (map? left) (map? right))
-    (merge-with deep-merge-session-value left right)
-    right))
 
 (defn merge-session-updates
   "Merge session update fragments without dropping nested sibling keys.
@@ -25,12 +15,7 @@
    fragments both target :ui. Recursively merge maps, with non-map leaves
    remaining last-write-wins."
   [& updates]
-  (reduce (fn [acc update-fragment]
-            (if update-fragment
-              (deep-merge-session-value acc update-fragment)
-              acc))
-          {}
-          updates))
+  (apply session-patch/merge-patches updates))
 
 ;; ── Block ID Generation ───────────────────────────────────────────────────────
 

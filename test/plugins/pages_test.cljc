@@ -67,6 +67,28 @@
       (is (false? (get-in session-updates [:ui :journals-view?])))
       (is (= #{} (get-in session-updates [:selection :nodes]))))))
 
+(deftest rename-page-updates-canonical-page-refs-only
+  (ensure-plugins!)
+  (let [db0 (:db (tx/interpret
+                  (db/empty-db)
+                  [{:op :create-node :id "page-a" :type :page :props {:title "日本語"}}
+                   {:op :place :id "page-a" :under const/root-doc :at :last}
+                   {:op :create-node :id "source" :type :page :props {:title "Source"}}
+                   {:op :place :id "source" :under const/root-doc :at :last}
+                   {:op :create-node
+                    :id "block-a"
+                    :type :block
+                    :props {:text "See [[日本語]] but not [[outer [[日本語]] rest]]"}}
+                   {:op :place :id "block-a" :under "source" :at :last}]))
+        {:keys [db]} (api/dispatch db0 (empty-session)
+                                   {:type :rename-page
+                                    :page-id "page-a"
+                                    :new-title "Page, With. Punctuation's Stuff"})]
+    (is (= "Page, With. Punctuation's Stuff"
+           (q/page-title db "page-a")))
+    (is (= "See [[Page, With. Punctuation's Stuff]] but not [[outer [[日本語]] rest]]"
+           (get-in db [:nodes "block-a" :props :text])))))
+
 #?(:cljs
    (deftest restore-page-roundtrip-does-not-retrash-on-storage-reload
      (let [db0 (trashed-page-db)

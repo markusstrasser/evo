@@ -6,7 +6,7 @@
    
    Styling: Editorial design inspired by publishing/Acknowledgements component."
   (:require [plugins.backlinks-index :as backlinks]
-            [clojure.string :as str]
+            [parser.page-refs :as page-refs]
             [components.page-ref :as page-ref]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
@@ -16,35 +16,16 @@
    Text like 'See [[Projects]] and [[Tasks]]' becomes mixed content
    with PageRef components for the links."
   [text on-intent]
-  (let [;; Non-capturing pattern for split (to avoid CLJS including captured groups)
-        split-pattern #"\[\[[^\]]+\]\]"
-        ;; Capturing pattern to extract page names
-        match-pattern #"\[\[([^\]]+)\]\]"
-        parts (str/split text split-pattern)
-        refs (->> (re-seq match-pattern text)
-                  (map second))]
-    (if (empty? refs)
-      ;; No refs, just return text
+  (let [segments (page-refs/split-with-refs text)]
+    (if (not-any? #(= :page-ref (:type %)) segments)
       text
-      ;; Interleave text parts with page ref components
       (into [:span]
-            (loop [result []
-                   remaining-parts parts
-                   remaining-refs refs]
-              (if (empty? remaining-parts)
-                result
-                (let [text-part (first remaining-parts)
-                      ref-name (first remaining-refs)]
-                  (recur (cond-> result
-                           ;; Add text part if non-empty
-                           (seq text-part)
-                           (conj text-part)
-                           ;; Add page ref if we have one
-                           ref-name
-                           (conj (page-ref/PageRef {:page-name ref-name
-                                                    :on-intent on-intent})))
-                         (rest remaining-parts)
-                         (rest remaining-refs)))))))))
+            (keep (fn [{:keys [type value page]}]
+                    (case type
+                      :text value
+                      :page-ref (page-ref/PageRef {:page-name page
+                                                   :on-intent on-intent}))))
+            segments))))
 
 (defn- group-by-page
   "Group backlinks by their source page."

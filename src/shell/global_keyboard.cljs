@@ -212,10 +212,9 @@
             nil
 
             (and idle? shift? (contains? #{"ArrowUp" "ArrowDown"} key-name))
-            (let [visible-blocks (q/visible-blocks db current-session)
-                  target-id (if (= key-name "ArrowUp")
-                              (last visible-blocks)
-                              (first visible-blocks))]
+            (let [target-id (if (= key-name "ArrowUp")
+                              (q/last-selectable-visible-block db current-session)
+                              (q/first-selectable-visible-block db current-session))]
               (when target-id
                 (.preventDefault e)
                 (handle-intent {:type :selection :mode :replace :ids target-id})))

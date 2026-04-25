@@ -352,6 +352,85 @@
     ;; (zoom root, current page, or doc root)
     (vec (mapcat traverse (get-children root)))))
 
+(defn first-visible-block
+  "Return the first visible node in the active outline."
+  [db session]
+  (first (visible-blocks db session)))
+
+(defn last-visible-block
+  "Return the last visible node in the active outline."
+  [db session]
+  (last (visible-blocks db session)))
+
+(defn visible-block-count
+  "Return the count of visible nodes in the active outline."
+  [db session]
+  (count (visible-blocks db session)))
+
+(defn visible-children
+  "Return visible children for PARENT-ID, respecting fold state."
+  [db session parent-id]
+  (if (folded? session parent-id)
+    []
+    (children db parent-id)))
+
+(def ^:private non-selectable-types
+  #{:doc :page})
+
+(defn selectable-block?
+  "True when NODE-ID is a selectable outline item.
+
+   Pages and keyword roots are render/navigation containers, not block
+   selections."
+  [db node-id]
+  (and (string? node-id)
+       (not (contains? non-selectable-types
+                       (get-in db [:nodes node-id :type])))))
+
+(defn selectable-visible-blocks
+  "Return visible nodes that can participate in block selection."
+  [db session]
+  (filterv #(selectable-block? db %) (visible-blocks db session)))
+
+(defn first-selectable-visible-block
+  [db session]
+  (first (selectable-visible-blocks db session)))
+
+(defn last-selectable-visible-block
+  [db session]
+  (last (selectable-visible-blocks db session)))
+
+(defn next-selectable-visible-block
+  "Return next selectable visible block on the same page as CURRENT-ID."
+  [db session current-id]
+  (let [visible (visible-blocks db session)
+        current-page-id (current-page session)
+        same-current-page? (fn [candidate-id]
+                             (or (nil? current-page-id)
+                                 (= (page-of db current-id)
+                                    (page-of db candidate-id))))
+        idx (.indexOf visible current-id)]
+    (when (not= -1 idx)
+      (->> (subvec visible (inc idx))
+           (m/find-first #(and (selectable-block? db %)
+                               (same-current-page? %)))))))
+
+(defn prev-selectable-visible-block
+  "Return previous selectable visible block on the same page as CURRENT-ID."
+  [db session current-id]
+  (let [visible (visible-blocks db session)
+        current-page-id (current-page session)
+        same-current-page? (fn [candidate-id]
+                             (or (nil? current-page-id)
+                                 (= (page-of db current-id)
+                                    (page-of db candidate-id))))
+        idx (.indexOf visible current-id)]
+    (when (not= -1 idx)
+      (->> (subvec visible 0 idx)
+           rseq
+           (m/find-first #(and (selectable-block? db %)
+                               (same-current-page? %)))))))
+
 (defn visible-next-block
   "Get the next visible block in DOM/visual order (pre-order traversal).
 

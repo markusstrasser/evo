@@ -12,6 +12,7 @@
             [parser.markdown-links :as md-links]
             [parser.images :as images]
             [parser.parse :as parse]
+            [parser.page-refs :as page-refs]
             [components.image :as image]
             [shell.render-registry :as render-registry]
             ;; load-time handler registration — shell.editor already
@@ -697,7 +698,7 @@
   (let [start-pos (- trigger-pos 2)
         end-pos (+ trigger-pos (count query) 2)
         page-title (:title item)
-        insert-str (str "[[" page-title "]]")
+        insert-str (page-refs/format-ref page-title)
         new-text (str (subs text 0 start-pos)
                       insert-str
                       (subs text (min end-pos (count text))))

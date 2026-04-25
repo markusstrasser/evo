@@ -94,13 +94,14 @@
    - intent: Intent map (e.g., {:type :selection :mode :replace :ids [\"a\"]})
    - opts: Optional map with:
      - :state-machine/enforce? - Override *enforce-state-machine* (default: use dynamic var)
+     - :tx/now-ms - Explicit timestamp used to materialize raw ops
 
    Returns:
    - {:db new-db :issues [] :trace [...] :session-updates {...} :ops [...]}
 
-   `:ops` is the vector of kernel ops that were emitted by the intent handler
-   (after normalization). Callers that track history should record a snapshot
-   of the pre-dispatch (db, session) iff `(seq ops)`.
+   `:ops` is the vector of materialized kernel ops that were actually applied
+   by the transaction pipeline. Callers that track history should log these ops,
+   not the raw handler output.
 
    State Machine Enforcement (LOGSEQ PARITY):
    - When *enforce-state-machine* is true (default), validates intent against current state
@@ -108,7 +109,7 @@
    - Idle state guard: Enter/Backspace/Tab/etc. do nothing from idle state
    - Edit-only intents blocked when in selection mode and vice versa"
   ([db session intent] (dispatch* db session intent nil))
-  ([db session intent {:keys [state-machine/enforce?] :as _opts}]
+  ([db session intent {:keys [state-machine/enforce?] :as opts}]
    (let [enforce? (if (some? enforce?) enforce? *enforce-state-machine*)]
 
      ;; STATE MACHINE GUARD (LOGSEQ PARITY)
@@ -122,24 +123,23 @@
        {:db db
         :ops []
         :issues []
-        :trace [{:tx-id #?(:clj (System/currentTimeMillis) :cljs (.now js/Date))
+        :trace [{:tx-id (or (:tx-id opts) :state-machine-blocked)
                  :ops []
                  :applied-ops []
                  :num-applied 0
                  :notes (str "State machine blocked: "
                              (:type intent) " not allowed in "
                              (sm/current-state session) " state")}]
-        :session-updates nil}
+                 :session-updates nil}
 
        ;; Intent allowed - proceed with dispatch
-       (let [{:keys [ops session-updates]} (intent/apply-intent db session intent)]
-         #?(:clj (journal-tx! intent ops))
+       (let [{handler-ops :ops session-updates :session-updates} (intent/apply-intent db session intent)
+             result (tx/interpret db handler-ops opts)]
+         #?(:clj (journal-tx! intent (:ops result)))
          ;; DB ops go through normal transaction pipeline.
-         ;; Session updates + ops are returned for callers (shell/tests) that
-         ;; want to record history.
-         (-> (tx/interpret db ops)
-             (assoc :ops (vec ops)
-                    :session-updates session-updates)))))))
+         ;; Session updates + materialized ops are returned for callers
+         ;; (shell/tests) that want to record history.
+         (assoc result :session-updates session-updates))))))
 
 (defn dispatch-logged
   "Dispatch an intent and append the resulting transaction to a log.
@@ -159,7 +159,8 @@
    Returns:
      {:log :db :ops :issues :session-updates :trace}"
   [log db session intent mint]
-  (let [result (dispatch* db session intent)
+  (let [{:keys [op-id timestamp]} (mint)
+        result (dispatch* db session intent {:tx/now-ms timestamp})
         db-after (:db result)
         ops (:ops result)
         ;; Log only on REAL state change, not merely 'intent emitted ops'.
@@ -167,8 +168,7 @@
         ;; leaving db-before = db-after; those shouldn't grow undo depth.
         changed? (not (identical? db db-after))
         new-log (if changed?
-                  (let [{:keys [op-id timestamp]} (mint)
-                        prev-op-id (:op-id (L/entry-at-head log))
+                  (let [prev-op-id (:op-id (L/entry-at-head log))
                         entry (L/make-entry {:op-id op-id
                                              :prev-op-id prev-op-id
                                              :timestamp timestamp
@@ -211,8 +211,10 @@
        (if (empty? issues)
          db
          (throw (ex-info \"Validation failed\" {:issues issues}))))"
-  [db session intent]
-  (select-keys (dispatch* db session intent) [:db :ops :issues :session-updates]))
+  ([db session intent]
+   (dispatch db session intent nil))
+  ([db session intent opts]
+   (select-keys (dispatch* db session intent opts) [:db :ops :issues :session-updates])))
 
 (defn dispatch!
   "Dispatch an intent, throwing on validation failure.
@@ -223,13 +225,15 @@
    Example:
      (dispatch! db session {:type :selection :mode :next})
      ;=> new-db (or throws)"
-  [db session intent]
-  (let [{:keys [db issues]} (dispatch db session intent)]
+  ([db session intent]
+   (dispatch! db session intent nil))
+  ([db session intent opts]
+  (let [{:keys [db issues]} (dispatch db session intent opts)]
     (if (empty? issues)
       db
       (throw (ex-info "Intent validation failed"
                       {:intent intent
-                       :issues issues})))))
+                       :issues issues}))))))
 
 (defn list-intents
   "List all registered intent types with their metadata.

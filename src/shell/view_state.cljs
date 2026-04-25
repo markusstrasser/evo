@@ -79,7 +79,8 @@
      queue-auto-trash-check!, take-auto-trash-queue!
 
    ═══════════════════════════════════════════════════════════════════════════════"
-  (:require [utils.collection :as coll]))
+  (:require [utils.collection :as coll]
+            [utils.session-patch :as session-patch]))
 
 ;; ── View State Atom ─────────────────────────────────────────────────────────
 ;; Holds UI state that TRIGGERS re-renders when changed.
@@ -292,40 +293,16 @@
   []
   (swap-view-state! assoc-in [:ui :pending-selection] nil))
 
-(defn- deep-merge-view-state
-  "Deep merge for view state with proper handling of:
-   - Maps: recursively merge
-   - Sets: REPLACE (not union!) - selection handler computes final state
-   - Scalars: new value wins
-
-   IMPORTANT: Sets are REPLACED, not unioned. The selection handler
-   in plugins.selection already calculates the correct final :nodes set
-   (whether replacing, extending, or clearing). If we unioned here,
-   {:selection :mode :replace :ids [\"b\"]} would add \"b\" to existing
-   selection instead of replacing it."
-  [base updates]
-  (cond
-    ;; Both maps: recursive merge
-    (and (map? base) (map? updates))
-    (merge-with deep-merge-view-state base updates)
-
-    ;; Sets: REPLACE (handler computes correct final state)
-    (and (set? base) (set? updates))
-    updates
-
-    ;; Otherwise: new value wins (including nil to clear)
-    :else updates))
-
 (defn merge-view-state-updates!
   "Merge view state updates map into current view state.
 
    Used by kernel.api and shell executor for bulk view state updates.
-   Uses deep-merge-view-state for proper handling of:
+   Uses utils.session-patch for proper handling of:
    - Nested maps (recursive merge)
    - Sets like :selection :nodes (REPLACE, not union - handler computes final state)
    - Scalars (new value overwrites)"
   [updates]
-  (swap-view-state! #(deep-merge-view-state % updates)))
+  (swap-view-state! #(session-patch/merge-patch % updates)))
 
 ;; ── Buffer API (high-velocity, no render trigger) ────────────────────────────
 

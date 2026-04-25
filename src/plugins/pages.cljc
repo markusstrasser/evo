@@ -12,6 +12,7 @@
             [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.constants :as const]
+            [parser.page-refs :as page-refs]
             [utils.intent-helpers :as helpers]
             [utils.text-context :as ctx]
             #?(:cljs [utils.journal :as journal])))
@@ -162,28 +163,22 @@
                           :fr/ids #{:fr.struct/delete-block}
                           :handler handle-delete-page})
 
-(defn- escape-regex
-  "Escape special regex characters for literal matching."
-  [s]
-  (str/replace s #"([.*+?^${}()|\[\]\\])" "\\$1"))
-
 (defn- find-blocks-with-page-ref
   "Find all blocks containing [[page-name]] references (case-insensitive).
    Returns seq of [block-id block-text] pairs."
   [db page-name]
-  (let [pattern (re-pattern (str "(?i)\\[\\[" (escape-regex page-name) "\\]\\]"))]
+  (let [target (page-refs/normalize-name page-name)]
     (->> (:nodes db)
          (filter (fn [[_id node]] (= (:type node) :block)))
          (keep (fn [[block-id node]]
                  (let [text (get-in node [:props :text] "")]
-                   (when (re-find pattern text)
+                   (when (some #(= target (:normalized %)) (page-refs/extract-refs text))
                      [block-id text])))))))
 
 (defn- update-page-refs-in-text
   "Replace [[old-name]] with [[new-name]] in text (case-insensitive match, preserves case of replacement)."
   [text old-name new-name]
-  (let [pattern (re-pattern (str "(?i)\\[\\[" (escape-regex old-name) "\\]\\]"))]
-    (str/replace text pattern (str "[[" new-name "]]"))))
+  (page-refs/replace-refs text old-name new-name))
 
 (defn- handle-rename-page
   "Rename a page by updating its title and all [[OldName]] references.

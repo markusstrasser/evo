@@ -14,20 +14,10 @@
    Each entry contains all blocks that reference that page, excluding:
    - Blocks in trash (no valid page ancestor)
    - Self-references (blocks on the target page itself)"
-  (:require [clojure.string :as str]
-            [kernel.derived-registry :as registry]))
+  (:require [kernel.derived-registry :as registry]
+            [parser.page-refs :as page-refs]))
 
 ;; ── Helpers ───────────────────────────────────────────────────────────────────
-
-(defn- extract-page-refs
-  "Extract all [[page]] references from text.
-   Returns a set of page names (as found in text, preserving case)."
-  [text]
-  (when text
-    (let [pattern #"\[\[([^\]]+)\]\]"]
-      (->> (re-seq pattern text)
-           (map second)
-           set))))
 
 (defn- page-title
   "Get the title of a page node."
@@ -75,14 +65,14 @@
              (filter (fn [[_id node]] (= (:type node) :block)))
              (mapcat (fn [[block-id node]]
                        (let [text (get-in node [:props :text] "")
-                             refs (extract-page-refs text)]
+                             refs (page-refs/extract-refs text)]
                          (when (seq refs)
                            (when-let [source-page-id (find-source-page db block-id)]
                              (let [source-title (page-title db source-page-id)]
                                ;; Create one entry per referenced page
-                               (map (fn [ref-page-name]
-                                      {:target-page-lower (str/lower-case ref-page-name)
-                                       :source-page-lower (str/lower-case (or source-title ""))
+                               (map (fn [{:keys [normalized]}]
+                                      {:target-page-lower normalized
+                                       :source-page-lower (page-refs/normalize-name (or source-title ""))
                                        :entry {:block-id block-id
                                                :block-text text
                                                :page-id source-page-id
@@ -129,7 +119,7 @@
      or empty vector if no backlinks."
   [db target-title]
   (when target-title
-    (let [page-lower (str/lower-case target-title)]
+    (let [page-lower (page-refs/normalize-name target-title)]
       (get-in db [:derived :backlinks-by-page page-lower] []))))
 
 ;; ══════════════════════════════════════════════════════════════════════════════

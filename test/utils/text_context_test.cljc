@@ -116,9 +116,12 @@
     (is (= "Page/With/Slash"
            (:page-name (ctx/detect-page-ref-at-cursor "[[Page/With/Slash]]" 5)))))
 
-  (testing "Empty page reference"
-    (is (= ""
-           (:page-name (ctx/detect-page-ref-at-cursor "[[]]" 2))))))
+  (testing "Unicode and punctuation page reference"
+    (is (= "日本語, Notes"
+           (:page-name (ctx/detect-page-ref-at-cursor "[[日本語, Notes]]" 5)))))
+
+  (testing "Empty page reference is invalid"
+    (is (nil? (ctx/detect-page-ref-at-cursor "[[]]" 2)))))
 
 ;; ── Code Block Detection Tests ────────────────────────────────────────────────
 
@@ -268,28 +271,20 @@
       (is (= :markup (:type result)))
       (is (= "**" (:marker result)))))
 
-  (testing "Nested page refs - cursor in inner"
+  (testing "Nested page refs are invalid - cursor in inner"
     (let [text "[[outer [[inner]] rest]]"
           result (ctx/detect-page-ref-at-cursor text 12)] ; Inside "inner"
-      (is (= :page-ref (:type result)))
-      (is (= "inner" (:page-name result)))
-      (is (= 8 (:start result)))
-      (is (= 17 (:end result)))))
+      (is (nil? result))))
 
-  (testing "Nested page refs - cursor in outer after inner"
+  (testing "Nested page refs are invalid - cursor in outer after inner"
     (let [text "[[outer [[inner]] rest]]"
           result (ctx/detect-page-ref-at-cursor text 20)] ; Inside "rest"
-      (is (= :page-ref (:type result)))
-      (is (= "outer [[inner]] rest" (:page-name result)))
-      (is (= 0 (:start result)))
-      (is (= 24 (:end result)))))
+      (is (nil? result))))
 
-  (testing "Nested page refs - cursor in outer before inner"
+  (testing "Nested page refs are invalid - cursor in outer before inner"
     (let [text "[[outer [[inner]] rest]]"
           result (ctx/detect-page-ref-at-cursor text 4)] ; Inside "outer"
-      (is (= :page-ref (:type result)))
-      (is (= "outer [[inner]] rest" (:page-name result)))
-      (is (= 0 (:start result)))))
+      (is (nil? result))))
 
   (testing "Adjacent markup regions"
     (let [text "**first****second**"]

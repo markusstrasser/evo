@@ -15,7 +15,8 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [utils.session-patch :as session-patch]))
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
 
@@ -36,9 +37,7 @@
 (defn apply-session-updates
   "Apply session-updates returned by a handler to a session."
   [session session-updates]
-  (if session-updates
-    (merge-with merge session session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 (defn setup-simple-doc
   "Create simple doc structure:

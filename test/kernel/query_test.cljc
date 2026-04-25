@@ -97,3 +97,21 @@
       (is (true? (:journal? (q/page-metadata db "j1" #{}))) "Human date format")
       (is (true? (:journal? (q/page-metadata db "j2" #{}))) "ISO date format")
       (is (false? (:journal? (q/page-metadata db "p1" #{}))) "Regular page"))))
+
+(deftest visible-helper-respects-current-page
+  (let [db (apply-ops [{:op :create-node :id "page-a" :type :page :props {:title "A"}}
+                       {:op :place :id "page-a" :under :doc :at :last}
+                       {:op :create-node :id "a1" :type :block :props {:text "A1"}}
+                       {:op :place :id "a1" :under "page-a" :at :last}
+                       {:op :create-node :id "a2" :type :block :props {:text "A2"}}
+                       {:op :place :id "a2" :under "a1" :at :last}
+                       {:op :create-node :id "page-b" :type :page :props {:title "B"}}
+                       {:op :place :id "page-b" :under :doc :at :last}
+                       {:op :create-node :id "b1" :type :block :props {:text "B1"}}
+                       {:op :place :id "b1" :under "page-b" :at :last}])
+        session {:ui {:current-page "page-a" :zoom-root nil :folded #{}}}]
+    (is (= ["a1" "a2"] (q/visible-blocks db session)))
+    (is (= "a1" (q/first-visible-block db session)))
+    (is (= "a2" (q/last-visible-block db session)))
+    (is (= 2 (q/visible-block-count db session)))
+    (is (= ["a1" "a2"] (q/selectable-visible-blocks db session)))))

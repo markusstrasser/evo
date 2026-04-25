@@ -14,7 +14,8 @@
             [kernel.transaction :as tx]
             [kernel.api :as api]
             [kernel.log :as L]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [utils.session-patch :as session-patch]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
@@ -37,7 +38,7 @@
   [log db session intent]
   (let [result (api/dispatch-logged log db session intent test-mint)
         updates (:session-updates result)
-        new-session (if updates (merge-with merge session updates) session)]
+        new-session (session-patch/merge-patch session updates)]
     {:log (:log result)
      :db (:db result)
      :session new-session}))
@@ -51,7 +52,7 @@
     (let [entry-undone (L/entry-at-head log)
           new-db (L/head-db new-log)
           restored (:session-before entry-undone)
-          new-session (if restored (merge-with merge session restored) session)]
+          new-session (session-patch/merge-patch session restored)]
       {:log new-log :db new-db :session new-session})))
 
 (defn redo!

@@ -5,7 +5,8 @@
 
    Format: 'MMM do, yyyy' (e.g., 'Dec 11th, 2025')
 
-   See docs/DAILY_JOURNAL_SPEC.md for full specification.")
+   See docs/DAILY_JOURNAL_SPEC.md for full specification."
+  (:require [parser.page-refs :as page-refs]))
 
 ;; ── Date Formatting ──────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@
          day (.getDate date)
          suffix (ordinal-suffix day)
          year (.getFullYear date)]
-     (str "[[" month " " day suffix ", " year "]]"))))
+     (page-refs/format-ref (str month " " day suffix ", " year)))))
 
 (defn today-page-ref
   "Get today's date as a page reference [[MMM d, yyyy]]."

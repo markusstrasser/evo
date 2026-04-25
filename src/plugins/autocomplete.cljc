@@ -14,6 +14,7 @@
    - item-label: Get display label for an item"
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
+            [parser.page-refs :as page-refs]
             [utils.fuzzy-search :as fuzzy]
             [clojure.string :as str]
             #?(:cljs [utils.journal :as journal])))
@@ -87,7 +88,7 @@
 
 (defmethod insert-text :page-ref
   [_db {:keys [item]}]
-  (str "[[" (:title item) "]]"))
+  (page-refs/format-ref (:title item)))
 
 (defmethod item-label :page-ref
   [{:keys [item]}]

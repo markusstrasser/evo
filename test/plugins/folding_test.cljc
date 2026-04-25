@@ -5,7 +5,8 @@
             [kernel.transaction :as tx]
             [kernel.query :as q]
             [kernel.intent :as intent]
-            [plugins.folding]))  ;; Load intent registrations
+            [plugins.folding]
+            [utils.session-patch :as session-patch]))  ;; Load intent registrations
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
 
@@ -53,9 +54,7 @@
 (defn apply-session-updates
   "Apply session-updates returned by a handler to a session."
   [session session-updates]
-  (if session-updates
-    (merge-with merge session session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 ;; ── Query Tests ───────────────────────────────────────────────────────────────
 

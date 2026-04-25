@@ -13,7 +13,8 @@
             [kernel.intent :as intent]
             ;; Load plugin namespaces so handlers register
             [plugins.autocomplete]
-            [plugins.folding]))
+            [plugins.folding]
+            [utils.session-patch :as session-patch]))
 
 ;; ── Session helper (mirrors plugins/clipboard_test.cljc) ────────────────────
 
@@ -29,18 +30,8 @@
         :cursor-position nil}
    :sidebar {:right []}})
 
-(defn- deep-merge
-  "Matches shell.view-state/deep-merge-view-state: maps recurse, sets are
-   REPLACED (not unioned), scalars overwrite. Without this, a navigate
-   update of just {:selected 1} would blow away sibling keys like :items."
-  [base updates]
-  (cond
-    (and (map? base) (map? updates)) (merge-with deep-merge base updates)
-    (and (set? base) (set? updates)) updates
-    :else updates))
-
 (defn- merge-session [session updates]
-  (if updates (deep-merge session updates) session))
+  (session-patch/merge-patch session updates))
 
 (defn- run [db session intent-map]
   (let [{:keys [ops session-updates]} (intent/apply-intent db session intent-map)

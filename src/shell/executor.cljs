@@ -42,6 +42,8 @@
   "Intent types that shouldn't be logged to devtools."
   #{:inspect-dataspex :clear-log})
 
+(defn- now-ms [] (.now js/Date))
+
 ;; ── Pure Helper Functions ─────────────────────────────────────────────────────
 
 (defn- prepare-intent-with-buffer
@@ -161,7 +163,10 @@
         intent-type (:type intent-map)
         current-session (vs/get-view-state)
         db-before @!db
-        {:keys [db ops issues session-updates]} (api/dispatch db-before current-session intent-with-buffer)
+        {:keys [db ops issues session-updates]} (api/dispatch db-before
+                                                              current-session
+                                                              intent-with-buffer
+                                                              {:tx/now-ms (now-ms)})
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
 

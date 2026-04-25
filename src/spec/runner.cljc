@@ -34,7 +34,8 @@
             [plugins.text-formatting :as p-text-formatting]
             [plugins.autocomplete :as p-autocomplete]
             ;; Derived index plugins (register with kernel.derived-registry)
-            [plugins.backlinks-index :as p-backlinks-index]))
+            [plugins.backlinks-index :as p-backlinks-index]
+            [utils.session-patch :as session-patch]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Plugin Loading (prevents DCE - dead code elimination)
@@ -112,15 +113,7 @@
 (defn- apply-session-updates
   "Apply session updates from dispatch* result to session."
   [session session-updates]
-  (if session-updates
-    (reduce-kv
-     (fn [s k v]
-       (if (map? v)
-         (update s k #(merge % v))
-         (assoc s k v)))
-     session
-     session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Scenario Execution

@@ -12,7 +12,8 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [utils.session-patch :as session-patch]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
@@ -40,7 +41,7 @@
   (update-in session [:ui :folded] into block-ids))
 
 (defn apply-session-updates [session updates]
-  (if updates (merge-with merge session updates) session))
+  (session-patch/merge-patch session updates))
 
 (defn run-intent [db session intent-map]
   (let [{:keys [ops session-updates]} (intent/apply-intent db session intent-map)

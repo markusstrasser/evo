@@ -20,7 +20,8 @@
             [kernel.api :as api]
             [kernel.query :as q]
             ;; Required to register merge-with-prev intent
-            [plugins.editing]))
+            [plugins.editing]
+            [utils.session-patch :as session-patch]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
@@ -51,9 +52,7 @@
 (defn apply-session-updates
   "Apply session-updates returned by a handler to a session."
   [session session-updates]
-  (if session-updates
-    (merge-with merge session session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 (defn run-intent
   "Run intent through full pipeline and return {:db ... :session ...}."
