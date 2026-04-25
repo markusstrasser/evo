@@ -20,7 +20,7 @@
 
    USAGE:
    ```clojure
-   (ns scripts.editing
+   (ns app.structural-script
      (:require [scripts.script :as script]))
 
    (defn insert-block [db {:keys [under at text]}]

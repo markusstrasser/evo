@@ -31,7 +31,6 @@
             [kernel.position :as pos]
             [kernel.schema :as schema]
             [kernel.text-validation :as text-validation]
-            [kernel.time :as time]
             [medley.core :as m]))
 
 (defn- same-position-after-place?
@@ -130,33 +129,52 @@
 ;; Timestamp enrichment - auto-add created-at/updated-at
 ;; =============================================================================
 
+(def ^:private default-materialization-timestamp
+  "Deterministic fallback for non-runtime callers.
+
+   Runtime/user dispatch must pass :tx/now-ms explicitly. Keeping this fallback
+   lets tests and pure helpers remain deterministic without a hidden kernel
+   clock read."
+  0)
+
+(defn- materialization-timestamp [opts]
+  (or (:tx/now-ms opts)
+      (:now-ms opts)
+      default-materialization-timestamp))
+
 (defn- enrich-create-op
   "Add created-at and updated-at timestamps to :create-node ops.
    Preserves existing timestamps if already present (e.g., from file import)."
-  [{:keys [props] :as op}]
-  (let [ts (time/now-ms)
+  [now-ms {:keys [props] :as op}]
+  (let [ts now-ms
         existing (select-keys props [:created-at :updated-at])]
     (update op :props merge
             {:created-at ts :updated-at ts}
             existing)))
 
 (defn- enrich-update-op
-  "Add updated-at timestamp to :update-node ops."
-  [op]
-  (update op :props assoc :updated-at (time/now-ms)))
+  "Add updated-at timestamp to :update-node ops.
+
+   Already-materialized ops keep their timestamp so log replay does not mint a
+   second value."
+  [now-ms op]
+  (if (contains? (:props op) :updated-at)
+    op
+    (update op :props assoc :updated-at now-ms)))
 
 (defn- enrich-op
   "Enrich operation with auto-generated metadata (timestamps)."
-  [op]
+  [now-ms op]
   (case (:op op)
-    :create-node (enrich-create-op op)
-    :update-node (enrich-update-op op)
+    :create-node (enrich-create-op now-ms op)
+    :update-node (enrich-update-op now-ms op)
     op))
 
 (defn- enrich-ops
   "Enrich all operations with auto-generated metadata."
-  [ops]
-  (mapv enrich-op ops))
+  [ops opts]
+  (let [now-ms (materialization-timestamp opts)]
+    (mapv (partial enrich-op now-ms) ops)))
 
 (defn- normalize-ops
   "Normalize operations:
@@ -164,12 +182,13 @@
    - Canonicalize :at anchors (:at-start → :first, :at-end → :last)
    - Drop no-op place (same parent & index)
    - Merge adjacent update-node on same id"
-  [db ops]
+  ([db ops] (normalize-ops db ops nil))
+  ([db ops opts]
   (->> ops
-       enrich-ops
+       (#(enrich-ops % opts))
        (map canonicalize-place-anchor)
        (remove-noop-places db)
-       merge-adjacent-updates))
+       merge-adjacent-updates)))
 
 ;; =============================================================================
 ;; Validation helpers - smaller, focused functions
@@ -382,12 +401,13 @@
 
    Returns:
      {:db new-db :ops normalized-ops :issues [...]}"
-  [db ops]
-  (let [normalized-ops (normalize-ops db ops)
+  ([db ops] (dry-run db ops nil))
+  ([db ops opts]
+  (let [normalized-ops (normalize-ops db ops opts)
         [final-db issues] (validate-ops db normalized-ops)]
     {:db final-db
      :ops normalized-ops
-     :issues issues}))
+     :issues issues})))
 
 (defn interpret
   "Interpret a transaction sequence.
@@ -398,8 +418,9 @@
      db - starting database
      txs - vector of operations
    Options (optional map):
-     :tx-id - transaction ID for trace (default: system time)
-     :seed - random seed for deterministic testing (default: system time)
+     :tx-id - transaction ID for trace (default: :tx/anonymous)
+     :seed - random seed for deterministic testing (default: 0)
+     :tx/now-ms - explicit timestamp used when materializing raw ops
      :notes - human-readable notes for this transaction
      :tx/skip-derived? - skip derive-indexes (for benchmarking, default: false)
 
@@ -411,11 +432,9 @@
   ([db txs] (interpret db txs nil))
   ([db txs opts]
    (let [{:keys [tx-id seed notes tx/skip-derived?]} opts
-         tx-id (or tx-id #?(:clj (System/currentTimeMillis)
-                            :cljs (.now js/Date)))
-         seed (or seed #?(:clj (System/currentTimeMillis)
-                          :cljs (.now js/Date)))
-         normalized-ops (normalize-ops db txs)
+         tx-id (or tx-id :tx/anonymous)
+         seed (or seed 0)
+         normalized-ops (normalize-ops db txs opts)
          [final-db issues] (validate-ops db normalized-ops)
 
          ;; Optimization: skip derive-indexes for update-only transactions.
@@ -424,22 +443,10 @@
          ;; Only :place ops modify tree structure and require re-derivation.
          structure-changing? (some #(= (:op %) :place) normalized-ops)
 
-         #?@(:cljs [t1 (time/now-ms)])
          derived-db (cond
                       skip-derived? final-db
                       (not structure-changing?) (assoc final-db :derived (:derived db))
                       :else (db/derive-indexes final-db))
-
-         ;; Performance instrumentation (cljs DEBUG only, >5ms threshold)
-         _ #?(:cljs (when ^boolean goog.DEBUG
-                      (let [derive-ms (- (time/now-ms) t1)
-                            node-count (count (:nodes final-db))]
-                        (when (and structure-changing? (> derive-ms 5))
-                          (js/console.log "🔄 derive-indexes:"
-                                          derive-ms "ms |"
-                                          node-count "nodes |"
-                                          (.toFixed (/ derive-ms (max 1 node-count)) 3) "ms/node"))))
-              :clj nil)
 
          ;; Deterministic trace with all context
          num-applied (- (count normalized-ops) (count issues))
@@ -452,6 +459,7 @@
                       :notes (or notes "")}]
 
      {:db derived-db
+      :ops normalized-ops
       :issues issues
       :trace [trace-entry]})))
 

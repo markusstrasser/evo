@@ -60,20 +60,13 @@
   [current-state]
   {:nodes #{} :focus (:focus current-state) :anchor nil :direction nil})
 
-(def ^:private container-types
-  "Node types that are containers and should not be included in block selection."
-  #{:doc :page})
-
 (defn- is-selectable-block?
   "Check if a node is a selectable block (not a container like :doc or :page).
 
    Non-container types (:block, :p, :heading, etc.) are selectable.
    Keyword roots (:doc, :trash, etc.) are never selectable."
   [db node-id]
-  (if (keyword? node-id)
-    false ;; Keyword roots are never selectable
-    (let [node-type (get-in db [:nodes node-id :type])]
-      (not (contains? container-types node-type)))))
+  (q/selectable-block? db node-id))
 
 (defn- next-selectable-block
   "Get the next selectable block in DOM order, skipping containers.
@@ -81,16 +74,9 @@
    Continues navigation until finding a :block type node or reaching boundary.
    Respects page boundaries - won't navigate out of current page (Logseq parity)."
   [db session current-id direction]
-  (loop [current current-id]
-    (when-let [next-id (case direction
-                         :next (q/visible-next-block db session current)
-                         :prev (q/visible-prev-block db session current))]
-      (if (and (is-selectable-block? db next-id)
-               (q/same-page? db session current-id next-id))
-        next-id
-        ;; Keep searching only if still on same page
-        (when (q/same-page? db session current-id next-id)
-          (recur next-id))))))
+  (case direction
+    :next (q/next-selectable-visible-block db session current-id)
+    :prev (q/prev-selectable-visible-block db session current-id)))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
@@ -98,14 +84,9 @@
 
    Uses session for zoom-root and current-page (spec §3.4)."
   [db session direction]
-  (let [root-id (or (q/zoom-root session)
-                    (q/current-page session)
-                    :doc)
-        children (q/children db root-id)]
-    (when (seq children)
-      (case direction
-        :next (first children)
-        :prev (last children)))))
+  (case direction
+    :next (q/first-selectable-visible-block db session)
+    :prev (q/last-selectable-visible-block db session)))
 
 (defn- calc-start-fresh-selection
   "Start a fresh selection when no focus exists."
@@ -344,14 +325,7 @@
                                                    :all-siblings (when-let [current (:focus state)]
                                                                    (when-let [parent (q/parent-of db current)]
                                                                      (calc-select-props (q/children db parent))))
-                                                   :all-in-view (let [root-id (or (q/zoom-root session)
-                                                                                  (q/current-page session)
-                                                                                  :doc)
-                                                                      all-blocks (->> (tree-seq
-                                                                                       (fn [id] (seq (q/children db id)))
-                                                                                       (fn [id] (q/children db id))
-                                                                                       root-id)
-                                                                                      (filter #(= :block (get-in db [:nodes % :type]))))]
+                                                   :all-in-view (let [all-blocks (q/selectable-visible-blocks db session)]
                                                                   (when (seq all-blocks)
                                                                     (calc-select-props all-blocks))))]
 
@@ -382,10 +356,7 @@
                           :handler (fn [db session {:keys [from-editing? block-id]}]
                                      (let [state (q/selection-state session)
                                            selection-nodes (:nodes state)
-                                           _focus-id (:focus state) ; Extracted for future use in multi-step selection
-                                           root-id (or (q/zoom-root session)
-                                                       (q/current-page session)
-                                                       :doc)]
+                                           _focus-id (:focus state)] ; Extracted for future use in multi-step selection
 
                                        (cond
                                          ;; Step 2: From editing with all text selected → select the block
@@ -400,26 +371,17 @@
                                          (let [current-id (first selection-nodes)
                                                parent-id (q/parent-of db current-id)]
                                            (if (and parent-id
-                                                    (not (contains? #{:doc :page} parent-id))
                                                     (is-selectable-block? db parent-id))
                                              ;; Has selectable parent → select it
                                              {:session-updates {:selection (calc-select-props parent-id)}}
                                              ;; No parent or at root → select all visible
-                                             (let [all-blocks (->> (tree-seq
-                                                                    (fn [id] (seq (q/children db id)))
-                                                                    (fn [id] (q/children db id))
-                                                                    root-id)
-                                                                   (filter #(is-selectable-block? db %)))]
+                                             (let [all-blocks (q/selectable-visible-blocks db session)]
                                                (when (seq all-blocks)
                                                  {:session-updates {:selection (calc-select-props all-blocks)}}))))
 
                                          ;; Step 4: Multiple blocks or parent selected → select all-in-view
                                          (seq selection-nodes)
-                                         (let [all-blocks (->> (tree-seq
-                                                                (fn [id] (seq (q/children db id)))
-                                                                (fn [id] (q/children db id))
-                                                                root-id)
-                                                               (filter #(is-selectable-block? db %)))]
+                                         (let [all-blocks (q/selectable-visible-blocks db session)]
                                            (when (seq all-blocks)
                                              {:session-updates {:selection (calc-select-props all-blocks)}}))
 

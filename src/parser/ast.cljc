@@ -15,7 +15,8 @@
    `:strikethrough` preserves the exact marker the user typed (`**` vs
    `__`, `*` vs `_`) so clipboard round-trip keeps source stable. Never
    canonicalize."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [parser.page-refs :as page-refs]))
 
 (def known-tags
   #{:text :bold :italic :highlight :strikethrough
@@ -93,7 +94,7 @@
         :math-inline    (str "$" c "$")
         :math-block     (str "$$" c "$$")
         :link           (str "[" (render-children c) "](" (:target a) ")")
-        :page-ref       (str "[[" (:name a) "]]")
+        :page-ref       (page-refs/format-ref (:name a))
         :image          (let [{:keys [alt path width]} a
                               base (str "![" (or alt "") "](" path ")")]
                           (if width (str base "{width=" width "}") base))))

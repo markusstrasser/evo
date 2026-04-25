@@ -225,10 +225,12 @@
 
 (deftest test-create-auto-timestamps
   (testing "create-node auto-adds created-at and updated-at"
-    (let [db (apply-ops [(create-op "a" :block)])
+    (let [db (:db (tx/interpret (db/empty-db)
+                                [(create-op "a" :block)]
+                                {:tx/now-ms 42}))
           props (node-props-all db "a")]
-      (is (number? (:created-at props)) "created-at should be auto-added")
-      (is (number? (:updated-at props)) "updated-at should be auto-added")
+      (is (= 42 (:created-at props)) "created-at should use explicit materialization time")
+      (is (= 42 (:updated-at props)) "updated-at should use explicit materialization time")
       (is (= (:created-at props) (:updated-at props)) "both should be equal on creation"))))
 
 (deftest test-create-preserves-existing-timestamps
@@ -253,10 +255,12 @@
                            :props {:text "hi"
                                    :created-at old-time
                                    :updated-at old-time}}])
-          db2 (apply-ops db1 [(update-op "a" {:text "hello"})])
+          db2 (:db (tx/interpret db1
+                                  [(update-op "a" {:text "hello"})]
+                                  {:tx/now-ms (inc old-time)}))
           props (node-props-all db2 "a")]
       (is (= old-time (:created-at props)) "created-at unchanged")
-      (is (> (:updated-at props) old-time) "updated-at should be refreshed"))))
+      (is (= (inc old-time) (:updated-at props)) "updated-at should use explicit materialization time"))))
 
 ;; ── dry-run Tests ───────────────────────────────────────────────────────────
 

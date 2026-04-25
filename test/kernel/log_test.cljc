@@ -10,7 +10,8 @@
   (:require #?(:clj  [clojure.test :refer [deftest is testing]]
                :cljs [cljs.test :refer [deftest is testing]])
             [kernel.db :as db]
-            [kernel.log :as L]))
+            [kernel.log :as L]
+            [kernel.transaction :as tx]))
 
 ;; ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,25 @@
           d (L/head-db log)]
       (is (= ["a" "b" "c"] (get-in d [:children-by-parent :doc])))
       (is (= 2 (:head log))))))
+
+(deftest head-db-replays-materialized-timestamps
+  (testing "log entries store the materialized ops that produced the live db"
+    (let [db0 (db/empty-db)
+          raw-ops [{:op :create-node :id "a" :type :block :props {:text "A"}}
+                   {:op :place :id "a" :under :doc :at :last}
+                   {:op :update-node :id "a" :props {:text "A!"}}]
+          first-apply (tx/interpret db0 raw-ops {:tx/now-ms 12345})
+          log-entry (L/make-entry
+                     {:op-id "op-materialized"
+                      :prev-op-id nil
+                      :timestamp 12345
+                      :intent {:type :test}
+                      :ops (:ops first-apply)
+                      :session nil})
+          log (L/append (L/reset-root db0) log-entry)]
+      (is (= (:db first-apply) (L/head-db log)))
+      (is (= 12345 (get-in (:db first-apply) [:nodes "a" :props :created-at])))
+      (is (= 12345 (get-in (L/head-db log) [:nodes "a" :props :updated-at]))))))
 
 ;; ── Undo / Redo ──────────────────────────────────────────────────────────────
 

@@ -114,7 +114,7 @@
    Returns the new db."
   [!db ops]
   (let [db-before @!db
-        {new-db :db} (tx/interpret db-before ops)]
+        {new-db :db} (tx/interpret db-before ops {:tx/now-ms (now-ms)})]
     (clojure.core/reset! !db new-db)
     (reset-with-db! new-db)
     new-db))

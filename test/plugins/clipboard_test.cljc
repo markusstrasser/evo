@@ -8,7 +8,8 @@
             [kernel.intent :as intent]
             [kernel.query :as q]
             ;; Load plugin to register intent handlers
-            [plugins.clipboard]))
+            [plugins.clipboard]
+            [utils.session-patch :as session-patch]))
 
 ;; ── Session helpers ──────────────────────────────────────────────────────────
 
@@ -29,9 +30,7 @@
 (defn apply-session-updates
   "Apply session-updates returned by a handler to a session."
   [session session-updates]
-  (if session-updates
-    (merge-with merge session session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 (defn run-intent
   "Run intent and return {:db ... :session ...}"

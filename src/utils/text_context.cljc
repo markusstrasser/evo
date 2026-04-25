@@ -6,7 +6,8 @@
 
    Based on TEXT_EDITING_BEHAVIORS_SPEC.md Component 1."
   (:require #?(:clj [clojure.string :as str]
-               :cljs [clojure.string :as str])))
+               :cljs [clojure.string :as str])
+            [parser.page-refs :as page-refs]))
 
 ;; ── Context Types ─────────────────────────────────────────────────────────────
 
@@ -214,11 +215,8 @@
      cursor-pos: 12 (inside 'My Page')
      => {:type :page-ref :start 8 :end 19 :page-name 'My Page'}"
   [text cursor-pos]
-  (when-let [bounds (find-enclosing-pair text cursor-pos "[[" "]]")]
-    (let [inner-text (subs text (:inner-start bounds) (:inner-end bounds))]
-      (assoc bounds
-             :type :page-ref
-             :page-name inner-text))))
+  (when-let [page-ref (page-refs/ref-at text cursor-pos)]
+    (select-keys page-ref [:type :start :end :inner-start :inner-end :complete? :page-name])))
 
 (defn- line-index-at-position
   "Find which line index contains the given character position.

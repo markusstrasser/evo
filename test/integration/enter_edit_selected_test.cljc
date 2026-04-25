@@ -15,7 +15,8 @@
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             ;; REQUIRED: Load plugin to register :enter-edit-selected intent
-            [plugins.editing]))
+            [plugins.editing]
+            [utils.session-patch :as session-patch]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
@@ -43,16 +44,7 @@
       (assoc-in [:selection :direction] direction)))
 
 (defn apply-session-updates [session updates]
-  (if updates
-    ;; Deep merge for nested maps, replace for scalars
-    (reduce-kv
-     (fn [s k v]
-       (if (and (map? (get s k)) (map? v))
-         (update s k merge v)
-         (assoc s k v)))
-     session
-     updates)
-    session))
+  (session-patch/merge-patch session updates))
 
 (defn run-intent [db session intent-map]
   (let [{:keys [ops session-updates]} (intent/apply-intent db session intent-map)

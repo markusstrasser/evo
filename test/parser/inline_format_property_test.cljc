@@ -74,6 +74,7 @@
       (every? #(or (empty? %) (even? (count %)))
               (str/split s #"[^*]+"))))
 
+#_{:clj-kondo/ignore [:unused-private-var]} ; used inside defspec macro body
 (def ^:private mixed-char-gen
   "Char generator biased toward markers and word chars so we exercise
    boundary rules. Also seeds code-like characters (`;`, `{`, `}`, `[`,

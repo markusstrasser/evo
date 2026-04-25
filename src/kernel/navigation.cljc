@@ -30,6 +30,17 @@
   [session]
   (get-in session [:ui :zoom-root]))
 
+(defn- current-page
+  "Get current page from session, or nil if no page is active."
+  [session]
+  (get-in session [:ui :current-page]))
+
+(defn- active-outline-root
+  [session]
+  (or (zoom-root session)
+      (current-page session)
+      const/root-doc))
+
 (defn- visible-children
   "Get visible children of a parent, respecting fold state.
 
@@ -227,21 +238,21 @@
   "Get the first visible block in the outline.
    Respects zoom root if active."
   [db session]
-  (let [root (or (zoom-root session) const/root-doc)]
+  (let [root (active-outline-root session)]
     (first-visible-child db session root)))
 
 (defn last-visible-block
   "Get the last visible block in the outline.
    Navigates to the deepest last descendant."
   [db session]
-  (let [root (or (zoom-root session) const/root-doc)]
+  (let [root (active-outline-root session)]
     (when-let [last-child (last-visible-child db session root)]
       (deepest-last-descendant db session last-child))))
 
 (defn visible-block-count
   "Count total number of visible blocks in the outline."
   [db session]
-  (let [root (or (zoom-root session) const/root-doc)]
+  (let [root (active-outline-root session)]
     (letfn [(count-descendants [node-id]
               (let [children (visible-children db session node-id)]
                 (+ (count children)

@@ -9,7 +9,8 @@
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
-            [kernel.query :as q]))
+            [kernel.query :as q]
+            [utils.session-patch :as session-patch]))
 
 ;; NOTE: visible-order plugin removed - navigation now uses (db, session) directly
 ;; No fixture needed - tests exercise selection which calls kernel/navigation internally
@@ -33,9 +34,7 @@
 (defn apply-session-updates
   "Apply session-updates returned by a handler to a session."
   [session session-updates]
-  (if session-updates
-    (merge-with merge session session-updates)
-    session))
+  (session-patch/merge-patch session session-updates))
 
 (defn apply-selection-intent
   "Apply a selection intent and return updated session."
@@ -87,6 +86,15 @@
           "Shift+Down from 'a' should select child 'a1', not sibling 'b' (DOM order)")
       (is (= "a1" (q/focus session'))
           "Focus should be on 'a1'"))))
+
+(deftest all-in-view-skips-folded-descendants
+  (testing "select all visible uses the canonical visible/selectable query"
+    (let [db (build-nested-doc)
+          session (assoc-in (empty-session) [:ui :folded] #{"a"})
+          session' (apply-selection-intent db session {:type :selection :mode :all-in-view})]
+      (is (= #{"a" "b" "b1" "c"} (q/selection session')))
+      (is (not (contains? (q/selection session') "a1")))
+      (is (not (contains? (q/selection session') "a2"))))))
 
 (deftest plain-down-from-last-child-crosses-boundary
   (testing "LOGSEQ PARITY: Plain Down from last child navigates to parent's next sibling in DOM order"

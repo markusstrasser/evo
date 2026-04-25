@@ -14,7 +14,8 @@
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             ;; Required to register merge-with-prev, delete-forward intents
-            [plugins.editing]))
+            [plugins.editing]
+            [utils.session-patch :as session-patch]))
 
 (use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
@@ -44,7 +45,7 @@
       (assoc-in [:ui :cursor-position] cursor-pos)))
 
 (defn apply-session-updates [session updates]
-  (if updates (merge-with merge session updates) session))
+  (session-patch/merge-patch session updates))
 
 (defn run-intent [db session intent-map]
   (let [{:keys [ops session-updates]} (intent/apply-intent db session intent-map)
