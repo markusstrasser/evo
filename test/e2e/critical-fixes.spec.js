@@ -88,7 +88,7 @@ async function _indentBlock(page, id) {
 
 test.describe('CRITICAL: Backspace Merge - Children Re-parenting', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 
@@ -226,7 +226,7 @@ test.describe('CRITICAL: Logical Outdenting (Logseq Default)', { tag: '@smoke' }
    * - No "kidnapping" of right siblings
    */
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 

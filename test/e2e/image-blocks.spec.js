@@ -1,13 +1,31 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import {
-  enterEditMode,
-  exitEditMode,
-  getFirstBlockId,
-  updateBlockText,
-} from './helpers/block-helpers.js';
+import { enterEditMode, exitEditMode, updateBlockText } from './helpers/block-helpers.js';
+import { modKey, pressKeyCombo } from './helpers/keyboard.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
+const blockId = 'image-block';
+
+async function loadImageFixture(page, text = '') {
+  await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForFunction(() => window.TEST_HELPERS?.loadFixture);
+  await page.evaluate((initialText) => {
+    window.TEST_HELPERS.loadFixture({
+      ops: [
+        { op: 'create-node', id: 'image-page', type: 'page', props: { title: 'Images' } },
+        { op: 'place', id: 'image-page', under: 'doc', at: 'last' },
+        { op: 'create-node', id: 'image-block', type: 'block', props: { text: initialText } },
+        { op: 'place', id: 'image-block', under: 'image-page', at: 'last' },
+      ],
+      session: {
+        ui: { 'current-page': 'image-page', 'journals-view?': false },
+        selection: { nodes: [] },
+      },
+    });
+  }, text);
+  await page.waitForSelector(`div.block[data-block-id="${blockId}"]`, { timeout: 5000 });
+}
 
 /**
  * Image Block E2E Tests
@@ -25,14 +43,11 @@ const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
 test.describe('Image Blocks (Markdown-First Model)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await loadImageFixture(page);
   });
 
   test.describe('Image-only block rendering', () => {
     test('image markdown creates image-block-content wrapper', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, '![cat](https://example.com/cat.png)');
       await wait(page, 200);
 
@@ -47,7 +62,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('image with width has style attribute on img', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, '![](https://example.com/photo.png){width=250}');
       await wait(page, 200);
 
@@ -61,7 +75,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('image without width has no style attribute', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, '![cat](https://example.com/cat.png)');
       await wait(page, 200);
 
@@ -74,7 +87,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('clicking image-only block enters edit mode with raw markdown', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       const markdown = '![photo](https://example.com/photo.png)';
       await updateBlockText(page, blockId, markdown);
       await wait(page, 200);
@@ -93,7 +105,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
 
   test.describe('Image-only block detection', () => {
     test('block with text + image is NOT image-only (renders inline)', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, 'Look at this: ![cat](https://example.com/cat.png)');
       await wait(page, 200);
 
@@ -107,7 +118,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('plain text block has no image elements', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, 'Just regular text');
       await wait(page, 200);
 
@@ -119,7 +129,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('link syntax (no !) does not create image', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, '[link](https://example.com)');
       await wait(page, 200);
 
@@ -130,7 +139,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
 
   test.describe('Inline images in text', () => {
     test('image within text renders as inline-image', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, 'Before ![icon](https://example.com/icon.png) after');
       await wait(page, 200);
 
@@ -140,7 +148,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('multiple inline images render correctly', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(
         page,
         blockId,
@@ -155,7 +162,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
 
   test.describe('Edit mode round-trip', () => {
     test('image markdown survives edit → view → edit cycle', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       const markdown = '![test](https://example.com/test.png){width=300}';
 
       await updateBlockText(page, blockId, markdown);
@@ -185,8 +191,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('setting image text via helper creates image block after re-render', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
-
       // First set some normal text, then change to image markdown
       await updateBlockText(page, blockId, 'normal text');
       await wait(page, 200);
@@ -201,7 +205,6 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
     });
 
     test('editing image block preserves width after exit', async ({ page }) => {
-      const blockId = await getFirstBlockId(page);
       await updateBlockText(page, blockId, '![](https://example.com/img.png){width=500}');
       await wait(page, 200);
 
@@ -211,7 +214,7 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
 
       const _editable = page.locator('[contenteditable="true"]');
       // Select all and retype with alt text but keep width
-      await page.keyboard.press('Meta+a');
+      await pressKeyCombo(page, 'a', [modKey]);
       await page.keyboard.type('![updated](https://example.com/img.png){width=500}');
       await wait(page);
 

@@ -15,9 +15,8 @@ import { enterEditModeAndClick, pressKeyOnContentEditable } from './helpers/inde
 
 test.describe('Newline Persistence (Shift+Enter)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('div.block[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
   });
 
@@ -34,9 +33,10 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     // Type second line
     await page.keyboard.type('Line 2');
 
-    // Verify DOM contains <br> element
+    // Browser editing engines may represent a soft newline as either a BR
+    // element or a literal newline text node. The persisted contract is "\n".
     const innerHTML = await editor.evaluate((el) => el.innerHTML);
-    expect(innerHTML).toContain('<br>');
+    expect(innerHTML.includes('<br>') || innerHTML.includes('\n')).toBe(true);
 
     // Verify text content has both lines
     const textContent = await editor.evaluate((el) => el.textContent);
@@ -54,10 +54,13 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     await page.keyboard.type('After newline');
 
     // Get block ID for later verification
-    const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
+    const blockId = await page
+      .locator('div.block[data-block-id]')
+      .first()
+      .getAttribute('data-block-id');
 
     // Exit edit mode with Escape
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
 
     // Playwright's expect() auto-waits for condition (no sleep needed)
     await expect(editor).not.toBeVisible();
@@ -82,10 +85,13 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     await page.keyboard.type('View line 2');
 
     // Get block ID
-    const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
+    const blockId = await page
+      .locator('div.block[data-block-id]')
+      .first()
+      .getAttribute('data-block-id');
 
     // Exit edit mode - wait for contenteditable to disappear
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await expect(editor).not.toBeVisible();
 
     // Find the view mode content element (the span that renders the block content)
@@ -123,10 +129,13 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     await page.keyboard.type('Edit line 2');
 
     // Get block ID
-    const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
+    const blockId = await page
+      .locator('div.block[data-block-id]')
+      .first()
+      .getAttribute('data-block-id');
 
     // Exit edit mode
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await expect(editor).not.toBeVisible();
 
     // Re-enter edit mode: first select the block, then enter edit
@@ -163,10 +172,13 @@ test.describe('Newline Persistence (Shift+Enter)', () => {
     await page.keyboard.type('Line C');
 
     // Get block ID
-    const blockId = await page.locator('[data-block-id]').first().getAttribute('data-block-id');
+    const blockId = await page
+      .locator('div.block[data-block-id]')
+      .first()
+      .getAttribute('data-block-id');
 
     // Exit edit mode
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await expect(editor).not.toBeVisible();
 
     // Verify DB has all newlines using TEST_HELPERS

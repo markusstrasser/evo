@@ -2,8 +2,8 @@
 /**
  * E2E Keyboard Event Linter
  *
- * Detects potentially problematic uses of page.keyboard.press() in E2E tests
- * that interact with contenteditable elements.
+ * Detects potentially problematic uses of page.keyboard.press/down/up() in E2E
+ * specs that interact with contenteditable elements or app-global key routing.
  *
  * This prevents silent test failures where Playwright's keyboard API doesn't
  * properly trigger event handlers on contenteditable elements.
@@ -19,6 +19,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { findStaticCalls, findTestFiles } = require('./e2e-lint-utils.js');
 
 // Keys that are known to cause issues with contenteditable when using page.keyboard.press()
 const RISKY_KEYS = [
@@ -30,14 +31,13 @@ const RISKY_KEYS = [
   'Backspace',
   'Delete',
   'Tab',
+  'Home',
+  'End',
 ];
-
-// Pattern to detect page.keyboard.press() calls
-const KEYBOARD_PRESS_PATTERN = /page\.keyboard\.press\(['"](\w+)['"]\)/g;
 
 // Pattern to detect imports of our safe helper
 const SAFE_HELPER_IMPORT =
-  /import\s+{[^}]*pressKeyOnContentEditable[^}]*}\s+from\s+['"]\.\/helpers\/keyboard\.js['"]/;
+  /import\s+{[^}]*press(?:KeyOnContentEditable|GlobalKey|QuickSwitcherKey)[^}]*}\s+from\s+['"]\.\/helpers\/(?:keyboard|index)\.js['"]/;
 
 function lintFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -46,47 +46,32 @@ function lintFile(filePath) {
   // Check if file imports the safe helper
   const usesSafeHelper = SAFE_HELPER_IMPORT.test(content);
 
-  // Find all page.keyboard.press() calls
-  const keyPressPattern = new RegExp(KEYBOARD_PRESS_PATTERN.source, 'g');
-  let match = keyPressPattern.exec(content);
+  for (const method of ['press', 'down', 'up']) {
+    for (const call of findStaticCalls(content, `page.keyboard.${method}`)) {
+      const key = call.firstArg;
 
-  while (match !== null) {
-    const key = match[1];
-    const line = content.substring(0, match.index).split('\n').length;
+      if (!key) continue;
 
-    // Check if this is a risky key
-    if (RISKY_KEYS.some((riskyKey) => key.includes(riskyKey))) {
-      issues.push({
-        file: filePath,
-        line,
-        key,
-        message: `Found page.keyboard.press('${key}') which may not trigger handlers on contenteditable elements`,
-        suggestion: usesSafeHelper
-          ? `Use pressKeyOnContentEditable(page, '${key}') instead`
-          : `Import and use pressKeyOnContentEditable from './helpers/keyboard.js'`,
-      });
+      const keyParts = key.split('+');
+      const hasRiskyKey = keyParts.some((part) => RISKY_KEYS.includes(part));
+      const usesModifiersOption = /modifiers\s*:/.test(call.source);
+      const usesHeldKeyPrimitive = method === 'down' || method === 'up';
+
+      if (hasRiskyKey || usesModifiersOption || usesHeldKeyPrimitive) {
+        issues.push({
+          file: filePath,
+          line: call.line,
+          key,
+          message: `Found raw page.keyboard.${method}('${key}') for a risky key contract`,
+          suggestion: usesSafeHelper
+            ? `Use pressKeyOnContentEditable, pressGlobalKey, pressQuickSwitcherKey, or a narrower helper`
+            : `Import an explicit keyboard helper from './helpers/index.js'`,
+        });
+      }
     }
-
-    match = keyPressPattern.exec(content);
   }
 
   return issues;
-}
-
-function findTestFiles(dir, files = []) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      findTestFiles(fullPath, files);
-    } else if (entry.isFile() && entry.name.endsWith('.spec.js')) {
-      files.push(fullPath);
-    }
-  }
-
-  return files;
 }
 
 function main() {

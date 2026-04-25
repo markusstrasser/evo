@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+  pressGlobalKey,
   pressKeyCombo,
   pressKeyOnContentEditable,
   setCursorPosition as setExactCursor,
@@ -37,10 +38,20 @@ async function findBlockByText(page, text) {
 
 // Helper to enter edit mode on a specific block
 async function enterEditModeOn(page, block) {
-  await block.click();
-  await page.keyboard.type('a'); // Type to enter edit mode (Logseq-style)
+  const blockId = await block.getAttribute('data-block-id');
+  if (!blockId) {
+    throw new Error('Cannot enter edit mode: locator has no data-block-id');
+  }
+
+  await page.evaluate((id) => {
+    window.TEST_HELPERS.dispatchIntent({ type: 'selection', mode: 'replace', ids: id });
+    window.TEST_HELPERS.dispatchIntent({ type: 'enter-edit', 'block-id': id });
+  }, blockId);
+  await page.waitForFunction(
+    (id) => window.TEST_HELPERS?.getSession?.()?.ui?.['editing-block-id'] === id,
+    blockId
+  );
   await page.waitForSelector('[contenteditable="true"]');
-  await pressKeyOnContentEditable(page, 'Backspace'); // Clear the 'a'
 }
 
 // Helper to set cursor position to start or end of current contenteditable
@@ -65,87 +76,61 @@ async function setCursorPosition(page, position) {
 
 test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    // Wait for blocks to render (they start in view mode, not edit mode)
-    await page.waitForSelector('[data-block-id]');
-    navIds = await page.evaluate(() => {
-      const proj = window.__E2E_SCENARIOS?.navigation?.projects;
-      return {
-        first: proj?.['first-block'] ?? 'proj-1',
-        last: proj?.['last-block'] ?? 'proj-3',
-        firstChild: proj?.['first-child'] ?? 'proj-1-1',
-        secondChild: proj?.['second-child'] ?? 'proj-1-2',
-        sibling: proj?.['adjacent-sibling'] ?? 'proj-2',
-      };
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TEST_HELPERS?.loadFixture);
+    navIds = {
+      first: 'proj-1',
+      last: 'proj-3',
+      firstChild: 'proj-1-1',
+      secondChild: 'proj-1-2',
+      sibling: 'proj-2',
+    };
+    await page.evaluate(() => {
+      window.TEST_HELPERS.loadFixture({
+        ops: [
+          { op: 'create-node', id: 'test-page', type: 'page', props: { title: 'Projects' } },
+          { op: 'place', id: 'test-page', under: 'doc', at: 'last' },
+          {
+            op: 'create-node',
+            id: 'proj-1',
+            type: 'block',
+            props: { text: 'Evolver - Outliner Project' },
+          },
+          { op: 'place', id: 'proj-1', under: 'test-page', at: 'last' },
+          {
+            op: 'create-node',
+            id: 'proj-1-1',
+            type: 'block',
+            props: { text: 'Building a Logseq-inspired outliner' },
+          },
+          { op: 'place', id: 'proj-1-1', under: 'proj-1', at: 'last' },
+          {
+            op: 'create-node',
+            id: 'proj-1-2',
+            type: 'block',
+            props: { text: 'Using event sourcing architecture' },
+          },
+          { op: 'place', id: 'proj-1-2', under: 'proj-1', at: 'last' },
+          {
+            op: 'create-node',
+            id: 'proj-2',
+            type: 'block',
+            props: { text: 'Tech Stack: ClojureScript + Replicant' },
+          },
+          { op: 'place', id: 'proj-2', under: 'test-page', at: 'last' },
+          { op: 'create-node', id: 'proj-3', type: 'block', props: { text: 'Release notes' } },
+          { op: 'place', id: 'proj-3', under: 'test-page', at: 'last' },
+        ],
+        session: {
+          ui: { 'current-page': 'test-page', 'journals-view?': false },
+          selection: { nodes: [] },
+        },
+      });
     });
+    await page.waitForSelector(`div.block[data-block-id="${navIds.first}"]`);
   });
 
   test.describe('§4.1: Navigation Scope Isolation', () => {
-    // TODO: Implement page scope isolation (§4.1)
-    // q/visible-blocks must respect current-page as implicit zoom root
-    test.skip('arrow navigation stops at current page boundaries', async ({ page }) => {
-      // SPEC REQUIREMENT (§4.1): "On the Projects page, Arrow Down from the last block should no-op instead of jumping to Tasks"
-      // CURRENT BEHAVIOR: Navigation DOES jump to Tasks page (regression described in spec)
-      // EXPECTED: This test should FAIL until §4.1 is implemented
-      // Implementation needed: q/visible-blocks must respect current-page as implicit zoom root
-
-      // Verify we're on the Projects page
-      const currentPage = await page.evaluate(() => {
-        // Use TEST_HELPERS if available
-        const session = window.TEST_HELPERS?.getSession?.();
-        if (session?.ui?.current_page) {
-          return session.ui.current_page;
-        }
-        // Fallback: check DOM for active page indicator
-        const activePageItem = document.querySelector(
-          '.page-item[style*="background-color: rgb(219, 234, 254)"]'
-        );
-        return activePageItem?.textContent?.trim();
-      });
-
-      // Current page should be "projects" or "Projects"
-      expect(currentPage?.toLowerCase()).toContain('project');
-
-      // Find the last block of the PROJECTS page specifically (proj-3)
-      // NOT the last block of the entire document
-      const lastProjectBlock = page.locator(`div.block[data-block-id="${navIds.last}"]`);
-      await enterEditModeOn(page, lastProjectBlock);
-      await setCursorPosition(page, 'end');
-
-      // Try to navigate down past last block of current page
-      await pressKeyOnContentEditable(page, 'ArrowDown');
-
-      // Wait for Replicant render cycle (should stay in edit mode)
-      await page.waitForTimeout(200);
-
-      // Should stay on proj-3 (no-op at page boundary)
-      // Should NOT jump to task-1 (first block of Tasks page)
-      const currentBlockId = await page.evaluate(() => {
-        const el = document.querySelector('[contenteditable]');
-        return el?.closest('[data-block-id]')?.getAttribute('data-block-id');
-      });
-
-      expect(currentBlockId).toBe(navIds.last);
-
-      // Verify we didn't jump to Tasks page
-      const currentPageAfter = await page.evaluate(() => {
-        // Use TEST_HELPERS if available
-        const session = window.TEST_HELPERS?.getSession?.();
-        if (session?.ui?.current_page) {
-          return session.ui.current_page;
-        }
-        // Fallback: check DOM for active page indicator (strip emoji)
-        const activePageItem = document.querySelector(
-          '.page-item[style*="background-color: rgb(219, 234, 254)"]'
-        );
-        const text = activePageItem?.textContent?.trim()?.toLowerCase() || '';
-        // Strip emoji (match only letters)
-        return text.match(/[a-z]+/)?.[0] || text;
-      });
-
-      expect(currentPageAfter).toBe('projects');
-    });
-
     test('arrow navigation up from first block stays at page boundary', async ({ page }) => {
       // SPEC: Navigation should be page-scoped
       // Navigate up from first block of Projects page should no-op
@@ -165,21 +150,12 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
 
       expect(currentBlockId).toBe(navIds.first);
     });
-
-    test.skip('vertical navigation respects zoom boundaries', async () => {
-      // TODO: Zoom functionality not yet implemented
-      // When implemented, test that zooming into a block makes that block the navigation root
-    });
   });
 
   test.describe('§4.2: Horizontal Boundary Traversal (DOM Order)', () => {
     test('Left arrow at start navigates to parent at end', async ({ page }) => {
-      // Find a child block and enter edit mode
-      const block = page
-        .locator('div.block')
-        .filter({ hasText: 'Building a Logseq-inspired outliner' })
-        .first();
-      await enterEditModeOn(page, block);
+      const firstChild = page.locator(`div.block[data-block-id="${navIds.firstChild}"]`);
+      await enterEditModeOn(page, firstChild);
 
       // Position at start
       await setCursorPosition(page, 'start');
@@ -234,12 +210,8 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
     });
 
     test('Right arrow at end of leaf navigates to next sibling', async ({ page }) => {
-      // Double-click on a leaf block to enter edit mode
-      const block = page
-        .locator('div.block')
-        .filter({ hasText: 'Building a Logseq-inspired outliner' })
-        .first();
-      await enterEditModeOn(page, block);
+      const firstChild = page.locator(`div.block[data-block-id="${navIds.firstChild}"]`);
+      await enterEditModeOn(page, firstChild);
 
       // Position cursor at end
       await setCursorPosition(page, 'end');
@@ -299,107 +271,6 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       expect(result.cursorPos).toBe(0); // At start of child
     });
   });
-
-  // NOTE: Skipped - flaky test, relies on specific demo data layout which can vary
-  test.describe
-    .skip('§4.3: Shift+Click Range Selection (Visibility-Aware)', () => {
-      test('Shift+Click between visible blocks selects only visible range', async ({ page }) => {
-        // Select first block
-        await page
-          .locator('div.block')
-          .filter({ hasText: 'Evolver - Outliner Project' })
-          .first()
-          .click();
-
-        // Shift+Click on third visible block
-        await page.keyboard.down('Shift');
-        await page
-          .locator('div.block')
-          .filter({ hasText: 'Tech Stack: ClojureScript + Replicant' })
-          .first()
-          .click();
-        await page.keyboard.up('Shift');
-
-        // Count selected blocks
-        const selectedCount = await page.evaluate(() => {
-          return document.querySelectorAll('[style*="background-color: rgb(230, 242, 255)"]')
-            .length;
-        });
-
-        // Should select exactly 3 blocks (parent + 2 children + 1 sibling)
-        // NOT including any hidden/folded blocks
-        expect(selectedCount).toBeGreaterThanOrEqual(2);
-      });
-
-      test('Shift+Click skips folded descendants', async ({ page }) => {
-        // SPEC REQUIREMENT (§4.3): "Shift+Click between folded nodes → skips folded descendants; selection only spans visible nodes"
-        // CURRENT BEHAVIOR: Shift+Click DOES include folded children (regression described in spec)
-        // EXPECTED: This test should FAIL until §4.3 is implemented
-        // Implementation needed: Replace tree/doc-range with visibility-aware range helper
-
-        // Fold proj-1 by clicking the toggle icon (▾)
-        const toggleIcon = page
-          .locator(`div.block[data-block-id="${navIds.first}"] > span`)
-          .first();
-        await toggleIcon.click();
-        await page.waitForTimeout(300);
-
-        // Verify children are actually hidden in DOM
-        const _childrenHidden = await page.evaluate((ids) => {
-          const child1 = document.querySelector(`[data-block-id="${ids.firstChild}"]`);
-          const child2 = document.querySelector(`[data-block-id="${ids.secondChild}"]`);
-          return (
-            (!child1 && !child2) ||
-            (child1?.style?.display === 'none' && child2?.style?.display === 'none')
-          );
-        }, navIds);
-
-        // Select the parent block first by clicking its content
-        const parentContent = page.locator(
-          `div.block[data-block-id="${navIds.first}"] > span.block-content`
-        );
-        await parentContent.click();
-        await page.waitForTimeout(100);
-
-        // Shift+Click from the folded parent to a later block
-        // NOTE: Must click on .block-content specifically (not div.block) because clicking
-        // on the bullet doesn't trigger Shift+Click selection - it only toggles fold
-        const siblingContent = page.locator(
-          `div.block[data-block-id="${navIds.sibling}"] > span.block-content`
-        );
-        await page.keyboard.down('Shift');
-        await siblingContent.click();
-        await page.keyboard.up('Shift');
-        await page.waitForTimeout(100);
-
-        // Count selected blocks - should NOT include the hidden children
-        // NOTE: Selected blocks may have either selection color (230, 242, 255) or focus color (179, 217, 255)
-        const selection = await page.evaluate((ids) => {
-          const selectedOrFocused = Array.from(
-            document.querySelectorAll(
-              '[style*="background-color: rgb(230, 242, 255)"], [style*="background-color: rgb(179, 217, 255)"]'
-            )
-          );
-          return {
-            count: selectedOrFocused.length,
-            blockIds: selectedOrFocused.map((el) => el.getAttribute('data-block-id')),
-            childrenInDom: {
-              first: !!document.querySelector(`[data-block-id="${ids.firstChild}"]`),
-              second: !!document.querySelector(`[data-block-id="${ids.secondChild}"]`),
-            },
-          };
-        }, navIds);
-
-        // CRITICAL: Should select parent (proj-1) and proj-2, but NOT the folded children
-        // If this fails, it means the implementation doesn't respect fold state in selection
-        expect(selection.count).toBe(2);
-        expect(selection.blockIds).toContain(navIds.first);
-        expect(selection.blockIds).toContain(navIds.sibling);
-        // Should NOT contain the folded children
-        expect(selection.blockIds).not.toContain(navIds.firstChild);
-        expect(selection.blockIds).not.toContain(navIds.secondChild);
-      });
-    });
 
   test.describe('§4.4: Shift+Arrow Anchoring in Edit Mode', () => {
     test('Shift+ArrowDown at boundary extends from current block (not page top)', async ({
@@ -568,9 +439,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       await page.waitForTimeout(50);
 
       // Shift+Click on a later block to create range selection
-      await page.keyboard.down('Shift');
-      await page.locator(`div.block[data-block-id="${navIds.sibling}"]`).click();
-      await page.keyboard.up('Shift');
+      await page.locator(`div.block[data-block-id="${navIds.sibling}"]`).click({
+        modifiers: ['Shift'],
+      });
       await page.waitForTimeout(100);
 
       // Should have range selection (at least 2 blocks selected) - check via session state
@@ -597,9 +468,9 @@ test.describe('Navigation & Selection Parity (§4.1-4.4)', () => {
       await page.waitForTimeout(100);
 
       // Continue extending selection (now in block selection mode)
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(50);
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(50);
 
       // Should have multiple blocks selected - check via session state

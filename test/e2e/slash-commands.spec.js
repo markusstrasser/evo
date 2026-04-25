@@ -1,8 +1,9 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import { enterEditModeAndClick, pressHome } from './helpers/index.js';
+import { enterEditModeAndClick, pressHome, pressKeyOnContentEditable } from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
+const pageRefDatePattern = /\[\[[A-Z][a-z]{2} \d{1,2}(?:st|nd|rd|th)?, \d{4}\]\]/;
 
 /**
  * Slash Commands E2E Tests
@@ -13,9 +14,9 @@ const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
 test.describe('Slash Commands', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
-    // Use domcontentloaded instead of networkidle (shadow-cljs keeps websocket open)
-    await page.waitForLoadState('domcontentloaded');
+    // Use domcontentloaded instead of the default load wait; shadow-cljs keeps
+    // development connections open and can make full-suite navigation noisy.
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-block-id]', { timeout: 10000 });
   });
 
@@ -70,7 +71,7 @@ test.describe('Slash Commands', () => {
       const popup = page.locator('#autocomplete-popup');
       await expect(popup).toBeVisible();
 
-      await page.keyboard.press('Escape');
+      await pressKeyOnContentEditable(page, 'Escape');
       await expect(popup).not.toBeVisible();
     });
 
@@ -83,7 +84,7 @@ test.describe('Slash Commands', () => {
       const popup = page.locator('#autocomplete-popup');
       await expect(popup).toBeVisible();
 
-      await page.keyboard.press('Backspace');
+      await pressKeyOnContentEditable(page, 'Backspace');
       await expect(popup).not.toBeVisible();
     });
   });
@@ -103,7 +104,7 @@ test.describe('Slash Commands', () => {
       const firstText = await selectedItem.textContent();
 
       // Press down arrow
-      await page.keyboard.press('ArrowDown');
+      await pressKeyOnContentEditable(page, 'ArrowDown');
       await wait(page);
 
       // Different item should now be selected
@@ -112,7 +113,7 @@ test.describe('Slash Commands', () => {
       expect(secondText).not.toBe(firstText);
 
       // Press up arrow to go back
-      await page.keyboard.press('ArrowUp');
+      await pressKeyOnContentEditable(page, 'ArrowUp');
       await wait(page);
 
       selectedItem = popup.locator('.autocomplete-item.selected');
@@ -170,15 +171,15 @@ test.describe('Slash Commands', () => {
       await wait(page);
 
       // Select with Enter
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       // Get block text - should have date format [[Mon DD, YYYY]]
       const block = page.locator('[contenteditable="true"]');
       const text = await block.textContent();
 
-      // Should match date pattern like [[Dec 10, 2025]]
-      expect(text).toMatch(/\[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]/);
+      // Should match date pattern like [[Dec 10th, 2025]]
+      expect(text).toMatch(pageRefDatePattern);
     });
 
     test('/tomorrow inserts tomorrow date', async ({ page }) => {
@@ -193,12 +194,12 @@ test.describe('Slash Commands', () => {
         popup.locator('.autocomplete-item').filter({ hasText: 'Tomorrow' })
       ).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
       const text = await block.textContent();
-      expect(text).toMatch(/\[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]/);
+      expect(text).toMatch(pageRefDatePattern);
     });
 
     test('/yesterday inserts yesterday date', async ({ page }) => {
@@ -212,12 +213,12 @@ test.describe('Slash Commands', () => {
         popup.locator('.autocomplete-item').filter({ hasText: 'Yesterday' })
       ).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
       const text = await block.textContent();
-      expect(text).toMatch(/\[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]/);
+      expect(text).toMatch(pageRefDatePattern);
     });
 
     test('/time inserts current time', async ({ page }) => {
@@ -229,7 +230,7 @@ test.describe('Slash Commands', () => {
       const popup = page.locator('#autocomplete-popup');
       await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Time' })).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -242,15 +243,13 @@ test.describe('Slash Commands', () => {
   test.describe('Embed Commands', () => {
     test('/tweet inserts tweet template with cursor positioned', async ({ page }) => {
       await enterEditModeAndClick(page);
-      // Clear existing text first
-      await page.keyboard.press('Meta+a');
       await page.keyboard.type('/tweet');
       await wait(page);
 
       const popup = page.locator('#autocomplete-popup');
       await expect(popup.locator('.autocomplete-item').filter({ hasText: 'Tweet' })).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -266,12 +265,10 @@ test.describe('Slash Commands', () => {
 
     test('/video inserts video template', async ({ page }) => {
       await enterEditModeAndClick(page);
-      // Clear existing text first
-      await page.keyboard.press('Meta+a');
       await page.keyboard.type('/video');
       await wait(page);
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -287,7 +284,7 @@ test.describe('Slash Commands', () => {
       await page.keyboard.type('/code');
       await wait(page);
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -297,12 +294,10 @@ test.describe('Slash Commands', () => {
 
     test('/quote inserts blockquote marker', async ({ page }) => {
       await enterEditModeAndClick(page);
-      // Clear existing text first
-      await page.keyboard.press('Meta+a');
       await page.keyboard.type('/quote');
       await wait(page);
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -314,8 +309,6 @@ test.describe('Slash Commands', () => {
   test.describe('Heading Commands', () => {
     test('/h1 inserts h1 marker', async ({ page }) => {
       await enterEditModeAndClick(page);
-      // Clear existing text first
-      await page.keyboard.press('Meta+a');
       await page.keyboard.type('/h1');
       await wait(page);
 
@@ -323,7 +316,7 @@ test.describe('Slash Commands', () => {
       const popup = page.locator('#autocomplete-popup');
       await expect(popup.locator('.autocomplete-item').filter({ hasText: 'H1' })).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -333,8 +326,6 @@ test.describe('Slash Commands', () => {
 
     test('/h2 inserts h2 marker', async ({ page }) => {
       await enterEditModeAndClick(page);
-      // Clear existing text first
-      await page.keyboard.press('Meta+a');
       await page.keyboard.type('/h2');
       await wait(page);
 
@@ -342,7 +333,7 @@ test.describe('Slash Commands', () => {
       const popup = page.locator('#autocomplete-popup');
       await expect(popup.locator('.autocomplete-item').filter({ hasText: 'H2' })).toBeVisible();
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
@@ -359,12 +350,12 @@ test.describe('Slash Commands', () => {
       await wait(page);
 
       // Select with Tab instead of Enter
-      await page.keyboard.press('Tab');
+      await pressKeyOnContentEditable(page, 'Tab');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
       const text = await block.textContent();
-      expect(text).toMatch(/\[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]/);
+      expect(text).toMatch(pageRefDatePattern);
     });
   });
 
@@ -372,20 +363,19 @@ test.describe('Slash Commands', () => {
     test('command inserts at cursor position in existing text', async ({ page }) => {
       await enterEditModeAndClick(page);
 
-      // Clear existing text and type some text first
-      await page.keyboard.press('Meta+a');
+      // Type some text first
       await page.keyboard.type('Before ');
       await page.keyboard.type('/today');
       await wait(page);
 
-      await page.keyboard.press('Enter');
+      await pressKeyOnContentEditable(page, 'Enter');
       await wait(page);
 
       const block = page.locator('[contenteditable="true"]');
       const text = await block.textContent();
 
       // Should have "Before " then the date
-      expect(text).toMatch(/^Before \[\[[A-Z][a-z]{2} \d{1,2}, \d{4}\]\]$/);
+      expect(text).toMatch(/^Before \[\[[A-Z][a-z]{2} \d{1,2}(?:st|nd|rd|th)?, \d{4}\]\]$/);
     });
   });
 });

@@ -19,7 +19,7 @@ test.describe('File Paste Upload', () => {
   let blockId;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
@@ -68,13 +68,6 @@ test.describe('File Paste Upload', () => {
   }
 
   test('pasting image without folder shows alert', async ({ page }) => {
-    // Set up dialog handler to capture alert
-    let alertMessage = '';
-    page.on('dialog', async (dialog) => {
-      alertMessage = dialog.message();
-      await dialog.accept();
-    });
-
     // Ensure no folder is open
     await page.evaluate(() => {
       // Clear any folder handle
@@ -82,10 +75,8 @@ test.describe('File Paste Upload', () => {
     });
 
     await simulatePasteWithImageFile(page);
-    await wait(page, 300);
 
-    // Should show alert about opening folder
-    expect(alertMessage).toContain('open a folder');
+    await expect(page.getByText('Open a folder first to save images')).toBeVisible();
   });
 
   test.describe('With folder access (mocked)', () => {

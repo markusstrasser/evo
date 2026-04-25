@@ -25,7 +25,7 @@ test.describe('Sidebar', () => {
     });
 
     // Load with test mode for consistent state
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     // Wait for app to be ready
     await page.waitForTimeout(500);
@@ -77,9 +77,9 @@ test.describe('Sidebar', () => {
       const allPagesNav = page.locator('.sidebar-nav-item').filter({ hasText: 'All Pages' });
       await allPagesNav.click();
 
-      // Should show all pages view
-      await expect(page.locator('.all-pages-view')).toBeVisible();
-      await expect(page.locator('.all-pages-header h3')).toHaveText('All Pages');
+      // Should show the compact all-pages index.
+      await expect(page.locator('.pages-index')).toBeVisible();
+      await expect(page.locator('.pages-header-row')).toContainText('Title');
     });
 
     test('All Pages view includes journal pages', async ({ page }) => {
@@ -93,14 +93,12 @@ test.describe('Sidebar', () => {
       const allPagesNav = page.locator('.sidebar-nav-item').filter({ hasText: 'All Pages' });
       await allPagesNav.click();
 
-      // Both should be visible
-      await expect(
-        page.locator('.all-pages-item').filter({ hasText: 'Dec 10th, 2025' })
-      ).toBeVisible();
-      await expect(page.locator('.all-pages-item').filter({ hasText: 'My Notes' })).toBeVisible();
+      // Both should be visible in the pages index.
+      await expect(page.locator('.pages-row').filter({ hasText: 'Dec 10th, 2025' })).toBeVisible();
+      await expect(page.locator('.pages-row').filter({ hasText: 'My Notes' })).toBeVisible();
     });
 
-    test('Journal pages show calendar icon in All Pages', async ({ page }) => {
+    test('Journal pages appear in Journals section in All Pages', async ({ page }) => {
       // Create a journal page
       await page.evaluate(() => {
         window.TEST_HELPERS.dispatchIntent({ type: 'create-page', title: 'Dec 10th, 2025' });
@@ -110,12 +108,12 @@ test.describe('Sidebar', () => {
       const allPagesNav = page.locator('.sidebar-nav-item').filter({ hasText: 'All Pages' });
       await allPagesNav.click();
 
-      // Journal should have calendar emoji
-      const journalItem = page.locator('.all-pages-item').filter({ hasText: 'Dec 10th, 2025' });
-      await expect(journalItem).toContainText('📅');
+      const journalsSection = page.locator('.pages-section--journals');
+      await expect(journalsSection).toBeVisible();
+      await expect(journalsSection.locator('.pages-row')).toContainText('Dec 10th, 2025');
     });
 
-    test('Regular pages show file icon in All Pages', async ({ page }) => {
+    test('Regular pages appear in Pages section in All Pages', async ({ page }) => {
       // Create a regular page
       await page.evaluate(() => {
         window.TEST_HELPERS.dispatchIntent({ type: 'create-page', title: 'Regular Page' });
@@ -125,9 +123,11 @@ test.describe('Sidebar', () => {
       const allPagesNav = page.locator('.sidebar-nav-item').filter({ hasText: 'All Pages' });
       await allPagesNav.click();
 
-      // Regular page should have file emoji
-      const pageItem = page.locator('.all-pages-item').filter({ hasText: 'Regular Page' });
-      await expect(pageItem).toContainText('📄');
+      const pagesSection = page.locator('.pages-section--regular');
+      await expect(pagesSection).toBeVisible();
+      await expect(
+        pagesSection.locator('.pages-row').filter({ hasText: 'Regular Page' })
+      ).toBeVisible();
     });
   });
 
@@ -288,7 +288,7 @@ test.describe('Sidebar', () => {
       await recentsSection.locator('.sidebar-page-item').filter({ hasText: 'Page A' }).click();
 
       // Page heading should show Page A
-      await expect(page.getByRole('heading', { level: 3 })).toContainText('Page A');
+      await expect(page.locator('.page-title-display')).toContainText('Page A');
     });
 
     test('clicking page in All Pages view navigates to it', async ({ page }) => {
@@ -303,11 +303,11 @@ test.describe('Sidebar', () => {
       await page.waitForTimeout(100);
 
       // Click the page
-      await page.locator('.all-pages-item').filter({ hasText: 'Navigate Test' }).click();
+      await page.locator('.pages-row').filter({ hasText: 'Navigate Test' }).click();
 
       // Should navigate to the page
-      await expect(page.locator('.all-pages-view')).not.toBeVisible();
-      await expect(page.getByRole('heading', { level: 3 })).toContainText('Navigate Test');
+      await expect(page.locator('.pages-index')).not.toBeVisible();
+      await expect(page.locator('.page-title-display')).toContainText('Navigate Test');
     });
   });
 

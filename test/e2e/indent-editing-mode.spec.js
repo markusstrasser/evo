@@ -16,7 +16,7 @@ import {
 
 test.describe('Indent/Outdent in Editing Mode', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 

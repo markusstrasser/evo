@@ -5,6 +5,8 @@ import {
   getBlockIdAt,
   getCursorState,
   getSelectionState,
+  pressGlobalKey,
+  pressKeyCombo,
   selectBlock,
   waitForBlocks,
 } from './helpers/index.js';
@@ -24,9 +26,32 @@ import {
 
 test.describe('Selection Direction Reversal', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await waitForBlocks(page);
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.resetToEmptyDb();
+      window.TEST_HELPERS?.setBlockText('test-block-1', 'Selection A');
+      window.TEST_HELPERS?.transact([
+        {
+          op: 'create-node',
+          id: 'selection-block-b',
+          type: 'block',
+          props: { text: 'Selection B' },
+        },
+        { op: 'place', id: 'selection-block-b', under: 'test-page', at: 'last' },
+        {
+          op: 'create-node',
+          id: 'selection-block-c',
+          type: 'block',
+          props: { text: 'Selection C' },
+        },
+        { op: 'place', id: 'selection-block-c', under: 'test-page', at: 'last' },
+      ]);
+    });
+    await page.waitForFunction(
+      () => document.querySelectorAll('div.block[data-block-id]').length >= 3
+    );
   });
 
   test.describe('Extend Down Then Contract Up', () => {
@@ -41,7 +66,7 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Extend down to B (Shift+ArrowDown)
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Verify: A and B selected
@@ -51,7 +76,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.nodes.length).toBe(2);
 
       // Extend down to C
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Verify: A, B, C selected
@@ -63,7 +88,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.anchor).toBe(blockA); // Anchor should be first block
 
       // Now contract by pressing Shift+Up
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Verify: Should contract to A, B (C removed)
@@ -85,11 +110,11 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Extend down to C
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Contract back to B
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Verify back to single block B
@@ -98,7 +123,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.nodes).toContain(blockB);
 
       // Now extend UP (opposite direction) to A
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Should now have A and B selected, direction reversed
@@ -120,7 +145,7 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Extend up to B
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Verify B and C selected
@@ -130,7 +155,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.nodes.length).toBe(2);
 
       // Extend up to A
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Verify A, B, C selected
@@ -139,7 +164,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.anchor).toBe(blockC); // Anchor at original selection
 
       // Contract by pressing Shift+Down
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Should contract to B, C (A removed)
@@ -166,7 +191,7 @@ test.describe('Selection Direction Reversal', () => {
       expect(cursorState.editingBlockId).toBe(blockB);
 
       // Press Shift+Down - should exit edit and start block selection
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressKeyCombo(page, 'ArrowDown', ['Shift']);
       await page.waitForTimeout(200);
 
       // Should be in selection mode with B as anchor
@@ -189,7 +214,7 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Try to extend up (past boundary)
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Should remain unchanged
@@ -209,7 +234,7 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Try to extend down (past boundary)
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Should remain unchanged
@@ -230,9 +255,9 @@ test.describe('Selection Direction Reversal', () => {
       await page.waitForTimeout(100);
 
       // Cycle 1: Extend down, contract up
-      await page.keyboard.press('Shift+ArrowDown'); // A, B
+      await pressGlobalKey(page, 'Shift+ArrowDown'); // A, B
       await page.waitForTimeout(50);
-      await page.keyboard.press('Shift+ArrowUp'); // Back to A
+      await pressGlobalKey(page, 'Shift+ArrowUp'); // Back to A
       await page.waitForTimeout(50);
 
       let state = await getSelectionState(page);
@@ -240,13 +265,13 @@ test.describe('Selection Direction Reversal', () => {
       expect(state.anchor).toBe(blockA);
 
       // Cycle 2: Extend down twice, contract twice
-      await page.keyboard.press('Shift+ArrowDown'); // A, B
+      await pressGlobalKey(page, 'Shift+ArrowDown'); // A, B
       await page.waitForTimeout(50);
-      await page.keyboard.press('Shift+ArrowDown'); // A, B, C
+      await pressGlobalKey(page, 'Shift+ArrowDown'); // A, B, C
       await page.waitForTimeout(50);
-      await page.keyboard.press('Shift+ArrowUp'); // A, B
+      await pressGlobalKey(page, 'Shift+ArrowUp'); // A, B
       await page.waitForTimeout(50);
-      await page.keyboard.press('Shift+ArrowUp'); // A
+      await pressGlobalKey(page, 'Shift+ArrowUp'); // A
       await page.waitForTimeout(50);
 
       state = await getSelectionState(page);

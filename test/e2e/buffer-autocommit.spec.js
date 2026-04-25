@@ -15,11 +15,52 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { enterEditModeAndClick, pressKeyCombo } from './helpers/index.js';
+import {
+  enterEditModeAndClick,
+  pressKeyCombo,
+  pressKeyOnContentEditable,
+} from './helpers/index.js';
+
+async function loadTwoBlockFixture(page) {
+  await page.waitForFunction(() => window.TEST_HELPERS?.loadFixture);
+  await page.evaluate(() => {
+    window.TEST_HELPERS.loadFixture({
+      ops: [
+        { op: 'create-node', id: 'test-page', type: 'page', props: { title: 'Test Page' } },
+        { op: 'place', id: 'test-page', under: 'doc', at: 'last' },
+        { op: 'create-node', id: 'first-block', type: 'block', props: { text: 'First block' } },
+        { op: 'place', id: 'first-block', under: 'test-page', at: 'last' },
+        { op: 'create-node', id: 'second-block', type: 'block', props: { text: '' } },
+        { op: 'place', id: 'second-block', under: 'test-page', at: 'last' },
+      ],
+      session: {
+        ui: { 'current-page': 'test-page', 'journals-view?': false },
+        selection: { nodes: [] },
+      },
+    });
+  });
+  await page.waitForSelector('[data-block-id="second-block"]', { timeout: 5000 });
+}
+
+async function enterSecondBlock(page) {
+  await page.evaluate(() => {
+    window.TEST_HELPERS.dispatchIntent({
+      type: 'selection',
+      mode: 'replace',
+      ids: 'second-block',
+    });
+    window.TEST_HELPERS.dispatchIntent({ type: 'enter-edit', 'block-id': 'second-block' });
+  });
+  await page.waitForFunction(
+    () => window.TEST_HELPERS?.getSession?.()?.ui?.['editing-block-id'] === 'second-block'
+  );
+  await page.locator('[contenteditable="true"]').click();
+  return 'second-block';
+}
 
 test.describe('Buffer Auto-Commit', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
@@ -74,7 +115,7 @@ test.describe('Buffer Auto-Commit', () => {
     });
 
     // Press Escape to exit edit mode
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await page.waitForTimeout(100);
 
     // Verify text preserved
@@ -88,22 +129,14 @@ test.describe('Buffer Auto-Commit', () => {
   });
 
   test('Tab (indent) preserves typed text', async ({ page }) => {
-    // Create a block that can be indented (needs a previous sibling)
-    await enterEditModeAndClick(page);
-    await page.keyboard.type('First block');
-    await page.keyboard.press('Enter');
+    await loadTwoBlockFixture(page);
+    const blockId = await enterSecondBlock(page);
 
-    // Now in second block, type some text
     const typedText = 'Indented text here';
     await page.keyboard.type(typedText);
 
-    const blockId = await page.evaluate(() => {
-      const editable = document.querySelector('[contenteditable="true"]');
-      return editable?.closest('[data-block-id]')?.getAttribute('data-block-id');
-    });
-
     // Indent with Tab
-    await page.keyboard.press('Tab');
+    await pressKeyOnContentEditable(page, 'Tab');
     await page.waitForTimeout(100);
 
     // Verify still editing (indent preserves edit mode)
@@ -113,7 +146,7 @@ test.describe('Buffer Auto-Commit', () => {
     expect(isEditing).toBe(true);
 
     // Exit edit mode to check persisted text
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await page.waitForTimeout(100);
 
     // Verify text preserved after indent
@@ -127,26 +160,18 @@ test.describe('Buffer Auto-Commit', () => {
   });
 
   test('Cmd+Shift+Arrow (move block) preserves typed text', async ({ page }) => {
-    // Create two blocks
-    await enterEditModeAndClick(page);
-    await page.keyboard.type('First block');
-    await page.keyboard.press('Enter');
+    await loadTwoBlockFixture(page);
+    const blockId = await enterSecondBlock(page);
 
-    // Type in second block
     const typedText = 'Moving this block up';
     await page.keyboard.type(typedText);
-
-    const blockId = await page.evaluate(() => {
-      const editable = document.querySelector('[contenteditable="true"]');
-      return editable?.closest('[data-block-id]')?.getAttribute('data-block-id');
-    });
 
     // Move block up with Cmd+Shift+ArrowUp
     await pressKeyCombo(page, 'ArrowUp', ['Meta', 'Shift']);
     await page.waitForTimeout(100);
 
     // Exit edit mode
-    await page.keyboard.press('Escape');
+    await pressKeyOnContentEditable(page, 'Escape');
     await page.waitForTimeout(100);
 
     // Verify text preserved after move
