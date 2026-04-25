@@ -4,7 +4,7 @@ ClojureScript outliner with a tiny tree algebra.
 
 Evo is a working structural text editor: nested blocks, inline markdown, page refs, images, math, multi-select, undo/redo, backlinks, and local-folder persistence. You can try it here: [markusstrasser.org/evo-demo](https://markusstrasser.org/evo-demo).
 
-I evolved the kernel, renderer, and plugin system a few dozen times in 2023/2024, before coding agents were useful for this kind of work. The current source is about 18K LoC; the structural-editing core — kernel, scripts, and the plugins that handle tree edits, selection, and navigation — is about 6.4K of that. It also led to another archived Clojure repo and several discarded JavaScript/Svelte prototypes.
+Evo was preceded by another archived Clojure repo and several JavaScript/Svelte prototypes. I evolved the kernel, renderer, and plugin system a few dozen times in 2023/2024, before coding agents were useful for this kind of work. The current source is about 18K LoC; the structural-editing core — kernel, scripts, and the plugins that handle tree edits, selection, and navigation — is about 6.4K of that.
 
 **I did not set out to make a text editor.** Evo fell out of a larger experiment: could user interfaces change directly from user events?
 
