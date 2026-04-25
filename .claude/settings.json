@@ -1,4 +1,15 @@
 {
+  "skillOverrides": {
+    "scientific-drawing": "off",
+    "skill-creator:skill-creator": "off",
+    "security-review": "off",
+    "life-science-research": "off",
+    "modal": "off",
+    "claude-api": "off",
+    "skill-authoring": "off",
+    "playground:playground": "off",
+    "keybindings-help": "off"
+  },
   "hooks": {
     "PreToolUse": [
       {
