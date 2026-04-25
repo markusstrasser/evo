@@ -33,3 +33,13 @@
     (testing "invalid and nested refs are ignored"
       (is (= [] (backlinks/get-backlinks db "")))
       (is (= [] (backlinks/get-backlinks db "inner"))))))
+
+(deftest update-node-refreshes-backlinks-index
+  (let [db (sample-db)
+        updated-db (:db (tx/interpret
+                         db
+                         [{:op :update-node
+                           :id "b1"
+                           :props {:text "No refs now"}}]))]
+    (is (= [] (backlinks/get-backlinks updated-db "日本語")))
+    (is (= [] (backlinks/get-backlinks updated-db "Page, With. Punctuation's Stuff")))))

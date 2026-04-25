@@ -166,7 +166,7 @@
         ;; Log only on REAL state change, not merely 'intent emitted ops'.
         ;; Ops may validate-away (issues) or normalize-away (no-op :place)
         ;; leaving db-before = db-after; those shouldn't grow undo depth.
-        changed? (not (identical? db db-after))
+        changed? (not= db db-after)
         new-log (if changed?
                   (let [prev-op-id (:op-id (L/entry-at-head log))
                         entry (L/make-entry {:op-id op-id

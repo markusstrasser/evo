@@ -142,6 +142,11 @@
       (when editing-block-id
         (enrich-follow-link-intent intent-map))
 
+      (and (= (:cursor-pos intent-map) :cursor-pos)
+           editing-block-id
+           editable-el)
+      (enrich-follow-link-intent intent-map)
+
       (and (= (:type intent-map) :selection)
            (#{:next :prev :extend-next :extend-prev} (:mode intent-map))
            (vs/journals-view?)
