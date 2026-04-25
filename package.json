@@ -4,11 +4,11 @@
   "scripts": {
     "start": "node scripts/watch-runner.mjs",
     "clean": "rm -rf .shadow-cljs .cpcache out public/js/blocks-ui public/js/spec-viewer",
-    "dev": "npm run clean && npm run watch:cljs",
-    "dev:fast": "npm run watch:cljs",
+    "dev": "node scripts/watch-runner.mjs --clean",
+    "dev:fast": "node scripts/watch-runner.mjs --fast",
     "watch": "npm run dev:fast",
-    "watch:clean": "npm run clean && npm run dev:fast",
-    "watch:cljs": "npx shadow-cljs watch blocks-ui",
+    "watch:clean": "npm run dev",
+    "watch:cljs": "node scripts/watch-runner.mjs --fast",
     "compile": "npx shadow-cljs compile blocks-ui",
     "compile:specs": "npx shadow-cljs compile spec-viewer",
     "build": "npm run clean && npx shadow-cljs release blocks-ui && npx shadow-cljs release spec-viewer",
@@ -35,7 +35,7 @@
     "test:all": "npm run test:unit && npm run test:e2e"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.12",
+    "@biomejs/biome": "^2.4.13",
     "@playwright/test": "^1.59.1",
     "shadow-cljs": "^3.4.4"
   },
