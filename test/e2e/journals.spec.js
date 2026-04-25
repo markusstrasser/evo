@@ -108,7 +108,7 @@ test.describe('Journals View', () => {
       localStorage.removeItem('evo:favorites');
       localStorage.removeItem('evo:recents');
     });
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     // Wait for app to be ready
     await page.waitForTimeout(500);

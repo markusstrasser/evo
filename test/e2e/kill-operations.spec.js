@@ -1,220 +1,138 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import { enterEditModeAndClick, getBlockText, getFirstBlockId } from './helpers/index.js';
+import {
+  enterEditMode,
+  modKey,
+  pressKeyCombo,
+  pressKeyOnContentEditable,
+  setCursorPosition,
+} from './helpers/index.js';
 
-const wait = (page, ms = 100) => page.waitForTimeout(ms);
+const blockId = 'kill-block';
 
-/**
- * Kill Operations E2E Tests
- *
- * Tests kill operations (Cmd+K, Cmd+U, etc.) and verifies they
- * copy killed text to clipboard via the DEBUG API.
- */
+async function loadKillFixture(page, text = '') {
+  await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForFunction(() => window.TEST_HELPERS?.loadFixture);
+  await page.evaluate((initialText) => {
+    window.TEST_HELPERS.loadFixture({
+      ops: [
+        { op: 'create-node', id: 'kill-page', type: 'page', props: { title: 'Kill Ops' } },
+        { op: 'place', id: 'kill-page', under: 'doc', at: 'last' },
+        { op: 'create-node', id: 'kill-block', type: 'block', props: { text: initialText } },
+        { op: 'place', id: 'kill-block', under: 'kill-page', at: 'last' },
+      ],
+      session: {
+        ui: { 'current-page': 'kill-page', 'journals-view?': false },
+        selection: { nodes: [] },
+      },
+    });
+    window.DEBUG?.clearClipboardLog?.();
+  }, text);
+  await page.waitForSelector(`div.block[data-block-id="${blockId}"]`, { timeout: 5000 });
+}
+
+async function dispatchKill(page, type, cursorPos) {
+  await page.evaluate(
+    ({ intentType, pos }) => {
+      window.TEST_HELPERS.dispatchIntent({
+        type: intentType,
+        'block-id': 'kill-block',
+        'cursor-pos': pos,
+      });
+    },
+    { intentType: type, pos: cursorPos }
+  );
+}
+
+async function dbBlockText(page) {
+  return page.evaluate((id) => window.TEST_HELPERS?.getBlockText?.(id), blockId);
+}
+
+async function lastCopy(page) {
+  return page.evaluate(() => window.DEBUG?.lastCopy?.());
+}
 
 test.describe('Kill Operations', () => {
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.goto('/index.html?test=true');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
 
   test.describe('Kill to End (Cmd+K)', () => {
     test('kills text from cursor to end and copies to clipboard', async ({ page }) => {
-      // Setup: Enter edit mode and type text
-      await enterEditModeAndClick(page);
-      await page.keyboard.press('Meta+a');
-      await page.keyboard.type('Hello World');
-      await wait(page);
+      await loadKillFixture(page, 'Hello World');
+      await enterEditMode(page, blockId);
 
-      // Position cursor after "Hello " (position 6)
-      const blockId = await getFirstBlockId(page);
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'update-cursor-state',
-          blockId: id,
-          cursorPos: 6,
-        });
-      }, blockId);
-      await wait(page);
+      await dispatchKill(page, 'kill-to-end', 6);
 
-      // Kill to end via intent (keyboard binding may not work in test)
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'kill-to-end',
-          blockId: id,
-        });
-      }, blockId);
-      await wait(page, 200);
-
-      // Verify text is truncated
-      const text = await getBlockText(page, blockId);
-      expect(text).toBe('Hello ');
-
-      // Verify killed text in clipboard via DEBUG API
-      const lastClip = await page.evaluate(() => window.DEBUG?.lastCopy?.());
-      expect(lastClip).toBeTruthy();
-      expect(lastClip.text).toBe('World');
-      expect(lastClip.type).toBe('kill');
+      await expect.poll(() => dbBlockText(page)).toBe('Hello ');
+      const clip = await lastCopy(page);
+      expect(clip?.text).toBe('World');
+      expect(clip?.type).toBe('kill');
     });
 
     test('killing empty suffix copies empty string', async ({ page }) => {
-      await enterEditModeAndClick(page);
-      await page.keyboard.press('Meta+a');
-      await page.keyboard.type('Hello');
-      await wait(page);
+      await loadKillFixture(page, 'Hello');
+      await enterEditMode(page, blockId);
 
-      const blockId = await getFirstBlockId(page);
+      await dispatchKill(page, 'kill-to-end', 5);
 
-      // Position cursor at end (position 5)
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'update-cursor-state',
-          blockId: id,
-          cursorPos: 5,
-        });
-      }, blockId);
-      await wait(page);
-
-      // Kill to end at end of text
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'kill-to-end',
-          blockId: id,
-        });
-      }, blockId);
-      await wait(page, 200);
-
-      // Text should remain unchanged
-      const text = await getBlockText(page, blockId);
-      expect(text).toBe('Hello');
-
-      // Clipboard should have empty string
-      const lastClip = await page.evaluate(() => window.DEBUG?.lastCopy?.());
-      expect(lastClip?.text).toBe('');
+      await expect.poll(() => dbBlockText(page)).toBe('Hello');
+      expect((await lastCopy(page))?.text).toBe('');
     });
   });
 
   test.describe('Kill to Beginning (Cmd+U)', () => {
     test('kills text from beginning to cursor and copies to clipboard', async ({ page }) => {
-      await enterEditModeAndClick(page);
-      await page.keyboard.press('Meta+a');
-      await page.keyboard.type('Hello World');
-      await wait(page);
+      await loadKillFixture(page, 'Hello World');
+      await enterEditMode(page, blockId);
 
-      const blockId = await getFirstBlockId(page);
+      await dispatchKill(page, 'kill-to-beginning', 6);
 
-      // Position cursor after "Hello " (position 6)
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'update-cursor-state',
-          blockId: id,
-          cursorPos: 6,
-        });
-      }, blockId);
-      await wait(page);
+      await expect.poll(() => dbBlockText(page)).toBe('World');
+      expect((await lastCopy(page))?.text).toBe('Hello ');
+    });
 
-      // Kill to beginning
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'kill-to-beginning',
-          blockId: id,
-        });
-      }, blockId);
-      await wait(page, 200);
+    test('keyboard shortcut uses the live DOM cursor position', async ({ page }) => {
+      await loadKillFixture(page, 'Hello World');
+      await enterEditMode(page, blockId);
+      await setCursorPosition(page, blockId, 6);
 
-      // Verify text is prefix-removed
-      const text = await getBlockText(page, blockId);
-      expect(text).toBe('World');
+      await pressKeyCombo(page, 'u', [modKey]);
 
-      // Verify killed text in clipboard
-      const lastClip = await page.evaluate(() => window.DEBUG?.lastCopy?.());
-      expect(lastClip?.text).toBe('Hello ');
+      await expect.poll(() => dbBlockText(page)).toBe('World');
+      expect((await lastCopy(page))?.text).toBe('Hello ');
     });
   });
 
   test.describe('Kill Word Forward (Cmd+Delete)', () => {
     test('kills next word and copies to clipboard', async ({ page }) => {
-      await enterEditModeAndClick(page);
-      await page.keyboard.press('Meta+a');
-      await page.keyboard.type('Hello World Test');
-      await wait(page);
+      await loadKillFixture(page, 'Hello World Test');
+      await enterEditMode(page, blockId);
 
-      const blockId = await getFirstBlockId(page);
+      await dispatchKill(page, 'kill-word-forward', 0);
 
-      // Position cursor at start
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'update-cursor-state',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page);
-
-      // Kill word forward
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'kill-word-forward',
-          blockId: id,
-        });
-      }, blockId);
-      await wait(page, 200);
-
-      // "Hello" should be killed, leaving " World Test"
-      const text = await getBlockText(page, blockId);
-      expect(text).toBe(' World Test');
-
-      // Verify killed text
-      const lastClip = await page.evaluate(() => window.DEBUG?.lastCopy?.());
-      expect(lastClip?.text).toBe('Hello');
+      await expect.poll(() => dbBlockText(page)).toBe(' World Test');
+      expect((await lastCopy(page))?.text).toBe('Hello');
     });
   });
 
   test.describe('Kill Word Backward (Alt+Delete)', () => {
     test('kills previous word and copies to clipboard', async ({ page }) => {
-      await enterEditModeAndClick(page);
-      await page.keyboard.press('Meta+a');
-      await page.keyboard.type('Hello World Test');
-      await wait(page);
+      await loadKillFixture(page, 'Hello World Test');
+      await enterEditMode(page, blockId);
 
-      const blockId = await getFirstBlockId(page);
+      await dispatchKill(page, 'kill-word-backward', 16);
 
-      // Position cursor at end (after "Test")
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'update-cursor-state',
-          blockId: id,
-          cursorPos: 16, // Length of "Hello World Test"
-        });
-      }, blockId);
-      await wait(page);
-
-      // Kill word backward
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'kill-word-backward',
-          blockId: id,
-        });
-      }, blockId);
-      await wait(page, 200);
-
-      // "Test" should be killed
-      const text = await getBlockText(page, blockId);
-      expect(text).toBe('Hello World ');
-
-      // Verify killed text
-      const lastClip = await page.evaluate(() => window.DEBUG?.lastCopy?.());
-      expect(lastClip?.text).toBe('Test');
+      await expect.poll(() => dbBlockText(page)).toBe('Hello World ');
+      expect((await lastCopy(page))?.text).toBe('Test');
     });
   });
 });
 
 test.describe('DEBUG API Verification', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('[data-block-id]', { timeout: 5000 });
+    await loadKillFixture(page);
   });
 
   test('DEBUG.snapshot() returns comprehensive state', async ({ page }) => {
@@ -228,31 +146,24 @@ test.describe('DEBUG API Verification', () => {
     expect(snapshot).toHaveProperty('log');
     expect(snapshot).toHaveProperty('clipboard');
 
-    expect(snapshot.db).toHaveProperty('node_count');
+    expect(snapshot.db).toHaveProperty('node-count');
     expect(snapshot.session).toHaveProperty('editing');
-    expect(snapshot.history).toHaveProperty('undo_count');
+    expect(snapshot.history).toHaveProperty('undo-count');
   });
 
   test('DEBUG.assertBlockText() validates block content', async ({ page }) => {
-    await enterEditModeAndClick(page);
-    await page.keyboard.press('Meta+a');
-    await page.keyboard.type('Test content');
-    await wait(page);
+    await page.evaluate(() => {
+      window.TEST_HELPERS.transact([
+        { op: 'update-node', id: 'kill-block', props: { text: 'Test content' } },
+      ]);
+    });
 
-    const blockId = await getFirstBlockId(page);
-
-    // Commit the text
-    await page.keyboard.press('Escape');
-    await wait(page, 200);
-
-    // Assert correct text
     const result = await page.evaluate(
       (id) => window.DEBUG?.assertBlockText?.(id, 'Test content'),
       blockId
     );
     expect(result?.ok).toBe(true);
 
-    // Assert incorrect text
     const failResult = await page.evaluate(
       (id) => window.DEBUG?.assertBlockText?.(id, 'Wrong content'),
       blockId
@@ -262,73 +173,43 @@ test.describe('DEBUG API Verification', () => {
   });
 
   test('DEBUG.undoCount() and canUndo() work correctly', async ({ page }) => {
-    // Initially no undo available (fresh state)
-    const initialUndo = await page.evaluate(() => window.DEBUG?.undoCount?.());
-    expect(initialUndo).toBe(0);
+    expect(await page.evaluate(() => window.DEBUG?.undoCount?.())).toBe(0);
+    expect(await page.evaluate(() => window.DEBUG?.canUndo?.())).toBe(false);
 
-    const canUndoInitial = await page.evaluate(() => window.DEBUG?.canUndo?.());
-    expect(canUndoInitial).toBe(false);
-
-    // Create a block to generate history
-    await enterEditModeAndClick(page);
-    await page.keyboard.press('Meta+a');
+    await enterEditMode(page, blockId);
     await page.keyboard.type('New content');
-    await wait(page);
-    await page.keyboard.press('Enter');
-    await wait(page, 200);
+    await pressKeyOnContentEditable(page, 'Enter');
 
-    // Now undo should be available
-    const _canUndoAfter = await page.evaluate(() => window.DEBUG?.canUndo?.());
-    // Note: depends on whether Enter creates history entry
+    expect(await page.evaluate(() => window.DEBUG?.canUndo?.())).toBe(true);
   });
 
   test('DEBUG.clipboardLog() tracks clipboard operations', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-
-    // Clear clipboard log
     await page.evaluate(() => window.DEBUG?.clearClipboardLog?.());
 
-    await enterEditModeAndClick(page);
-    await page.keyboard.press('Meta+a');
-    await page.keyboard.type('Copy me');
-    await wait(page);
+    await page.evaluate(() => {
+      window.TEST_HELPERS.dispatchIntent({ type: 'selection', mode: 'replace', ids: 'kill-block' });
+      window.TEST_HELPERS.dispatchIntent({ type: 'copy-selected' });
+    });
 
-    const blockId = await getFirstBlockId(page);
-
-    // Perform a copy
-    await page.evaluate((_id) => {
-      window.TEST_HELPERS.dispatchIntent({
-        type: 'copy-selected',
-      });
-    }, blockId);
-    await wait(page, 200);
-
-    // Check clipboard log
+    await expect.poll(() => page.evaluate(() => window.DEBUG?.clipboardLog?.()?.length)).toBe(1);
     const clipLog = await page.evaluate(() => window.DEBUG?.clipboardLog?.());
-    expect(clipLog?.length).toBeGreaterThan(0);
     expect(clipLog[0]).toHaveProperty('type');
     expect(clipLog[0]).toHaveProperty('timestamp');
   });
 
   test('DEBUG.lastIntent() returns most recent intent', async ({ page }) => {
-    await enterEditModeAndClick(page);
-
-    // Clear log first
     await page.evaluate(() => window.DEBUG?.clearLog?.());
 
-    const blockId = await getFirstBlockId(page);
-
-    // Dispatch an intent
-    await page.evaluate((id) => {
+    await page.evaluate(() => {
       window.TEST_HELPERS.dispatchIntent({
         type: 'enter-edit',
-        blockId: id,
+        'block-id': 'kill-block',
       });
-    }, blockId);
-    await wait(page, 100);
+    });
 
-    // Check last intent
-    const lastIntent = await page.evaluate(() => window.DEBUG?.lastIntent?.());
-    expect(lastIntent?.type).toBe('enter-edit');
+    await expect
+      .poll(() => page.evaluate(() => window.DEBUG?.lastIntent?.()?.type))
+      .toBe('enter-edit');
   });
 });

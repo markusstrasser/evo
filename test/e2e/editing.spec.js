@@ -6,12 +6,17 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { enterEditModeAndClick, getCursorPosition, typeAndVerifyCursor } from './helpers/index.js';
+import {
+  enterEditModeAndClick,
+  getCursorPosition,
+  pressKeyOnContentEditable,
+  typeAndVerifyCursor,
+} from './helpers/index.js';
 
 test.describe('Text Editing', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for empty database with clean state
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);
@@ -61,11 +66,11 @@ test.describe('Text Editing', { tag: '@smoke' }, () => {
     // Create two blocks
     await page.click('[contenteditable="true"]');
     await page.keyboard.type('First block');
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.keyboard.type('Second block');
 
     // Navigate up
-    await page.keyboard.press('ArrowUp');
+    await pressKeyOnContentEditable(page, 'ArrowUp');
     await page.waitForTimeout(100);
 
     // Verify we're in first block
@@ -97,9 +102,4 @@ test.describe('Text Editing', { tag: '@smoke' }, () => {
     // Text should appear exactly once
     expect(textCount).toBe(1);
   });
-
-  // REMOVED: 'REGRESSION: mock-text element positioned correctly'
-  // Reason: Tests internal implementation detail (mock-text positioning).
-  // The mock-text element is an internal mechanism for cursor calculations,
-  // not user-facing behavior. Visual testing or unit tests are more appropriate.
 });

@@ -30,6 +30,9 @@ import {
   getFirstBlockId,
   isBlockSelected,
   isEditing,
+  pressEnd,
+  pressGlobalKey,
+  pressKeyOnContentEditable,
   selectBlock,
   updateBlockText,
   waitForBlocks,
@@ -37,7 +40,7 @@ import {
 
 test.describe('Enter Key - Selected Block Behavior', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 
@@ -59,7 +62,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     const textLength = testText.length;
 
     // Press Enter
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
 
     // Verify: Now in edit mode
@@ -92,7 +95,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     await selectBlock(page, blockId);
 
     // Press Enter to edit
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
 
     // Verify: In edit mode at position 0
@@ -108,47 +111,6 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     expect(cursorPos).toBe(0);
   });
 
-  // TODO: Fix flaky test - see test/e2e/SKIPPED_TESTS.md § Flaky Tests
-  // Issue: Multi-line cursor position inconsistent (contenteditable line breaks)
-  // Fix strategy: Investigate cursor memory interaction with BR elements
-  test.skip('Enter on selected block with multi-line text enters at END', async ({ page }) => {
-    const blockId = await getFirstBlockId(page);
-
-    // Set block content to multi-line text via intent
-    await updateBlockText(page, blockId, 'Line 1\nLine 2');
-
-    // Select block
-    await selectBlock(page, blockId);
-
-    // Press Enter to edit
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(100);
-
-    // Verify: In edit mode
-    const editableInput = page.locator(`[data-block-id="${blockId}"] [contenteditable="true"]`);
-    await expect(editableInput).toBeFocused();
-
-    const text = await editableInput.textContent();
-    expect(text).toContain('Line 1');
-    expect(text).toContain('Line 2');
-
-    // Cursor should be at very end
-    const cursorAtEnd = await editableInput.evaluate((el) => {
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return false;
-      const range = selection.getRangeAt(0);
-
-      // Check if cursor is at the end by comparing with total text length
-      const testRange = range.cloneRange();
-      testRange.selectNodeContents(el);
-      testRange.setStart(range.endContainer, range.endOffset);
-
-      return testRange.toString().length === 0;
-    });
-
-    expect(cursorAtEnd).toBe(true);
-  });
-
   test('Enter does NOT create new block when block is selected', async ({ page }) => {
     // Count initial blocks
     const initialCount = await page.locator('div.block[data-block-id]').count();
@@ -158,7 +120,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
     await selectBlock(page, blockId);
 
     // Press Enter
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
 
     // Verify: Block count unchanged (no new block created)
@@ -172,7 +134,7 @@ test.describe('Enter Key - Selected Block Behavior', () => {
 
 test.describe('Escape Key - Editing Behavior', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 
@@ -265,8 +227,8 @@ test.describe('Escape Key - Editing Behavior', () => {
     await enterEditMode(page, blockId, 'end');
 
     // Move cursor left
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('ArrowLeft');
+    await pressKeyOnContentEditable(page, 'ArrowLeft');
+    await pressKeyOnContentEditable(page, 'ArrowLeft');
 
     // Exit edit mode
     await page.keyboard.press('Escape');
@@ -274,7 +236,7 @@ test.describe('Escape Key - Editing Behavior', () => {
 
     // Re-select and enter edit mode - cursor should be at END (default)
     await selectBlock(page, blockId);
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
 
     const editableInput = page.locator(`[data-block-id="${blockId}"] [contenteditable="true"]`);
@@ -299,7 +261,7 @@ test.describe('Escape Key - Editing Behavior', () => {
 
 test.describe('Enter Key - Edit Mode Block Creation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 
@@ -333,7 +295,7 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
     const blocksBefore = await page.locator('div.block[data-block-id]').count();
 
     // Press Enter to create new block (at end of text creates sibling)
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(150); // Allow for re-render
 
     // Verify: New block was created
@@ -366,7 +328,7 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
     await enterEditMode(page, blockId);
 
     // Press Enter to create new block
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(150);
 
     // Type immediately (this would fail if focus was lost)
@@ -394,11 +356,11 @@ test.describe('Enter Key - Edit Mode Block Creation', () => {
     const blocksBefore = await page.locator('div.block[data-block-id]').count();
 
     // Press Enter three times
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(100);
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(100);
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(150);
 
     // Verify: Three new blocks created
@@ -433,7 +395,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
    */
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     // IMPORTANT: Explicitly reset to test DB to ensure we have predictable test-block-1
     // The app may navigate to journals on startup, overwriting the test state
     await page.evaluate(() => {
@@ -485,11 +447,11 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     const editableInput = page.locator(`[data-block-id="${parentId}"] [contenteditable="true"]`);
     await editableInput.click();
     // Move to end with Cmd+Right (Mac) which maps to End key behavior
-    await page.keyboard.press('Meta+ArrowRight');
+    await pressEnd(page);
     await page.waitForTimeout(50);
 
     // Press Enter - should create FIRST child (above existing child B)
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(200);
 
     // Verify: New block was created
@@ -550,7 +512,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
 
     // Create child block under parent
     await enterEditMode(page, parentId);
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(150);
 
     const childId = await getEditingBlockId(page);
@@ -584,7 +546,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     await page.waitForTimeout(100);
 
     // Press Enter - should create sibling (not child) since parent is folded
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(200);
 
     // Verify: New block was created
@@ -643,7 +605,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
     await page.waitForTimeout(100);
 
     // Press Enter - should create sibling since no children
-    await page.keyboard.press('Enter');
+    await pressKeyOnContentEditable(page, 'Enter');
     await page.waitForTimeout(200);
 
     // Verify: New block was created
@@ -674,7 +636,7 @@ test.describe('Enter Key - Expanded Children Behavior (Logseq Parity)', () => {
 
 test.describe('Enter and Escape - Integration Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await waitForBlocks(page);
   });
 
@@ -701,7 +663,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     expect(await isBlockSelected(page, blockId)).toBe(true);
 
     // 2. Enter to edit
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
     await expect(page.locator('[contenteditable="true"]')).toBeFocused();
 
@@ -717,7 +679,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     expect(await isBlockSelected(page, blockId)).toBe(true);
 
     // 6. Can still navigate with arrows (moves to next block)
-    await page.keyboard.press('ArrowDown');
+    await pressGlobalKey(page, 'ArrowDown');
     await page.waitForTimeout(100);
 
     // ArrowDown from selected block moves to next block
@@ -735,7 +697,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await page.waitForTimeout(100);
 
     // Press Down arrow - should navigate to BLOCK, not move cursor
-    await page.keyboard.press('ArrowDown');
+    await pressGlobalKey(page, 'ArrowDown');
     await page.waitForTimeout(100);
 
     // After Escape with no selection, ArrowDown selects the first visible block
@@ -765,7 +727,7 @@ test.describe('Enter and Escape - Integration Flow', () => {
     await selectBlock(page, 'test-block-2');
 
     // Press Enter
-    await page.keyboard.press('Enter');
+    await pressGlobalKey(page, 'Enter');
     await page.waitForTimeout(100);
 
     // Verify: Editing the SECOND block (not first)

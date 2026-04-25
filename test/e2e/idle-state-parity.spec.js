@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { selectPage } from './helpers/index.js';
+import { pressGlobalKey } from './helpers/index.js';
 
 /**
  * Logseq Parity: Idle State Guard (FR-Idle-01..03)
@@ -16,9 +16,31 @@ import { selectPage } from './helpers/index.js';
 
 test.describe('Idle State Guard (FR-Idle-01..03)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/blocks.html');
-    await selectPage(page); // Close overlays
-    await page.waitForSelector('[data-block-id]');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TEST_HELPERS?.loadFixture);
+    await page.evaluate(() => {
+      window.TEST_HELPERS.loadFixture({
+        ops: [
+          { op: 'create-node', id: 'idle-page', type: 'page', props: { title: 'Idle' } },
+          { op: 'place', id: 'idle-page', under: 'doc', at: 'last' },
+          { op: 'create-node', id: 'idle-a', type: 'block', props: { text: 'Alpha' } },
+          { op: 'place', id: 'idle-a', under: 'idle-page', at: 'last' },
+          { op: 'create-node', id: 'idle-b', type: 'block', props: { text: 'Bravo' } },
+          { op: 'place', id: 'idle-b', under: 'idle-page', at: 'last' },
+        ],
+        session: {
+          ui: { 'current-page': 'idle-page', 'journals-view?': false },
+          selection: { nodes: [] },
+        },
+      });
+    });
+    await page.waitForFunction(
+      () =>
+        window.TEST_HELPERS?.getDb?.()?.nodes?.['idle-a'] &&
+        document.querySelector('div.block[data-block-id="idle-a"]'),
+      undefined,
+      { timeout: 5000 }
+    );
   });
 
   /**
@@ -29,13 +51,10 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
    * - Verify no selection state in session
    */
   async function ensureIdleState(page) {
-    // Press Escape first to exit any editing
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(50);
-
-    // Click empty background area (far left, high up) to clear selection
-    await page.mouse.click(10, 100);
-    await page.waitForTimeout(50);
+    await page.evaluate(() => {
+      window.TEST_HELPERS?.dispatchIntent?.({ type: 'exit-edit' });
+      window.TEST_HELPERS?.dispatchIntent?.({ type: 'selection', mode: 'clear' });
+    });
 
     // Verify idle state via TEST_HELPERS.getSession() (returns plain JS)
     const state = await page.evaluate(() => {
@@ -69,7 +88,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeCount = await countBlocks(page);
-      await page.keyboard.press('Enter');
+      await pressGlobalKey(page, 'Enter');
       await page.waitForTimeout(100); // Wait for any async effects
       const afterCount = await countBlocks(page);
 
@@ -88,7 +107,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeCount = await countBlocks(page);
-      await page.keyboard.press('Backspace');
+      await pressGlobalKey(page, 'Backspace');
       await page.waitForTimeout(100);
       const afterCount = await countBlocks(page);
 
@@ -100,7 +119,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeCount = await countBlocks(page);
-      await page.keyboard.press('Delete');
+      await pressGlobalKey(page, 'Delete');
       await page.waitForTimeout(100);
       const afterCount = await countBlocks(page);
 
@@ -116,7 +135,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
         return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
-      await page.keyboard.press('Tab');
+      await pressGlobalKey(page, 'Tab');
       await page.waitForTimeout(100);
 
       const afterDB = await page.evaluate(() => {
@@ -134,7 +153,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
         return JSON.stringify(window.TEST_HELPERS?.getDb?.() || {});
       });
 
-      await page.keyboard.press('Shift+Tab');
+      await pressGlobalKey(page, 'Shift+Tab');
       await page.waitForTimeout(100);
 
       const afterDB = await page.evaluate(() => {
@@ -149,7 +168,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeCount = await countBlocks(page);
-      await page.keyboard.press('Shift+Enter');
+      await pressGlobalKey(page, 'Shift+Enter');
       await page.waitForTimeout(100);
       const afterCount = await countBlocks(page);
 
@@ -161,7 +180,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
       await ensureIdleState(page);
 
       const beforeCount = await countBlocks(page);
-      await page.keyboard.press('Meta+Enter');
+      await pressGlobalKey(page, 'Meta+Enter');
       await page.waitForTimeout(100);
       const afterCount = await countBlocks(page);
 
@@ -177,7 +196,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     }) => {
       await ensureIdleState(page);
 
-      await page.keyboard.press('Shift+ArrowUp');
+      await pressGlobalKey(page, 'Shift+ArrowUp');
       await page.waitForTimeout(100);
 
       // Should select a block (starts selection mode)
@@ -195,7 +214,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     }) => {
       await ensureIdleState(page);
 
-      await page.keyboard.press('Shift+ArrowDown');
+      await pressGlobalKey(page, 'Shift+ArrowDown');
       await page.waitForTimeout(100);
 
       // Should select a block (starts selection mode)
@@ -210,7 +229,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     test('ArrowDown in idle state selects first visible block', async ({ page }) => {
       await ensureIdleState(page);
 
-      await page.keyboard.press('ArrowDown');
+      await pressGlobalKey(page, 'ArrowDown');
       await page.waitForTimeout(50);
 
       // Should select exactly one block (the first one)
@@ -236,7 +255,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     test('ArrowUp in idle state selects last visible block', async ({ page }) => {
       await ensureIdleState(page);
 
-      await page.keyboard.press('ArrowUp');
+      await pressGlobalKey(page, 'ArrowUp');
       await page.waitForTimeout(50);
 
       // Should select exactly one block (the last one)
@@ -280,7 +299,7 @@ test.describe('Idle State Guard (FR-Idle-01..03)', () => {
     test('typing printable character when block is focused enters edit mode', async ({ page }) => {
       // First, select a block (ArrowDown from idle)
       await ensureIdleState(page);
-      await page.keyboard.press('ArrowDown');
+      await pressGlobalKey(page, 'ArrowDown');
       await page.waitForTimeout(50);
 
       // Verify we're in view mode (focused but not editing)

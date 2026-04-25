@@ -11,7 +11,12 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { pressEnd, pressHome, pressKeyOnContentEditable } from './helpers/index.js';
+import {
+  pressEnd,
+  pressHome,
+  pressKeyOnContentEditable,
+  pressSelectToStart,
+} from './helpers/index.js';
 
 /**
  * Helper: Enter edit mode on a block by double-clicking and waiting for contenteditable
@@ -40,7 +45,11 @@ async function enterEditMode(page, blockLocator) {
 
 test.describe('Uncontrolled Editing Architecture', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.TEST_HELPERS?.dispatchIntent);
+    await page.evaluate(() => {
+      window.TEST_HELPERS.dispatchIntent({ type: 'create-page', title: 'Uncontrolled Test' });
+    });
     await page.waitForSelector('[data-block-id]', { timeout: 10000 });
     // Wait for app to fully initialize (plugins loaded, etc.)
     await page.waitForTimeout(500);
@@ -60,7 +69,7 @@ test.describe('Uncontrolled Editing Architecture', () => {
     expect(domText).toBe('Hello');
 
     // Type more in the middle
-    await page.keyboard.press('Home'); // Move to start
+    await pressHome(page); // Move to start
     await page.keyboard.type('X');
 
     // Cursor should be after X, not at end
@@ -87,7 +96,7 @@ test.describe('Uncontrolled Editing Architecture', () => {
     expect(text).toBe('The quick brown fox jumps over the lazy dog');
 
     // Navigate to middle
-    await page.keyboard.press('Home');
+    await pressHome(page);
     for (let i = 0; i < 10; i++) {
       await pressKeyOnContentEditable(page, 'ArrowRight');
     }
@@ -182,8 +191,8 @@ test.describe('Uncontrolled Editing Architecture', () => {
     await page.keyboard.type('Hello World');
 
     // Select "World" using keyboard
-    await page.keyboard.press('End');
-    await page.keyboard.press('Shift+Home'); // Select from end to start
+    await pressEnd(page);
+    await pressSelectToStart(page); // Select from end to start
 
     // Type to replace selection
     await page.keyboard.type('Universe');
@@ -204,7 +213,7 @@ test.describe('Uncontrolled Editing Architecture', () => {
 
     // Cycle 2: Edit again and modify
     await enterEditMode(page, firstBlock);
-    await page.keyboard.press('End');
+    await pressEnd(page);
     await page.keyboard.type(' Second');
     await page.keyboard.press('Escape');
     await page.waitForSelector('.block-content');

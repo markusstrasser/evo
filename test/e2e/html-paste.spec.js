@@ -17,7 +17,7 @@ test.describe('HTML Paste Conversion', () => {
   let blockId;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
     await enterEditModeAndClick(page);

@@ -11,7 +11,7 @@ import { modKey } from './helpers/keyboard.js';
 test.describe('Navigation History (Cmd+[/])', () => {
   test.beforeEach(async ({ page }) => {
     // Use test mode for clean state
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });

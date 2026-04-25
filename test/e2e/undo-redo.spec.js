@@ -1,8 +1,28 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import { countBlocks, enterEditModeAndClick, getFirstBlockId } from './helpers/index.js';
+import {
+  countBlocks,
+  enterEditModeAndClick,
+  getFirstBlockId,
+  pressGlobalKey,
+  pressKeyOnContentEditable,
+} from './helpers/index.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
+
+async function splitBlockAt(page, blockId, cursorPos = 0) {
+  await page.evaluate(
+    ({ id, pos }) => {
+      window.TEST_HELPERS.dispatchIntent({
+        type: 'split-at-cursor',
+        'block-id': id,
+        'cursor-pos': pos,
+      });
+    },
+    { id: blockId, pos: cursorPos }
+  );
+  await wait(page, 200);
+}
 
 /**
  * Undo/Redo E2E Tests
@@ -16,7 +36,7 @@ const wait = (page, ms = 100) => page.waitForTimeout(ms);
 
 test.describe('Undo/Redo Operations', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector('[data-block-id]', { timeout: 5000 });
   });
@@ -57,14 +77,7 @@ test.describe('Undo/Redo Operations', () => {
 
       // Use dispatchIntent to create a new block (more reliable than keyboard)
       const blockId = await getFirstBlockId(page);
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 11, // After "First block"
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 11);
 
       // Verify block was created
       const afterCount = await countBlocks(page);
@@ -85,14 +98,7 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       const afterCreate = await countBlocks(page);
       expect(afterCreate).toBe(initialCount + 1);
@@ -113,21 +119,14 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       const beforeDelete = await countBlocks(page);
 
       // Select and delete the second block
-      await page.keyboard.press('Escape'); // Exit edit mode
+      await pressKeyOnContentEditable(page, 'Escape'); // Exit edit mode
       await wait(page);
-      await page.keyboard.press('ArrowDown'); // Move to second block
+      await pressGlobalKey(page, 'ArrowDown'); // Move to second block
       await wait(page);
 
       // Delete via backspace (should merge or delete)
@@ -162,14 +161,7 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       const afterCreate = await countBlocks(page);
       expect(afterCreate).toBe(initialCount + 1);
@@ -198,14 +190,7 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       // Undo
       await page.keyboard.press('Meta+z');
@@ -217,14 +202,7 @@ test.describe('Undo/Redo Operations', () => {
 
       // Perform a new operation (create another block)
       const newBlockId = await getFirstBlockId(page);
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, newBlockId);
-      await wait(page, 200);
+      await splitBlockAt(page, newBlockId, 0);
 
       // Redo should no longer be available
       canRedo = await page.evaluate(() => window.DEBUG?.canRedo?.());
@@ -243,19 +221,12 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       // Now should be undoable
       result = await page.evaluate(() => window.DEBUG?.assertUndoable?.());
       expect(result.ok).toBe(true);
-      expect(result.undo_count).toBeGreaterThan(0);
+      expect(result['undo-count']).toBeGreaterThan(0);
     });
   });
 
@@ -265,19 +236,12 @@ test.describe('Undo/Redo Operations', () => {
       await enterEditModeAndClick(page);
       const blockId = await getFirstBlockId(page);
 
-      await page.evaluate((id) => {
-        window.TEST_HELPERS.dispatchIntent({
-          type: 'split-at-cursor',
-          blockId: id,
-          cursorPos: 0,
-        });
-      }, blockId);
-      await wait(page, 200);
+      await splitBlockAt(page, blockId, 0);
 
       // Get the second block
-      await page.keyboard.press('Escape');
+      await pressKeyOnContentEditable(page, 'Escape');
       await wait(page);
-      await page.keyboard.press('ArrowDown');
+      await pressGlobalKey(page, 'ArrowDown');
       await wait(page);
 
       // Get initial parent info

@@ -57,6 +57,7 @@ npm start        # Clean + watch CLJS + watch CSS
 | Doc | Scope |
 |-----|-------|
 | **[TESTING.md](TESTING.md)** | Commands, helpers, patterns |
+| **[AGENT_TESTING.md](AGENT_TESTING.md)** | Agent browser-debugging workflow |
 
 ```bash
 bb test    # Unit tests
@@ -72,10 +73,10 @@ bb check:kernel  # Kernel extraction harness
 | File | Scope |
 |------|-------|
 | **[specs.edn](../resources/specs.edn)** | FR registry (50 functional requirements with scenarios) |
+| **[failure_modes.edn](../resources/failure_modes.edn)** | Known bugs/anti-patterns with symptoms and fixes |
 
 The browsable spec handbook is served separately from the editor shell at
 `/specs.html` when the `:spec-viewer` Shadow build is running.
-| **[failure_modes.edn](../resources/failure_modes.edn)** | Known bugs/anti-patterns with symptoms and fixes |
 
 ---
 

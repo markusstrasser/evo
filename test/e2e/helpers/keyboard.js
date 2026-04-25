@@ -11,16 +11,15 @@
  * CRITICAL: Playwright's `page.keyboard.press(key, { modifiers: [...] })` does NOT work!
  * The modifiers option is silently ignored. You MUST use '+' notation: 'Shift+ArrowDown'
  *
- * For non-contenteditable elements (modals, buttons, etc.), `page.keyboard.press()`
- * works fine and can be used directly.
+ * For non-contenteditable elements, use a named helper that asserts the
+ * intended focus/UI contract before dispatching the key.
  */
 
 /**
  * Dispatch a keyboard event on the currently focused contenteditable element.
  *
- * This creates a synthetic KeyboardEvent and dispatches it directly on the
- * active element, bypassing Playwright's keyboard abstraction which doesn't
- * properly trigger handlers on contenteditable elements.
+ * This verifies the contenteditable focus contract, then uses Playwright's
+ * '+' key-combo notation so modifier keys are delivered correctly.
  *
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {string} key - Key name (e.g., 'ArrowLeft', 'Enter', 'a')
@@ -65,9 +64,6 @@ export async function pressKeyOnContentEditable(page, key, options = {}) {
     }
   });
 
-  // Use Playwright's native keyboard API which generates real browser events
-  // that work with Replicant's event system (unlike synthetic KeyboardEvent)
-
   // Build key combination string (e.g., "Shift+ArrowDown")
   // Playwright's .press() uses '+' notation for modifier combinations
   const modifierParts = [];
@@ -111,6 +107,58 @@ export async function pressKeyCombo(page, key, modifiers = []) {
   await pressKeyOnContentEditable(page, key, options);
 }
 
+/**
+ * Press an app-global key when no contenteditable owns focus.
+ *
+ * Use this for idle/selected-block shortcuts that are handled by app-level
+ * keyboard routing rather than the editing surface.
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ * @param {string} keyCombo - Playwright key combo string (e.g. 'Enter', 'Shift+ArrowDown')
+ */
+export async function pressGlobalKey(page, keyCombo) {
+  await page.evaluate(() => {
+    const elem = document.activeElement;
+    if (elem?.getAttribute?.('contenteditable') === 'true') {
+      throw new Error(
+        `Expected app-global focus, but contenteditable is active. ` +
+          `Use pressKeyOnContentEditable() for editing keys.`
+      );
+    }
+  });
+
+  await page.keyboard.press(keyCombo);
+}
+
+/**
+ * Press a key handled by the quick switcher search overlay.
+ *
+ * The quick switcher intentionally keeps focus in its search input while
+ * Arrow/Enter keys drive the overlay result list.
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ * @param {string} keyCombo - Playwright key combo string
+ */
+export async function pressQuickSwitcherKey(page, keyCombo) {
+  await page.evaluate(() => {
+    const overlay = document.querySelector('dialog.quick-switcher');
+    if (!overlay) {
+      throw new Error('Expected quick switcher overlay to be visible before pressing overlay key.');
+    }
+
+    const searchInput = overlay.querySelector('input[placeholder="Search pages..."]');
+    if (!searchInput || document.activeElement !== searchInput) {
+      const active = document.activeElement;
+      throw new Error(
+        `Expected quick switcher search input to be focused. ` +
+          `Active element: ${active?.tagName || 'none'}`
+      );
+    }
+  });
+
+  await page.keyboard.press(keyCombo);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cross-Platform Key Mappings
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,7 +180,7 @@ export async function pressHome(page) {
   if (isMac) {
     await pressKeyOnContentEditable(page, 'ArrowLeft', { metaKey: true });
   } else {
-    await page.keyboard.press('Home');
+    await pressKeyOnContentEditable(page, 'Home');
   }
 }
 
@@ -147,7 +195,7 @@ export async function pressEnd(page) {
   if (isMac) {
     await pressKeyOnContentEditable(page, 'ArrowRight', { metaKey: true });
   } else {
-    await page.keyboard.press('End');
+    await pressKeyOnContentEditable(page, 'End');
   }
 }
 
@@ -202,7 +250,7 @@ export async function pressSelectToStart(page) {
   if (isMac) {
     await pressKeyOnContentEditable(page, 'ArrowLeft', { metaKey: true, shiftKey: true });
   } else {
-    await page.keyboard.press('Shift+Home');
+    await pressKeyOnContentEditable(page, 'Home', { shiftKey: true });
   }
 }
 
@@ -217,6 +265,6 @@ export async function pressSelectToEnd(page) {
   if (isMac) {
     await pressKeyOnContentEditable(page, 'ArrowRight', { metaKey: true, shiftKey: true });
   } else {
-    await page.keyboard.press('Shift+End');
+    await pressKeyOnContentEditable(page, 'End', { shiftKey: true });
   }
 }

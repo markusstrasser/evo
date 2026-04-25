@@ -23,7 +23,7 @@ test.describe('Write-side tripwire — transaction layer', () => {
   let blockId;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await waitForBlocks(page);
     blockId = await getFirstBlockId(page);

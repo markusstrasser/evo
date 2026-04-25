@@ -77,7 +77,7 @@ async function seedPage(page, title) {
         const children = db['children-by-parent']?.[id] ?? db.children_by_parent?.[id] ?? [];
         const firstBlock = children[0];
         if (firstBlock) {
-          window.TEST_HELPERS.setBlockText(firstBlock, '__seed__');
+          window.TEST_HELPERS.setBlockText(firstBlock, 'seed');
         }
         return;
       }
@@ -126,7 +126,7 @@ async function clearBlock(page, blockId) {
 
 test.describe('Navigate then type — focus seeds on page switch', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html?test=true');
+    await page.goto('/index.html?test=true', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await waitForBlocks(page);
   });
@@ -210,18 +210,18 @@ test.describe('Navigate then type — focus seeds on page switch', { tag: '@smok
     await waitForCurrentPage(page, a.pageId);
     await waitForFocus(page);
     expect((await getSelectionState(page)).focus).toBe(a.firstBlockId);
-    await clearBlock(page, a.firstBlockId);
+    const aBefore = await getBlockText(page, a.firstBlockId);
     await page.keyboard.press('a');
-    await expect.poll(() => getBlockText(page, a.firstBlockId)).toBe('a');
+    await expect.poll(() => getBlockText(page, a.firstBlockId)).toBe(`${aBefore}a`);
 
     // Forward → B → type.
     await dispatchIntent(page, { type: 'navigate-forward' });
     await waitForCurrentPage(page, b.pageId);
     await waitForFocus(page);
     expect((await getSelectionState(page)).focus).toBe(b.firstBlockId);
-    await clearBlock(page, b.firstBlockId);
+    const bBefore = await getBlockText(page, b.firstBlockId);
     await page.keyboard.press('b');
-    await expect.poll(() => getBlockText(page, b.firstBlockId)).toBe('b');
+    await expect.poll(() => getBlockText(page, b.firstBlockId)).toBe(`${bBefore}b`);
   });
 
   // ── Keystroke shape coverage ──────────────────────────────────────────────
