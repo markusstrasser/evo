@@ -49,12 +49,14 @@
    - :shift? - Shift key pressed
    - :mod?   - Cmd (Mac) or Ctrl (Win/Linux) pressed
    - :alt?   - Alt/Option key pressed
-   - :ctrl?  - Ctrl key specifically pressed"
+   - :ctrl?  - Ctrl key specifically pressed
+   - :meta?  - Meta/Cmd key specifically pressed"
   [e]
   {:shift? (.-shiftKey e)
    :mod? (or (.-metaKey e) (.-ctrlKey e))
    :alt? (.-altKey e)
-   :ctrl? (.-ctrlKey e)})
+   :ctrl? (.-ctrlKey e)
+   :meta? (.-metaKey e)})
 
 (defn event-key-info
   "Extract full keyboard event info including key and modifiers.
@@ -65,6 +67,7 @@
    - :mod?   - Cmd/Ctrl pressed
    - :alt?   - Alt/Option pressed
    - :ctrl?  - Ctrl specifically pressed
+   - :meta?  - Meta/Cmd specifically pressed
    - :target - Event target element"
   [e]
   (merge {:key (.-key e)

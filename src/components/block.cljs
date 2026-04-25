@@ -879,14 +879,18 @@
 
    Examples:
    - (key-match? \"a\" {:ctrl? true} mods) - Ctrl+A only
+   - (key-match? \"b\" {:mod? true} mods) - platform Mod+B
    - (key-match? \"ArrowUp\" {:shift? true} mods) - Shift+ArrowUp only
    - (key-match? \"Escape\" {} mods) - Escape with no modifiers"
-  [expected-key required-mods {:keys [shift? mod? alt? ctrl?] :as actual-mods}]
-  (and (= expected-key (:key actual-mods))
-       (= (:shift? required-mods false) shift?)
-       (= (:mod? required-mods false) mod?)
-       (= (:alt? required-mods false) alt?)
-       (= (:ctrl? required-mods false) ctrl?)))
+  [expected-key required-mods {:keys [shift? mod? alt? ctrl? meta?] :as actual-mods}]
+  (let [platform-mod-required? (contains? required-mods :mod?)]
+    (and (= expected-key (:key actual-mods))
+         (= (:shift? required-mods false) shift?)
+         (= (:alt? required-mods false) alt?)
+         (if platform-mod-required?
+           (= (:mod? required-mods false) mod?)
+           (and (= (:ctrl? required-mods false) ctrl?)
+                (= (:meta? required-mods false) meta?))))))
 
 (defn- plain-key?
   "Match key with no modifiers (shift, mod, alt, ctrl all false)."

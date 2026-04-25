@@ -437,15 +437,8 @@
          normalized-ops (normalize-ops db txs opts)
          [final-db issues] (validate-ops db normalized-ops)
 
-         ;; Optimization: skip derive-indexes for update-only transactions.
-         ;; :update-node only changes node props, not tree structure.
-         ;; :create-node without :place creates orphan (no derived change).
-         ;; Only :place ops modify tree structure and require re-derivation.
-         structure-changing? (some #(= (:op %) :place) normalized-ops)
-
          derived-db (cond
                       skip-derived? final-db
-                      (not structure-changing?) (assoc final-db :derived (:derived db))
                       :else (db/derive-indexes final-db))
 
          ;; Deterministic trace with all context

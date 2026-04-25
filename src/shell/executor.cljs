@@ -180,7 +180,7 @@
     ;; we must not grow undo depth. Ephemeral intents (session-updates only)
     ;; also leave db unchanged.
     (when (and (seq ops)
-               (not (identical? db-before db-after)))
+               (not= db-before db-after))
       (slog/append-and-advance! intent-map ops current-session))
 
     ;; Capture old page BEFORE applying session updates

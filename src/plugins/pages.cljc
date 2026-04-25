@@ -473,7 +473,9 @@
           base {:ui {:current-page new-page
                      :journals-view? false
                      :history-index new-idx
-                     :zoom-root nil}}]
+                     :zoom-root nil
+                     :editing-block-id nil
+                     :cursor-position nil}}]
       (if first-block
         (helpers/merge-session-updates base
                                        (helpers/select-only-update first-block))

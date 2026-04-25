@@ -228,16 +228,24 @@
 
 (def gen-children-list
   "Generate a list of 3-8 unique child IDs under a parent."
-  (gen/fmap (fn [ids] (vec (distinct ids)))
-            (gen/vector gen-id 3 8)))
+  (gen/fmap vec
+            (gen/set gen-id {:min-elements 3 :max-elements 8})))
+
+(def gen-reorder-case
+  (gen/bind gen-children-list
+            (fn [children]
+              (gen/fmap (fn [[target-idx num-to-take shuffled-children]]
+                          {:children children
+                           :target-idx target-idx
+                           :num-to-take num-to-take
+                           :shuffled-children shuffled-children})
+                        (gen/tuple (gen/choose 0 7)
+                                   (gen/choose 1 8)
+                                   (gen/shuffle children))))))
 
 (defspec reorder-intent-matches-permutation-algebra
   100
-  (prop/for-all [children gen-children-list
-                 target-idx (gen/choose 0 7)
-                 ;; Generate a deterministic selection by shuffling and taking a prefix
-                 num-to-take (gen/choose 1 8)
-                 shuffled-children (gen/shuffle children)]
+  (prop/for-all [{:keys [children target-idx num-to-take shuffled-children]} gen-reorder-case]
     (let [parent "test-parent"
           ;; Take a deterministic subset
           selection (vec (take (min num-to-take (count shuffled-children)) shuffled-children))
@@ -249,11 +257,16 @@
                  (assoc-in [:children-by-parent parent] (vec children))
                  db/derive-indexes)
 
-          ;; Create reorder intent (move selection to target-idx)
-          anchor-idx (min target-idx (dec (count children)))
-          anchor (if (zero? anchor-idx)
-                   :first
-                   {:after (nth children (dec anchor-idx))})
+          ;; Create reorder intent (move selection to target-idx after removing
+          ;; the selected siblings, matching planned-positions semantics).
+          remaining-children (vec (remove (set selection) children))
+          anchor-idx (if (seq remaining-children)
+                       (min target-idx (dec (count remaining-children)))
+                       0)
+          anchor (cond
+                   (empty? remaining-children) :first
+                   (zero? anchor-idx) :first
+                   :else {:after (nth remaining-children (dec anchor-idx))})
 
           intent {:intent :reorder
                   :selection selection
