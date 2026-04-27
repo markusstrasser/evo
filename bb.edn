@@ -60,6 +60,11 @@
                       (shell "npx shadow-cljs compile :test-specs")
                       (shell "node out/tests-specs.js"))}
 
+  test:fr-fixtures {:doc "Run deterministic FR fixture compiler tests"
+                    :task (do
+                            (shell "npx shadow-cljs compile :test-fr-fixtures")
+                            (shell "node out/tests-fr-fixtures.js"))}
+
   test-watch {:doc "Watch entire suite (shadow-cljs)"
               :task (shell "npx shadow-cljs watch :test")}
 
@@ -78,6 +83,9 @@
 
   lint:e2e-keyboard {:doc "Check E2E tests for problematic keyboard event usage"
                      :task (shell "node scripts/lint-e2e-keyboard.js")}
+
+  failure-modes:guardrails {:doc "Report explicit guardrail mapping for failure modes"
+                            :task (shell "bb scripts/failure_modes_guardrails.clj")}
 
   lint:rename-escape {:doc "Catch bare references to core fns (key, val, type…) when a local with `-name` suffix exists in the same file (catches the 3b6fdcd7 bug class)"
                       :task (shell "bb scripts/lint_rename_escape.clj")}

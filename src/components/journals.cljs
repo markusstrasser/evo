@@ -7,23 +7,10 @@
    - Each journal is FULLY EDITABLE (uses real Block components)
    - Borders between journals for visual separation"
   (:require [kernel.query :as q]
+            [kernel.journals :as journals]
             [shell.view-state :as vs]
             [components.block :as block]
-            [utils.journal :as journal]
-            [clojure.string :as str]))
-
-;; ── Helpers for Content Detection ────────────────────────────────────────────
-
-(defn- has-content?
-  "Check if a journal page has any non-empty blocks (recursively)."
-  [db page-id]
-  (let [children (q/children db page-id)]
-    (some (fn [bid]
-            (let [text (q/block-text db bid)
-                  child-children (q/children db bid)]
-              (or (and text (not (str/blank? text)))
-                  (and (seq child-children) (has-content? db bid)))))
-          children)))
+            [utils.journal :as journal]))
 
 ;; ── Journal Page Renderer ──────────────────────────────────────────────────────
 
@@ -34,7 +21,7 @@
   [{:keys [db page-id title is-last? on-intent
            editing-block-id focus-block-id selection-set folded-set]}]
   (let [children (q/children db page-id)
-        has-any-content? (or (seq children) (has-content? db page-id))
+        has-any-content? (or (seq children) (journals/journal-page-content? db page-id))
         navigate-to-page (fn [e]
                            (.preventDefault e)
                            (.stopPropagation e)
@@ -128,17 +115,16 @@
         focus-block-id (vs/focus-id)
         selection-set (vs/selection-nodes)
         folded-set (vs/folded)
-        ;; Get journal pages with titles and content status
         existing-journals (->> all-pages
-                               (map (fn [pid]
-                                      (let [title (q/page-title db pid)
-                                            date (journal/parse-journal-date title)]
-                                        {:id pid
-                                         :title title
-                                         :date date
-                                         :is-today? (= date today)
-                                         :has-content? (has-content? db pid)})))
-                               (filter #(journal/journal-page? (:title %))))
+                               (keep (fn [pid]
+                                       (let [title (q/page-title db pid)
+                                             date (journal/parse-journal-date title)]
+                                         (when (journal/journal-page? title)
+                                           {:id pid
+                                            :title title
+                                            :date date
+                                            :is-today? (= date today)
+                                            :has-content? (journals/journal-page-content? db pid)})))))
         ;; Check if today's journal exists
         today-exists? (some :is-today? existing-journals)
         ;; Filter to visible journals (today or has content) and sort
@@ -146,9 +132,7 @@
         ;; visible by the filter clause, not by pinning it to the top;
         ;; pinning would place today above a future-dated journal, which
         ;; reads backwards when you scroll a mix of past/today/future.
-        journal-pages (->> existing-journals
-                           (filter #(or (:is-today? %) (:has-content? %)))
-                           (sort-by :date #(compare %2 %1)))
+        journal-pages (journals/visible-journal-pages db {:today-iso today})
         total (count journal-pages)
         ;; Build journal items with editing context
         journal-items (map-indexed

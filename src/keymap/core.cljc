@@ -1,8 +1,8 @@
 (ns keymap.core
-  "Central keyboard shortcut resolver.
+  "Central resolver for shell-owned keyboard shortcuts.
 
-   Single source of truth for all key bindings. Plugins register bindings
-   via `register!`, resolver handles dispatch.
+   Block-local contenteditable keys are intentionally owned by components.block
+   and are absent from this table. See docs/KEYBOARD_OWNERSHIP.md.
 
    Design:
    - One declarative table, zero divergence

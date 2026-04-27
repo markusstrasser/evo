@@ -26,13 +26,17 @@
                  ;; Left on selected block → enter edit mode at START (Logseq parity)
                  [{:key "ArrowLeft"} {:type :enter-edit-selected :cursor-at :start}]
                  ;; Cmd+A cycle (view mode) → select parent → all visible
-                 [{:key "a" :mod true} {:type :select-all-cycle}]]
+                 [{:key "a" :mod true} {:type :select-all-cycle}]
+                 ;; Selection extension in view mode only. Editing Shift+Arrow
+                 ;; is contenteditable/browser-owned via components.block.
+                 [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
+                 [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
+                 [{:key "a" :shift true :mod true} {:type :selection :mode :all-in-view}]]
 
    :editing [;; === Core Editing ===
-                 ;; Escape → exit edit AND select the block (Logseq parity)
-             [{:key "Escape"} {:type :exit-edit-and-select}]
-
-                 ;; NOTE: Enter/Shift+Enter are NOT bound in keymap
+                 ;; NOTE: Escape/Enter/Shift+Enter are NOT bound in keymap
+                 ;; Escape is owned by components.block so it can commit the
+                 ;; live contenteditable buffer before selecting the block.
                  ;; They MUST be handled by Block component which provides correct cursor position context
                  ;; Enter → context-aware block split/creation (dispatched via on-intent)
                  ;; Shift+Enter → literal newline (dispatched via on-intent)
@@ -81,13 +85,7 @@
                  ;; First press → browser select-all (not prevented)
                  ;; Second press (all selected) → dispatches :select-all-cycle with :from-editing? true
              ]
-   :global [;; Selection operations (view mode)
-            ;; NOTE: Shift+Arrow for edit mode handled by Block component (LOGSEQ_EDITING_SELECTION_PARITY.md §4.2)
-            ;; These bindings fire in view mode only (global keydown skips when editing)
-            [{:key "ArrowUp" :shift true} {:type :selection :mode :extend-prev}]
-            [{:key "ArrowDown" :shift true} {:type :selection :mode :extend-next}]
-            [{:key "a" :shift true :mod true} {:type :selection :mode :all-in-view}]
-                 ;; Undo/Redo
+   :global [;; Undo/Redo
             [{:key "z" :mod true} :undo]
             [{:key "z" :shift true :mod true} :redo]
             [{:key "y" :mod true} :redo]
