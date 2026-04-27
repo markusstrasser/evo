@@ -68,6 +68,7 @@ bb lint:fr-tests           # Report FR ↔ test coverage (add -- --strict to fai
 bb fr-audit                # Audit FR coverage (fails if critical FRs uncited)
 bb fr-matrix               # Generate FR_MATRIX.md coverage dashboard
 bb lint:intents            # Regenerate intent catalog (--update to write)
+bb lint:block-id-emission  # Pin :data-block-id emission to components/block.cljs
 bb docs:verify             # Verify file references in docs/DX_INDEX.md exist
 ```
 
