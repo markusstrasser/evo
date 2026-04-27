@@ -47,4 +47,9 @@
   :test-specs
   {:target :node-test
    :output-to "out/tests-specs.js"
-   :ns-regexp "^spec\\..*-test$"}}}
+   :ns-regexp "^spec\\..*-test$"}
+
+  :test-fr-fixtures
+  {:target :node-test
+   :output-to "out/tests-fr-fixtures.js"
+   :ns-regexp "^property\\.fr-fixtures-test$"}}}

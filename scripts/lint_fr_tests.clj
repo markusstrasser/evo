@@ -66,6 +66,12 @@
                      scenarios))
       0)))
 
+(defn fixture-coverage-kind-counts []
+  (let [f (io/file "resources/fr_fixtures.edn")]
+    (if (.exists f)
+      (frequencies (map :coverage-kind (:fixtures (edn/read-string (slurp f)))))
+      {})))
+
 ;; ── Main ─────────────────────────────────────────────────────────────────────
 
 (defn -main [& _args]
@@ -86,6 +92,7 @@
         total-frs (count specs)
         total-implemented (count implemented-frs)
         total-scenarios (reduce + (map #(scenario-count (val %)) specs))
+        fixture-counts (fixture-coverage-kind-counts)
         coverage-pct (if (zero? total-implemented)
                        100
                        (int (* 100 (/ (count implemented-with-scenarios) total-implemented))))]
@@ -96,6 +103,9 @@
     (println "  FRs implemented (cited by intents):" total-implemented)
     (println "  FRs with executable scenarios:" (count frs-with-scenarios))
     (println "  Total executable scenarios:" total-scenarios)
+    (when (seq fixture-counts)
+      (println "  Deterministic FR fixtures:" fixture-counts)
+      (println "    Generated variants are pressure tests, not registry scenario coverage."))
     (println)
     (println "  Implemented FRs with scenarios:" (count implemented-with-scenarios))
     (println "  Implemented FRs missing scenarios:" (count implemented-without-scenarios))

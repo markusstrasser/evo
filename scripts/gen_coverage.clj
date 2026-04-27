@@ -58,6 +58,12 @@
        (filter fr/has-executable-scenarios?)
        set))
 
+(defn- fixture-coverage-kind-counts []
+  (let [f (io/file "resources/fr_fixtures.edn")]
+    (if (.exists f)
+      (frequencies (map :coverage-kind (:fixtures (read-string (slurp f)))))
+      {})))
+
 (defn- fr-type
   "FR :type defaults to :intent-level when not explicitly set.
    Invariants use :type :invariant; scenario-only docs use :type :scenario."
@@ -90,8 +96,9 @@
   []
   (let [impl-audit (intent/audit-coverage)
         implemented-frs (set (:cited-frs impl-audit))
-        verified-frs (set/union (scenario-verified-frs)
-                                (statically-verified-frs))]
+        scenario-frs (scenario-verified-frs)
+        static-frs (statically-verified-frs)
+        verified-frs (set/union scenario-frs static-frs)]
     (vec
      (for [fr-id (sort (fr/list-frs))]
        (let [fr-meta (fr/get-fr fr-id)
@@ -108,6 +115,8 @@
           :priority (:priority fr-meta)
           :implemented? impl-display
           :verified? verified?
+          :scenario? (contains? scenario-frs fr-id)
+          :static-test? (contains? static-frs fr-id)
           :status (fr-status type' implemented? verified?)})))))
 
 (defn- coverage-summary
@@ -162,11 +171,13 @@
   "Generate markdown table row for a single FR.
 
    `:implemented?` renders as \"—\" for invariants (concept inapplicable)."
-  [{:keys [id type desc priority implemented? verified? status]}]
+  [{:keys [id type desc priority implemented? verified? scenario? static-test? status]}]
   (let [impl-check (cond
                      (nil? implemented?) "—"
                      implemented?        "✅"
                      :else               "❌")
+        scenario-check (if scenario? "✅" "❌")
+        static-check (if static-test? "✅" "❌")
         verif-check (if verified? "✅" "❌")
         status-icon (status-emoji status)
         priority-icon (priority-emoji priority)
@@ -178,6 +189,8 @@
          " | " type-tag
          " | " priority-icon " " (name priority)
          " | " impl-check
+         " | " scenario-check
+         " | " static-check
          " | " verif-check
          " | " status-icon " " (name status)
          " | " desc
@@ -188,6 +201,7 @@
   []
   (let [audit (build-audit)
         summary (coverage-summary audit)
+        fixture-counts (fixture-coverage-kind-counts)
 
         ;; Sort by priority, then status
         priority-order {:critical 0 :high 1 :medium 2 :low 3}
@@ -210,6 +224,10 @@
                           "- **Invariants:** "
                           (:invariant-complete summary) " / " (:invariant-total summary)
                           " verified (architectural properties — 'complete' ≡ verified by a test; implementation is the code's shape)\n\n"
+                          "### Scenario surfaces\n\n"
+                          "- **Registry executable scenarios** are the strict hand-owned scenario surface.\n"
+                          "- **Static test citations** prove implementation/test references but are weaker than executable scenarios.\n"
+                          "- **Deterministic FR fixtures:** " fixture-counts ". Generated variants are pressure tests and do not inflate registry scenario coverage.\n\n"
                           "## Legend\n\n"
                           "**Type determines rubric:**\n\n"
                           "- `intent` (intent-level FR) — complete iff an intent cites it via `:fr/ids` **and** at least one test cites it.\n"
@@ -224,7 +242,7 @@
                           "- ⬆️ High\n"
                           "- ➡️ Medium\n"
                           "- ⬇️ Low\n\n")
-        table-header "## Coverage Matrix\n\n| FR ID | Type | Priority | Impl | Test | Status | Description |\n|-------|------|----------|------|------|--------|-------------|\n"
+        table-header "## Coverage Matrix\n\n| FR ID | Type | Priority | Impl | Scenario | Static | Test | Status | Description |\n|-------|------|----------|------|----------|--------|------|--------|-------------|\n"
         table-rows (map generate-markdown-row sorted-audit)]
     (str header
          summary-text

@@ -1,0 +1,5 @@
+{:fixtures
+ [{:id :fr-fixture/idle-backspace-noop
+   :coverage-kind :registry-golden}
+  {:id :fr-fixture/focused-delete-noop
+   :coverage-kind :generated-variant}]}
