@@ -5,6 +5,7 @@
    lives in one place."
   (:require [kernel.api :as api]
             [kernel.db :as db]
+            [kernel.product-state :as product-state]
             [shell.log :as slog]
             [shell.view-state :as vs]
             [shell.storage :as storage]
@@ -26,7 +27,7 @@
 
 (defn assert-derived-fresh!
   "DEBUG: Assert that derived indexes are consistent after DB reset.
-   
+
    Call after any DB mutation to catch corruption immediately."
   [db-val label]
   (when ^boolean goog.DEBUG
@@ -37,6 +38,20 @@
                         "\nDB hash:" (hash db-val)
                         "\nchildren-by-parent keys:" (pr-str (keys (:children-by-parent db-val))))
       (js/console.trace "Stack trace for corruption detection"))))
+
+(defn assert-product-state-coherent!
+  "DEBUG: Warn on product-state issues after a dispatch settles.
+
+   Runs at :steady phase — by this point session updates have been applied
+   and any normalization for this intent should have completed. A non-empty
+   issue list here is either a real bug or evidence that our :transient
+   classification is wrong (cleanup mode masking a real problem)."
+  [db-val session label intent-type]
+  (when ^boolean goog.DEBUG
+    (when-let [issues (seq (product-state/validate db-val session))]
+      (js/console.warn "⚠ Product-state issues after"
+                       label "dispatch:" (pr-str intent-type)
+                       "\n" (pr-str issues)))))
 
 (def ^:private no-log-intents
   "Intent types that shouldn't be logged to devtools."
@@ -214,6 +229,9 @@
 
     ;; Assert derived indexes are fresh
     (assert-derived-fresh! db-after (str "after " label " dispatch: " intent-type))
+
+    ;; Warn on product-state incoherence (steady phase: post-normalization).
+    (assert-product-state-coherent! db-after (vs/get-view-state) label intent-type)
 
     ;; Log to devtools
     (when should-log?
