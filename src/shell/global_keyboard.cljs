@@ -9,7 +9,6 @@
             [shell.executor :as executor]
             [shell.log :as slog]
             [shell.view-state :as vs]
-            [utils.block-dom :as block-dom]
             [utils.text-selection :as text-sel]))
 
 (defn- idle-state?
@@ -114,16 +113,6 @@
       (js/console.error "Cursor position read failed:" e)
       nil)))
 
-(defn- enrich-selection-navigation-intent
-  [focus-id intent-map]
-  (let [direction (case (:mode intent-map)
-                    (:next :extend-next) :down
-                    (:prev :extend-prev) :up)
-        dom-fallback (block-dom/get-adjacent-block-by-dom direction focus-id)]
-    (if dom-fallback
-      (assoc intent-map :dom-adjacent-id dom-fallback)
-      intent-map)))
-
 (defn- enrich-intent
   [handle-intent focus-id editing-block-id editable-el intent-type]
   (let [intent-map (cond-> intent-type
@@ -146,12 +135,6 @@
            editing-block-id
            editable-el)
       (enrich-follow-link-intent intent-map)
-
-      (and (= (:type intent-map) :selection)
-           (#{:next :prev :extend-next :extend-prev} (:mode intent-map))
-           (vs/journals-view?)
-           focus-id)
-      (enrich-selection-navigation-intent focus-id intent-map)
 
       :else
       intent-map)))

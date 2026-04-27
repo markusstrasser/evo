@@ -6,6 +6,7 @@
   (:require [kernel.intent :as intent]
             [kernel.query :as q]
             [kernel.navigation :as nav]
+            [kernel.journals :as journals]
             [utils.text :as text]
             [utils.intent-helpers :as helpers]
             [clojure.string :as str]))
@@ -13,26 +14,26 @@
 ;; Sentinel for DCE prevention - referenced by spec.runner
 
 (defn- get-prev-visible-block
-  "Get the previous visible block in DOM order, respecting page boundaries.
-
-   LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   Also respects page scope - won't navigate out of current page."
+  "Previous visible block. In journals view, uses the concatenated journal
+   projection so navigation crosses page boundaries; otherwise stays on
+   :current-page."
   [db session block-id]
-  (let [target (nav/prev-visible-block db session block-id)]
-    ;; Only return target if it's on the same page (or no page scoping)
-    (when (and target (q/same-page? db session block-id target))
-      target)))
+  (if (journals/journals-mode? session)
+    (journals/prev-block-in-journals db session block-id)
+    (let [target (nav/prev-visible-block db session block-id)]
+      (when (and target (q/same-page? db session block-id target))
+        target))))
 
 (defn- get-next-visible-block
-  "Get the next visible block in DOM order, respecting page boundaries.
-
-   LOGSEQ PARITY: Uses pre-order traversal (DOM order), not sibling order.
-   Also respects page scope - won't navigate out of current page."
+  "Next visible block. In journals view, uses the concatenated journal
+   projection so navigation crosses page boundaries; otherwise stays on
+   :current-page."
   [db session block-id]
-  (let [target (nav/next-visible-block db session block-id)]
-    ;; Only return target if it's on the same page (or no page scoping)
-    (when (and target (q/same-page? db session block-id target))
-      target)))
+  (if (journals/journals-mode? session)
+    (journals/next-block-in-journals db session block-id)
+    (let [target (nav/next-visible-block db session block-id)]
+      (when (and target (q/same-page? db session block-id target))
+        target))))
 
 (defn get-line-pos
   "Calculate horizontal cursor position within current line.
@@ -84,8 +85,8 @@
          Replaces simple :selection :mode :prev/:next when cursor memory is desired.
 
          CROSS-PAGE NAVIGATION: In JournalsView, blocks from different pages
-         render together. The optional :dom-adjacent-id provides a fallback
-         target when the normal DB query finds no adjacent block (page boundary)."
+         render together. The kernel detects journals mode from session and
+         traverses kernel.journals/journals-visible-blocks; no DOM hint needed."
 
                           :fr/ids #{:fr.nav/vertical-cursor-memory
                                     :fr.nav/grapheme-cursor-memory}
@@ -96,19 +97,16 @@
                                  [:direction [:enum :up :down]]
                                  [:current-block-id :string]
                                  [:current-text :string]
-                                 [:current-cursor-pos :int]
-                                 [:dom-adjacent-id {:optional true} [:maybe :string]]]
+                                 [:current-cursor-pos :int]]
                           :handler
-                          (fn [db session {:keys [direction current-block-id current-text current-cursor-pos dom-adjacent-id]}]
+                          (fn [db session {:keys [direction current-block-id current-text current-cursor-pos]}]
                             (let [;; Calculate and store cursor memory
                                   line-pos (get-line-pos current-text current-cursor-pos)
 
-                                  ;; Find target block (fold/zoom/page-aware)
-                                  ;; Fall back to DOM-adjacent ID for cross-page navigation
-                                  db-target (case direction
+                                  ;; Find target block (fold/zoom/page/journals-aware)
+                                  target-id (case direction
                                               :up (get-prev-visible-block db session current-block-id)
-                                              :down (get-next-visible-block db session current-block-id))
-                                  target-id (or db-target dom-adjacent-id)]
+                                              :down (get-next-visible-block db session current-block-id))]
 
                               ;; BOUNDARY HANDLING: If no target, return no-op that keeps cursor in place
                               ;; This prevents exceptions at document edges (Logseq behavior)

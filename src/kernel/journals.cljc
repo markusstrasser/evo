@@ -72,3 +72,30 @@
               db
               (assoc-in session [:ui :current-page] page-id)))
            (visible-journal-pages db opts))))
+
+(defn journals-mode?
+  "True when the session is rendering the journals (cross-page) view."
+  [session]
+  (boolean (get-in session [:ui :journals-view?])))
+
+(defn- journal-block-at-offset
+  [db session current-id offset]
+  (let [;; Today-iso is irrelevant for navigation: empty pages contribute
+        ;; zero blocks whether or not today's empty page is included.
+        blocks (journals-visible-blocks db session {})
+        idx (.indexOf blocks current-id)
+        target (+ idx offset)]
+    (when (and (not= idx -1) (>= target 0) (< target (count blocks)))
+      (nth blocks target))))
+
+(defn next-block-in-journals
+  "Next selectable block in concatenated journal order. Crosses page boundaries.
+   Returns nil if CURRENT-ID is the last block across all visible journals."
+  [db session current-id]
+  (journal-block-at-offset db session current-id 1))
+
+(defn prev-block-in-journals
+  "Previous selectable block in concatenated journal order. Crosses page boundaries.
+   Returns nil if CURRENT-ID is the first block across all visible journals."
+  [db session current-id]
+  (journal-block-at-offset db session current-id -1))

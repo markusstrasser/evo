@@ -22,7 +22,6 @@
             [utils.text-selection :as text-sel]
             [utils.cursor-boundaries :as bounds]
             [utils.intent-helpers :as intent-helpers]
-            [utils.block-dom :as block-dom]
             [utils.dom :as dom]
             [utils.html-to-markdown :as html-md]
             [utils.image :as img-util]
@@ -379,18 +378,16 @@
       (:has-selection? cursor-bounds)
       (collapse-fn e)
 
-      ;; At boundary row - navigate to adjacent block with cursor memory
+      ;; At boundary row - navigate to adjacent block with cursor memory.
+      ;; Cross-page navigation in journals view is resolved inside the kernel
+      ;; via :journals-view? in session — no DOM hint needed.
       (get cursor-bounds boundary-key)
       (do (.preventDefault e)
-          ;; In journals view, provide DOM-adjacent fallback for cross-page nav
-          (let [dom-fallback (when (vs/journals-view?)
-                               (block-dom/get-adjacent-block-by-dom direction block-id))]
-            (on-intent (intent-helpers/navigate-with-cursor-memory-intent
-                        {:direction direction
-                         :block-id block-id
-                         :current-text (:text-content cursor-bounds)
-                         :current-cursor-pos (:cursor-pos cursor-bounds)
-                         :dom-adjacent-id dom-fallback}))))
+          (on-intent (intent-helpers/navigate-with-cursor-memory-intent
+                      {:direction direction
+                       :block-id block-id
+                       :current-text (:text-content cursor-bounds)
+                       :current-cursor-pos (:cursor-pos cursor-bounds)})))
 
       ;; Otherwise - let browser handle cursor movement
       :else nil)))
