@@ -101,22 +101,6 @@
                     :scratch-db next-db})))]
     (:result (reduce step {:result [] :scratch-db db} ops))))
 
-(defn- merge-adjacent-updates
-  "Merge adjacent :update-node operations on the same id.
-   Uses deep merge to preserve nested property updates."
-  [ops]
-  (reduce
-   (fn [acc op]
-     (let [prev (peek acc)
-           same-update? (and (= :update-node (:op op) (:op prev))
-                             (= (:id op) (:id prev)))]
-       (cond
-         (nil? prev) [op]
-         same-update? (conj (pop acc) (update prev :props ops/deep-merge (:props op)))
-         :else (conj acc op))))
-   []
-   ops))
-
 (defn- canonicalize-place-anchor
   "Canonicalize :at anchor for :place operations.
    Non-place operations pass through unchanged."
@@ -180,15 +164,13 @@
   "Normalize operations:
    - Enrich with timestamps (created-at, updated-at)
    - Canonicalize :at anchors (:at-start → :first, :at-end → :last)
-   - Drop no-op place (same parent & index)
-   - Merge adjacent update-node on same id"
+   - Drop no-op place (same parent & index)"
   ([db ops] (normalize-ops db ops nil))
   ([db ops opts]
   (->> ops
        (#(enrich-ops % opts))
        (map canonicalize-place-anchor)
-       (remove-noop-places db)
-       merge-adjacent-updates)))
+       (remove-noop-places db))))
 
 ;; =============================================================================
 ;; Validation helpers - smaller, focused functions
@@ -369,13 +351,13 @@
 (defn- process-operation
   "Process a single operation during validation.
    Returns updated [db issues] or reduced value if validation fails."
-  [[current-db all-issues] [op-index op]]
+  [[current-db all-issues applied-count] [op-index op]]
   (let [op-issues (validate-op current-db op op-index)]
     (if (seq op-issues)
       ;; Stop on first error
-      (reduced [current-db (into all-issues op-issues)])
+      (reduced [current-db (into all-issues op-issues) applied-count])
       ;; Apply valid operation and continue
-      [(apply-op current-db op) all-issues])))
+      [(apply-op current-db op) all-issues (inc applied-count)])))
 
 (defn- validate-ops
   "Validate all operations in sequence, accumulating issues.
@@ -385,9 +367,9 @@
    - Applies valid operations to maintain DB state
    - Stops on first error, returning DB and accumulated issues
 
-   Returns: [final-db issues]"
+   Returns: [final-db issues applied-count]"
   [db ops]
-  (reduce process-operation [db []] (m/indexed ops)))
+  (reduce process-operation [db [] 0] (m/indexed ops)))
 
 (defn dry-run
   "Run ops through normalize → validate → apply without derive-indexes or trace.
@@ -435,24 +417,27 @@
          tx-id (or tx-id :tx/anonymous)
          seed (or seed 0)
          normalized-ops (normalize-ops db txs opts)
-         [final-db issues] (validate-ops db normalized-ops)
-
+         [validated-prefix-db issues applied-count] (validate-ops db normalized-ops)
+         success? (empty? issues)
+         public-db (if success? validated-prefix-db db)
          derived-db (cond
-                      skip-derived? final-db
-                      :else (db/derive-indexes final-db))
+                      skip-derived? public-db
+                      :else (db/derive-indexes public-db))
+         public-ops (if success? normalized-ops [])
 
          ;; Deterministic trace with all context
-         num-applied (- (count normalized-ops) (count issues))
-         applied-ops (take num-applied normalized-ops)
+         applied-ops (if success? normalized-ops [])
          trace-entry {:tx-id tx-id
                       :seed seed
                       :ops normalized-ops
+                      :validated-prefix-ops (vec (take applied-count normalized-ops))
+                      :validated-prefix-db validated-prefix-db
                       :applied-ops applied-ops
-                      :num-applied num-applied
+                      :num-applied (count applied-ops)
                       :notes (or notes "")}]
 
      {:db derived-db
-      :ops normalized-ops
+      :ops public-ops
       :issues issues
       :trace [trace-entry]})))
 

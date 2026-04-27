@@ -151,6 +151,8 @@
      steps: Vector of steps (ops or functions returning structural steps)
      opts: Optional map with:
        :max-steps - Override MAX-STEPS limit (default: 64)
+       any transaction materialization opts accepted by tx/dry-run, including
+       :tx/now-ms
 
    Returns:
      {:ops [...]        ; Accumulated normalized ops, ready for commit
@@ -172,7 +174,8 @@
   ([db steps]
    (run db steps {}))
 
-  ([db steps {:keys [max-steps] :or {max-steps MAX-STEPS}}]
+  ([db steps {:keys [max-steps] :or {max-steps MAX-STEPS} :as opts}]
+   (let [tx-opts (dissoc opts :max-steps)]
    (loop [scratch-db db
           remaining (vec steps)
           accumulated-ops []
@@ -209,7 +212,7 @@
              ;; 2-4. Normalize, validate, apply via public API
              {:keys [db ops issues]}
              (try
-               (tx/dry-run scratch-db raw-ops)
+               (tx/dry-run scratch-db raw-ops tx-opts)
                (catch #?(:clj Exception :cljs :default) e
                  (throw (ex-info "dry-run failed during script"
                                  {:step step
@@ -243,7 +246,7 @@
                 (rest remaining)
                 (into accumulated-ops normalized-ops)
                 (conj trace trace-entry)
-                (inc step-count)))))))
+                (inc step-count))))))))
 
 ;; ── Public API ─────────────────────────────────────────────────────────────────
 

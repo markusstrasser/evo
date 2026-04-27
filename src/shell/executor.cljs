@@ -174,15 +174,6 @@
     (when (seq issues)
       (js/console.error "Intent validation failed:" (pr-str issues)))
 
-    ;; Append the transaction to the op log only on REAL state change.
-    ;; Raw ops emitted by the intent handler may normalize away (no-op :place)
-    ;; or be rejected by validation — in both cases db-before = db-after and
-    ;; we must not grow undo depth. Ephemeral intents (session-updates only)
-    ;; also leave db unchanged.
-    (when (and (seq ops)
-               (not= db-before db-after))
-      (slog/append-and-advance! intent-map ops current-session))
-
     ;; Capture old page BEFORE applying session updates
     ;; (so push-history! can seed it into history if needed)
     (let [old-page (vs/current-page)]
@@ -198,6 +189,13 @@
 
       ;; Sync URL to reflect current page (for deep linking)
       (sync-url-for-page! db-after session-updates intent-type))
+
+    ;; Append the transaction to the op log only on REAL state change.
+    ;; Capture session-after after applying session updates so redo can restore
+    ;; the same undo-scoped cursor/editing subset.
+    (when (and (seq ops)
+               (not= db-before db-after))
+      (slog/append-and-advance! intent-map ops current-session (vs/get-view-state)))
 
     ;; Handle clipboard operations
     (handle-clipboard-copy! session-updates intent-type)

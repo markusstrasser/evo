@@ -93,6 +93,22 @@
       (is (= {:x 1 :y 2 :z 3} (node-props db "a")))
       (is (db-valid? db)))))
 
+(deftest test-adjacent-update-semantics-preserve-sequential-replacement
+  (testing "adjacent update-node ops are not pre-merged across scalar/map replacement"
+    (let [db (apply-ops [(create-op "a" :block)
+                         (update-op "a" {:a {:x 0}})
+                         (update-op "a" {:a 1})
+                         (update-op "a" {:a {:y 2}})])]
+      (is (= {:a {:y 2}} (node-props db "a")))
+      (is (db-valid? db))))
+
+  (testing "adjacent update-node ops are not pre-merged across map/scalar replacement"
+    (let [db (apply-ops [(create-op "a" :block)
+                         (update-op "a" {:a {:x 0}})
+                         (update-op "a" {:a 1})])]
+      (is (= {:a 1} (node-props db "a")))
+      (is (db-valid? db)))))
+
 (deftest test-idempotent-place
   (testing "placing node at same position is idempotent"
     (let [db1 (apply-ops [(create-op "a" :div)
@@ -195,13 +211,18 @@
       (is (db-valid? db)))))
 
 (deftest test-invariant-transactional-failure
-  (testing "failed operation halts pipeline - no partial application"
+  (testing "failed public transaction leaves DB unchanged and applies no ops"
     (let [db (apply-ops [(create-op "a" :div)])
           result (tx/interpret db [(update-op "a" {:x 1})
                                    (place-op "missing" :doc :first)
                                    (update-op "a" {:y 2})])]
       (is (seq (:issues result)))
-      (is (= {:x 1} (node-props (:db result) "a")) "Only op before failure applied"))))
+      (is (= db (:db result)) "Public DB unchanged on validation failure")
+      (is (= [] (:ops result)) "No materialized ops are public on validation failure")
+      (is (= 0 (-> result :trace first :num-applied)))
+      (is (= [(update-op "a" {:x 1 :updated-at 0})]
+             (-> result :trace first :validated-prefix-ops))
+          "Validated prefix is trace-only debugging context"))))
 
 (deftest test-invariant-no-orphans
   (testing "all nodes except roots have parents"

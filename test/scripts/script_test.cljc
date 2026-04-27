@@ -105,6 +105,17 @@
       (is (= 0 (:step-index (nth (:trace result) 0))))
       (is (= 1 (:step-index (nth (:trace result) 1)))))))
 
+(deftest test-run-passes-transaction-opts
+  (testing "script/run forwards materialization opts into tx/dry-run"
+    (let [db (fix/sample-db-with-roots)
+          result (script/run db
+                             [{:op :create-node :id "new" :type :block :props {:text "N"}}
+                              {:op :update-node :id "new" :props {:text "N2"}}]
+                             {:tx/now-ms 42})]
+      (is (= 42 (get-in (:ops result) [0 :props :created-at])))
+      (is (= 42 (get-in (:ops result) [0 :props :updated-at])))
+      (is (= 42 (get-in (:ops result) [1 :props :updated-at]))))))
+
 (deftest test-run-with-function-step
   (testing "Function sees intermediate state"
     (let [db (-> (fix/sample-db-with-roots)
@@ -201,7 +212,9 @@
       (is (= (get-in (:db macro-result) [:nodes "a" :props :text])
              (get-in (:db tx-result) [:nodes "a" :props :text])))
       (is (= (get-in (:db macro-result) [:nodes "b" :props :text])
-             (get-in (:db tx-result) [:nodes "b" :props :text]))))))
+             (get-in (:db tx-result) [:nodes "b" :props :text])))
+      (is (= (:db macro-result) (:db tx-result))
+          "Final scratch DB equals committing accumulated ops to the original DB"))))
 
 ;; ── run-ops Convenience ────────────────────────────────────────────────────────
 

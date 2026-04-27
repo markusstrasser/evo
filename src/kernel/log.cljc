@@ -18,7 +18,8 @@
       :timestamp      ms
       :intent         {...}             ; user-level intent
       :ops            [{...}]           ; three-op kernel primitives
-      :session-before {...} | nil}      ; subset for undo cursor restore
+      :session-before {...} | nil       ; subset for undo cursor restore
+      :session-after  {...} | nil}      ; subset for redo cursor restore
 
    This namespace is pure — the shell owns the !log atom (see shell.log)
    and is responsible for keeping a derived !db in sync.
@@ -54,13 +55,14 @@
   "Build a log entry from a dispatch result. Caller supplies a freshly
    minted op-id and the current timestamp (the kernel never reads a clock
    or mints entropy — see invariants §3.3)."
-  [{:keys [op-id prev-op-id timestamp intent ops session]}]
+  [{:keys [op-id prev-op-id timestamp intent ops session session-after]}]
   {:op-id op-id
    :prev-op-id prev-op-id
    :timestamp timestamp
    :intent intent
    :ops (vec ops)
-   :session-before (session-snapshot session)})
+   :session-before (session-snapshot session)
+   :session-after (session-snapshot session-after)})
 
 (defn- trim-to-limit
   "Enforce :limit by absorbing the oldest ops into :root-db.

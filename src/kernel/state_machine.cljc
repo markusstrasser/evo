@@ -1,8 +1,9 @@
 (ns kernel.state-machine
   "Explicit UI state machine for Logseq parity.
 
-   LOGSEQ_SPEC.md §1.1 defines three mutually exclusive states:
-   - :idle      - No block selected, no block editing (background)
+   LOGSEQ_SPEC.md §1.1 defines mutually exclusive interaction states:
+   - :background - No block focused, selected, or editing
+   - :focused   - A current block exists, but no block is selected or editing
    - :selection - One or more blocks selected (blue highlight)
    - :editing   - One block in edit mode (caret visible)
 
@@ -28,7 +29,7 @@
 
      ;; Get current state from session
      (sm/current-state session)
-     ;=> :idle | :selection | :editing
+     ;=> :background | :focused | :selection | :editing
 
      ;; Validate an intent is allowed in current state
      (sm/intent-allowed? session {:type :enter-edit :block-id \"a\"})
@@ -43,7 +44,7 @@
 
 (def states
   "All valid UI states."
-  #{:idle :selection :editing})
+  #{:background :focused :selection :editing})
 
 ;; ── Intent → State Requirements ─────────────────────────────────────────────
 ;;
@@ -74,11 +75,17 @@
   "Valid state transitions: {from-state {trigger-intent to-state}}.
 
    Used to validate that state changes follow the Logseq contract."
-  {:idle
+  {:background
    {:selection :selection ; Click block
-    :enter-edit :editing ; Double-click or type-to-edit
     :arrow-up :selection ; Select last visible block
     :arrow-down :selection} ; Select first visible block
+
+   :focused
+   {:selection :selection
+    :enter-edit :editing
+    :enter-edit-selected :editing
+    :enter-edit-with-char :editing
+    :background-click :background}
 
    :selection
    {:selection :selection ; Extend/change selection
@@ -96,19 +103,22 @@
 (defn current-state
   "Determine current UI state from session.
 
-   Returns :idle | :selection | :editing
+   Returns :background | :focused | :selection | :editing
 
    Logic:
    - If editing-block-id is set → :editing
    - If selection has nodes → :selection
-   - Otherwise → :idle"
+   - If focus is set → :focused
+   - Otherwise → :background"
   [session]
   (let [editing-id (get-in session [:ui :editing-block-id])
-        selection-nodes (get-in session [:selection :nodes] #{})]
+        selection-nodes (get-in session [:selection :nodes] #{})
+        focus-id (get-in session [:selection :focus])]
     (cond
       (some? editing-id) :editing
       (seq selection-nodes) :selection
-      :else :idle)))
+      (some? focus-id) :focused
+      :else :background)))
 
 (defn in-editing-state?
   "Check if currently in editing state."
@@ -121,9 +131,19 @@
   (= :selection (current-state session)))
 
 (defn in-idle-state?
-  "Check if currently in idle state."
+  "Check if currently in true background/idle state."
   [session]
-  (= :idle (current-state session)))
+  (= :background (current-state session)))
+
+(defn in-background-state?
+  "Check if currently in background state."
+  [session]
+  (= :background (current-state session)))
+
+(defn in-focused-state?
+  "Check if currently in focus-only state."
+  [session]
+  (= :focused (current-state session)))
 
 ;; ── Intent Validation ───────────────────────────────────────────────────────
 
@@ -201,9 +221,12 @@
 (def idle-blocked-intents
   "Intents that should be no-ops when in idle state.
 
-   LOGSEQ_SPEC.md §1.1: In idle state, Enter/Backspace/Tab/Shift+Enter/Shift+Arrow
-   do nothing - Logseq never creates or deletes blocks from idle state."
+   LOGSEQ_SPEC.md §1.1: In true background state,
+   Enter/Backspace/Tab/Shift+Enter/Shift+Arrow do nothing - Logseq never
+   creates or deletes blocks from background."
   #{:enter-edit ; No block to edit
+    :enter-edit-selected
+    :enter-edit-with-char
     :context-aware-enter ; No block to split
     :delete ; No block to delete
     :indent ; No block to indent
@@ -218,7 +241,7 @@
 
    Returns true if intent should be blocked (no-op).
 
-   LOGSEQ PARITY: In idle state, most editing intents are no-ops."
+   LOGSEQ PARITY: In background state, most editing intents are no-ops."
   [session intent]
   (and (in-idle-state? session)
        (contains? idle-blocked-intents (:type intent))))
@@ -235,6 +258,8 @@
     {:state state
      :description (case state
                     :idle "No block selected or editing"
+                    :background "No block selected, focused, or editing"
+                    :focused (str "Focused block: " focus-id)
                     :selection (str "Selection: " (count selection-nodes)
                                     " block(s), focus: " focus-id)
                     :editing (str "Editing block: " editing-id))
