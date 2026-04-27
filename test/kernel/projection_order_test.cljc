@@ -99,3 +99,37 @@
             db
             (assoc-in base-session [:ui :folded] #{"new-a"})
             {:today-iso "2026-04-26"})))))
+
+(deftest journal-navigation-crosses-page-boundaries
+  ;; Replaces the old DOM-adjacency fallback: kernel-pure traversal must
+  ;; cross page boundaries in journals view without a DOM probe.
+  (let [db (:db (tx/interpret (db/empty-db)
+                              [(page "j-old" "Apr 24th, 2026")
+                               (page "j-new" "2026-04-26")
+                               (block "old-a" "old-a")
+                               (block "old-b" "old-b")
+                               (block "new-a" "new-a")
+                               (block "new-b" "new-b")
+                               (place "j-old" :doc :last)
+                               (place "j-new" :doc :last)
+                               (place "old-a" "j-old" :last)
+                               (place "old-b" "j-old" :last)
+                               (place "new-a" "j-new" :last)
+                               (place "new-b" "j-new" :last)]))
+        journals-session (assoc-in base-session [:ui :journals-view?] true)]
+    (testing "journals-mode? reads :journals-view? from session"
+      (is (true? (journals/journals-mode? journals-session)))
+      (is (false? (journals/journals-mode? base-session))))
+    (testing "next-block-in-journals crosses from last block of newer page to first block of older page"
+      (is (= "old-a" (journals/next-block-in-journals db journals-session "new-b"))
+          "ArrowDown from final block of j-new must land in j-old without DOM probe"))
+    (testing "prev-block-in-journals crosses from first block of older page back to newer"
+      (is (= "new-b" (journals/prev-block-in-journals db journals-session "old-a"))))
+    (testing "boundary returns nil at the edges of the projection"
+      (is (nil? (journals/prev-block-in-journals db journals-session "new-a")))
+      (is (nil? (journals/next-block-in-journals db journals-session "old-b"))))
+    (testing "today-iso is unnecessary for navigation: empty pages add no blocks"
+      ;; The fact that this test passes without :today-iso threading proves
+      ;; the deletion: empty pages contribute zero blocks regardless.
+      (is (= ["new-a" "new-b" "old-a" "old-b"]
+             (journals/journals-visible-blocks db journals-session {}))))))

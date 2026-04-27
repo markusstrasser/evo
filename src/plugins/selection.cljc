@@ -15,6 +15,7 @@
    ONE LAW: Selection changes are pure state transitions (current-state, mode, ids) → new-props."
   (:require [clojure.set :as set]
             [kernel.intent :as intent]
+            [kernel.journals :as journals]
             [kernel.query :as q]))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
@@ -69,24 +70,33 @@
   (q/selectable-block? db node-id))
 
 (defn- next-selectable-block
-  "Get the next selectable block in DOM order, skipping containers.
-
-   Continues navigation until finding a :block type node or reaching boundary.
-   Respects page boundaries - won't navigate out of current page (Logseq parity)."
+  "Get the next selectable block. In journals view crosses page boundaries
+   via the concatenated journal projection; otherwise stays on :current-page
+   (Logseq parity)."
   [db session current-id direction]
-  (case direction
-    :next (q/next-selectable-visible-block db session current-id)
-    :prev (q/prev-selectable-visible-block db session current-id)))
+  (if (journals/journals-mode? session)
+    (case direction
+      :next (journals/next-block-in-journals db session current-id)
+      :prev (journals/prev-block-in-journals db session current-id))
+    (case direction
+      :next (q/next-selectable-visible-block db session current-id)
+      :prev (q/prev-selectable-visible-block db session current-id))))
 
 (defn- get-first-last-visible-block
   "Get the first or last visible block in the current page/zoom.
    direction: :next (first) or :prev (last)
 
-   Uses session for zoom-root and current-page (spec §3.4)."
+   Uses session for zoom-root and current-page (spec §3.4). In journals view,
+   spans the concatenated journal projection."
   [db session direction]
-  (case direction
-    :next (q/first-selectable-visible-block db session)
-    :prev (q/last-selectable-visible-block db session)))
+  (if (journals/journals-mode? session)
+    (let [blocks (journals/journals-visible-blocks db session {})]
+      (case direction
+        :next (first blocks)
+        :prev (last blocks)))
+    (case direction
+      :next (q/first-selectable-visible-block db session)
+      :prev (q/last-selectable-visible-block db session))))
 
 (defn- calc-start-fresh-selection
   "Start a fresh selection when no focus exists."
@@ -186,12 +196,12 @@
 (defn- calc-simple-navigate-props
   "Calculate props for plain arrow navigation (no extension).
 
-   Falls back to dom-adjacent-id for cross-page navigation in journals view.
-   When no focus exists, selects first/last visible block."
-  [db session {:keys [focus]} direction dom-adjacent-id]
+   Cross-page navigation in journals view is handled inside
+   next-selectable-block via the kernel.journals projection — no DOM hint
+   needed. When no focus exists, selects first/last visible block."
+  [db session {:keys [focus]} direction]
   (if-let [current focus]
-    (when-let [target-id (or (next-selectable-block db session current direction)
-                             dom-adjacent-id)]
+    (when-let [target-id (next-selectable-block db session current direction)]
       (calc-select-props target-id))
     (when-let [first-or-last (get-first-last-visible-block db session direction)]
       (calc-select-props first-or-last))))
@@ -200,7 +210,6 @@
   "Pure: calculate props for navigating in a direction with incremental selection.
    direction: :next or :prev
    extend?: if true, extends selection incrementally; if false, replaces selection
-   dom-adjacent-id: optional fallback for cross-page navigation (journals view)
 
    Incremental extension (Logseq parity):
    - First Shift+Arrow: set anchor and direction
@@ -208,11 +217,14 @@
    - Opposite direction: remove trailing block (shrink selection)
    - When only one block remains, flip direction and start extending other way
 
-   Non-extend mode: When no block is focused, select first/last visible block."
-  [db session state direction extend? & [{:keys [dom-adjacent-id]}]]
+   Non-extend mode: When no block is focused, select first/last visible block.
+
+   Cross-page navigation in journals view is implicit: helpers detect
+   :journals-view? in session and use the kernel.journals projection."
+  [db session state direction extend?]
   (if extend?
     (calc-extend-navigate-props db session state direction)
-    (calc-simple-navigate-props db session state direction dom-adjacent-id)))
+    (calc-simple-navigate-props db session state direction)))
 
 ;; ── Unified Selection Intent ─────────────────────────────────────────────────
 
@@ -274,12 +286,10 @@
                                           [:mode [:= :clear]]]]
                                  [:next [:map
                                          [:type [:= :selection]]
-                                         [:mode [:= :next]]
-                                         [:dom-adjacent-id {:optional true} [:maybe :string]]]]
+                                         [:mode [:= :next]]]]
                                  [:prev [:map
                                          [:type [:= :selection]]
-                                         [:mode [:= :prev]]
-                                         [:dom-adjacent-id {:optional true} [:maybe :string]]]]
+                                         [:mode [:= :prev]]]]
                                  [:extend-next [:map
                                                 [:type [:= :selection]]
                                                 [:mode [:= :extend-next]]]]
@@ -296,11 +306,9 @@
                                                 [:type [:= :selection]]
                                                 [:mode [:= :all-in-view]]]]]
 
-                          :handler (fn [db session {:keys [mode ids dom-adjacent-id]}]
+                          :handler (fn [db session {:keys [mode ids]}]
                                      ;; Get current selection state from session
                                      (let [state (q/selection-state session)
-                                           ;; Options for calc-navigate-props (cross-page fallback)
-                                           nav-opts {:dom-adjacent-id dom-adjacent-id}
 
                                            ;; Calculate new selection props based on mode
                                            props (case mode
@@ -313,10 +321,10 @@
                                                                (calc-deselect-props state id)
                                                                (calc-extend-props state id)))
                                                    :clear (calc-clear-props state)
-                                                   :next (calc-navigate-props db session state :next false nav-opts)
-                                                   :prev (calc-navigate-props db session state :prev false nav-opts)
-                                                   :extend-next (calc-navigate-props db session state :next true nav-opts)
-                                                   :extend-prev (calc-navigate-props db session state :prev true nav-opts)
+                                                   :next (calc-navigate-props db session state :next false)
+                                                   :prev (calc-navigate-props db session state :prev false)
+                                                   :extend-next (calc-navigate-props db session state :next true)
+                                                   :extend-prev (calc-navigate-props db session state :prev true)
                                                    :parent (let [selection (:nodes state)
                                                                  parents (set (keep #(q/parent-of db %) selection))]
                                                              (when (and (= 1 (count parents))

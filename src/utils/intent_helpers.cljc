@@ -85,24 +85,17 @@
 
 (defn navigate-with-cursor-memory-intent
   "Build the canonical vertical navigation intent payload."
-  ([{:keys [block-id current-block-id text current-text cursor-pos current-cursor-pos direction dom-adjacent-id]}]
-   (cond-> {:type :navigate-with-cursor-memory
-            :current-block-id (or current-block-id block-id)
-            :current-text (or current-text text "")
-            :current-cursor-pos (or current-cursor-pos cursor-pos 0)
-            :direction direction}
-     dom-adjacent-id (assoc :dom-adjacent-id dom-adjacent-id)))
+  ([{:keys [block-id current-block-id text current-text cursor-pos current-cursor-pos direction]}]
+   {:type :navigate-with-cursor-memory
+    :current-block-id (or current-block-id block-id)
+    :current-text (or current-text text "")
+    :current-cursor-pos (or current-cursor-pos cursor-pos 0)
+    :direction direction})
   ([direction block-id current-text current-cursor-pos]
    (navigate-with-cursor-memory-intent {:direction direction
                                         :block-id block-id
                                         :current-text current-text
-                                        :current-cursor-pos current-cursor-pos}))
-  ([direction block-id current-text current-cursor-pos dom-adjacent-id]
-   (navigate-with-cursor-memory-intent {:direction direction
-                                        :block-id block-id
-                                        :current-text current-text
-                                        :current-cursor-pos current-cursor-pos
-                                        :dom-adjacent-id dom-adjacent-id})))
+                                        :current-cursor-pos current-cursor-pos})))
 
 (defn navigate-to-adjacent-intent
   "Build the canonical horizontal-boundary navigation intent payload."
