@@ -302,36 +302,19 @@
         ;; Check if actively dragging
         dragging? (seq (vs/dragging-ids))]
     (if (empty? children)
-      ;; Empty state: clickable placeholder to create first block
+      ;; Empty page: auto-seed a first block and put the cursor in it on
+      ;; mount (no click-to-edit placeholder). The keyed mount hook fires
+      ;; exactly once per empty page; once the block exists the branch
+      ;; flips to the populated form below. Mirrors the journals fix in
+      ;; `components.journals/JournalPage` (commit 06cc7605).
       [:div.outline.outline--empty
-       {:style {:padding "40px 20px"
-                :text-align "center"
-                :color "#9ca3af"
-                :cursor "text"
-                :border "2px dashed #e5e7eb"
-                :border-radius "8px"
-                :margin "10px 0"}
-        :on {:click (fn [_e]
-                      ;; Create new block and enter edit mode
-                      (let [new-id (str "block-" (random-uuid))]
-                        (on-intent {:type :create-block-in-page
-                                    :page-id root-id
-                                    :block-id new-id})))
-             ;; Allow drops on empty outline
-             :dragover (fn [e]
-                         (.preventDefault e)
-                         (set! (.-dropEffect (.-dataTransfer e)) "move")
-                         (vs/drag-over! ::outline-top :first))
-             :drop (fn [e]
-                     (.preventDefault e)
-                     (let [dragging (vs/dragging-ids)]
-                       (vs/drag-end!)
-                       (when (seq dragging)
-                         (on-intent {:type :move
-                                     :selection (vec dragging)
-                                     :parent root-id
-                                     :anchor :first}))))}}
-       [:p {:style {:margin 0}} "Click to start writing..."]]
+       {:replicant/key (str root-id "-empty")
+        :replicant/on-mount
+        (fn [_]
+          (when on-intent
+            (on-intent {:type :create-block-in-page
+                        :page-id root-id
+                        :block-id (str "block-" (random-uuid))})))}]
       ;; Normal state: render block tree with dedicated top drop zone
       [:div.outline
        ;; Top drop zone - only shown during drag, intercepts drops above first block
