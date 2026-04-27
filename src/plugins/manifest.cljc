@@ -39,6 +39,7 @@
   []
   (registry/register-derived!
     :backlinks
-    {:initial backlinks-index/compute-backlinks-index})
+    {:keys #{:backlinks-by-page}
+     :initial backlinks-index/compute-backlinks-index})
   {:loaded loaded-plugins
    :count (count loaded-plugins)})

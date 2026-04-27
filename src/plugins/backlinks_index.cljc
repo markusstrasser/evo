@@ -97,7 +97,8 @@
 
 (registry/register-derived!
   :backlinks
-  {:initial compute-backlinks-index
+  {:keys #{:backlinks-by-page}
+   :initial compute-backlinks-index
    ;; :apply-tx not implemented — kernel falls back to :initial on every
    ;; transaction. See kernel.derived-registry docstring for the
    ;; incremental contract when the time comes.
