@@ -1008,7 +1008,17 @@
   :status :active
   :version 1
   :tags [:clipboard :references]
-  :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-03"}
+  :spec-ref "LOGSEQ_SPEC.md §7.6 FR-Clipboard-03"
+  :scenarios
+  {:COPY-BLOCK-REFERENCE
+   {:name "Copy selected block reference"
+    :setup {:tree [:doc
+                   [:a "Alpha" {:selected? true :focus? true :anchor? true}]]}
+    :action {:type :copy-block-reference}
+    :expect {:session {:ui {:clipboard-text "((a))"
+                            :clipboard-blocks [{:id "a"
+                                                :depth 0
+                                                :text "((a))"}]}}}}}}
 
  ;; Pointer/Mouse
  :fr.pointer/shift-click-range
@@ -1018,7 +1028,18 @@
   :status :active
   :version 1
   :tags [:pointer :selection]
-  :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-01"}
+  :spec-ref "LOGSEQ_SPEC.md §7.3 FR-Pointer-01"
+  :scenarios
+  {:SHIFT-CLICK-RANGE
+   {:name "Shift-click dispatch extends visible range"
+    :setup {:tree [:doc
+                   [:a "A" {:selected? true :focus? true :anchor? true}]
+                   [:b "B"]
+                   [:c "C"]]}
+    :action {:type :selection :mode :extend :ids ["b" "c"]}
+    :expect {:session {:selection {:nodes #{"a" "b" "c"}
+                                   :focus "c"
+                                   :anchor "a"}}}}}}
 
  :fr.pointer/alt-click-fold
  {:desc "Alt+Click toggles fold state of subtree"
@@ -1063,7 +1084,21 @@
   :status :active
   :version 1
   :tags [:ui :commands]
-  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-01"}
+  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-01"
+  :scenarios
+  {:SLASH-PALETTE-OPEN
+   {:name "Slash trigger opens command palette state"
+    :setup {:tree [:doc [:a "/"]]}
+    :action {:type :autocomplete/trigger
+             :source :command
+             :block-id "a"
+             :trigger-pos 1}
+    :expect {:session {:ui {:autocomplete {:type :command
+                                           :block-id "a"
+                                           :trigger-pos 1
+                                           :trigger-length 1
+                                           :query ""
+                                           :selected 0}}}}}}}
 
  :fr.ui/slash-filter
  {:desc "Slash palette search filters commands incrementally"
@@ -1072,7 +1107,19 @@
   :status :active
   :version 1
   :tags [:ui :commands]
-  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-02"}
+  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-02"
+  :scenarios
+  {:SLASH-FILTER
+   {:name "Slash query updates autocomplete state"
+    :setup {:tree [:doc [:a "/h"]]}
+    :action [{:type :autocomplete/trigger
+              :source :command
+              :block-id "a"
+              :trigger-pos 1}
+             {:type :autocomplete/update
+              :query "h"}]
+    :expect {:session {:ui {:autocomplete {:query "h"
+                                           :selected 0}}}}}}}
 
  :fr.ui/slash-navigate
  {:desc "Arrow keys move slash selection with wraparound"
@@ -1081,7 +1128,18 @@
   :status :active
   :version 1
   :tags [:ui :commands :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-03"}
+  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-03"
+  :scenarios
+  {:SLASH-NAVIGATE-DOWN
+   {:name "Slash palette navigation moves selected item"
+    :setup {:tree [:doc [:a "/"]]}
+    :action [{:type :autocomplete/trigger
+              :source :command
+              :block-id "a"
+              :trigger-pos 1}
+             {:type :autocomplete/navigate
+              :direction :down}]
+    :expect {:session {:ui {:autocomplete {:selected 1}}}}}}}
 
  :fr.ui/slash-select
  {:desc "Enter inserts the selected slash command"
@@ -1090,7 +1148,26 @@
   :status :active
   :version 1
   :tags [:ui :commands :editing]
-  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-04"}
+  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-04"
+  :scenarios
+  {:SLASH-SELECT-PAGE-REF
+   {:name "Autocomplete select replaces trigger with page reference"
+    :setup {:tree [:doc [:a "[[al" {:cursor 4}]]
+            :session {:ui {:autocomplete {:type :page-ref
+                                          :block-id "a"
+                                          :trigger-pos 2
+                                          :trigger-length 2
+                                          :query "al"
+                                          :selected 0
+                                          :items [{:type :existing
+                                                   :id "p-alpha"
+                                                   :title "Alpha"}]}}}}
+    :action {:type :autocomplete/select}
+    :expect {:tree [:doc [:a "[[Alpha]]" {:focus? true}]]
+             :session {:ui {:autocomplete nil
+                            :editing-block-id nil
+                            :cursor-position 9}
+                       :selection {:focus "a"}}}}}}
 
  :fr.ui/slash-close
  {:desc "Esc closes slash palette without side effects"
@@ -1099,7 +1176,21 @@
   :status :active
   :version 1
   :tags [:ui :commands]
-  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-05"}
+  :spec-ref "LOGSEQ_SPEC.md §7.4 FR-Slash-05"
+  :scenarios
+  {:SLASH-CLOSE
+   {:name "Dismiss clears autocomplete state"
+    :setup {:tree [:doc [:a "/h"]]
+            :session {:ui {:autocomplete {:type :command
+                                          :block-id "a"
+                                          :trigger-pos 1
+                                          :query "h"
+                                          :selected 0
+                                          :items [{:id :heading-1
+                                                   :name "H1"}]}}}}
+    :action {:type :autocomplete/dismiss}
+    :expect {:tree [:doc [:a "/h"]]
+             :session {:ui {:autocomplete nil}}}}}}
 
  :fr.ui/quick-switcher
  {:desc "Cmd+K opens global search overlay"
@@ -1108,7 +1199,14 @@
   :status :active
   :version 1
   :tags [:ui :navigation]
-  :spec-ref "LOGSEQ_SPEC.md §7.5 FR-QuickSwitch-01"}
+  :spec-ref "LOGSEQ_SPEC.md §7.5 FR-QuickSwitch-01"
+  :scenarios
+  {:QUICK-SWITCHER-OPEN
+   {:name "Toggle quick switcher opens overlay state"
+    :setup {:tree [:doc [:a "A"]]}
+    :action {:type :toggle-quick-switcher}
+    :expect {:session {:ui {:quick-switcher {:query ""
+                                             :selected-idx 0}}}}}}}
 
  ;; State Machine
  :fr.state/idle-guard
@@ -1418,7 +1516,23 @@
   :status :active
   :version 1
   :tags [:formatting]
-  :spec-ref "LOGSEQ_SPEC.md §7.9"}
+  :spec-ref "LOGSEQ_SPEC.md §7.9"
+  :scenarios
+  {:HIGHLIGHT-WRAP
+   {:name "Highlight wraps selection"
+    :setup {:tree [:doc
+                   [:a "Hello world" {:selection [0 5]}]]}
+    :action {:type :format-selection :marker "==" :block-id "a" :start 0 :end 5}
+    :expect {:tree [:doc
+                    [:a "==Hello== world"]]}}
+
+   :STRIKETHROUGH-WRAP
+   {:name "Strikethrough wraps selection"
+    :setup {:tree [:doc
+                   [:a "Hello world" {:selection [6 11]}]]}
+    :action {:type :format-selection :marker "~~" :block-id "a" :start 6 :end 11}
+    :expect {:tree [:doc
+                    [:a "Hello ~~world~~"]]}}}}
 
  ;; Pages/Links
  :fr.pages/switch-page
@@ -1565,4 +1679,17 @@
   :version 1
   :tags [:navigation :unicode :future]
   :spec-ref "STRUCTURAL_EDITING.md §8"
-  :notes "Currently simplified implementation. Full support requires grapheme-splitter library."}}
+  :notes "Currently simplified implementation. Full support requires grapheme-splitter library."
+  :scenarios
+  {:GRAPHEME-CURSOR-MEMORY
+   {:name "Emoji column maps to next block by grapheme count"
+    :setup {:tree [:doc
+                   [:a "🙂x" {:cursor 2}]
+                   [:b "ab"]]}
+    :action {:type :navigate-with-cursor-memory
+             :direction :down
+             :current-block-id "a"
+             :current-text "🙂x"
+             :current-cursor-pos 2}
+    :expect {:session {:ui {:editing-block-id "b"
+                            :cursor-position 1}}}}}}}

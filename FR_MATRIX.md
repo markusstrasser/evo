@@ -1,6 +1,6 @@
 # FR Coverage Matrix
 
-**Generated:** 2026-04-26T18:07:59.317530
+**Generated:** 2026-04-26T18:24:05.681900
 
 ## Summary
 
@@ -70,25 +70,25 @@
 | climb-descend | intent | ⬆️ high | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Cmd+Shift+Up/Down at boundaries climbs out to parent level / descends into next sibling |
 | create-sibling | intent | ⬆️ high | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Create new block as sibling of current/selected |
 | delete-block | intent | ⬆️ high | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Delete selected blocks (children move to trash with parent) |
-| quick-switcher | intent | ⬆️ high | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Cmd+K opens global search overlay |
-| slash-palette | intent | ⬆️ high | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Slash (/) opens inline command menu |
-| slash-select | intent | ⬆️ high | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Enter inserts the selected slash command |
+| quick-switcher | intent | ⬆️ high | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Cmd+K opens global search overlay |
+| slash-palette | intent | ⬆️ high | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Slash (/) opens inline command menu |
+| slash-select | intent | ⬆️ high | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Enter inserts the selected slash command |
 | focus-subtree | intent | ➡️ medium | ❌ | ❌ | ❌ | ❌ | 🔴 missing | Cmd+. zooms into block as temporary root |
 | restore-scope | intent | ➡️ medium | ❌ | ❌ | ❌ | ❌ | 🔴 missing | Escape from zoom restores normal scope |
-| block-reference | intent | ➡️ medium | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Cmd+Shift+C copies block reference ((id)) |
+| block-reference | intent | ➡️ medium | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Cmd+Shift+C copies block reference ((id)) |
 | kill-operations | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Ctrl+K/U kill to end/beginning of line |
 | paired-char-insertion | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Auto-insert closing bracket/quote and place cursor inside |
 | word-navigation | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Option+Arrow moves cursor by word boundaries |
 | toggle-block | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Cmd+Up/Down toggles fold state of current block |
 | bold-italic | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Cmd+B/I wraps selection in **bold** or *italic* markers |
 | alt-click-fold | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Alt+Click toggles fold state of subtree |
-| shift-click-range | intent | ➡️ medium | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Shift+Click extends selection range from current to clicked block |
+| shift-click-range | intent | ➡️ medium | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Shift+Click extends selection range from current to clicked block |
 | zoom-guards | invariant | ➡️ medium | — | ❌ | ✅ | ✅ | 🟢 complete | Structural operations blocked by zoom boundary (can't indent/outdent zoom root) |
 | checkbox-toggle | intent | ➡️ medium | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Cmd+Enter toggles TODO/DOING/DONE markers |
-| slash-close | intent | ➡️ medium | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Esc closes slash palette without side effects |
-| slash-filter | intent | ➡️ medium | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Slash palette search filters commands incrementally |
-| slash-navigate | intent | ➡️ medium | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Arrow keys move slash selection with wraparound |
+| slash-close | intent | ➡️ medium | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Esc closes slash palette without side effects |
+| slash-filter | intent | ➡️ medium | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Slash palette search filters commands incrementally |
+| slash-navigate | intent | ➡️ medium | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Arrow keys move slash selection with wraparound |
 | expand-collapse-all | intent | ⬇️ low | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Cmd+Shift+Up/Down expands/collapses all blocks in scope |
-| highlight-strikethrough | intent | ⬇️ low | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~ |
-| grapheme-cursor-memory | intent | ⬇️ low | ✅ | ❌ | ✅ | ✅ | 🟢 complete | Cursor column memory uses grapheme clusters (not UTF-16 code units) for proper emoji/CJK handling |
+| highlight-strikethrough | intent | ⬇️ low | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Cmd+H/Shift+H wraps selection in ^^highlight^^ or ~~strikethrough~~ |
+| grapheme-cursor-memory | intent | ⬇️ low | ✅ | ✅ | ✅ | ✅ | 🟢 complete | Cursor column memory uses grapheme clusters (not UTF-16 code units) for proper emoji/CJK handling |
 | auto-increment | intent | ⬇️ low | ✅ | ✅ | ❌ | ✅ | 🟢 complete | Enter on numbered list auto-increments next item |
