@@ -30,7 +30,9 @@
   "Minimal intent registry needed by kernel.state-machine-test."
   (with-registered-intents
     {:selection {}
-     :enter-edit {:allowed-states #{:selection}}
+     :enter-edit {:allowed-states #{:focused :selection}}
+     :enter-edit-selected {:allowed-states #{:focused :selection}}
+     :enter-edit-with-char {:allowed-states #{:focused :selection}}
      :navigate-with-cursor-memory {:allowed-states #{:editing}}
      :smart-split {:allowed-states #{:editing}}
      :exit-edit {:allowed-states #{:editing}}}))

@@ -20,7 +20,7 @@
          Optional :cursor-at can be :start or :end to position cursor.
          Clears selection to maintain edit/view mode mutual exclusivity."
                           :fr/ids #{:fr.selection/edit-view-exclusive}
-                          :allowed-states #{:selection}
+                          :allowed-states #{:focused :selection}
                           :spec [:map [:type [:= :enter-edit]] [:block-id :string] [:cursor-at {:optional true} [:enum :start :end]]]
                           :handler (fn [db _session {:keys [block-id cursor-at]}]
                                      (let [text-length (count (get-in db [:nodes block-id :props :text] ""))
@@ -87,7 +87,7 @@
                          {:doc "Enter edit mode in selected block (Logseq parity).
                                 cursor-at: :start or :end (default :end for Enter/Right, :start for Left)"
                           :fr/ids #{:fr.selection/edit-view-exclusive}
-                          :allowed-states #{:selection}
+                          :allowed-states #{:focused :selection}
                           :spec [:map
                                  [:type [:= :enter-edit-selected]]
                                  [:cursor-at {:optional true} [:enum :start :end]]]
@@ -106,7 +106,7 @@
          pressing any printable key instantly enters edit mode, appends
          that character, and positions the caret after it."
                           :fr/ids #{:fr.state/type-to-edit}
-                          :allowed-states #{:selection}
+                          :allowed-states #{:focused :selection}
                           :spec [:map
                                  [:type [:= :enter-edit-with-char]]
                                  [:block-id :string]

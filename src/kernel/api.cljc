@@ -14,6 +14,7 @@
             [kernel.log :as L]
             [kernel.db :as db]
             [kernel.state-machine :as sm]
+            [utils.session-patch]
             #_{:clj-kondo/ignore [:unused-namespace]} ; str/ used in CLJ reader conditional
             [clojure.string :as str]
             #?(:clj [clojure.java.io :as io]))
@@ -134,7 +135,9 @@
 
        ;; Intent allowed - proceed with dispatch
        (let [{handler-ops :ops session-updates :session-updates} (intent/apply-intent db session intent)
-             result (tx/interpret db handler-ops opts)]
+             result (tx/interpret db handler-ops opts)
+             session-updates (when (empty? (:issues result))
+                               session-updates)]
          #?(:clj (journal-tx! intent (:ops result)))
          ;; DB ops go through normal transaction pipeline.
          ;; Session updates + materialized ops are returned for callers
@@ -163,18 +166,23 @@
         result (dispatch* db session intent {:tx/now-ms timestamp})
         db-after (:db result)
         ops (:ops result)
+        session-updates (:session-updates result)
         ;; Log only on REAL state change, not merely 'intent emitted ops'.
         ;; Ops may validate-away (issues) or normalize-away (no-op :place)
         ;; leaving db-before = db-after; those shouldn't grow undo depth.
         changed? (not= db db-after)
         new-log (if changed?
                   (let [prev-op-id (:op-id (L/entry-at-head log))
+                        session-after (if session-updates
+                                        (utils.session-patch/merge-patch session session-updates)
+                                        session)
                         entry (L/make-entry {:op-id op-id
                                              :prev-op-id prev-op-id
                                              :timestamp timestamp
                                              :intent intent
                                              :ops ops
-                                             :session session})]
+                                             :session session
+                                             :session-after session-after})]
                     (L/append log entry))
                   log)]
     (assoc result :log new-log)))

@@ -19,14 +19,15 @@
 
 (defn- mint-entry
   "Build a log entry from a dispatch result, minting identity."
-  [intent ops session prev-op-id]
+  [intent ops session session-after prev-op-id]
   (L/make-entry
    {:op-id (random-uuid)
     :prev-op-id prev-op-id
     :timestamp (now-ms)
     :intent intent
     :ops ops
-    :session session}))
+    :session session
+    :session-after session-after}))
 
 (defn append-and-advance!
   "Record a successful structural dispatch into the log.
@@ -37,12 +38,12 @@
    `!db` is not touched here — the executor already has db-after in hand
    and resets !db itself. Keeping db-update out of this function avoids
    double reset and matches the current intent-apply shape."
-  [intent ops session]
+  [intent ops session session-after]
   (let [prev-head (:head @!log)
         prev-entry (L/entry-at-head @!log)
         prev-op-id (:op-id prev-entry)
         _ (assert (>= prev-head -1))
-        entry (mint-entry intent ops session prev-op-id)]
+        entry (mint-entry intent ops session session-after prev-op-id)]
     (swap! !log L/append entry)))
 
 (defn undo!
@@ -69,14 +70,12 @@
   (let [log @!log]
     (if-let [new-log (L/redo log)]
       (let [new-db (L/head-db new-log)
-            ;; On redo, we have no natural session to restore: the
-            ;; original dispatch didn't capture \"session after\" anywhere.
-            ;; Cursor behavior mirrors current code: the DOM re-renders
-            ;; from the new db, and the editing-block-id survives from
-            ;; the pre-undo session.
-            _ new-db]
+            entry-redone (L/entry-at-head new-log)
+            session-after (:session-after entry-redone)]
         (clojure.core/reset! !log new-log)
         (clojure.core/reset! !db new-db)
+        (when session-after
+          (vs/merge-view-state-updates! session-after))
         true)
       false)))
 

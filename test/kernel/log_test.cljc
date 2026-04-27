@@ -185,19 +185,24 @@
 ;; ── Session snapshot on undo ────────────────────────────────────────────────
 
 (deftest entry-at-head-exposes-session-snapshot
-  (testing "entry-at-head returns entry so caller can restore session-before"
+  (testing "entry-at-head returns entry so caller can restore session-before and session-after"
     (let [session {:selection {:nodes #{"a"} :focus "a" :anchor "a"}
                    :ui {:editing-block-id "a" :cursor-position 5}}
+          session-after {:selection {:nodes #{} :focus nil :anchor nil}
+                         :ui {:editing-block-id "x" :cursor-position 0}}
           entry-with-session
           (L/make-entry
            {:op-id "op-x" :prev-op-id nil :timestamp 0
             :intent {:type :test}
             :ops [{:op :create-node :id "x" :type :block :props {:text ""}}
                   {:op :place :id "x" :under :doc :at :last}]
-            :session session})
+            :session session
+            :session-after session-after})
           log (L/append L/empty-log entry-with-session)
           at-head (L/entry-at-head log)]
       (is (= #{"a"} (get-in at-head [:session-before :selection :nodes]))
           "Entry captures the pre-op selection")
       (is (= 5 (get-in at-head [:session-before :ui :cursor-position]))
-          "Entry captures the pre-op cursor position"))))
+          "Entry captures the pre-op cursor position")
+      (is (= "x" (get-in at-head [:session-after :ui :editing-block-id]))
+          "Entry captures the post-op edit target for redo"))))
