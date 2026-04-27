@@ -103,6 +103,10 @@
                             all-roots-traversal
                             doc-indexes)
         db-with-core (assoc db :derived core-derived)]
+    (when-not (= (set (keys core-derived)) plugins/core-derived-keys)
+      (throw (ex-info "Core derived key set drifted from registry declaration"
+                      {:actual (set (keys core-derived))
+                       :declared plugins/core-derived-keys})))
     (assoc db :derived (merge core-derived (plugins/run-all db-with-core)))))
 
 ;; =============================================================================

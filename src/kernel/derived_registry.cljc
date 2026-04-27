@@ -2,7 +2,8 @@
   "Registry for derived-index plugins.
 
    A plugin is a map:
-     {:initial   (fn [db] -> {index-key index-value ...})   ; MANDATORY
+     {:keys      #{:derived-key ...}                        ; MANDATORY
+      :initial   (fn [db] -> {index-key index-value ...})   ; MANDATORY
       :apply-tx  (fn [prev-index db-before tx-ops db-after]
                     -> {index-key ...} | :kernel.derived-registry/recompute)}
 
@@ -29,7 +30,8 @@
      - kernel-maintained core indexes (:parent-of, :prev-id-of, etc.)
      - its own previous index value (for :apply-tx)
    Plugins MUST NOT read other plugins' indexes. This eliminates the
-   cross-plugin dependency DAG problem by construction.")
+   cross-plugin dependency DAG problem by construction."
+  (:require [clojure.set]))
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; Registry
@@ -39,12 +41,38 @@
   "Sentinel an :apply-tx returns to signal 'recompute via :initial'."
   ::recompute)
 
+(def core-derived-keys
+  "Derived keys owned by kernel.db. Plugins may not emit these."
+  #{:parent-of
+    :index-of
+    :prev-id-of
+    :next-id-of
+    :pre
+    :post
+    :id-by-pre
+    :doc/pre
+    :doc/id-by-pre})
+
 (defonce ^:private *plugins (atom {}))
+
+(defn- plugin-key-owners
+  [plugins excluding-plugin]
+  (into {}
+        (mapcat (fn [[plugin-id {declared-keys :keys}]]
+                  (when-not (= plugin-id excluding-plugin)
+                    (map (fn [derived-key] [derived-key plugin-id]) declared-keys))))
+        plugins))
 
 (defn- validate-spec [k spec]
   (when-not (map? spec)
-    (throw (ex-info "Derived plugin spec must be a map with :initial"
+    (throw (ex-info "Derived plugin spec must be a map with :keys and :initial"
                     {:key k :got spec})))
+  (when-not (set? (:keys spec))
+    (throw (ex-info "Derived plugin :keys must be a set"
+                    {:key k :got (:keys spec)})))
+  (when (empty? (:keys spec))
+    (throw (ex-info "Derived plugin :keys must not be empty"
+                    {:key k})))
   (when-not (ifn? (:initial spec))
     (throw (ex-info "Derived plugin :initial must be a function"
                     {:key k :got (:initial spec)})))
@@ -53,17 +81,34 @@
     (throw (ex-info "Derived plugin :apply-tx must be a function (if provided)"
                     {:key k :got (:apply-tx spec)}))))
 
+(defn- validate-key-ownership [plugins k spec]
+  (let [declared (:keys spec)
+        core-collisions (clojure.set/intersection declared core-derived-keys)
+        owners (plugin-key-owners plugins k)
+        plugin-collisions (select-keys owners declared)]
+    (when (seq core-collisions)
+      (throw (ex-info "Derived plugin collides with core derived keys"
+                      {:key k :collisions core-collisions})))
+    (when (seq plugin-collisions)
+      (throw (ex-info "Derived plugin keys collide with another plugin"
+                      {:key k :collisions plugin-collisions})))))
+
 (defn register!
   "Register a derived-index plugin under key `k`.
 
-   `spec` is a map with :initial (mandatory) and optionally :apply-tx.
+   `spec` is a map with :keys and :initial (mandatory), optionally :apply-tx.
    Example:
-     (register! :my-plugin {:initial (fn [db] {:my-data (compute db)})})
+     (register! :my-plugin
+       {:keys #{:my-data}
+        :initial (fn [db] {:my-data (compute db)})})
 
-   Re-registration replaces the previous spec for `k`."
+   Re-registration replaces the previous spec for `k` and releases its old keys."
   [k spec]
   (validate-spec k spec)
-  (swap! *plugins assoc k spec)
+  (swap! *plugins
+         (fn [plugins]
+           (validate-key-ownership plugins k spec)
+           (assoc plugins k spec)))
   nil)
 
 (defn register-derived!
@@ -83,6 +128,22 @@
   []
   @*plugins)
 
+(defn- checked-plugin-output [plugin-id declared output]
+  (when-not (map? output)
+    (throw (ex-info "Derived plugin output must be a map"
+                    {:plugin plugin-id :declared declared :emitted output})))
+  (let [emitted (set (keys output))
+        missing (clojure.set/difference declared emitted)
+        extra (clojure.set/difference emitted declared)]
+    (when (or (seq missing) (seq extra))
+      (throw (ex-info "Derived plugin emitted keys must equal declared keys"
+                      {:plugin plugin-id
+                       :declared declared
+                       :emitted emitted
+                       :missing missing
+                       :extra extra}))))
+  output)
+
 (defn run-all
   "Run :initial on every registered plugin and merge the results.
 
@@ -91,20 +152,11 @@
    Lean first cut always uses :initial — :apply-tx is called through a
    separate future entry point once plugins opt in.
 
-   Plugin invocation order is unspecified (iteration over a hash-map).
-   Collisions between plugins emitting the same derived key are therefore
-   UNDEFINED BEHAVIOR — one will silently win, but which one is not
-   guaranteed to be stable across runs. The Phase D isolation rule
-   requires plugins to partition the derived-key namespace; collisions
-   indicate a plugin bug, not a merge policy."
+   Plugin invocation order is unspecified, but declared key ownership makes
+   merge order irrelevant. Broken plugins fail loudly."
   [db]
-  (reduce (fn [acc [_k {:keys [initial]}]]
-            (try
-              (merge acc (initial db))
-              (catch #?(:clj Exception :cljs js/Error) e
-                #?(:clj (println "Plugin error:" (.getMessage e))
-                   :cljs (.error js/console "Plugin error:" (.-message e)))
-                acc)))
+  (reduce (fn [acc [plugin-id {declared-keys :keys initial :initial}]]
+            (merge acc (checked-plugin-output plugin-id declared-keys (initial db))))
           {}
           @*plugins))
 

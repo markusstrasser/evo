@@ -13,4 +13,6 @@
       (is (every? true? (vals loaded)))
       (is (api/has-handler? :enter-edit))
       (is (api/has-handler? :navigate-to-page))
-      (is (contains? (registry/registered) :backlinks)))))
+      (is (contains? (registry/registered) :backlinks))
+      (is (= #{:backlinks-by-page}
+             (get-in (registry/registered) [:backlinks :keys]))))))
