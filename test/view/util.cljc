@@ -320,3 +320,32 @@
   [element event-name]
   (when-let [handlers (extract-event-handlers element)]
     (contains? handlers event-name)))
+
+(defn collect-attribute-values
+  "Walk hiccup and collect every value of ATTR seen on any element.
+   Vector preserves order of appearance — duplicates appear N times.
+   Use with `frequencies` to spot repeats:
+
+       (->> (collect-attribute-values view :data-block-id)
+            frequencies
+            (filter (fn [[_ n]] (> n 1))))"
+  [hiccup attr]
+  (let [acc (atom [])]
+    (walk/prewalk
+     (fn [x]
+       (when-let [v (and (vector? x) (map? (second x)) (get (second x) attr))]
+         (swap! acc conj v))
+       x)
+     hiccup)
+    @acc))
+
+(defn duplicate-attribute-values
+  "Return a vector of [value count] for ATTR values that appear more than
+   once anywhere in HICCUP. Empty when every value is unique. Used to
+   guard against double-emission of identifiers like :data-block-id that
+   the rest of the runtime keys off."
+  [hiccup attr]
+  (->> (collect-attribute-values hiccup attr)
+       frequencies
+       (filter (fn [[_ n]] (> n 1)))
+       (mapv (fn [[v n]] [v n]))))

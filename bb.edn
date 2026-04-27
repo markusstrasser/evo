@@ -20,6 +20,7 @@
          :task (do
                  (run 'lint)
                  (run 'lint:rename-escape)
+                 (run 'lint:block-id-emission)
                  (run 'arch:verify)
                  (run 'test:verify-harness)
                  (shell "bb scripts/verify_kernel_boundaries.clj")
@@ -89,6 +90,9 @@
 
   lint:rename-escape {:doc "Catch bare references to core fns (key, val, type…) when a local with `-name` suffix exists in the same file (catches the 3b6fdcd7 bug class)"
                       :task (shell "bb scripts/lint_rename_escape.clj")}
+
+  lint:block-id-emission {:doc "Enforce single emission point for :data-block-id (only components/block.cljs may set it as a hiccup attribute)"
+                          :task (shell "bb scripts/lint_block_id_emission.clj")}
 
   lint:fr-tests {:doc "Report FR scenario coverage (use -- --strict to fail on gaps)"
                  :task (let [arg-str (when (seq *command-line-args*)

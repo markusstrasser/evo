@@ -50,4 +50,8 @@
 
     (testing "Keydown handler exists to trigger :navigate-to-adjacent"
       (is (true? (vu/has-event-handler? edit-el :keydown))
-          "Arrow-left boundary handler missing from .block-content span"))))
+          "Arrow-left boundary handler missing from .block-content span"))
+
+    (testing "data-block-id is unique within a single Block render"
+      (is (= [] (vu/duplicate-attribute-values hiccup :data-block-id))
+          "A second emission of :data-block-id breaks Replicant element identity and DOM lookup"))))
