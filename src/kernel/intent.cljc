@@ -45,7 +45,7 @@
    - config: Map with keys:
      - :doc           - Documentation string
      - :spec          - Malli spec for validation
-     - :handler       - Handler function (fn [db session intent] -> ops)
+     - :handler       - Handler function (fn [db session intent] -> nil | {:ops [...] :session-updates {...}})
      - :fr/ids        - (optional) Set of FR keywords this intent implements
      - :allowed-states - (optional) Set of states where this intent is valid
                         nil = allowed in any state (universal)
@@ -80,7 +80,7 @@
         :fr/ids #{:fr.edit/smart-split}
         :allowed-states #{:editing}  ;; Only valid in editing state
         :handler (fn [db session {:keys [block-id cursor-pos]}]
-                   [{:op :update-node ...}])})"
+                   {:ops [{:op :update-node ...}]})})"
   [kw {:keys [doc spec handler] :as config}]
   (let [ids (get config :fr/ids)]
     ;; Track uncited intents for grouped warning (instead of spamming console)
@@ -192,11 +192,11 @@
      session - Current session state (ephemeral UI state: cursor, selection, fold, zoom)
      intent  - Intent map (e.g., {:type :indent :id \"a\"})
 
-   Handler Signature (Phase 6):
-     (fn [db session intent] -> [ops] | {:ops [...] :session-updates {...}})
+   Handler Signature:
+     (fn [db session intent] -> nil | {:ops [...] :session-updates {...}})
 
    Handlers can return:
-   - Vector of ops (backward compatible, no session updates)
+   - nil for no-op
    - Map with :ops and/or :session-updates keys
 
    Example:
@@ -230,20 +230,19 @@
     ;; Lookup and execute handler
     (if-let [handler (get-in @!intents [(:type intent) :handler])]
       (let [result (handler db session intent)]
-        (if (map? result)
-          ;; Handler returned map with :ops and/or :session-updates
-          {:db db
-           :ops (vec (concat (when buffer-op [buffer-op])
-                             (or (:ops result) [])))
-           :session-updates (:session-updates result)}
-          ;; Handler returned vector of ops (backward compatible)
-          {:db db
-           :ops (vec (concat (when buffer-op [buffer-op])
-                             (or result [])))
-           :session-updates nil}))
-      {:db db
-       :ops (vec (when buffer-op [buffer-op]))
-       :session-updates nil})))
+        (when (and result (not (map? result)))
+          (throw (ex-info "Intent handler must return nil or a result map"
+                          {:type (:type intent)
+                           :result result
+                           :hint "Return {:ops [...]} instead of a raw ops vector."})))
+        {:db db
+         :ops (vec (concat (when buffer-op [buffer-op])
+                           (or (:ops result) [])))
+         :session-updates (:session-updates result)})
+      (throw (ex-info "Unknown intent type"
+                      {:type (:type intent)
+                       :intent intent
+                       :hint "Register this intent with register-intent!"})))))
 
 ;; ── REPL Introspection Helpers ───────────────────────────────────────────────
 

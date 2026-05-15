@@ -374,7 +374,7 @@
    :spec [:map [:type [:= :outdent]] [:id :string]]
    :allowed-states #{:editing :selection}
    :handler (fn [db session {:keys [id]}]
-              (outdent-ops db session id))})
+              {:ops (outdent-ops db session id)})})
 
 (intent/register-intent! :create-and-place
   {:doc "Create new block and place it under parent."
@@ -382,8 +382,8 @@
    :spec [:map [:type [:= :create-and-place]] [:id :string] [:parent :string]
           [:after {:optional true} :string]]
    :handler (fn [_db _session {:keys [id parent after]}]
-              [{:op :create-node :id id :type :block :props {:text ""}}
-               {:op :place :id id :under parent :at (if after {:after after} :last)}])})
+              {:ops [{:op :create-node :id id :type :block :props {:text ""}}
+                     {:op :place :id id :under parent :at (if after {:after after} :last)}]})})
 
 (intent/register-intent! :create-and-enter-edit
   {:doc "Create new block after focus and immediately enter edit mode."
@@ -537,7 +537,7 @@
    :allowed-states #{:editing :selection}
    :spec [:map [:type [:= :move-selected-up]]]
    :handler (fn [db session _intent]
-              (move-selected-up-ops db session))})
+              {:ops (move-selected-up-ops db session)})})
 
 (intent/register-intent! :move-selected-down
   {:doc "Move selected nodes down one sibling position."
@@ -545,7 +545,7 @@
    :allowed-states #{:editing :selection}
    :spec [:map [:type [:= :move-selected-down]]]
    :handler (fn [db session _intent]
-              (move-selected-down-ops db session))})
+              {:ops (move-selected-down-ops db session)})})
 
 ;; ── Movement/Reordering (merged from plugins.permute) ────────────────────────
 
@@ -633,7 +633,7 @@
                     [:map [:before :string]]]]]
    :fr/ids #{:fr.struct/climb-descend}
    :handler (fn [db _session intent]
-              (:ops (lower-move db intent)))})
+              {:ops (:ops (lower-move db intent))})})
 
 ;; ── Move While Editing ────────────────────────────────────────────────────────
 
@@ -642,14 +642,14 @@
    :spec [:map [:type [:= :move-block-up-while-editing]] [:block-id :string]]
    :fr/ids #{:fr.struct/climb-descend}
    :handler (fn [db session {:keys [_block-id]}]
-              (move-selected-up-ops db session))})
+              {:ops (move-selected-up-ops db session)})})
 
 (intent/register-intent! :move-block-down-while-editing
   {:doc "Move current editing block down, preserving edit mode."
    :spec [:map [:type [:= :move-block-down-while-editing]] [:block-id :string]]
    :fr/ids #{:fr.struct/climb-descend}
    :handler (fn [db session {:keys [_block-id]}]
-              (move-selected-down-ops db session))})
+              {:ops (move-selected-down-ops db session)})})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel

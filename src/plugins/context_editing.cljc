@@ -163,8 +163,8 @@
 
                           :handler
                           (fn [db _session {:keys [block-id cursor-pos] :as intent}]
-                            (when (pos? cursor-pos)
-                              (let [text (get-block-text db block-id intent)
+                               (when (pos? cursor-pos)
+                                 (let [text (get-block-text db block-id intent)
              ;; Check for matching pairs - try multi-char first, then single-char
              ;; Sort pairs by length descending so we check multi-char pairs first
                                     pair-match (some (fn [[opening closing]]
@@ -218,15 +218,14 @@
                                            merged-text (str curr-text next-text)
                                            next-children (get-in db [:children-by-parent next-id] [])]
                                        (when next-id
-                                         (concat
-                   ;; Update current block with merged text
-                                          [{:op :update-node :id block-id :props {:text merged-text}}]
-                   ;; Move next block's children to current block (as last children)
-                                          (map (fn [child-id]
-                                                 {:op :place :id child-id :under block-id :at :last})
-                                               next-children)
-                   ;; Delete next block
-                                          [{:op :place :id next-id :under const/root-trash :at :last}]))))})
+                                         (let [ops (vec
+                                                    (concat
+                                                     [{:op :update-node :id block-id :props {:text merged-text}}]
+                                                     (map (fn [child-id]
+                                                            {:op :place :id child-id :under block-id :at :last})
+                                                          next-children)
+                                                     [{:op :place :id next-id :under const/root-trash :at :last}]))]
+                                           {:ops ops}))))})
 
 ;; ── List Item Behaviors ───────────────────────────────────────────────────────
 
@@ -237,7 +236,7 @@
                           :handler (fn [db _session {:keys [block-id] :as intent}]
                                      (let [text (get-block-text db block-id intent)]
                                        (when (list-marker? text)
-                                         [{:op :update-node :id block-id :props {:text ""}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text ""}}]})))})
 
 (intent/register-intent! :split-with-list-increment
                          {:doc "Split block at cursor, incrementing numbered list marker if applicable.
@@ -276,7 +275,7 @@
                                      (let [text (get-block-text db block-id intent)
                                            new-text (toggle-checkbox-text text)]
                                        (when (not= text new-text)
-                                         [{:op :update-node :id block-id :props {:text new-text}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text new-text}}]})))})
 
 ;; ── Smart Split Helpers ───────────────────────────────────────────────────────
 
@@ -304,7 +303,7 @@
 (defn- unformat-empty-marker
   "Remove empty list marker or checkbox, leaving plain empty block."
   [block-id]
-  [{:op :update-node :id block-id :props {:text ""}}])
+  {:ops [{:op :update-node :id block-id :props {:text ""}}]})
 
 (defn- split-with-list-increment
   "Split numbered list, incrementing the number for new block."
@@ -469,7 +468,7 @@
   [db _session {:keys [block-id cursor-pos] :as intent} context]
   (if (str/blank? (:content context))
     ;; Empty checkbox - unformat
-    [{:op :update-node :id block-id :props {:text ""}}]
+    {:ops [{:op :update-node :id block-id :props {:text ""}}]}
     ;; Checkbox with content - continue pattern
     (let [text (get-block-text db block-id intent)
           [before after] (helpers/split-text-at text cursor-pos)

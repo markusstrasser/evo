@@ -16,6 +16,7 @@
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.query :as q]
+            [plugins.selection]
             [utils.session-patch :as session-patch]))
 
 ;; ── Test Setup ────────────────────────────────────────────────────────────────
@@ -243,11 +244,11 @@
                              (assoc-in [:selection :focus] "b"))
 
           ;; Navigate down - this is session-only operation
-          {:keys [session-updates]} (intent/apply-intent db session-with-b {:type :navigate-down})
+          {:keys [session-updates]} (intent/apply-intent db session-with-b {:type :selection :mode :next})
           session2 (apply-session-updates session-with-b session-updates)
 
           ;; Navigate up - also session-only
-          {:keys [session-updates]} (intent/apply-intent db session2 {:type :navigate-up})
+          {:keys [session-updates]} (intent/apply-intent db session2 {:type :selection :mode :prev})
           _session3 (apply-session-updates session2 session-updates)]
 
       ;; Document structure should be unchanged (no ops applied)
