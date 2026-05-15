@@ -146,7 +146,7 @@
                                      (let [current-text (get-in db [:nodes block-id :props :text] "")]
                                        ;; Only emit op if text actually changed
                                        (when (not= current-text text)
-                                         [{:op :update-node :id block-id :props {:text text}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text text}}]})))})
 
 (intent/register-intent! :resize-image
                          {:doc "Update image width in markdown text.
@@ -157,7 +157,7 @@
                                            new-text (images/update-image-width text width)]
                                        ;; Only emit op if text changed
                                        (when (not= text new-text)
-                                         [{:op :update-node :id block-id :props {:text new-text}}])))})
+                                         {:ops [{:op :update-node :id block-id :props {:text new-text}}]})))})
 
 (intent/register-intent! :insert-newline
                          {:doc "Insert a literal newline character at cursor position (Shift+Enter).

@@ -167,14 +167,14 @@
       (is (every? #(contains? % :op) all-ops)
           "All compiled outputs should be valid ops"))))
 
-(deftest unknown-intent-type-is-noop
-  (testing "Unknown intent type returns empty ops"
+(deftest unknown-intent-type-is-loud
+  (testing "Unknown intent type throws instead of hiding a broken caller"
     (let [db (build-doc)
-          result (intent/apply-intent db nil {:type :unknown-intent :id "a"})]
-      (is (= [] (:ops result))
-          "Unknown intent should have no ops")
-      (is (= db (:db result))
-          "DB should be unchanged"))))
+          intent {:type :unknown-intent :id "a"}]
+      (is (thrown-with-msg?
+           #?(:clj clojure.lang.ExceptionInfo :cljs cljs.core.ExceptionInfo)
+           #"Unknown intent type"
+           (intent/apply-intent db nil intent))))))
 
 ;; ── Move climb semantics tests ────────────────────────────────────────────────
 

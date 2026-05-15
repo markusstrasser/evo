@@ -286,7 +286,7 @@
                       (assoc-in [:selection :nodes] #{"target"})
                       (assoc-in [:selection :focus] "target"))
           {:keys [session-updates]} (intent/apply-intent db session
-                                      {:type :copy})]
+                                      {:type :copy-selected})]
       ;; Copy should update session with clipboard data
       ;; (implementation may vary)
       (is (or (some? session-updates) true)
@@ -299,7 +299,7 @@
                       (assoc-in [:selection :nodes] #{"parent"})
                       (assoc-in [:selection :focus] "parent"))
           {:keys [session-updates]} (intent/apply-intent db session
-                                      {:type :copy})]
+                                      {:type :copy-selected})]
       ;; Copy should include children in copied data
       (is (or (some? session-updates) true)
           "Copy should handle nested structure"))))
