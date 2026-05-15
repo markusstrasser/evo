@@ -4,7 +4,8 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [keymap.bindings :as bindings]
             [keymap.bindings-data :as bindings-data]
-            [keymap.core :as keymap]))
+            [keymap.core :as keymap]
+            [keymap.ownership-data :as ownership-data]))
 
 (def editing-session {:ui {:editing-block-id "a"}})
 (def view-session {:ui {:editing-block-id nil}})
@@ -31,17 +32,7 @@
    {:binding :printable :state :focused :target :block-view :owner :shell}])
 
 (def block-owned-editing-key-specs
-  #{{:key "Enter"}
-    {:key "Enter" :shift true}
-    {:key "Escape"}
-    {:key "Backspace"}
-    {:key "Delete"}
-    {:key "ArrowUp"}
-    {:key "ArrowDown"}
-    {:key "ArrowLeft"}
-    {:key "ArrowRight"}
-    {:key "ArrowUp" :shift true}
-    {:key "ArrowDown" :shift true}})
+  ownership-data/block-owned-editing-key-specs)
 
 (defn ensure-bindings-loaded [f]
   (bindings/reload!)
