@@ -21,9 +21,10 @@
                  (run 'lint)
                  (run 'lint:rename-escape)
                  (run 'lint:block-id-emission)
+                 (run 'lint:registry-state)
                  (run 'arch:verify)
                  (run 'test:verify-harness)
-                 (shell "bb scripts/verify_kernel_boundaries.clj")
+                 (run 'lint:kernel-imports)
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
   test {:doc "Compile + run the full shadow-cljs test suite"
@@ -107,6 +108,18 @@
 
   lint:specs {:doc "Validate specs.edn schema (fast, no compile)"
               :task (shell "bb scripts/lint_specs.clj")}
+
+  lint:kernel-imports {:doc "Reject shell/component/keymap/render requires from kernel-safe namespaces (src/kernel, test/kernel, test/scripts)"
+                       :task (shell "bb scripts/verify_kernel_boundaries.clj")}
+
+  lint:kernel-imports:selftest {:doc "Inject a forbidden shell require under src/kernel and verify the lint catches it"
+                                :task (shell "bb scripts/verify_kernel_boundaries_selftest.clj")}
+
+  lint:registry-state {:doc "Static verifier over keymap.bindings-data + intent/render registrations (target intents exist, key tuples unique, block-owned editing keys absent, render tags unique)"
+                       :task (shell "bb scripts/lint_registry_state.clj")}
+
+  lint:registry-state:selftest {:doc "Inject violations into a scratch bindings table and verify lint:registry-state catches each one"
+                                :task (shell "bb scripts/lint_registry_state_selftest.clj")}
 
   docs:verify {:doc "Verify all file references in docs/DX_INDEX.md exist"
                :task (shell "bb scripts/verify-docs.clj")}
