@@ -871,6 +871,16 @@
 
 ;; ── Key Matching Helpers ─────────────────────────────────────────────────────
 
+(defn- mac?
+  "True when running on macOS. Used to gate Emacs-style Ctrl+<letter>
+   bindings (Ctrl+A as line-start, etc.) that conflict with OS-standard
+   bindings on Linux/Windows (Ctrl+A as select-all)."
+  []
+  (boolean
+   (when (exists? js/navigator)
+     (or (some-> js/navigator .-platform (.includes "Mac"))
+         (some-> js/navigator .-userAgent (.includes "Mac"))))))
+
 (defn- key-match?
   "Match key with required modifiers and no extra modifiers.
 
@@ -954,14 +964,19 @@
               key (.-key e)]
 
           (cond
-            ;; === Emacs Line Navigation (macOS: Ctrl+A/E) ===
-            (key-match? "a" {:ctrl? true} mods)
+            ;; === Emacs Line Navigation — macOS only ===
+            ;; On Linux/Windows, Ctrl+A is the OS-standard select-all and
+            ;; Ctrl+E has no universal binding (some apps use it as
+            ;; end-of-line, others don't). Hijacking these on non-mac
+            ;; platforms breaks user expectations and the contenteditable
+            ;; never gets a chance to fall back to the browser's select-all.
+            (and (mac?) (key-match? "a" {:ctrl? true} mods))
             (do (.preventDefault e)
                 (let [line-start (find-line-start (:text-content cursor-bounds)
                                                    (:cursor-pos cursor-bounds))]
                   (set-cursor! target line-start)))
 
-            (key-match? "e" {:ctrl? true} mods)
+            (and (mac?) (key-match? "e" {:ctrl? true} mods))
             (do (.preventDefault e)
                 (let [line-end (find-line-end (:text-content cursor-bounds)
                                                (:cursor-pos cursor-bounds)
