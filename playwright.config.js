@@ -71,12 +71,17 @@ export default defineConfig({
   ],
 
   // Dev server
+  // NOTE: `bb dev` starts shadow-cljs watch — the HTTP port comes up almost
+  // immediately, but the JS bundle takes 15-25s to compile. Probing the
+  // bundle URL ensures Playwright waits until the app can actually boot;
+  // probing the root would let the first alphabetical tests (aria-structure)
+  // run against an empty page and fail with `[data-block-id]` timeouts.
   webServer: shouldStartWebServer
     ? {
         command: 'bb dev',
-        url: 'http://localhost:8080',
+        url: 'http://localhost:8080/js/blocks-ui/main.js',
         reuseExistingServer: !process.env.CI,
-        timeout: 120000,
+        timeout: 180000,
       }
     : undefined,
 });
