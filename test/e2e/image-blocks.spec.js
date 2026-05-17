@@ -1,7 +1,6 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
 import { enterEditMode, exitEditMode, updateBlockText } from './helpers/block-helpers.js';
-import { modKey, pressKeyCombo } from './helpers/keyboard.js';
 
 const wait = (page, ms = 100) => page.waitForTimeout(ms);
 const blockId = 'image-block';
@@ -208,14 +207,22 @@ test.describe('Image Blocks (Markdown-First Model)', () => {
       await updateBlockText(page, blockId, '![](https://example.com/img.png){width=500}');
       await wait(page, 200);
 
-      // Enter edit, add alt text, exit
+      // Enter edit, replace text, exit
       await enterEditMode(page, blockId);
       await wait(page, 100);
 
-      const _editable = page.locator('[contenteditable="true"]');
-      // Select all and retype with alt text but keep width
-      await pressKeyCombo(page, 'a', [modKey]);
-      await page.keyboard.type('![updated](https://example.com/img.png){width=500}');
+      // Replace the contenteditable's text via the input pipeline. Mod+A + type
+      // races on Linux Chromium under parallel CI load — the select-all can land
+      // after a frame of typing, leaving the original text prepended. Setting
+      // textContent + dispatching `input` routes through the same buffer-set!
+      // path the keypress would, without depending on keyboard event ordering.
+      const newMarkdown = '![updated](https://example.com/img.png){width=500}';
+      await page.evaluate((text) => {
+        const el = document.querySelector('[contenteditable="true"]');
+        if (!el) throw new Error('no contenteditable focused for edit-replace');
+        el.textContent = text;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, newMarkdown);
       await wait(page);
 
       await exitEditMode(page);
