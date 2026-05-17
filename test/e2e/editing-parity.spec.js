@@ -20,6 +20,7 @@ import { expect, test } from '@playwright/test';
 import {
   enterEditModeAndClick,
   getCursorPosition,
+  modKey,
   pressKeyCombo,
   pressKeyOnContentEditable,
   setCursorPosition,
@@ -176,8 +177,8 @@ test.describe('Shift+Arrow Block Selection', () => {
     await page.click('[contenteditable="true"]');
     await page.keyboard.type('Select this text');
 
-    // Select all text with Cmd+A
-    await pressKeyOnContentEditable(page, 'a', { metaKey: true });
+    // Select all text with Mod+A (Cmd on Mac, Ctrl on Linux/Win)
+    await pressKeyCombo(page, 'a', [modKey]);
     await page.waitForTimeout(50);
 
     // Verify selection exists
@@ -213,10 +214,10 @@ test.describe('Selection Operations', () => {
     await pressKeyOnContentEditable(page, 'Tab'); // Indent to create child
     await page.keyboard.type('Child block');
 
-    // Press Cmd+A twice - first selects text, second exits edit and selects block
-    await pressKeyOnContentEditable(page, 'a', { metaKey: true });
+    // Press Mod+A twice - first selects text, second exits edit and selects block
+    await pressKeyCombo(page, 'a', [modKey]);
     await page.waitForTimeout(100);
-    await pressKeyOnContentEditable(page, 'a', { metaKey: true });
+    await pressKeyCombo(page, 'a', [modKey]);
     await page.waitForTimeout(100);
 
     // Verify a block is selected (not editing) via session state
