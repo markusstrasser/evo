@@ -4,15 +4,15 @@ ClojureScript outliner with a tiny tree algebra.
 
 Evo is a working structural text editor: nested blocks, inline markdown, page refs, images, math, multi-select, undo/redo, backlinks, and local-folder persistence. You can try it here: [markusstrasser.org/evo-demo](https://markusstrasser.org/evo-demo).
 
-Before evo, I built another Clojure repo (now archived) and several JavaScript/Svelte prototypes. I evolved the kernel, renderer, and plugin system a few dozen times in 2023/2024, before coding agents were useful for this kind of work. The current source is about 18K LoC; the structural-editing core — kernel, scripts, and the plugins that handle tree edits, selection, and navigation — is about 6.4K of that.
+Before evo, I built an earlier Clojure version, now archived, and several JavaScript/Svelte prototypes. The kernel, renderer, and plugin system went through a few dozen versions in 2023/2024, before coding agents were useful for this kind of work. The repo is about 18K LoC. The structural-editing core is about 6.4K.
 
 **I did not set out to make a text editor.** Evo fell out of a larger experiment: could user interfaces change directly from user events?
 
 I now think that idea was too broad. Creative tools need stable primitives more than they need live meta-evolution. But the experiment left behind something useful: a small outliner kernel with a narrow mutation surface.
 
-The agent angle matters because Evo exposes editor behavior as data.
+Coding agents are relevant here because Evo exposes editor behavior as data.
 
-A user action becomes an intent map. A plugin turns that intent into ops. The kernel validates and applies those ops through one transaction path. That gives coding agents a clean place to work: change intent handlers, inspect the emitted ops, and test the result without inventing DOM behavior from scratch.
+A user action becomes an intent map. A plugin turns that intent into ops. The kernel validates and applies those ops through one transaction path. That gives coding agents a narrow surface: change an intent handler, inspect the emitted ops, and test the result without inventing DOM behavior.
 
 I used to think of the kernel and plugin system as something like an IR for tree editing. That analogy is too heavy.
 
@@ -60,7 +60,7 @@ The simpler version is this: Evo compiles editor behavior down to three document
   Child A
   ```
 
-- **A small mutation surface is easier to audit.** Undo/redo, tests, logs, and debugging all get simpler when every structural change has to pass through the same three operations.
+- **A small mutation surface is easier to audit.** Undo, replay, tests, and logs all see the same three operations.
 - **Reads are centralized.** [`src/kernel/query.cljc`](src/kernel/query.cljc) is the explicit read surface.
 - **Session state moved out of the DB.** Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), while the persistent document graph stays in [`src/kernel/db.cljc`](src/kernel/db.cljc).
 - **The browser owns text while you type.** Evo does not write every keystroke into the DB; that path causes cursor and render churn. During edit mode, `contenteditable` owns the live text and the view-state buffer mirrors it. Evo commits back to the document graph at controlled boundaries. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
@@ -101,7 +101,7 @@ npm start             # clean build + watch CLJS + watch CSS
 - **Kernel is pure.** Zero imports from `shell/`, `components/`, `keymap/` in `src/kernel/`.
 - **Three-operation (ops) invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
 - **Data-driven dispatch.** Intents are EDN maps.
-- **Session state separate from DB.** Ephemeral UI state lives in the session atom, not polluting the persistent doc.
+- **Session state stays out of the DB.** Cursor, selection, folds, and edit mode live in the session atom.
 - **No universal editor primitive.** Evo abstracts over tree editing, not text, video, audio, CAD, or every creative domain.
 
 ## Non-goals
@@ -157,7 +157,7 @@ The transaction pipeline derives the lookup maps after each write:
 :next-id-of
 ```
 
-Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` read those maps. Plugins can add derived views too; backlinks use that path.
+Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` read those maps. Plugins can add derived views too; backlinks are implemented as one.
 
 ### Plugins
 
@@ -185,7 +185,7 @@ That is the boundary:
 
 Plugins do not mutate the DB. They return data. The executor sends that data through the transaction pipeline and applies session updates separately.
 
-More complex features still use the same path. Page refs and backlinks do not get special kernel machinery. Plugins interpret the intent, emit normal ops, and add derived views when they need faster reads.
+Page refs and backlinks stay out of the kernel. Plugins interpret the intent, emit normal ops, and add derived views when they need faster reads.
 
 ## Architecture
 
@@ -212,7 +212,7 @@ The extension surface has three registries:
 | Derived index | materialized read views | [`kernel.derived-registry/register!`](src/kernel/derived_registry.cljc) |
 | Render | AST tag rendering | [`shell.render-registry/register-render!`](src/shell/render_registry.cljc) |
 
-Each registry has the same shape: a `defonce` atom, a validating registration function, and a dispatch path. Re-registering a key replaces the old handler, which keeps hot reload and test fixtures simple. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
+Each registry is a `defonce` atom plus validation and dispatch. Re-registering a key replaces the old handler, which keeps hot reload and test fixtures simple. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
 
 The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading.
 
@@ -264,7 +264,7 @@ Where things go:
 
 ## Project layout
 
-The center of gravity is the editor path: [`src/kernel/`](src/kernel/) plus [`src/plugins/`](src/plugins/).
+Most editor behavior lives in [`src/kernel/`](src/kernel/) and [`src/plugins/`](src/plugins/).
 
 | Path | Approx. LoC | Owns |
 | --- | ---: | --- |
@@ -295,7 +295,7 @@ npm run test:e2e              # full Playwright suite (~4min)
 
 ## Notes and References
 
-A note on the old interface idea: I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. You can use AI to patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
+I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. AI can patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
 
 ### References
 
@@ -317,7 +317,7 @@ A note on the old interface idea: I no longer think creative tools should evolve
 These comparisons are about architecture, not product scope:
 
 - **Logseq**: Closest on outliner semantics, but its core mutations ride on Datascript transactions and app-level outliner ops. Evo makes the mutation algebra itself smaller and more explicit.
-- **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and pushes more behavior into plugin compilation down to a few ops.
+- **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and compiles plugin behavior down to three ops.
 - **Slate**: Also operation-based, but the center of gravity is the mutable `Editor` object plus normalization/history plugins. Evo puts those semantics in a standalone kernel instead of editor-instance methods.
 - **Tiptap**: Mainly an extension layer over ProseMirror's transaction and plugin system. Evo owns the kernel directly instead of wrapping another editor core.
 - **xi-editor**: Strong core/plugin split too, but for a rope-based text engine with RPC plugins. Evo is a structural tree kernel first, not a text-buffer architecture.
