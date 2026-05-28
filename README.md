@@ -18,60 +18,9 @@ I used to think of the kernel and plugin system as something like an IR for tree
 
 The simpler version is this: Evo compiles editor behavior down to three document operations: `create-node`, `place`, and `update-node`.
 
-## What it does
+## Quick start
 
-| Area | Support |
-| --- | --- |
-| Blocks | nesting, indent/outdent, drag/drop, fold |
-| Inline text | `**bold**`, `_italic_`, `==highlight==`, `~~strike~~` |
-| Links and refs | `[[Page Name]]`, `[label](target)`, `evo://page/<name>`, `evo://journal/<iso-date>` |
-| Media | images with paste upload, resize handles, lightbox |
-| Math | `$inline math$`, `$$block math$$` through MathJax |
-| Editor state | multi-select, undo/redo, autocomplete, backlinks |
-| Persistence | local folder, no server, no account |
-
-### Design decisions
-
-- **The DB stores a tree, not positions.** [`src/kernel/db.cljc`](src/kernel/db.cljc) stores parent-owned child vectors. The transaction pipeline derives lookup maps such as `:parent-of`, `:next-id-of`, and `:index-of`.
-
-  ```clojure
-  {:children-by-parent {:doc ["a" "b"]
-                        "a" ["c"]}
-   :derived {:parent-of {"a" :doc
-                         "b" :doc
-                         "c" "a"}
-             :index-of {"a" 0
-                        "b" 1
-                        "c" 0}}}
-  ```
-
-- **The edit algebra is only three ops.** I explicitly removed extra structural primitives and kept `create-node`, `place`, and `update-node` as the whole mutation surface. See [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc), [`docs/GOALS.md`](docs/GOALS.md).
-- **Structural editing means tree edits, not visual whitespace.** `Tab` and `Shift+Tab` change parent-child relationships. Indent moves a block under its previous sibling; outdent moves it after its parent. In an outline, parentage carries meaning; changing one block's level should not silently reparent its siblings.
-
-  ```text
-  Before Shift+Tab:
-  Parent
-    Child A
-    Child B
-
-  After Shift+Tab on Child A:
-  Parent
-    Child B
-  Child A
-  ```
-
-- **A small mutation surface is easier to audit.** Undo, replay, tests, and logs all see the same three operations.
-- **Reads are centralized.** [`src/kernel/query.cljc`](src/kernel/query.cljc) is the explicit read surface.
-- **Session state moved out of the DB.** Cursor, selection, folding, autocomplete, and edit-mode state live in [`src/shell/view_state.cljs`](src/shell/view_state.cljs), while the persistent document graph stays in [`src/kernel/db.cljc`](src/kernel/db.cljc).
-- **The browser owns text while you type.** Evo does not write every keystroke into the DB; that path causes cursor and render churn. During edit mode, `contenteditable` owns the live text and the view-state buffer mirrors it. Evo commits back to the document graph at controlled boundaries. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
-
-## Prerequisites
-
-You need:
-
-- Node.js + npm
-- a JDK for `shadow-cljs`
-- Babashka if you want to use the `bb` task runner
+Requires Node.js + npm, a JDK for `shadow-cljs`, and Babashka if you want the `bb` tasks.
 
 macOS:
 
@@ -86,37 +35,31 @@ sudo apt install nodejs npm default-jdk
 # install babashka separately if you want bb tasks
 ```
 
-## Quick start
-
 ```bash
 npm install
 npm start             # clean build + watch CLJS + watch CSS
-# → http://localhost:8080/blocks.html
+# -> http://localhost:8080/blocks.html
 ```
 
 `npm run dev:fast` skips the clean step when caches are healthy. `npm run build` produces a release build into `public/js/blocks-ui`.
 
-## Principles
+## What it does
 
-- **Kernel is pure.** Zero imports from `shell/`, `components/`, `keymap/` in `src/kernel/`.
-- **Three-operation (ops) invariant.** DB mutations reduce to `create-node`, `place`, `update-node`.
-- **Data-driven dispatch.** Intents are EDN maps.
-- **Session state stays out of the DB.** Cursor, selection, folds, and edit mode live in the session atom.
-- **No universal editor primitive.** Evo abstracts over tree editing, not text, video, audio, CAD, or every creative domain.
+| Area | Support |
+| --- | --- |
+| Blocks | nesting, indent/outdent, drag/drop, fold |
+| Inline text | `**bold**`, `_italic_`, `==highlight==`, `~~strike~~` |
+| Links and refs | `[[Page Name]]`, `[label](target)`, `evo://page/<name>`, `evo://journal/<iso-date>` |
+| Media | images with paste upload, resize handles, lightbox |
+| Math | `$inline math$`, `$$block math$$` through MathJax |
+| Editor state | multi-select, undo/redo, autocomplete, backlinks |
+| Persistence | local folder, no server, no account |
 
-## Non-goals
+## Core contract
 
-- **Not a PKM product.** Structured note-taking is a low-ROI trap for this project. Evo cares about the outliner mechanics, not the life system around them.
-- **Not a packaged library.** There is no Clojars artifact and no API stability promise. Reuse the kernel if it fits, but this repo does not pretend to be a stable dependency.
-- **Not full editor parity.** Evo aims for a solid structural editing spec, not every feature from rich-text editors or PKM apps. I skipped block embeds and page embeds on purpose.
+Evo has one persistent document graph and one ephemeral session atom.
 
-## Spec as contract
-
-- [`src/kernel/db.cljc`](src/kernel/db.cljc) stores the persistent document graph.
-- [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc) owns the write path.
-- All durable changes reduce to three ops: `create-node`, `place`, `update-node`.
-- The transaction contract is: `normalize -> validate -> apply -> derive`.
-- [`src/shell/view_state.cljs`](src/shell/view_state.cljs) owns cursor, selection, folding, autocomplete, and edit mode. That state changes too often to belong in the replayable document DB.
+[`src/kernel/db.cljc`](src/kernel/db.cljc) stores the persistent document graph: nodes, parent-owned child vectors, and roots. The transaction pipeline attaches derived indexes after each write. [`src/shell/view_state.cljs`](src/shell/view_state.cljs) owns cursor, selection, folding, autocomplete, and edit mode. That state changes too often to belong in the replayable document DB.
 
 Canonical DB shape:
 
@@ -130,7 +73,7 @@ Canonical DB shape:
            :index-of {"a" 0}}}
 ```
 
-Kernel ops:
+All durable document changes reduce to three ops:
 
 ```clojure
 {:op :create-node :id "a" :type :block :props {:text "I am a node"}}
@@ -138,9 +81,13 @@ Kernel ops:
 {:op :update-node :id "a" :props {:text "being updated"}}
 ```
 
-### Derived indexes
+The transaction contract is:
 
-The DB stores only the source facts:
+```text
+normalize -> validate -> apply -> derive
+```
+
+The DB source facts are:
 
 ```clojure
 :nodes
@@ -148,7 +95,7 @@ The DB stores only the source facts:
 :roots
 ```
 
-The transaction pipeline derives the lookup maps after each write:
+The transaction pipeline derives lookup maps after each write:
 
 ```clojure
 :parent-of
@@ -158,8 +105,6 @@ The transaction pipeline derives the lookup maps after each write:
 ```
 
 Queries such as `(q/parent-of db id)` and `(q/next-sibling db id)` read those maps. Plugins can add derived views too; backlinks are implemented as one.
-
-### Plugins
 
 Plugins turn user intent into kernel ops.
 
@@ -186,6 +131,24 @@ That is the boundary:
 Plugins do not mutate the DB. They return data. The executor sends that data through the transaction pipeline and applies session updates separately.
 
 Page refs and backlinks stay out of the kernel. Plugins interpret the intent, emit normal ops, and add derived views when they need faster reads.
+
+Structural editing means tree edits, not visual whitespace. `Tab` and `Shift+Tab` change parent-child relationships. Indent moves a block under its previous sibling; outdent moves it after its parent. In an outline, parentage carries meaning; changing one block's level should not silently reparent its siblings.
+
+```text
+Before Shift+Tab:
+Parent
+  Child A
+  Child B
+
+After Shift+Tab on Child A:
+Parent
+  Child B
+Child A
+```
+
+`contenteditable` owns live text while you type. Evo commits text back to the document graph at controlled boundaries instead of writing every keystroke into the DB. That avoids cursor and render churn. Main implementation: [`src/components/block.cljs`](src/components/block.cljs) and [`src/shell/view_state.cljs`](src/shell/view_state.cljs).
+
+[`src/kernel/`](src/kernel/) must not import `src/shell/`, `src/components/`, or `src/keymap/`. Reads go through [`src/kernel/query.cljc`](src/kernel/query.cljc).
 
 ## Architecture
 
@@ -232,7 +195,7 @@ Two non-registry files matter:
 | [`src/shell/view_state.cljs`](src/shell/view_state.cljs) | cursor, selection, folds, edit mode, drag state |
 | [`src/shell/log.cljs`](src/shell/log.cljs) | append-only transaction journal |
 
-Undo, persistence, and replay all read the same transaction history. They are not separate subsystems.
+Undo, persistence, and replay all read the same transaction history.
 
 [`src/scripts/`](src/scripts/) handles edits where one step needs the result of a previous step.
 
@@ -293,11 +256,28 @@ npm run test:e2e:smoke        # Playwright smoke (~10s)
 npm run test:e2e              # full Playwright suite (~4min)
 ```
 
-## Notes and References
+## Non-goals
+
+- **Not a PKM product.** Structured note-taking is a low-ROI trap for this project. Evo cares about the outliner mechanics, not the life system around them.
+- **Not a packaged library.** There is no Clojars artifact and no API stability promise. Reuse the kernel if it fits, but this repo does not pretend to be a stable dependency.
+- **Not full editor parity.** Evo aims for a solid structural editing spec, not every feature from rich-text editors or PKM apps. I skipped block embeds and page embeds on purpose.
+- **No universal editor primitive.** Evo abstracts over tree editing, not text, video, audio, CAD, or every creative domain.
+
+## Related
+
+These comparisons are about architecture, not product scope:
+
+- **Logseq**: Closest on outliner semantics, but its core mutations ride on Datascript transactions and app-level outliner ops. Evo makes the mutation algebra itself smaller and more explicit.
+- **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and compiles plugin behavior down to three ops.
+- **Slate**: Also operation-based, but the mutable `Editor` object plus normalization/history plugins carry much of the behavior. Evo puts those semantics in a standalone kernel instead of editor-instance methods.
+- **Tiptap**: Mainly an extension layer over ProseMirror's transaction and plugin system. Evo owns the kernel directly instead of wrapping another editor core.
+- **xi-editor**: Strong core/plugin split too, but for a rope-based text engine with RPC plugins. Evo is a structural tree kernel first, not a text-buffer architecture.
+
+## Further reading
 
 I no longer think creative tools should evolve from raw event streams. Creative work depends on stable primitives. AI can patch small parts of a tool, but the outer loop still needs a designed interface, a clear domain model, and tests.
 
-### References
+These are the references behind that earlier interface experiment:
 
 - Ben Shneiderman, “Direct Manipulation: A Step Beyond Programming Languages” (1983)  
   https://www.cs.umd.edu/users/ben/papers/Shneiderman1983Direct.pdf
@@ -311,13 +291,3 @@ I no longer think creative tools should evolve from raw event streams. Creative 
   https://jnd.org/books/things-that-make-us-smart-defending-human-attributes-in-the-age-of-the-machine/
 - Donald T. Campbell, “Assessing the Impact of Planned Social Change” (1976/1979)  
   https://www.humanlearning.systems/uploads/08%20Assessing%20the%20Impact%20of%20Planned%20Social%20Change.pdf
-
-### Related
-
-These comparisons are about architecture, not product scope:
-
-- **Logseq**: Closest on outliner semantics, but its core mutations ride on Datascript transactions and app-level outliner ops. Evo makes the mutation algebra itself smaller and more explicit.
-- **ProseMirror**: Centers on schema, transactions, and `Step` transforms over a rich document model. Evo keeps a simpler tree DB and compiles plugin behavior down to three ops.
-- **Slate**: Also operation-based, but the center of gravity is the mutable `Editor` object plus normalization/history plugins. Evo puts those semantics in a standalone kernel instead of editor-instance methods.
-- **Tiptap**: Mainly an extension layer over ProseMirror's transaction and plugin system. Evo owns the kernel directly instead of wrapping another editor core.
-- **xi-editor**: Strong core/plugin split too, but for a rope-based text engine with RPC plugins. Evo is a structural tree kernel first, not a text-buffer architecture.
