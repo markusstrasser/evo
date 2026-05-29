@@ -600,5 +600,5 @@ commit-freely), autonomy boundaries (autonomous vs ask-first).
 
 ### Known Limitations
 
-- Render-registry (Tier 2 of the parser refactor plan) not yet built; per-format rendering currently lives in a `case` in `block.cljs`.
+- Render-registry (Tier 2 of the parser refactor) is built: inline AST nodes render via `shell.render-registry` (10 handlers; `block.cljs` delegates through `render-node`). Block-level format dispatch (heading/quote/embed) still lives in a `case` in `block.cljs`.
 - Library extractability is not measurable — gated on a concrete consumer requesting it.
