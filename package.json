@@ -35,9 +35,9 @@
     "test:all": "npm run test:unit && npm run test:e2e"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.13",
-    "@playwright/test": "^1.59.1",
-    "shadow-cljs": "^3.4.4"
+    "@biomejs/biome": "^2.4.16",
+    "@playwright/test": "^1.60.0",
+    "shadow-cljs": "^3.4.11"
   },
   "dependencies": {
     "turndown": "^7.2.4"
