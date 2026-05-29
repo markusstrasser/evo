@@ -209,3 +209,31 @@
     (let [{:keys [state details]} (sm/describe-state editing-session)]
       (is (= :editing state))
       (is (= "a" (:editing-block-id details))))))
+
+;; ── State Vocabulary Closure ─────────────────────────────────────────────────
+
+;; `current-state` is the SINGLE source of the interaction-state label — state
+;; is derived from session shape, never stored. This guard pins the two
+;; invariants the deleted transition table violated (it emitted a phantom :idle
+;; that current-state never returns):
+;;   1. current-state only ever returns members of `sm/states`.
+;;   2. every state declared in `sm/states` is reachable from some session
+;;      (no dead/phantom vocabulary entry).
+;; Exhaustive over the 3-bit decision space {editing?, selection?, focus?} —
+;; complete coverage, not a random sweep. This is also the sole consumer of
+;; `sm/states`, which keeps the canonical set load-bearing rather than decorative.
+(deftest state-vocabulary-closed-test
+  (let [sessions (for [editing?   [true false]
+                       selection? [true false]
+                       focus?     [true false]]
+                   {:ui {:editing-block-id (when editing? "a")}
+                    :selection {:nodes (if selection? #{"b"} #{})
+                                :focus (when focus? "b")}})
+        produced (map sm/current-state sessions)]
+    (testing "current-state never returns a state outside sm/states"
+      (doseq [s produced]
+        (is (contains? sm/states s)
+            (str "current-state produced " (pr-str s) ", absent from sm/states "
+                 (pr-str sm/states)))))
+    (testing "every declared state is reachable (no phantom, no dead entry)"
+      (is (= sm/states (set produced))))))
