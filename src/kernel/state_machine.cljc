@@ -1,5 +1,5 @@
 (ns kernel.state-machine
-  "Explicit UI state machine for Logseq parity.
+  "UI interaction state derivation and intent gating for Logseq parity.
 
    LOGSEQ_SPEC.md §1.1 defines mutually exclusive interaction states:
    - :background - No block focused, selected, or editing
@@ -7,22 +7,13 @@
    - :selection - One or more blocks selected (blue highlight)
    - :editing   - One block in edit mode (caret visible)
 
-   This module enforces state transitions and validates intents against current state.
-
-   State Machine:
-   ┌─────────────┐   click-block    ┌─────────────────┐
-   │   :idle     │ ───────────────▶ │   :selection    │
-   │ • no cursor │ ◀─────────────── │ • blue frames   │
-   │ • no blue   │  escape/bg-click │ • focus block   │
-   └──────┬──────┘                  └────────┬────────┘
-          │                                  │
-          │ type-to-edit / Cmd+Enter         │ Enter / start typing
-          ▼                                  ▼
-   ┌──────────────┐   Escape / blur   ┌─────────────────┐
-   │  :editing    │ ─────────────────▶│   :selection    │
-   │ • caret      │                   │                 │
-   │ • contentEdit│                   │                 │
-   └──────────────┘                   └─────────────────┘
+   The state is DERIVED from session shape (see `current-state`), never stored
+   as its own field. There is no transition table: state is a pure function of
+   {editing-block-id, selection, focus}. This module's job is two things:
+     1. Label the current interaction state from the session.
+     2. Decide whether an intent is allowed to run in that state, via each
+        intent's registered :allowed-states plus the `idle-guard` deny-list
+        (Enter/Backspace/Tab/etc. no-op in true :background, matching Logseq).
 
    Usage:
      (require '[kernel.state-machine :as sm])
@@ -69,35 +60,6 @@
       ;; Intent has explicit :allowed-states (may be nil for universal or a set)
       registry-states)))
 
-;; ── State Transitions ───────────────────────────────────────────────────────
-
-(def transitions
-  "Valid state transitions: {from-state {trigger-intent to-state}}.
-
-   Used to validate that state changes follow the Logseq contract."
-  {:background
-   {:selection :selection ; Click block
-    :arrow-up :selection ; Select last visible block
-    :arrow-down :selection} ; Select first visible block
-
-   :focused
-   {:selection :selection
-    :enter-edit :editing
-    :enter-edit-selected :editing
-    :enter-edit-with-char :editing
-    :background-click :background}
-
-   :selection
-   {:selection :selection ; Extend/change selection
-    :enter-edit :editing ; Enter on selected block
-    :exit-edit :idle ; Escape clears selection → idle
-    :background-click :idle} ; Click on empty space
-
-   :editing
-   {:exit-edit :selection ; Escape → select the edited block
-    :selection :selection ; Shift+Arrow extends selection
-    :blur :idle}}) ; Lose focus → idle
-
 ;; ── State Query Functions ───────────────────────────────────────────────────
 
 (defn current-state
@@ -130,13 +92,8 @@
   [session]
   (= :selection (current-state session)))
 
-(defn in-idle-state?
-  "Check if currently in true background/idle state."
-  [session]
-  (= :background (current-state session)))
-
 (defn in-background-state?
-  "Check if currently in background state."
+  "Check if currently in background state (nothing focused, selected, or editing)."
   [session]
   (= :background (current-state session)))
 
@@ -159,7 +116,7 @@
    Example:
      (intent-allowed? session {:type :enter-edit :block-id \"a\"})
      ;=> true (if in :selection state)
-     ;=> false (if in :idle or :editing state)"
+     ;=> false (if in :background or :editing state)"
   [session {:keys [type] :as _intent}]
   (let [requirements (get-intent-requirements type)
         state (current-state session)]
@@ -202,24 +159,10 @@
        :current-state (current-state session)
        :allowed-states requirements})))
 
-;; ── Transition Helpers ──────────────────────────────────────────────────────
-
-(defn get-next-state
-  "Get the state that would result from an intent/trigger.
-
-   Returns nil if no transition defined (intent doesn't change state)."
-  [from-state trigger]
-  (get-in transitions [from-state trigger]))
-
-(defn transition-valid?
-  "Check if a state transition is valid."
-  [from-state trigger]
-  (contains? (get transitions from-state) trigger))
-
-;; ── Idle State Guards ───────────────────────────────────────────────────────
+;; ── Background State Guards ──────────────────────────────────────────────────
 
 (def idle-blocked-intents
-  "Intents that should be no-ops when in idle state.
+  "Intents that should be no-ops when in :background state.
 
    LOGSEQ_SPEC.md §1.1: In true background state,
    Enter/Backspace/Tab/Shift+Enter/Shift+Arrow do nothing - Logseq never
@@ -237,13 +180,13 @@
     :exit-edit}) ; Not editing
 
 (defn idle-guard
-  "Check if intent should be blocked due to idle state.
+  "Check if intent should be blocked due to :background state.
 
    Returns true if intent should be blocked (no-op).
 
    LOGSEQ PARITY: In background state, most editing intents are no-ops."
   [session intent]
-  (and (in-idle-state? session)
+  (and (in-background-state? session)
        (contains? idle-blocked-intents (:type intent))))
 
 ;; ── REPL Helpers ────────────────────────────────────────────────────────────
@@ -257,7 +200,6 @@
         focus-id (get-in session [:selection :focus])]
     {:state state
      :description (case state
-                    :idle "No block selected or editing"
                     :background "No block selected, focused, or editing"
                     :focused (str "Focused block: " focus-id)
                     :selection (str "Selection: " (count selection-nodes)

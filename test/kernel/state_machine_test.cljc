@@ -1,8 +1,8 @@
 (ns kernel.state-machine-test
-  "Tests for UI state machine (Logseq parity).
+  "Tests for UI interaction-state derivation and intent gating (Logseq parity).
 
    These are pure unit tests - no browser needed.
-   Tests state transitions and intent validation against the state machine."
+   Tests `current-state` derivation and intent gating (:allowed-states + idle-guard)."
   (:require [clojure.test :refer [deftest testing is use-fixtures]]
             [harness.intent-fixtures :as intent-fixtures]
             [kernel.state-machine :as sm]))
@@ -54,7 +54,6 @@
 (deftest ^{:fr/ids #{:fr.state/selection-clears-edit}} current-state-test
   (testing "Detects background state"
     (is (= :background (sm/current-state idle-session)))
-    (is (sm/in-idle-state? idle-session))
     (is (sm/in-background-state? idle-session))
     (is (not (sm/in-selection-state? idle-session)))
     (is (not (sm/in-editing-state? idle-session))))
@@ -62,20 +61,20 @@
   (testing "Detects focused state"
     (is (= :focused (sm/current-state focused-session)))
     (is (sm/in-focused-state? focused-session))
-    (is (not (sm/in-idle-state? focused-session)))
+    (is (not (sm/in-background-state? focused-session)))
     (is (not (sm/in-selection-state? focused-session)))
     (is (not (sm/in-editing-state? focused-session))))
 
   (testing "Detects selection state"
     (is (= :selection (sm/current-state selection-session)))
     (is (sm/in-selection-state? selection-session))
-    (is (not (sm/in-idle-state? selection-session)))
+    (is (not (sm/in-background-state? selection-session)))
     (is (not (sm/in-editing-state? selection-session))))
 
   (testing "Detects editing state"
     (is (= :editing (sm/current-state editing-session)))
     (is (sm/in-editing-state? editing-session))
-    (is (not (sm/in-idle-state? editing-session)))
+    (is (not (sm/in-background-state? editing-session)))
     (is (not (sm/in-selection-state? editing-session))))
 
   (testing "Editing takes precedence over selection"
@@ -210,34 +209,3 @@
     (let [{:keys [state details]} (sm/describe-state editing-session)]
       (is (= :editing state))
       (is (= "a" (:editing-block-id details))))))
-
-;; ── Transition Tests ────────────────────────────────────────────────────────
-
-(deftest transition-test
-  (testing "Valid transitions from background"
-    (is (= :selection (sm/get-next-state :background :selection)))
-    (is (= :selection (sm/get-next-state :background :arrow-up)))
-    (is (= :selection (sm/get-next-state :background :arrow-down))))
-
-  (testing "Valid transitions from focused"
-    (is (= :editing (sm/get-next-state :focused :enter-edit)))
-    (is (= :editing (sm/get-next-state :focused :enter-edit-with-char)))
-    (is (= :background (sm/get-next-state :focused :background-click))))
-
-  (testing "Valid transitions from selection"
-    (is (= :selection (sm/get-next-state :selection :selection)))
-    (is (= :editing (sm/get-next-state :selection :enter-edit)))
-    (is (= :idle (sm/get-next-state :selection :exit-edit)))
-    (is (= :idle (sm/get-next-state :selection :background-click))))
-
-  (testing "Valid transitions from editing"
-    (is (= :selection (sm/get-next-state :editing :exit-edit)))
-    (is (= :selection (sm/get-next-state :editing :selection)))
-    (is (= :idle (sm/get-next-state :editing :blur))))
-
-  (testing "Invalid transitions return nil"
-    ;; Can't enter edit from idle directly (need selection first)
-    ;; Actually, looking at the transitions, this IS allowed via type-to-edit
-    ;; Let me check invalid ones
-    (is (nil? (sm/get-next-state :background :blur)))
-    (is (nil? (sm/get-next-state :selection :blur)))))
