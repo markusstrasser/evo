@@ -26,7 +26,7 @@ Do NOT: add new outliner features, chase Logseq parity, or build speculative inf
 
 ## Protected Files (require human approval)
 
-- `resources/specs.edn` — FR registry (44 FRs)
+- `resources/specs.edn` — FR registry (50 FRs)
 - `resources/failure_modes.edn` — known bugs/anti-patterns
 - Constitution and GOALS sections in CLAUDE.md
 - Golden test fixtures (`tests/fixtures/golden_*`)
