@@ -53,7 +53,7 @@
    LOGSEQ PARITY: When Enter at end of block with expanded children,
    new block becomes first child instead of sibling."
   [db session block-id]
-  (and (seq (get-in db [:children-by-parent block-id]))
+  (and (seq (q/children db block-id))
        (not (q/folded? session block-id))))
 
 (defn- list-marker?
@@ -216,7 +216,7 @@
                                            curr-text (get-block-text db block-id intent)
                                            next-text (get-block-text db next-id nil)
                                            merged-text (str curr-text next-text)
-                                           next-children (get-in db [:children-by-parent next-id] [])]
+                                           next-children (q/children db next-id)]
                                        (when next-id
                                          (let [ops (vec
                                                     (concat

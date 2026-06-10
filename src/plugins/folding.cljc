@@ -19,12 +19,12 @@
 (defn- has-children?
   "Check if a block has children."
   [db block-id]
-  (seq (get-in db [:children-by-parent block-id])))
+  (seq (q/children db block-id)))
 
 (defn- all-descendant-ids
   "Get all descendant IDs of a block (DFS traversal)."
   [db block-id]
-  (let [children (get-in db [:children-by-parent block-id] [])]
+  (let [children (q/children db block-id)]
     (into children (mapcat #(all-descendant-ids db %) children))))
 
 ;; ── Query API (Public) ────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@
                                            new-folded (if any-folded?
                                                         (coll/remove-all current-folded all-ids)
                                                         (coll/add-all current-folded
-                                                                      (get-in db [:children-by-parent root-id])))]
+                                                                      (q/children db root-id)))]
                                        {:session-updates {:ui {:folded new-folded}}}))})
 
 ;; ── Doc-mode Intent ──────────────────────────────────────────────────────────

@@ -191,7 +191,7 @@
    LOGSEQ PARITY: Rejects non-consecutive selections."
   [db ids]
   (when-let [parent (same-parent? db ids)]
-    (let [children (get-in db [:children-by-parent parent] [])
+    (let [children (q/children db parent)
           id-set (set ids)
           indices (keep-indexed (fn [idx child] (when (id-set child) idx)) children)]
       ;; Either < 2 elements, or all indices consecutive

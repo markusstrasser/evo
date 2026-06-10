@@ -207,7 +207,7 @@
                                            cursor-at #?(:cljs (.-length target-text)
                                                         :clj (count target-text))
                                            ;; Get children of block being deleted so they can be re-parented
-                                           curr-children (get-in db [:children-by-parent block-id] [])]
+                                           curr-children (q/children db block-id)]
                                        (when target-id
                                          {:ops (vec (concat
                                                      ;; Update target block with merged text
@@ -265,13 +265,13 @@
 
                                          ;; At end - merge with next (child-first priority)
                                          at-end?
-                                         (let [first-child (first (get-in db [:children-by-parent block-id]))
+                                         (let [first-child (first (q/children db block-id))
                                                next-sibling (get-in db [:derived :next-id-of block-id])
                                                target-id (or first-child next-sibling)]
                                            (when target-id
                                              (let [target-text (q/block-text db target-id)
                                                    merged-text (str text target-text)
-                                                   target-children (get-in db [:children-by-parent target-id] [])]
+                                                   target-children (q/children db target-id)]
                                                {:ops (vec (concat
                                                            [{:op :update-node :id block-id :props {:text merged-text}}]
                                                            (map (fn [child-id]
