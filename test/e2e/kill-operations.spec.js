@@ -58,30 +58,6 @@ test.describe('Kill Operations', () => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   });
 
-  test.describe('Kill to End (Cmd+K)', () => {
-    test('kills text from cursor to end and copies to clipboard', async ({ page }) => {
-      await loadKillFixture(page, 'Hello World');
-      await enterEditMode(page, blockId);
-
-      await dispatchKill(page, 'kill-to-end', 6);
-
-      await expect.poll(() => dbBlockText(page)).toBe('Hello ');
-      const clip = await lastCopy(page);
-      expect(clip?.text).toBe('World');
-      expect(clip?.type).toBe('kill');
-    });
-
-    test('killing empty suffix copies empty string', async ({ page }) => {
-      await loadKillFixture(page, 'Hello');
-      await enterEditMode(page, blockId);
-
-      await dispatchKill(page, 'kill-to-end', 5);
-
-      await expect.poll(() => dbBlockText(page)).toBe('Hello');
-      expect((await lastCopy(page))?.text).toBe('');
-    });
-  });
-
   test.describe('Kill to Beginning (Cmd+U)', () => {
     test('kills text from beginning to cursor and copies to clipboard', async ({ page }) => {
       await loadKillFixture(page, 'Hello World');
@@ -90,7 +66,9 @@ test.describe('Kill Operations', () => {
       await dispatchKill(page, 'kill-to-beginning', 6);
 
       await expect.poll(() => dbBlockText(page)).toBe('World');
-      expect((await lastCopy(page))?.text).toBe('Hello ');
+      const clip = await lastCopy(page);
+      expect(clip?.text).toBe('Hello ');
+      expect(clip?.type).toBe('kill');
     });
 
     test('keyboard shortcut uses the live DOM cursor position', async ({ page }) => {
@@ -117,17 +95,6 @@ test.describe('Kill Operations', () => {
     });
   });
 
-  test.describe('Kill Word Backward (Alt+Delete)', () => {
-    test('kills previous word and copies to clipboard', async ({ page }) => {
-      await loadKillFixture(page, 'Hello World Test');
-      await enterEditMode(page, blockId);
-
-      await dispatchKill(page, 'kill-word-backward', 16);
-
-      await expect.poll(() => dbBlockText(page)).toBe('Hello World ');
-      expect((await lastCopy(page))?.text).toBe('Test');
-    });
-  });
 });
 
 test.describe('DEBUG API Verification', () => {

@@ -454,6 +454,8 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 **Smart Editing:**
 | Intent | Description |
 |--------|-------------|
+| `:insert-paired-char` | Insert character with auto-closing pair. If openin... |
+| `:delete-with-pair-check` | Delete character, removing paired closing char if ... |
 | `:merge-with-next` | Merge block with next sibling, delete next block. |
 | `:toggle-checkbox` | Toggle checkbox state in block text ([ ] <-> [x]). |
 | `:context-aware-enter` | Handle Enter key with full context awareness. Uses... |
@@ -480,9 +482,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:move-cursor-backward-word` | Move cursor to start of previous word (Alt+B / Ctr... |
 | `:clear-block-content` | Clear entire block content (Cmd+L). Sets text to e... |
 | `:kill-to-beginning` | Kill from cursor to beginning of block (Cmd+U). De... |
-| `:kill-to-end` | Kill from cursor to end of block (Cmd+K). Deletes ... |
 | `:kill-word-forward` | Kill next word (Cmd+Delete). Deletes from cursor t... |
-| `:kill-word-backward` | Kill previous word (Alt+Delete / Option+Delete on ... |
 
 
 **Folding:**

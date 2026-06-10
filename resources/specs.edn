@@ -796,7 +796,7 @@
     :expect {:tree [:doc [:a "Hello World" {:cursor 11}]]}}}}
 
  :fr.edit/kill-operations
- {:desc "Ctrl+K/U kill to end/beginning of line"
+ {:desc "Ctrl+U / Ctrl+W kill to beginning of line / next word"
   :priority :medium
   :type :intent-level
   :status :active
@@ -806,10 +806,7 @@
   :level :gesture
 
   :behaviors
-  [{:context "Cmd+K in edit mode"
-    :behavior "Delete text from cursor to end of block"
-    :scenario :KILL-TO-END}
-   {:context "Cmd+U in edit mode"
+  [{:context "Cmd+U in edit mode"
     :behavior "Delete text from start of block to cursor"
     :scenario :KILL-TO-START}
    {:context "Cmd+Delete in edit mode"
@@ -817,14 +814,7 @@
     :scenario :KILL-WORD-FORWARD}]
 
   :scenarios
-  {:KILL-TO-END
-   {:name "Cmd+K kills text to end of block"
-    :tags #{:happy-path}
-    :setup {:tree [:doc [:a "Hello World" {:cursor 5}]]}
-    :action {:type :kill-to-end :block-id "a"}
-    :expect {:tree [:doc [:a "Hello" {:cursor 5}]]}}
-
-   :KILL-TO-START
+  {:KILL-TO-START
    {:name "Cmd+U kills text from start to cursor"
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "Hello World" {:cursor 6}]]}
@@ -883,7 +873,7 @@
  {:desc "Auto-insert closing bracket/quote and place cursor inside"
   :priority :medium
   :type :intent-level
-  :status :active
+  :status :deprecated
   :version 1
   :tags [:editing :context-editing]
   :spec-ref "LOGSEQ_SPEC.md §4 FR-Edit-07"

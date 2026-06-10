@@ -68,8 +68,9 @@
              [{:key "u" :mod true} {:type :kill-to-beginning :block-id :editing-block-id :cursor-pos :cursor-pos}]
                  ;; Ctrl+W → kill word forward
              [{:key "w" :mod true} {:type :kill-word-forward :block-id :editing-block-id :cursor-pos :cursor-pos}]
-                 ;; Note: Ctrl+K (kill to end) is NOT bound on macOS in Logseq
-                 ;; Note: Alt+W (kill word backward) is NOT bound on macOS in Logseq
+                 ;; Note: Ctrl+K (kill to end) and Alt+W (kill word backward) are NOT
+                 ;; bound on macOS in Logseq; we stay with the Logseq keymap (owner
+                 ;; call 2026-06-10), so those two intents were deleted outright.
 
                  ;; === Navigation within Editing (Arrow keys) ===
                  ;; NOTE: ArrowUp/ArrowDown are NOT bound in keymap
