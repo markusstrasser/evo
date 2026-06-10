@@ -131,18 +131,24 @@
                  :notes (str "State machine blocked: "
                              (:type intent) " not allowed in "
                              (sm/current-state session) " state")}]
-                 :session-updates nil}
+                 :session-updates nil
+                 :effects nil}
 
        ;; Intent allowed - proceed with dispatch
-       (let [{handler-ops :ops session-updates :session-updates} (intent/apply-intent db session intent)
+       (let [{handler-ops :ops
+              session-updates :session-updates
+              handler-effects :effects} (intent/apply-intent db session intent)
              result (tx/interpret db handler-ops opts)
-             session-updates (when (empty? (:issues result))
-                               session-updates)]
+             ok? (empty? (:issues result))
+             ;; Same guard for both channels: a failed transaction commits
+             ;; neither session deltas nor world effects.
+             session-updates (when ok? session-updates)
+             effects (when ok? handler-effects)]
          #?(:clj (journal-tx! intent (:ops result)))
          ;; DB ops go through normal transaction pipeline.
-         ;; Session updates + materialized ops are returned for callers
-         ;; (shell/tests) that want to record history.
-         (assoc result :session-updates session-updates))))))
+         ;; Session updates + effects + materialized ops are returned for
+         ;; callers (shell/tests) that want to record history / run effects.
+         (assoc result :session-updates session-updates :effects effects))))))
 
 (defn dispatch-logged
   "Dispatch an intent and append the resulting transaction to a log.
@@ -222,7 +228,7 @@
   ([db session intent]
    (dispatch db session intent nil))
   ([db session intent opts]
-   (select-keys (dispatch* db session intent opts) [:db :ops :issues :session-updates])))
+   (select-keys (dispatch* db session intent opts) [:db :ops :issues :session-updates :effects])))
 
 (defn dispatch!
   "Dispatch an intent, throwing on validation failure.

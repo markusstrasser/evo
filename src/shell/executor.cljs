@@ -77,31 +77,28 @@
                              intent-map)]
     [intent-with-buffer editing-block-id buffer-text]))
 
-(defn- clipboard-op-type
-  "Determine clipboard operation type from intent type.
+;; ── Effect Interpreter ────────────────────────────────────────────────────────
 
-   Returns: :copy | :cut | :kill | :unknown"
-  [intent-type]
-  (cond
-    (#{:copy-block :copy-selected :copy-block-reference} intent-type) :copy
-    (#{:cut-block :cut-selected} intent-type) :cut
-    (#{:kill-to-end :kill-to-beginning
-       :kill-word-forward :kill-word-backward} intent-type) :kill
-    :else :unknown))
+(defn- execute-effects!
+  "Interpret declarative effects returned by intent handlers.
 
-;; ── Side-Effect Helpers ───────────────────────────────────────────────────────
+   Effects are data — [[effect-kw arg-map] ...] — produced by pure
+   handlers and executed only here, after state is committed. This
+   mirrors ops: handlers describe, edges interpret. Plain case dispatch,
+   not a registry: two effects don't justify the spec surface
+   (cross-model convergent, 2026-06-10)."
+  [effects]
+  (doseq [[effect-kw args] effects]
+    (case effect-kw
+      :clipboard/write
+      (let [{:keys [text blocks op-type]} args]
+        (write-to-clipboard! text)
+        (dev/record-clipboard-op! op-type text (mapv :id blocks)))
 
-(defn- handle-clipboard-copy!
-  "Write clipboard text to system clipboard and record for debugging.
+      :storage/delete-page-file
+      (storage/delete-page-file! nil (:title args))
 
-   Extracts block IDs from clipboard-blocks and determines operation type."
-  [session-updates intent-type]
-  (when-let [clipboard-text (get-in session-updates [:ui :clipboard-text])]
-    (write-to-clipboard! clipboard-text)
-    (let [clipboard-blocks (get-in session-updates [:ui :clipboard-blocks])
-          block-ids (mapv :id clipboard-blocks)
-          op-type (clipboard-op-type intent-type)]
-      (dev/record-clipboard-op! op-type clipboard-text block-ids))))
+      (js/console.warn "Unknown effect (ignored):" (pr-str effect-kw)))))
 
 (defn- update-navigation-history!
   "Track page changes and journals view for browser-style back/forward navigation.
@@ -126,14 +123,6 @@
     (when (and journals-view? (not skip-history?))
       (vs/push-history! :journals old-page))))
 
-(defn- handle-storage-cleanup!
-  "Delete old markdown file when page is renamed.
-
-   Prevents duplicate pages from old .md files being reloaded on next session."
-  [session-updates]
-  (when-let [old-title (get-in session-updates [:storage :delete-old-file])]
-    (storage/delete-page-file! nil old-title)))
-
 (defn- sync-url-for-page!
   "Update browser URL when page changes.
 
@@ -157,12 +146,11 @@
    4. Report validation issues
    5. Apply session-updates (BEFORE db, for on-mount hooks)
    6. Update navigation history
-   7. Handle clipboard operations
-   8. Clean up storage
-   9. Reset db (triggers re-render)
-   10. Clear buffer
-   11. Assert derived indexes are fresh
-   12. Log to devtools
+   7. Execute declarative effects (clipboard, storage cleanup)
+   8. Reset db (triggers re-render)
+   9. Clear buffer
+   10. Assert derived indexes are fresh
+   11. Log to devtools
 
    Args:
      !db        - DB atom
@@ -178,10 +166,10 @@
         intent-type (:type intent-map)
         current-session (vs/get-view-state)
         db-before @!db
-        {:keys [db ops issues session-updates]} (api/dispatch db-before
-                                                              current-session
-                                                              intent-with-buffer
-                                                              {:tx/now-ms (now-ms)})
+        {:keys [db ops issues session-updates effects]} (api/dispatch db-before
+                                                                      current-session
+                                                                      intent-with-buffer
+                                                                      {:tx/now-ms (now-ms)})
         db-after db
         should-log? (not (contains? no-log-intents intent-type))]
 
@@ -212,11 +200,9 @@
                (not= db-before db-after))
       (slog/append-and-advance! intent-map ops current-session (vs/get-view-state)))
 
-    ;; Handle clipboard operations
-    (handle-clipboard-copy! session-updates intent-type)
-
-    ;; Clean up storage (delete renamed page files)
-    (handle-storage-cleanup! session-updates)
+    ;; Execute declarative effects (system clipboard, storage cleanup).
+    ;; Effects are nil when validation failed — same guard as session-updates.
+    (execute-effects! effects)
 
     ;; Apply DB changes ONLY IF changed (triggers re-render + debounced save).
     ;; Structural not= rather than identical?: tx/interpret preserves object

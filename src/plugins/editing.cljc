@@ -349,7 +349,9 @@
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                         :session-updates (helpers/merge-session-updates
                                                           (helpers/cursor-position-update 0)
-                                                          {:ui {:clipboard-text killed-text}})}))})
+                                                          {:ui {:clipboard-text killed-text}})
+                                        :effects [[:clipboard/write {:text killed-text
+                                                                     :op-type :kill}]]}))})
 
 (intent/register-intent! :kill-to-end
                          {:doc "Kill from cursor to end of block (Cmd+K).
@@ -365,7 +367,9 @@
                                            killed-text (subs block-text cursor-pos)
                                            new-text (subs block-text 0 cursor-pos)]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                        :session-updates {:ui {:clipboard-text killed-text}}}))})
+                                        :session-updates {:ui {:clipboard-text killed-text}}
+                                        :effects [[:clipboard/write {:text killed-text
+                                                                     :op-type :kill}]]}))})
 
 (intent/register-intent! :kill-word-forward
                          {:doc "Kill next word (Cmd+Delete).
@@ -385,7 +389,9 @@
                                            new-text (str (subs block-text 0 cursor-pos)
                                                          (subs block-text next-pos))]
                                        {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                        :session-updates {:ui {:clipboard-text killed-text}}}))})
+                                        :session-updates {:ui {:clipboard-text killed-text}}
+                                        :effects [[:clipboard/write {:text killed-text
+                                                                     :op-type :kill}]]}))})
 
 (intent/register-intent! :kill-word-backward
                          {:doc "Kill previous word (Alt+Delete / Option+Delete on Mac).
@@ -406,7 +412,9 @@
                                            {:ops [{:op :update-node :id block-id :props {:text new-text}}]
                                             :session-updates (helpers/merge-session-updates
                                                               (helpers/cursor-position-update prev-pos)
-                                                              {:ui {:clipboard-text killed-text}})}))))})
+                                                              {:ui {:clipboard-text killed-text}})
+                                            :effects [[:clipboard/write {:text killed-text
+                                                                         :op-type :kill}]]}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds
