@@ -445,6 +445,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 |--------|-------------|
 | `:paste-text` | Paste text into editing block (Logseq parity). Det... |
 | `:copy-block` | Copy single block content to clipboard. |
+| `:copy-block-reference` | Copy a block reference `((id))` to the system clip... |
 | `:copy-selected` | Copy selected blocks with hierarchy preservation. ... |
 | `:cut-block` | Cut single block (copy + move to trash). |
 | `:cut-selected` | Cut selected blocks with hierarchy preservation. L... |
@@ -453,13 +454,8 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 **Smart Editing:**
 | Intent | Description |
 |--------|-------------|
-| `:insert-paired-char` | Insert character with auto-closing pair. If openin... |
-| `:delete-with-pair-check` | Delete character, removing paired closing char if ... |
 | `:merge-with-next` | Merge block with next sibling, delete next block. |
-| `:unformat-empty-list` | Remove list marker from empty list item (becomes p... |
-| `:split-with-list-increment` | Split block at cursor, incrementing numbered list ... |
 | `:toggle-checkbox` | Toggle checkbox state in block text ([ ] <-> [x]). |
-| `:smart-split` | Context-aware block splitting on Enter (Logseq par... |
 | `:context-aware-enter` | Handle Enter key with full context awareness. Uses... |
 
 
@@ -500,6 +496,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:toggle-doc-mode` | Toggle doc-mode (swap Enter/Shift+Enter behavior).... |
 | `:toggle-sidebar` | Toggle left sidebar (pages) visibility. Bound to C... |
 | `:toggle-hotkeys` | Toggle hotkeys reference panel visibility. Bound t... |
+| `:toggle-reading-mode` | Toggle reading/focus mode (bigger font, hide sideb... |
 | `:toggle-quick-switcher` | Toggle quick switcher (page search) visibility. Bo... |
 
 
@@ -516,6 +513,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 | `:switch-page` | Switch to a specific page by ID |
 | `:navigate-to-page` | Navigate to page by name (from page ref) |
 | `:create-page` | Create a new page with given title |
+| `:ensure-page-exists` | Create the named page if missing — no navigation, ... |
 | `:delete-page` | Delete a page and all its contents |
 | `:rename-page` | Rename a page by updating its title |
 | `:restore-page` | Restore a page from trash (undo delete) |
@@ -561,7 +559,7 @@ Intents are dispatched via `api/dispatch`. Grouped by plugin:
 **Text Formatting:**
 | Intent | Description |
 |--------|-------------|
-| `:format-selection` | Format selected text with markdown markers (bold, ... |
+| `:format-selection` | Format selected text with markdown markers. Toggle... |
 
 
 ---

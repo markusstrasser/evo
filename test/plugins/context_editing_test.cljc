@@ -85,95 +85,6 @@
         (is (= "Second blockThird block" (get-in db' [:nodes "b" :props :text])))
         (is (= :trash (q/parent-of db' "d")))))))
 
-;; ── Unformat Empty List Tests ─────────────────────────────────────────────────
-
-(deftest unformat-empty-list-test
-  (let [db (:db (tx/interpret (db/empty-db)
-                              [{:op :create-node :id "a" :type :block :props {:text "- "}}
-                               {:op :create-node :id "b" :type :block :props {:text "* "}}
-                               {:op :create-node :id "c" :type :block :props {:text "1. "}}
-                               {:op :create-node :id "d" :type :block :props {:text "- item"}}
-                               {:op :create-node :id "e" :type :block :props {:text "plain"}}
-                               {:op :place :id "a" :under :doc :at :last}
-                               {:op :place :id "b" :under :doc :at :last}
-                               {:op :place :id "c" :under :doc :at :last}
-                               {:op :place :id "d" :under :doc :at :last}
-                               {:op :place :id "e" :under :doc :at :last}]))]
-
-    (testing "unformat dash marker"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "a"})
-            db' (:db (tx/interpret db ops))]
-        (is (= "" (get-in db' [:nodes "a" :props :text])))))
-
-    (testing "unformat asterisk marker"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "b"})
-            db' (:db (tx/interpret db ops))]
-        (is (= "" (get-in db' [:nodes "b" :props :text])))))
-
-    (testing "unformat numbered marker"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "c"})
-            db' (:db (tx/interpret db ops))]
-        (is (= "" (get-in db' [:nodes "c" :props :text])))))
-
-    (testing "non-empty list item unchanged"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "d"})]
-        (is (empty? ops))))
-
-    (testing "plain text unchanged"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "e"})]
-        (is (empty? ops))))))
-
-;; ── Split with List Increment Tests ──────────────────────────────────────────
-
-(deftest split-with-list-increment-test
-  (let [db (:db (tx/interpret (db/empty-db)
-                              [{:op :create-node :id "a" :type :block :props {:text "1. First item"}}
-                               {:op :create-node :id "b" :type :block :props {:text "- Plain item"}}
-                               {:op :create-node :id "c" :type :block :props {:text "10. Tenth item"}}
-                               {:op :place :id "a" :under :doc :at :last}
-                               {:op :place :id "b" :under :doc :at :last}
-                               {:op :place :id "c" :under :doc :at :last}]))]
-
-    (testing "split numbered list increments number"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                       :block-id "a"
-                                                       :cursor-pos 9}) ;; After "1. First "
-            db' (:db (tx/interpret db ops))
-            children (q/children db' :doc)
-            new-block-id (second children)]
-        (is (= "1. First " (get-in db' [:nodes "a" :props :text])))
-        (is (= "2. item" (get-in db' [:nodes new-block-id :props :text])))))
-
-    (testing "split plain list item doesn't add number"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                       :block-id "b"
-                                                       :cursor-pos 8}) ;; After "- Plain "
-            db' (:db (tx/interpret db ops))
-            children (q/children db' :doc)
-            new-block-id (first (remove #{"a" "b" "c"} children))]
-        (is (= "- Plain " (get-in db' [:nodes "b" :props :text])))
-        (is (= "item" (get-in db' [:nodes new-block-id :props :text])))))
-
-    (testing "split multi-digit numbered list"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                       :block-id "c"
-                                                       :cursor-pos 10}) ;; After "10. Tenth "
-            db' (:db (tx/interpret db ops))
-            children (q/children db' :doc)
-            new-block-id (first (remove #{"a" "b" "c"} children))]
-        (is (= "10. Tenth " (get-in db' [:nodes "c" :props :text])))
-        (is (= "11. item" (get-in db' [:nodes new-block-id :props :text])))))
-
-    (testing "split at beginning of numbered list"
-      (let [{:keys [ops]} (intent/apply-intent db nil {:type :split-with-list-increment
-                                                       :block-id "a"
-                                                       :cursor-pos 0})
-            db' (:db (tx/interpret db ops))
-            children (q/children db' :doc)
-            new-block-id (second children)]
-        (is (= "" (get-in db' [:nodes "a" :props :text])))
-        (is (= "2. 1. First item" (get-in db' [:nodes new-block-id :props :text])))))))
-
 ;; ── Toggle Checkbox Tests ─────────────────────────────────────────────────────
 
 (deftest toggle-checkbox-test
@@ -510,7 +421,7 @@
 ;; ── Integration Tests ─────────────────────────────────────────────────────────
 
 (deftest context-editing-integration
-  (testing "merge and split round-trip"
+  (testing "merge and split round-trip (via the live Enter intent)"
     (let [db (:db (tx/interpret (db/empty-db)
                                 [{:op :create-node :id "a" :type :block :props {:text "Hello"}}
                                  {:op :create-node :id "b" :type :block :props {:text "World"}}
@@ -519,8 +430,8 @@
           ;; Merge
           {:keys [ops]} (intent/apply-intent db nil {:type :merge-with-next :block-id "a"})
           db' (:db (tx/interpret db ops))
-          ;; Split back
-          {:keys [ops]} (intent/apply-intent db' nil {:type :split-with-list-increment
+          ;; Split back: plain-text Enter at cursor 5 ("Hello|World")
+          {:keys [ops]} (intent/apply-intent db' nil {:type :context-aware-enter
                                                       :block-id "a"
                                                       :cursor-pos 5})
           db'' (:db (tx/interpret db' ops))
@@ -529,22 +440,26 @@
       (is (= "Hello" (get-in db'' [:nodes "a" :props :text])))
       (is (= "World" (get-in db'' [:nodes new-id :props :text])))))
 
-  (testing "list increment after unformat"
+  (testing "empty-list Enter unformats AND creates peer, then plain split works"
     (let [db (:db (tx/interpret (db/empty-db)
                                 [{:op :create-node :id "a" :type :block :props {:text "1. "}}
                                  {:op :place :id "a" :under :doc :at :last}]))
-          ;; Unformat
-          {:keys [ops]} (intent/apply-intent db nil {:type :unformat-empty-list :block-id "a"})
+          ;; Enter on empty numbered list: LOGSEQ PARITY single-step —
+          ;; unformat current AND create a peer block
+          {:keys [ops]} (intent/apply-intent db nil {:type :context-aware-enter
+                                                     :block-id "a"
+                                                     :cursor-pos 3})
           db' (:db (tx/interpret db ops))
-          ;; Add new content and split
+          _ (is (= "" (get-in db' [:nodes "a" :props :text])) "marker removed")
+          _ (is (= 2 (count (q/children db' :doc))) "peer block created")
+          ;; Rewrite content and split: no number prefix since 'a' is plain now
           db'' (:db (tx/interpret db' [{:op :update-node :id "a" :props {:text "New content"}}]))
-          {:keys [ops]} (intent/apply-intent db'' nil {:type :split-with-list-increment
+          {:keys [ops]} (intent/apply-intent db'' nil {:type :context-aware-enter
                                                        :block-id "a"
                                                        :cursor-pos 3})
           db''' (:db (tx/interpret db'' ops))
           children (q/children db''' :doc)
           new-id (second children)]
       (is (= "New" (get-in db''' [:nodes "a" :props :text])))
-      ;; Should not have number since original was unformatted
       ;; LOGSEQ PARITY: Leading whitespace is trimmed from new blocks
       (is (= "content" (get-in db''' [:nodes new-id :props :text]))))))
