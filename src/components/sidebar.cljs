@@ -166,7 +166,8 @@
   "Single page item in sidebar list."
   [{:keys [page-id title is-current? is-journal? is-favorite? on-intent show-star?]}]
   [:div.sidebar-page-item
-   {:class [(when is-current? "active")
+   {:replicant/key page-id
+    :class [(when is-current? "active")
             (when is-journal? "journal")]
     :on {:click (fn [e]
                   (.preventDefault e)
