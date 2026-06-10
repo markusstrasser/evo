@@ -131,10 +131,10 @@
                              :current-text "hello"
                              :current-cursor-pos 3})))
 
-  (testing "Smart-split only allowed in editing state"
-    (is (not (sm/intent-allowed? idle-session {:type :smart-split :block-id "a"})))
-    (is (not (sm/intent-allowed? selection-session {:type :smart-split :block-id "a"})))
-    (is (sm/intent-allowed? editing-session {:type :smart-split :block-id "a"})))
+  (testing "Enter (context-aware) only allowed in editing state"
+    (is (not (sm/intent-allowed? idle-session {:type :context-aware-enter :block-id "a"})))
+    (is (not (sm/intent-allowed? selection-session {:type :context-aware-enter :block-id "a"})))
+    (is (sm/intent-allowed? editing-session {:type :context-aware-enter :block-id "a"})))
 
   (testing "Selection intent allowed in any state"
     (is (sm/intent-allowed? idle-session {:type :selection :mode :replace :ids "a"}))
@@ -181,7 +181,7 @@
   (testing "Returns correct intent set for editing state"
     (let [allowed (sm/allowed-intents editing-session)]
       (is (contains? allowed :navigate-with-cursor-memory))
-      (is (contains? allowed :smart-split))
+      (is (contains? allowed :context-aware-enter))
       (is (contains? allowed :selection))
       (is (contains? allowed :exit-edit)))))
 

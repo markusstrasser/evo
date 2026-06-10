@@ -34,5 +34,5 @@
      :enter-edit-selected {:allowed-states #{:focused :selection}}
      :enter-edit-with-char {:allowed-states #{:focused :selection}}
      :navigate-with-cursor-memory {:allowed-states #{:editing}}
-     :smart-split {:allowed-states #{:editing}}
+     :context-aware-enter {:allowed-states #{:editing}}
      :exit-edit {:allowed-states #{:editing}}}))

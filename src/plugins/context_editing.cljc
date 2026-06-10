@@ -2,11 +2,10 @@
   "Smart editing behaviors: context-aware editing operations.
 
    Features:
-   - Context-aware Enter (markup, code blocks, refs, lists)
+   - Context-aware Enter (markup, code blocks, refs, lists, checkboxes —
+     including numbered-list auto-increment and empty-list unformat)
    - Merge with next block (Delete at end)
-   - List formatting (auto-increment, empty list unformat)
    - Checkbox toggling
-   - Paired character handling
 
    NOTE: Empty block auto-outdent (Logseq parity) is handled in
    components/block.cljs handle-enter BEFORE dispatching intents."
@@ -19,18 +18,6 @@
                :cljs [clojure.string :as str])))
 
 ;; Sentinel for DCE prevention - referenced by spec.runner
-
-;; ── Pattern Detection Helpers ────────────────────────────────────────────────
-
-(defn- checkbox-pattern?
-  "Check if text starts with checkbox pattern."
-  [text]
-  (re-matches #"^\[[ xX]\]\s.*" text))
-
-(defn- empty-checkbox?
-  "Check if text is empty checkbox marker."
-  [text]
-  (re-matches #"^\[[ xX]\]\s*$" text))
 
 ;; ── Private Helpers ───────────────────────────────────────────────────────────
 
@@ -55,18 +42,6 @@
   [db session block-id]
   (and (seq (q/children db block-id))
        (not (q/folded? session block-id))))
-
-(defn- list-marker?
-  "Check if text is only a list marker (empty list item)."
-  [text]
-  (re-matches #"^([-*+]|\d+\.)\s*$" text))
-
-(defn- extract-list-number
-  "Extract number from numbered list marker. Returns nil if not numbered."
-  [text]
-  (when-let [match (re-matches #"^(\d+)\.\s.*" text)]
-    #?(:clj (Integer/parseInt (second match))
-       :cljs (js/parseInt (second match)))))
 
 (defn- toggle-checkbox-text
   "Toggle checkbox in text. Returns updated text."
@@ -227,44 +202,6 @@
                                                      [{:op :place :id next-id :under const/root-trash :at :last}]))]
                                            {:ops ops}))))})
 
-;; ── List Item Behaviors ───────────────────────────────────────────────────────
-
-(intent/register-intent! :unformat-empty-list
-                         {:doc "Remove list marker from empty list item (becomes plain block)."
-                          :spec [:map [:type [:= :unformat-empty-list]] [:block-id :string]]
-                          :fr/ids #{:fr.smart/list-unformat}
-                          :handler (fn [db _session {:keys [block-id] :as intent}]
-                                     (let [text (get-block-text db block-id intent)]
-                                       (when (list-marker? text)
-                                         {:ops [{:op :update-node :id block-id :props {:text ""}}]})))})
-
-(intent/register-intent! :split-with-list-increment
-                         {:doc "Split block at cursor, incrementing numbered list marker if applicable.
-         LOGSEQ PARITY: Cursor moves to new block after the list number prefix.
-         For plain list items (- item), no prefix is added."
-                          :spec [:map [:type [:= :split-with-list-increment]]
-                                 [:block-id :string]
-                                 [:cursor-pos :int]]
-                          :fr/ids #{:fr.smart/auto-increment}
-                          :handler (fn [db _session {:keys [block-id cursor-pos] :as intent}]
-                                     (let [text (get-block-text db block-id intent)
-                                           before (subs text 0 cursor-pos)
-                                           after (subs text cursor-pos)
-                                           parent (get-in db [:derived :parent-of block-id])
-                                           new-id (str "block-" (random-uuid))
-                                           list-num (extract-list-number text)
-                                           ;; Only add numbered prefix if original was a numbered list
-                                           ;; Plain list items (- item) get no prefix
-                                           [prefix new-text] (if list-num
-                                                               (let [p (str (inc list-num) ". ")]
-                                                                 [p (str p (str/triml after))])
-                                                               ["" (str/triml after)])]
-                                       (when parent
-                                         {:ops [{:op :update-node :id block-id :props {:text before}}
-                                                {:op :create-node :id new-id :type :block :props {:text new-text}}
-                                                {:op :place :id new-id :under parent :at {:after block-id}}]
-                                          :session-updates (helpers/make-cursor-update new-id (count prefix))})))})
-
 ;; ── Checkbox Operations ───────────────────────────────────────────────────────
 
 (intent/register-intent! :toggle-checkbox
@@ -277,169 +214,10 @@
                                        (when (not= text new-text)
                                          {:ops [{:op :update-node :id block-id :props {:text new-text}}]})))})
 
-;; ── Smart Split Helpers ───────────────────────────────────────────────────────
-
-(defn- split-context
-  "Extract common split context from db/session/intent.
-   Returns map with :block-id :text :before :after :parent :new-id :code-block-ctx."
-  [db _session {:keys [block-id cursor-pos] :as intent}]
-  (let [text (get-block-text db block-id intent)]
-    {:block-id block-id
-     :text text
-     :before (subs text 0 cursor-pos)
-     :after (subs text cursor-pos)
-     :parent (get-in db [:derived :parent-of block-id])
-     :new-id (str "block-" (random-uuid))
-     :code-block-ctx (ctx/detect-code-block-at-cursor text cursor-pos)}))
-
-;; make-split-result moved to utils.intent-helpers
-
-(defn- split-in-code-block
-  "Handle Enter inside code fence - insert newline without splitting."
-  [block-id cursor-pos {:keys [before after]}]
-  {:ops [{:op :update-node :id block-id :props {:text (str before "\n" after)}}]
-   :session-updates (helpers/cursor-position-update (inc cursor-pos))})
-
-(defn- unformat-empty-marker
-  "Remove empty list marker or checkbox, leaving plain empty block."
-  [block-id]
-  {:ops [{:op :update-node :id block-id :props {:text ""}}]})
-
-(defn- split-with-list-increment
-  "Split numbered list, incrementing the number for new block."
-  [{:keys [parent new-id before after] :as ctx}]
-  (when parent
-    (when-let [num-value (extract-list-number before)]
-      (let [prefix (str (inc num-value) ". ")]
-        (helpers/make-split-result
-         ctx
-         {:current-text before
-          :new-text (str prefix (str/triml after))
-          :placement :after
-          :editing-block-id new-id
-          :cursor-position (count prefix)})))))
-
-(defn- split-with-checkbox
-  "Split checkbox block, continuing pattern in new block."
-  [{:keys [parent] :as ctx}]
-  (when parent
-    (helpers/make-split-result
-     ctx
-     {:current-text (:before ctx)
-      :new-text (str "[ ] " (str/triml (:after ctx)))
-      :placement :after
-      :editing-block-id (:new-id ctx)
-      :cursor-position 4})))
-
-(defn- split-at-position-zero
-  "Create empty block above current, keep cursor on current."
-  [{:keys [block-id] :as ctx}]
-  (helpers/make-split-result
-   ctx
-   {:new-text ""
-    :placement :before
-    :editing-block-id block-id
-    :cursor-position 0}))
-
-(defn- split-at-end-with-children
-  "Create first child when splitting at end of block with expanded children."
-  [ctx]
-  (helpers/make-split-result
-   ctx
-   {:new-text ""
-    :placement :first-child
-    :editing-block-id (:new-id ctx)
-    :cursor-position 0}))
-
-(defn- split-at-end
-  "Create sibling below when splitting at end of block."
-  [ctx]
-  (helpers/make-split-result
-   ctx
-   {:new-text ""
-    :placement :after
-    :editing-block-id (:new-id ctx)
-    :cursor-position 0}))
-
-(defn- split-normal
-  "Standard split - update current, create new with trimmed text."
-  [ctx]
-  (helpers/make-split-result
-   ctx
-   {:current-text (:before ctx)
-    :new-text (str/triml (:after ctx))
-    :placement :after
-    :editing-block-id (:new-id ctx)
-    :cursor-position 0}))
-
-;; ── Smart Split (Unified Enter Key Behavior) ──────────────────────────────────
-
-(intent/register-intent! :smart-split
-                         {:doc "Context-aware block splitting on Enter (Logseq parity).
-
-         Behaviors:
-         - Inside code fence (```) → insert newline (don't split block)
-         - Empty list marker → unformat to plain block
-         - Numbered list → increment number for new block
-         - Checkbox → continue checkbox pattern
-         - Empty checkbox → unformat
-         - Cursor at end + expanded children → first child
-         - Otherwise → simple split"
-                          :spec [:map
-                                 [:type [:= :smart-split]]
-                                 [:block-id :string]
-                                 [:cursor-pos :int]]
-                          :fr/ids #{:fr.edit/smart-split}
-                          :allowed-states #{:editing}
-                          :handler
-                          (fn [db session {:keys [block-id cursor-pos] :as intent}]
-                            (let [ctx (split-context db session intent)
-                                  {:keys [text before after parent code-block-ctx]} ctx]
-                              (cond
-                                ;; Inside code fence - insert newline
-                                code-block-ctx
-                                (split-in-code-block block-id cursor-pos ctx)
-
-                                ;; Empty list marker - unformat
-                                (and (empty? after) (list-marker? before))
-                                (unformat-empty-marker block-id)
-
-                                ;; Empty checkbox - unformat
-                                (and (empty? after) (empty-checkbox? before))
-                                (unformat-empty-marker block-id)
-
-                                ;; Numbered list - increment
-                                (extract-list-number text)
-                                (split-with-list-increment ctx)
-
-                                ;; Checkbox - continue pattern
-                                (checkbox-pattern? text)
-                                (split-with-checkbox ctx)
-
-                                ;; Position-based splits (require parent)
-                                (not parent) nil
-
-                                ;; Cursor at start - create block above
-                                (zero? cursor-pos)
-                                (split-at-position-zero ctx)
-
-                                ;; At end with expanded children - create first child
-                                (and (empty? after) (has-expanded-children? db session block-id))
-                                (split-at-end-with-children ctx)
-
-                                ;; At end - create sibling below
-                                (empty? after)
-                                (split-at-end ctx)
-
-                                ;; Normal split
-                                :else
-                                (split-normal ctx))))})
-
 ;; ── Context-Aware Enter (Enhanced with Context Detection) ────────────────────
 
-;; Shared helpers now in utils.intent-helpers:
+;; Shared helpers in utils.intent-helpers:
 ;; - helpers/split-text-at
-;; - helpers/make-split-ops
 ;; - helpers/make-cursor-update
 ;; - helpers/make-new-block-id
 
@@ -605,7 +383,13 @@
          BEFORE this intent fires. That handler reads live DOM text (not stale DB text)
          to correctly detect empty blocks during active editing."
 
-                          :fr/ids #{:fr.edit/smart-split}
+                          ;; Also cites list-unformat + auto-increment: this intent's
+                          ;; handle-empty-list-enter / handle-numbered-list-enter ARE the
+                          ;; live implementations (the standalone intents that previously
+                          ;; cited them had zero dispatch sites and were deleted).
+                          :fr/ids #{:fr.edit/smart-split
+                                    :fr.smart/list-unformat
+                                    :fr.smart/auto-increment}
                           :allowed-states #{:editing}
 
                           :spec [:map

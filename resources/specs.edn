@@ -1448,7 +1448,7 @@
    {:name "Enter mid-block splits text"
     :setup {:tree [:doc
                    [:a "Hello World" {:cursor 5}]]}
-    :action {:type :smart-split :block-id "a" :cursor-pos 5}
+    :action {:type :context-aware-enter :block-id "a" :cursor-pos 5}
     :expect {:tree [:doc
                     [:a "Hello"]
                     [:new "World" {:cursor 0}]]}}
@@ -1457,7 +1457,7 @@
    {:name "Enter at end creates sibling below"
     :setup {:tree [:doc
                    [:a "Complete" {:cursor :end}]]}
-    :action {:type :smart-split :block-id "a" :cursor-pos 8}
+    :action {:type :context-aware-enter :block-id "a" :cursor-pos 8}
     :expect {:tree [:doc
                     [:a "Complete"]
                     [:new "" {:cursor 0}]]}}
@@ -1466,7 +1466,7 @@
    {:name "Enter at start creates sibling above"
     :setup {:tree [:doc
                    [:a "Content" {:cursor 0}]]}
-    :action {:type :smart-split :block-id "a" :cursor-pos 0}
+    :action {:type :context-aware-enter :block-id "a" :cursor-pos 0}
     :expect {:tree [:doc
                     [:new ""]
                     [:a "Content" {:cursor 0}]]}}}}
@@ -1664,7 +1664,7 @@
    {:name "Enter on numbered list increments number"
     :tags #{:happy-path}
     :setup {:tree [:doc [:a "1. First item" {:cursor 13}]]}
-    :action {:type :smart-split :block-id "a" :cursor-pos 13}
+    :action {:type :context-aware-enter :block-id "a" :cursor-pos 13}
     :expect {:tree [:doc
                     [:a "1. First item"]
                     [:new "2. " {:cursor 3}]]}}}}
