@@ -6,6 +6,25 @@
  {:requires ([babashka.fs :as fs]
              [clojure.string :as str])
 
+   ;; Cache hygiene — shadow-cljs does NOT track these as compile inputs:
+   ;; specs.edn is slurped at macroexpansion (spec/registry_macros.clj) and
+   ;; shadow-cljs.edn config changes don't reliably invalidate build caches.
+   ;; Both failure modes are SILENT (false-green spec runs after editing
+   ;; specs.edn; ns-regexp changes that don't take). Purge on fingerprint
+   ;; mismatch; no-op otherwise. Evidence: two incidents in session
+   ;; e24a68d3 (2026-06-10).
+  cache:guard {:doc "Purge shadow build caches when macro-time EDN inputs or build config changed"
+               :task (let [files ["shadow-cljs.edn" "resources/specs.edn"]
+                           fp (str (hash (mapv slurp files)))
+                           fp-file (fs/file ".shadow-cljs" ".edn-fingerprint")
+                           old (when (fs/exists? fp-file) (slurp fp-file))]
+                       (when (not= fp old)
+                         (when (fs/exists? ".shadow-cljs/builds")
+                           (fs/delete-tree ".shadow-cljs/builds"))
+                         (fs/create-dirs ".shadow-cljs")
+                         (spit (str fp-file) fp)
+                         (println "♻ specs.edn/shadow-cljs.edn changed — purged shadow build caches")))}
+
    ;; Quality gates
   lint {:doc "Run clj-kondo linter"
         :task (shell "clj-kondo --lint src test --fail-level error")}
@@ -18,7 +37,9 @@
 
   check {:doc "Lint + architecture verification + compile check"
          :task (do
+                 (run 'cache:guard)
                  (run 'lint)
+                 (run 'lint:specs)
                  (run 'lint:rename-escape)
                  (run 'lint:block-id-emission)
                  (run 'lint:registry-state)
@@ -29,27 +50,32 @@
 
   test {:doc "Compile + run the full shadow-cljs test suite"
         :task (do
+                (run 'cache:guard)
                 (shell "npx shadow-cljs compile :test")
                 (shell "node out/tests.js"))}
 
   test:view {:doc "Fast view (hiccup) tests"
              :task (do
+                     (run 'cache:guard)
                      (shell "npx shadow-cljs compile :test-view")
                      (shell "node out/tests-view.js"))}
 
   test:int {:doc "All integration tests under test/integration"
             :task (do
                     (run 'test:verify-harness)
+                    (run 'cache:guard)
                     (shell "npx shadow-cljs compile :test-integration")
                     (shell "node out/tests-integration.js"))}
 
   test:kernel {:doc "Run kernel + script tests only"
                :task (do
+                       (run 'cache:guard)
                        (shell "npx shadow-cljs compile :test-kernel")
                        (shell "node out/tests-kernel.js"))}
 
   test:bench {:doc "Wall-clock perf benchmarks — run on a QUIET machine; excluded from bb test (load-flaky)"
               :task (do
+                      (run 'cache:guard)
                       (shell "npx shadow-cljs compile :test-bench")
                       (shell "node out/tests-bench.js"))}
 
@@ -64,11 +90,13 @@
 
   test:specs {:doc "Run executable spec scenarios only"
               :task (do
+                      (run 'cache:guard)
                       (shell "npx shadow-cljs compile :test-specs")
                       (shell "node out/tests-specs.js"))}
 
   test:fr-fixtures {:doc "Run deterministic FR fixture compiler tests"
                     :task (do
+                            (run 'cache:guard)
                             (shell "npx shadow-cljs compile :test-fr-fixtures")
                             (shell "node out/tests-fr-fixtures.js"))}
 
