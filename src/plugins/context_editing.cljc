@@ -58,7 +58,14 @@
 
     :else text))
 
-;; ── Paired Character Handling ──────────────────────────────────────────────────
+;; ── Paired Character Handling — RETIRED, kept as archive ─────────────────────
+;;
+;; :fr.edit/paired-char-insertion is :status :deprecated (2026-06-10, owner
+;; call): the auto-close flow — and the `((` → `(())` block-ref UI it feeds —
+;; is UX overkill for this product. These intents have NO keyboard dispatch
+;; by design; they stay registered so the FR's executable scenarios keep
+;; passing as an archived contract. Wire to the keymap only if the FR is
+;; re-activated. Do not re-flag as dead code: this retirement is deliberate.
 
 (def pairs
   "Character pairs that auto-close and delete together."

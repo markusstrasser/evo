@@ -353,24 +353,6 @@
                                         :effects [[:clipboard/write {:text killed-text
                                                                      :op-type :kill}]]}))})
 
-(intent/register-intent! :kill-to-end
-                         {:doc "Kill from cursor to end of block (Cmd+K).
-
-         Deletes text after cursor, copies to clipboard."
-                          :fr/ids #{:fr.edit/kill-operations}
-                          :spec [:map
-                                 [:type [:= :kill-to-end]]
-                                 [:block-id :string]]
-                          :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (q/block-text db block-id)
-                                           cursor-pos (get-in session [:ui :cursor-position] 0)
-                                           killed-text (subs block-text cursor-pos)
-                                           new-text (subs block-text 0 cursor-pos)]
-                                       {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                        :session-updates {:ui {:clipboard-text killed-text}}
-                                        :effects [[:clipboard/write {:text killed-text
-                                                                     :op-type :kill}]]}))})
-
 (intent/register-intent! :kill-word-forward
                          {:doc "Kill next word (Cmd+Delete).
 
@@ -392,29 +374,6 @@
                                         :session-updates {:ui {:clipboard-text killed-text}}
                                         :effects [[:clipboard/write {:text killed-text
                                                                      :op-type :kill}]]}))})
-
-(intent/register-intent! :kill-word-backward
-                         {:doc "Kill previous word (Alt+Delete / Option+Delete on Mac).
-
-         Deletes from cursor back to previous word boundary, copies to clipboard."
-                          :fr/ids #{:fr.edit/kill-operations}
-                          :spec [:map
-                                 [:type [:= :kill-word-backward]]
-                                 [:block-id :string]]
-                          :handler (fn [db session {:keys [block-id]}]
-                                     (let [block-text (q/block-text db block-id)
-                                           cursor-pos (get-in session [:ui :cursor-position] 0)
-                                           prev-pos (text/find-prev-word-boundary block-text cursor-pos)]
-                                       (when prev-pos
-                                         (let [killed-text (subs block-text prev-pos cursor-pos)
-                                               new-text (str (subs block-text 0 prev-pos)
-                                                             (subs block-text cursor-pos))]
-                                           {:ops [{:op :update-node :id block-id :props {:text new-text}}]
-                                            :session-updates (helpers/merge-session-updates
-                                                              (helpers/cursor-position-update prev-pos)
-                                                              {:ui {:clipboard-text killed-text}})
-                                            :effects [[:clipboard/write {:text killed-text
-                                                                         :op-type :kill}]]}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds
