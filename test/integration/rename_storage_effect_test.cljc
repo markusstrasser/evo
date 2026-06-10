@@ -1,13 +1,15 @@
 (ns integration.rename-storage-effect-test
-  "Leak regression: rename-page must NOT route its file-cleanup request
-   through :session-updates.
+  "Leak regression: rename-page must NOT route file-cleanup requests
+   through ANY dispatch channel.
 
-   The old shape — :session-updates {:storage {:delete-old-file ...}} — was
-   merged wholesale into the view-state atom by merge-view-state-updates!,
-   where it stayed forever (nothing reads or clears :storage from view
-   state). The request now travels as a declarative effect; this test pins
-   both directions: the effect IS returned, and no :storage residue can
-   reach the session."
+   History: the original shape — :session-updates {:storage
+   {:delete-old-file ...}} — was merged wholesale into the view-state
+   atom, where it stayed forever. It then briefly became a
+   :storage/delete-page-file effect, until storage reconciliation
+   (shell.storage/reconcile-files!, see utils.storage-reconcile) subsumed
+   it: file deletion is part of the folder-as-projection-of-db save path,
+   symmetric under undo/redo. This test pins that the handler emits ONLY
+   ops — no :storage residue, no effects."
   #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
   (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
                :cljs [cljs.test :refer [deftest is testing use-fixtures]])
@@ -27,7 +29,7 @@
                       {:op :place :id "p1" :under :doc :at :last}]
                      {:tx/now-ms 1})))
 
-(deftest rename-returns-delete-effect-not-session-storage
+(deftest rename-emits-only-ops-no-storage-residue
   (let [session {:selection {:nodes #{} :focus nil :anchor nil} :ui {}}
         {:keys [effects session-updates issues db]}
         (api/dispatch (db-with-page) session
@@ -35,8 +37,8 @@
     (testing "rename applied"
       (is (empty? issues))
       (is (= "New Title" (get-in db [:nodes "p1" :props :title]))))
-    (testing "file cleanup travels as a declarative effect"
-      (is (= [[:storage/delete-page-file {:title "Old Title"}]] effects)))
+    (testing "file cleanup is reconciliation's job — the handler emits no effects"
+      (is (nil? effects)))
     (testing "no :storage residue can reach the view-state atom"
       (is (not (contains? (or session-updates {}) :storage))
           ":session-updates carries no :storage key")

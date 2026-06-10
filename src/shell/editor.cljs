@@ -107,12 +107,16 @@
                    (js/console.log "📂 Loading" (count ops) "ops from folder...")
                    (let [loaded (:db (tx/interpret (db/empty-db) ops))]
                      (reset! !db loaded)
-                     (slog/reset-with-db! loaded)))
+                     (slog/reset-with-db! loaded)
+                     ;; Managed files = exactly what the loaded db projects.
+                     ;; Files that failed to load stay unmanaged → undeletable.
+                     (storage/sync-managed-from-db! loaded)))
                  ;; Empty folder - start with empty DB
                  (do
                    (js/console.log "📂 Empty folder, starting fresh")
                    (reset! !db (db/empty-db))
-                   (slog/reset-with-db! (db/empty-db))))
+                   (slog/reset-with-db! (db/empty-db))
+                   (storage/sync-managed-from-db! (db/empty-db))))
                ;; Navigate to startup page (URL param or today's journal)
                (navigate-to-startup-page!)
                (swap! !storage-status assoc
@@ -141,6 +145,7 @@
   ;; Reset to empty DB (no demo data - user must pick folder or start fresh)
   (reset! !db (db/empty-db))
   (slog/reset-with-db! (db/empty-db))
+  (storage/sync-managed-from-db! (db/empty-db))
   (vs/set-current-page! nil))
 
 ;; Try to restore previously selected folder on startup
@@ -204,7 +209,10 @@
              (let [pages @dirty-pages]
                (reset! dirty-pages #{})
                (when (and (not (test-mode?)) (storage/has-folder?))
-                 (storage/save-pages! new-val pages))))
+                 (storage/save-pages! new-val pages)
+                 ;; Folder converges to the db: drop managed files whose
+                 ;; page is gone (rename, undo of a rename, deletion).
+                 (storage/reconcile-files! new-val))))
            500)))
 
 (defonce _db-watcher
@@ -829,6 +837,8 @@
        ;; nodes. Accepting: GC drops prior undo history.
        (swap! !db api/gc-tombstones)
        (slog/reset-with-db! @!db)
+       ;; GC purged pages from the db — reconcile their files away too.
+       (storage/reconcile-files! @!db)
        ;; Finally, auto-trash any empty pages (except today's journal)
        (executor/apply-intent! !db {:type :scan-empty-pages} "STARTUP")))
    2000)
