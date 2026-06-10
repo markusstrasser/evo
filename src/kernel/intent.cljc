@@ -193,11 +193,17 @@
      intent  - Intent map (e.g., {:type :indent :id \"a\"})
 
    Handler Signature:
-     (fn [db session intent] -> nil | {:ops [...] :session-updates {...}})
+     (fn [db session intent] -> nil | {:ops [...] :session-updates {...} :effects [...]})
 
    Handlers can return:
    - nil for no-op
-   - Map with :ops and/or :session-updates keys
+   - Map with :ops, :session-updates, and/or :effects keys
+
+   :effects is a vector of [effect-kw arg-map] tuples — declarative
+   side-effect requests (system clipboard write, file deletion) that the
+   shell executes AFTER state is committed. Effects are data, mirroring
+   ops: handlers stay pure, the executor interprets. Never smuggle effect
+   requests through :session-updates paths — that channel is state.
 
    Example:
      (apply-intent db session {:type :indent :id \"a\"})
@@ -235,10 +241,22 @@
                           {:type (:type intent)
                            :result result
                            :hint "Return {:ops [...]} instead of a raw ops vector."})))
+        (when-let [effects (:effects result)]
+          (when-not (and (vector? effects)
+                         (every? (fn [effect]
+                                   (and (vector? effect)
+                                        (keyword? (first effect))
+                                        (or (nil? (second effect))
+                                            (map? (second effect)))))
+                                 effects))
+            (throw (ex-info "Intent handler :effects must be a vector of [effect-kw arg-map] tuples"
+                            {:type (:type intent)
+                             :effects effects}))))
         {:db db
          :ops (vec (concat (when buffer-op [buffer-op])
                            (or (:ops result) [])))
-         :session-updates (:session-updates result)})
+         :session-updates (:session-updates result)
+         :effects (:effects result)})
       (throw (ex-info "Unknown intent type"
                       {:type (:type intent)
                        :intent intent

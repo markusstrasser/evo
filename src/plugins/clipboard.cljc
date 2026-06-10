@@ -480,11 +480,13 @@
                           :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :copy-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (q/block-text db block-id)]
+                                     (let [text (q/block-text db block-id)
+                                           blocks [{:id block-id :depth 0 :text text}]]
                                        {:session-updates {:ui {:clipboard-text text
-                                                               :clipboard-blocks [{:id block-id
-                                                                                   :depth 0
-                                                                                   :text text}]}}}))})
+                                                               :clipboard-blocks blocks}}
+                                        :effects [[:clipboard/write {:text text
+                                                                     :blocks blocks
+                                                                     :op-type :copy}]]}))})
 
 (defn- resolve-block-for-copy
   "Choose which block to copy a reference to. Prefer an explicit :block-id,
@@ -512,12 +514,14 @@
                                  [:block-id {:optional true} [:maybe :string]]]
                           :handler (fn [_db session intent]
                                      (when-let [block-id (resolve-block-for-copy session intent)]
-                                       (let [ref-text (str "((" block-id "))")]
+                                       (let [ref-text (str "((" block-id "))")
+                                             blocks [{:id block-id :depth 0 :text ref-text}]]
                                          {:session-updates
                                           {:ui {:clipboard-text ref-text
-                                                :clipboard-blocks [{:id block-id
-                                                                    :depth 0
-                                                                    :text ref-text}]}}})))})
+                                                :clipboard-blocks blocks}}
+                                          :effects [[:clipboard/write {:text ref-text
+                                                                       :blocks blocks
+                                                                       :op-type :copy}]]})))})
 
 (intent/register-intent! :copy-selected
                          {:doc "Copy selected blocks with hierarchy preservation.
@@ -546,7 +550,10 @@
                                          ;; Single leaf blocks will still produce simple text
                                          (let [{:keys [text blocks]} (blocks-to-markdown db block-ids)]
                                            {:session-updates {:ui {:clipboard-text text
-                                                                   :clipboard-blocks blocks}}}))))})
+                                                                   :clipboard-blocks blocks}}
+                                            :effects [[:clipboard/write {:text text
+                                                                         :blocks blocks
+                                                                         :op-type :copy}]]}))))})
 
 (intent/register-intent! :cut-block
                          {:doc "Cut single block (copy + move to trash)."
@@ -554,15 +561,17 @@
                           :allowed-states #{:editing :selection}
                           :spec [:map [:type [:= :cut-block]] [:block-id :string]]
                           :handler (fn [db _session {:keys [block-id]}]
-                                     (let [text (q/block-text db block-id)]
+                                     (let [text (q/block-text db block-id)
+                                           blocks [{:id block-id :depth 0 :text text}]]
                                        {:ops [{:op :place
                                                :id block-id
                                                :under const/root-trash
                                                :at :last}]
                                         :session-updates {:ui {:clipboard-text text
-                                                               :clipboard-blocks [{:id block-id
-                                                                                   :depth 0
-                                                                                   :text text}]}}}))})
+                                                               :clipboard-blocks blocks}}
+                                        :effects [[:clipboard/write {:text text
+                                                                     :blocks blocks
+                                                                     :op-type :cut}]]}))})
 
 (intent/register-intent! :cut-selected
                          {:doc "Cut selected blocks with hierarchy preservation.
@@ -614,7 +623,10 @@
                                             :session-updates {:ui {:clipboard-text text
                                                                    :clipboard-blocks blocks
                                                                    :editing-block-id nil}
-                                                              :selection selection-update}}))))})
+                                                              :selection selection-update}
+                                            :effects [[:clipboard/write {:text text
+                                                                         :blocks blocks
+                                                                         :op-type :cut}]]}))))})
 
 ;; ══════════════════════════════════════════════════════════════════════════════
 ;; DCE Sentinel - prevents dead code elimination in test builds
