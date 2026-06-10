@@ -1538,70 +1538,98 @@
         {:on {:mousedown (fn [e]
                            (image/start-resize! e block-id (or width 400) nil on-intent))}}])]))
 
+(defn- text-block-content
+  "Shared view-mode body for :block/plain, :block/quote, :block/heading —
+   they differ only in the container tag.
+
+   `.math-ignore` keeps MathJax from typesetting raw `$...$` runs in
+   normal prose (e.g. `cljs$core$key`, `price$100$total`). Explicit
+   math spans carry class `math` which `processHtmlClass` re-enables."
+  [container-tag {:keys [content]} {:keys [db block-id is-focused on-intent]}]
+  (let [view-key (str block-id "-view")
+        click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
+                                          :on-intent on-intent})
+        link-only (md-links/link-only? content)
+        evo-link-target (some-> link-only :target md-links/parse-evo-target)
+        ;; Special case: a block whose whole content is a single
+        ;; evo://page/ link renders as a preview card. Every other
+        ;; content flows through the render-registry pipeline and
+        ;; the :doc handler takes care of ZWSP-on-empty.
+        children (if (and link-only (= :page (:type evo-link-target)))
+                   [(evo-page-card db
+                                   (:label link-only)
+                                   (:page-name evo-link-target)
+                                   on-intent)]
+                   (render-block-content db block-id content on-intent))
+        ;; Delegate math detection to the parser — avoids
+        ;; false-positive typeset passes on inputs like
+        ;; `cljs$core$key` that the parser rejects.
+        has-math? (inline-format/has-math? content)
+        container-props (cond-> (merge {:replicant/key view-key} click-handler)
+                          has-math? (assoc :replicant/on-render
+                                           (fn [_] (typeset-math!))))]
+    (into [container-tag container-props] children)))
+
+;; ── Block-level render handlers (render-registry Tier 3) ─────────────────────
+;;
+;; Block formats dispatch through the SAME registry as inline AST tags,
+;; under :block/* — one render surface for everything. Handlers stay in
+;; this namespace deliberately: they are entangled with click/selection/
+;; resize/oEmbed helpers, and :data-block-id emission is pinned here
+;; (bb lint:block-id-emission). Registration location ≠ dispatch surface.
+;;
+;; Node convention: [tag attrs] where attrs carries block-format/parse
+;; output (:content :level :url); ctx carries the environment
+;; (:db :block-id :is-focused :on-intent :text).
+
+(render-registry/register-render! :block/tweet
+  {:doc "Tweet embed preview card ({{tweet URL}} or :embed node)."
+   :handler (fn [[_ attrs] ctx] (tweet-embed (merge ctx attrs)))})
+
+(render-registry/register-render! :block/video
+  {:doc "Video embed preview ({{video URL}} or :embed node)."
+   :handler (fn [[_ attrs] ctx] (video-embed (merge ctx attrs)))})
+
+(render-registry/register-render! :block/image
+  {:doc "Image-only block with resize handles."
+   :handler (fn [[_ _attrs] ctx] (image-block-content ctx))})
+
+(render-registry/register-render! :block/quote
+  {:doc "Blockquote ('> ' prefix)."
+   :handler (fn [[_ attrs] ctx]
+              (text-block-content :blockquote.block-content.math-ignore attrs ctx))})
+
+(render-registry/register-render! :block/heading
+  {:doc "Heading h1-h6 ('# '..'###### ' prefix)."
+   :handler (fn [[_ {:keys [level] :as attrs}] ctx]
+              (text-block-content (keyword (str "h" level ".block-content.math-ignore"))
+                                  attrs ctx))})
+
+(render-registry/register-render! :block/plain
+  {:doc "Plain text block (default)."
+   :handler (fn [[_ attrs] ctx]
+              (text-block-content :span.block-content.math-ignore attrs ctx))})
+
+(defn- format->tag
+  "block-format/parse :format keyword → registry tag. Pure derivation —
+   a new format needs a registered :block/<format> handler or render-node
+   throws (unknown tags are bugs, not content)."
+  [format]
+  (keyword "block" (name (or format :plain))))
+
 (defn- view-content
-  "View mode content: controlled rendering from DB with page-ref support.
-
-   Detects markdown formatting:
-   - ![alt](path){width=N}: renders as image-only block with resize handles
-   - '> ' prefix: renders as blockquote
-   - '# '-'###### ' prefix: renders as h1-h6
-   - {{tweet URL}}: renders as tweet embed preview
-   - {{video URL}}: renders as video embed preview
-   - Otherwise: renders as span
-
-   In view mode, the prefix is hidden and content is styled appropriately.
-   In edit mode (edit-content), the raw markdown is shown."
+  "View mode content: parse the block's format, dispatch through the
+   render registry under :block/* tags. Image-only blocks short-circuit
+   the format parse (detection IS parsing; dispatch is the registry's)."
   [{:keys [block-id text is-focused on-intent db]}]
-  ;; Check for image-only block first (special handling with resize)
-  (if (image-only-block? text)
-    (image-block-content {:block-id block-id :text text :is-focused is-focused
-                          :on-intent on-intent :db db})
-
-    ;; Normal content rendering
-    (let [view-key (str block-id "-view")
-          {:keys [format level content url]} (block-format/parse text)]
-
-      ;; Special handling for embeds - they render their own container
-      (case format
-        :tweet (tweet-embed {:block-id block-id :url url :is-focused is-focused
-                             :on-intent on-intent :db db})
-
-            :video (video-embed {:block-id block-id :url url :is-focused is-focused
-                             :on-intent on-intent :db db})
-
-        ;; Default: quote, heading, or plain text.
-        ;; `.math-ignore` keeps MathJax from typesetting raw `$...$` runs in
-        ;; normal prose (e.g. `cljs$core$key`, `price$100$total`). Explicit
-        ;; math spans carry class `math` which `processHtmlClass` re-enables.
-        (let [container-tag (case format
-                              :quote :blockquote.block-content.math-ignore
-                              :heading (keyword (str "h" level ".block-content.math-ignore"))
-                              :span.block-content.math-ignore)
-              click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
-                                                :on-intent on-intent})
-              link-only (md-links/link-only? content)
-              evo-link-target (some-> link-only :target md-links/parse-evo-target)
-              ;; Special case: a block whose whole content is a single
-              ;; evo://page/ link renders as a preview card. Every other
-              ;; content flows through the render-registry pipeline and
-              ;; the :doc handler takes care of ZWSP-on-empty.
-              ;; :doc handler already emits ZWSP for empty content and
-              ;; evo-page-card is always non-empty — no fallback needed.
-              children (if (and link-only (= :page (:type evo-link-target)))
-                         [(evo-page-card db
-                                         (:label link-only)
-                                         (:page-name evo-link-target)
-                                         on-intent)]
-                         (render-block-content db block-id content on-intent))
-              ;; Delegate math detection to the parser — avoids
-              ;; false-positive typeset passes on inputs like
-              ;; `cljs$core$key` that the parser rejects.
-              has-math? (inline-format/has-math? content)
-              ;; Add on-render hook to typeset math when present
-              container-props (cond-> (merge {:replicant/key view-key} click-handler)
-                                has-math? (assoc :replicant/on-render
-                                                 (fn [_] (typeset-math!))))]
-          (into [container-tag container-props] children))))))
+  (let [ctx {:db db :block-id block-id :is-focused is-focused
+             :on-intent on-intent :text text}]
+    (if (image-only-block? text)
+      (render-registry/render-node [:block/image {}] ctx)
+      (let [parsed (block-format/parse text)]
+        (render-registry/render-node
+         [(format->tag (:format parsed)) (dissoc parsed :format)]
+         ctx)))))
 
 ;; ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1681,14 +1709,15 @@
 
         ;; Content: delegate to block-type-specific helpers
         content (case block-type
-                  ;; Embed block: video, tweet, etc.
+                  ;; Embed block: same :block/* registry tags as the
+                  ;; text-pattern route in view-content.
                   :embed (let [url (get props :url)
-                               embed-type (get props :embed-type)]
+                               embed-type (get props :embed-type)
+                               embed-ctx {:db db :block-id block-id :is-focused is-focused
+                                          :on-intent on-intent}]
                            (case embed-type
-                             :twitter (tweet-embed {:block-id block-id :url url :is-focused is-focused
-                                                    :on-intent on-intent :db db})
-                             (:youtube :vimeo) (video-embed {:block-id block-id :url url :is-focused is-focused
-                                                              :on-intent on-intent :db db})
+                             :twitter (render-registry/render-node [:block/tweet {:url url}] embed-ctx)
+                             (:youtube :vimeo) (render-registry/render-node [:block/video {:url url}] embed-ctx)
                              ;; Fallback: just show URL as link
                              [:a.embed-fallback {:href url :target "_blank" :rel "noopener noreferrer"} url]))
                   ;; Default: text block with edit/view modes

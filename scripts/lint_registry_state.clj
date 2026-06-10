@@ -132,13 +132,18 @@
 
 ;; ── render registry (static discovery) ───────────────────────────────────────
 
-(def render-scan-root "src/shell/render")
+(def render-scan-roots
+  ;; src/components included since Tier 3: block.cljs registers :block/*
+  ;; tags (handlers stay there — entangled with click/resize helpers and
+  ;; the :data-block-id emission pin).
+  ["src/shell/render" "src/components"])
 
 (def register-render-regex
   #"\((?:[a-zA-Z0-9.\-]+/)?register-render!\s+(:[a-zA-Z0-9\-/?.!*+_]+)")
 
 (defn discover-render-registrations []
-  (for [file (cljc-files render-scan-root)
+  (for [root render-scan-roots
+        file (cljc-files root)
         :let [stripped (strip-noise (slurp file))]
         [_ tag] (re-seq register-render-regex stripped)]
     {:tag (keyword (subs tag 1))
