@@ -30,6 +30,8 @@
                                 :effects test-effect})}
      :fx-malformed {:handler (fn [_db _session _intent]
                                {:effects {:not "a vector of tuples"}})}
+     :fx-overlong  {:handler (fn [_db _session _intent]
+                               {:effects [[:test/ping {:n 1} :extra-element]]})}
      :fx-gated     {:allowed-states #{:editing}
                     :handler (fn [_db _session _intent]
                                {:effects test-effect})}}))
@@ -66,3 +68,10 @@
          #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
          #"vector of \[effect-kw arg-map\] tuples"
          (intent/apply-intent (db/empty-db) nil {:type :fx-malformed})))))
+
+(deftest apply-intent-rejects-overlong-effect-tuples
+  (testing "a 3-element effect tuple is rejected — the contract is [kw arg-map], exactly"
+    (is (thrown-with-msg?
+         #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
+         #"vector of \[effect-kw arg-map\] tuples"
+         (intent/apply-intent (db/empty-db) nil {:type :fx-overlong})))))

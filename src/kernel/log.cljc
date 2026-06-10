@@ -162,10 +162,15 @@
 
 (defn reset-root
   "Build a fresh log whose root is `db` and whose history is empty.
-   Used on folder load and test reset."
+   Used on folder load and test reset.
+
+   Derives the stored root: head-db at head=-1 returns :root-db verbatim,
+   so this ingress point must guarantee the at-rest invariant (a db at
+   rest is always fully derived) rather than trust every caller. One
+   derive per folder-load/reset is noise."
   ([db] (reset-root db default-limit))
   ([db limit]
-   {:root-db db :ops [] :head -1 :limit limit}))
+   {:root-db (db/derive-indexes db) :ops [] :head -1 :limit limit}))
 
 (defn set-limit
   "Adjust :limit, absorbing older entries into :root-db if necessary."

@@ -245,6 +245,7 @@
           (when-not (and (vector? effects)
                          (every? (fn [effect]
                                    (and (vector? effect)
+                                        (<= 1 (count effect) 2)
                                         (keyword? (first effect))
                                         (or (nil? (second effect))
                                             (map? (second effect)))))
