@@ -64,6 +64,15 @@
         _ (.setDate date (inc (.getDate date)))]
     (journal-title date)))
 
+(defn today-iso
+  "Get today's date in ISO format (YYYY-MM-DD)."
+  []
+  (let [now (js/Date.)
+        y (.getFullYear now)
+        m (inc (.getMonth now))
+        d (.getDate now)]
+    (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
+
 ;; ── Page Reference Formatting ────────────────────────────────────────────────
 
 (defn page-ref

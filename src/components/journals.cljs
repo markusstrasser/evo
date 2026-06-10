@@ -64,15 +64,6 @@
 
 ;; ── Main Journals View ─────────────────────────────────────────────────────────
 
-(defn- today-iso
-  "Get today's date in ISO format (YYYY-MM-DD)."
-  []
-  (let [now (js/Date.)
-        y (.getFullYear now)
-        m (inc (.getMonth now))
-        d (.getDate now)]
-    (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
-
 (defn- ordinal-suffix
   "Get ordinal suffix for a day number (1st, 2nd, 3rd, 4th, etc.)."
   [day]
@@ -108,7 +99,7 @@
    - Full editing support (same as regular pages)"
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
-        today (today-iso)
+        today (journal/today-iso)
         today-human (today-title)
         ;; Session state for editing context (same as Outline)
         editing-block-id (vs/editing-block-id)
