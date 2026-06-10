@@ -13,15 +13,6 @@
             [utils.journal :as journal]
             [clojure.string :as str]))
 
-(defn- today-iso
-  "Get today's date in ISO format."
-  []
-  (let [now (js/Date.)
-        y (.getFullYear now)
-        m (inc (.getMonth now))
-        d (.getDate now)]
-    (str y "-" (when (< m 10) "0") m "-" (when (< d 10) "0") d)))
-
 (defn- has-content?
   "Check if a journal page has any non-empty blocks."
   [db page-id]
@@ -295,7 +286,7 @@
         loading? (:loading? storage-status)
         favorites-set (vs/favorites)
         recents-list (vs/recents)
-        today (today-iso)
+        today (journal/today-iso)
         sidebar-width (vs/sidebar-width)
 
         ;; Build and filter valid pages
