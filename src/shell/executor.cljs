@@ -8,7 +8,6 @@
             [kernel.product-state :as product-state]
             [shell.log :as slog]
             [shell.view-state :as vs]
-            [shell.storage :as storage]
             [shell.url-sync :as url-sync]
             [dev.tooling :as dev]))
 
@@ -95,9 +94,6 @@
         (write-to-clipboard! text)
         (dev/record-clipboard-op! op-type text (mapv :id blocks)))
 
-      :storage/delete-page-file
-      (storage/delete-page-file! nil (:title args))
-
       (js/console.warn "Unknown effect (ignored):" (pr-str effect-kw)))))
 
 (defn- update-navigation-history!
@@ -146,7 +142,7 @@
    4. Report validation issues
    5. Apply session-updates (BEFORE db, for on-mount hooks)
    6. Update navigation history
-   7. Execute declarative effects (clipboard, storage cleanup)
+   7. Execute declarative effects (system clipboard)
    8. Reset db (triggers re-render)
    9. Clear buffer
    10. Assert derived indexes are fresh
@@ -200,7 +196,7 @@
                (not= db-before db-after))
       (slog/append-and-advance! intent-map ops current-session (vs/get-view-state)))
 
-    ;; Execute declarative effects (system clipboard, storage cleanup).
+    ;; Execute declarative effects (system clipboard).
     ;; Effects are nil when validation failed — same guard as session-updates.
     (execute-effects! effects)
 

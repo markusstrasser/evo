@@ -12,8 +12,15 @@
    - Block text
      - Child block
        - Grandchild
-   ```"
-  (:require [clojure.string :as str]))
+   ```
+
+   File lifecycle: the folder is a projection of the db. Saves write
+   dirty pages AND reconcile away managed files whose page no longer
+   exists (rename, undo of a rename, page deletion) — see
+   utils.storage-reconcile for the pure core and the safety boundary
+   (unmanaged files are never touched)."
+  (:require [clojure.string :as str]
+            [utils.storage-reconcile :as reconcile]))
 
 ;; ── IndexedDB for directory handle persistence ──────────────────────────────
 
@@ -392,12 +399,10 @@
   []
   (boolean @!dir-handle))
 
-(defn- sanitize-filename
-  "Convert page title to safe filename."
-  [title]
-  (-> (str/lower-case title)
-      (str/replace #"[^a-z0-9]+" "-")
-      (str/replace #"^-|-$" "")))
+(defonce ^:private !managed-files
+  ;; Filenames this app has loaded-or-written this session — the only
+  ;; deletion candidates reconciliation may consider.
+  (atom #{}))
 
 (defn- write-file!
   "Write content to a file in the selected directory."
@@ -463,8 +468,9 @@
   "Save a single page to its markdown file."
   [db page-id]
   (let [title (get-in db [:nodes page-id :props :title] page-id)
-        filename (str (sanitize-filename title) ".md")
+        filename (reconcile/page-filename title)
         markdown (page->markdown db page-id)]
+    (swap! !managed-files conj filename)
     (write-file! filename markdown)))
 
 (defn save-db!
@@ -560,13 +566,26 @@
   (when-let [handle @!dir-handle]
     (.-name handle)))
 
-(defn delete-page-file!
-  "Delete a page's markdown file."
-  [_page-id title]
+(defn sync-managed-from-db!
+  "Seed the managed-file set from a freshly loaded db: exactly the files
+   its pages project to. Files that failed to load (validation issues)
+   are absent from the db, stay unmanaged, and can never be deleted."
+  [db]
+  (reset! !managed-files (reconcile/expected-filenames db)))
+
+(defn reconcile-files!
+  "Delete managed files whose page no longer exists in `db`.
+
+   Runs on every debounced save flush. Handles rename (old file goes),
+   undo of a rename (new file goes), and page deletion — symmetric in
+   both directions because the folder converges to the db, the same way
+   :derived converges to canonical state."
+  [db]
   (when-let [dir @!dir-handle]
-    (let [filename (str (sanitize-filename title) ".md")]
+    (doseq [filename (reconcile/stray-files @!managed-files db)]
+      (swap! !managed-files disj filename)
       (-> (.removeEntry dir filename)
-          (.then #(js/console.log "🗑️ Deleted:" filename))
+          (.then #(js/console.log "🗑️ Reconciled away:" filename))
           (.catch #(js/console.warn "Could not delete:" filename))))))
 
 (defn clear-folder!

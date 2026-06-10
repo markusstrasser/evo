@@ -184,8 +184,10 @@
   "Rename a page by updating its title and all [[OldName]] references.
    Validates: non-empty, no collision with existing page.
    LOGSEQ PARITY: Updates all page references across the graph.
-   Returns a :storage/delete-page-file effect so the executor cleans up
-   the old .md file after the rename transaction commits."
+   File cleanup is NOT this handler's concern: storage reconciliation
+   (shell.storage/reconcile-files!) deletes the old title's file on the
+   next save flush — and, symmetrically, the new title's file when the
+   rename is undone."
   [db _session {:keys [page-id new-title]}]
   (when (and page-id (not (str/blank? new-title)))
     (let [trimmed-title (str/trim new-title)
@@ -204,12 +206,7 @@
                                      :props {:text (update-page-refs-in-text text old-title trimmed-title)}})
                                   blocks-to-update)]
           {:ops (into [{:op :update-node :id page-id :props {:title trimmed-title}}]
-                      ref-update-ops)
-           ;; Declarative effect — executed by the shell only after the
-           ;; rename transaction commits. Never route this through
-           ;; :session-updates: that channel is state, and the request
-           ;; would leak into the view-state atom permanently.
-           :effects [[:storage/delete-page-file {:title old-title}]]})))))
+                      ref-update-ops)})))))
 
 (intent/register-intent! :rename-page
                          {:doc "Rename a page by updating its title"
