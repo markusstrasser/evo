@@ -102,6 +102,11 @@
    ;; :apply-tx not implemented — kernel falls back to :initial on every
    ;; transaction. See kernel.derived-registry docstring for the
    ;; incremental contract when the time comes.
+   ;;
+   ;; Profiled 2026-06-10 (JVM, 20% ref density): 0.5 ms @ 300 blocks,
+   ;; 6.9 ms @ 3K blocks (full derive-indexes: 16 ms @ 3K — backlinks is
+   ;; ~40% of it). Revisit :apply-tx when vaults approach ~3K blocks;
+   ;; below that the recompute is noise.
    })
 
 ;; ══════════════════════════════════════════════════════════════════════════════
