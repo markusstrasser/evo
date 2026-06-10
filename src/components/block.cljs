@@ -223,6 +223,24 @@
       ;; No anchor: just extend with this block
       (on-intent {:type :selection :mode :extend :ids block-id}))))
 
+(defn- block-click-attrs
+  "Shared view-mode click behavior: shift-click range-select, focused click
+   enters edit, plain click selects. Pass :prevent-default? for surfaces whose
+   default click action must be suppressed (e.g. tweet embeds)."
+  [{:keys [db block-id is-focused on-intent prevent-default?]}]
+  {:on {:click (fn [e]
+                 (.stopPropagation e)
+                 (when prevent-default? (.preventDefault e))
+                 (cond
+                   (.-shiftKey e)
+                   (shift-click-select-range! db block-id on-intent)
+
+                   is-focused
+                   (on-intent {:type :enter-edit :block-id block-id})
+
+                   :else
+                   (on-intent {:type :selection :mode :replace :ids block-id})))}})
+
 ;; ── Drag & Drop Helpers ────────────────────────────────────────────────────────
 
 (defn- compute-drop-zone
@@ -1450,18 +1468,8 @@
         username (extract-username url)
         cached (get @!tweet-cache url)
         view-key (str block-id "-tweet")
-        click-handler {:on {:click (fn [e]
-                                     (.stopPropagation e)
-                                     (.preventDefault e)
-                                     (cond
-                                       (.-shiftKey e)
-                                       (shift-click-select-range! db block-id on-intent)
-
-                                       is-focused
-                                       (on-intent {:type :enter-edit :block-id block-id})
-
-                                       :else
-                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}
+        click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
+                                          :on-intent on-intent :prevent-default? true})
         ;; Use cached author name if available, fallback to username
         display-name (or (:author-name cached) (str "@" username) "@unknown")]
     [:div.tweet-embed
@@ -1487,17 +1495,8 @@
   "Render a video embed preview."
   [{:keys [block-id url is-focused on-intent db]}]
   (let [view-key (str block-id "-video")
-        click-handler {:on {:click (fn [e]
-                                     (.stopPropagation e)
-                                     (cond
-                                       (.-shiftKey e)
-                                       (shift-click-select-range! db block-id on-intent)
-
-                                       is-focused
-                                       (on-intent {:type :enter-edit :block-id block-id})
-
-                                       :else
-                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+        click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
+                                          :on-intent on-intent})]
     [:div.video-embed
      (merge {:replicant/key view-key} click-handler)
      [:div.video-embed-header
@@ -1522,17 +1521,8 @@
   [{:keys [block-id text is-focused on-intent db]}]
   (let [view-key (str block-id "-image")
         {:keys [path alt width]} (image-only-block? text)
-        click-handler {:on {:click (fn [e]
-                                     (.stopPropagation e)
-                                     (cond
-                                       (.-shiftKey e)
-                                       (shift-click-select-range! db block-id on-intent)
-
-                                       is-focused
-                                       (on-intent {:type :enter-edit :block-id block-id})
-
-                                       :else
-                                       (on-intent {:type :selection :mode :replace :ids block-id})))}}]
+        click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
+                                          :on-intent on-intent})]
     [:div.image-block-content
      (merge {:replicant/key view-key
              :class (when is-focused "focused")}
@@ -1587,17 +1577,8 @@
                               :quote :blockquote.block-content.math-ignore
                               :heading (keyword (str "h" level ".block-content.math-ignore"))
                               :span.block-content.math-ignore)
-              click-handler {:on {:click (fn [e]
-                                           (.stopPropagation e)
-                                           (cond
-                                             (.-shiftKey e)
-                                             (shift-click-select-range! db block-id on-intent)
-
-                                             is-focused
-                                             (on-intent {:type :enter-edit :block-id block-id})
-
-                                             :else
-                                             (on-intent {:type :selection :mode :replace :ids block-id})))}}
+              click-handler (block-click-attrs {:db db :block-id block-id :is-focused is-focused
+                                                :on-intent on-intent})
               link-only (md-links/link-only? content)
               evo-link-target (some-> link-only :target md-links/parse-evo-target)
               ;; Special case: a block whose whole content is a single
