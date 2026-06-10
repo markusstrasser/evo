@@ -64,26 +64,6 @@
 
 ;; ── Main Journals View ─────────────────────────────────────────────────────────
 
-(defn- ordinal-suffix
-  "Get ordinal suffix for a day number (1st, 2nd, 3rd, 4th, etc.)."
-  [day]
-  (cond
-    (or (= day 11) (= day 12) (= day 13)) "th"
-    (= (mod day 10) 1) "st"
-    (= (mod day 10) 2) "nd"
-    (= (mod day 10) 3) "rd"
-    :else "th"))
-
-(defn- today-title
-  "Get today's date as human-readable title: 'Dec 14th, 2025'."
-  []
-  (let [now (js/Date.)
-        months ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]
-        y (.getFullYear now)
-        m (.getMonth now)
-        d (.getDate now)]
-    (str (nth months m) " " d (ordinal-suffix d) ", " y)))
-
 (defn JournalsView
   "Main journals view showing all journal pages stacked and EDITABLE.
 
@@ -100,7 +80,7 @@
   [{:keys [db on-intent]}]
   (let [all-pages (q/all-pages db)
         today (journal/today-iso)
-        today-human (today-title)
+        today-human (journal/today-title)
         ;; Session state for editing context (same as Outline)
         editing-block-id (vs/editing-block-id)
         focus-block-id (vs/focus-id)
