@@ -11,14 +11,19 @@
    - Batch operations (indent multiple blocks)
    - Derived index recomputation
    - Undo stack with many operations"
-  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing]]))
-  (:require #?(:clj  [clojure.test :refer [deftest is testing]]
-               :cljs [cljs.test :refer [deftest is testing]])
+  #?(:cljs (:require-macros [cljs.test :refer [deftest is testing use-fixtures]]))
+  (:require #?(:clj  [clojure.test :refer [deftest is testing use-fixtures]]
+               :cljs [cljs.test :refer [deftest is testing use-fixtures]])
+            [harness.runtime-fixtures :as runtime-fixtures]
             [kernel.db :as db]
             [kernel.transaction :as tx]
             [kernel.intent :as intent]
             [kernel.log :as L]
             [kernel.query :as q]))
+
+;; Benchmarks dispatch real intents; as an isolated tier (bb test:bench)
+;; the namespace must load the plugin manifest itself.
+(use-fixtures :once runtime-fixtures/bootstrap-runtime)
 
 ;; ── Timing Utilities ─────────────────────────────────────────────────────────
 

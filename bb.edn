@@ -48,6 +48,11 @@
                        (shell "npx shadow-cljs compile :test-kernel")
                        (shell "node out/tests-kernel.js"))}
 
+  test:bench {:doc "Wall-clock perf benchmarks — run on a QUIET machine; excluded from bb test (load-flaky)"
+              :task (do
+                      (shell "npx shadow-cljs compile :test-bench")
+                      (shell "node out/tests-bench.js"))}
+
   test:verify-harness {:doc "Verify isolated test tiers declare explicit bootstrap fixtures"
                        :task (shell "bb scripts/verify_test_harness.clj")}
 

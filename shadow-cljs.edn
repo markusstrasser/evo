@@ -26,8 +26,15 @@
   :test
   {:target :node-test
    :output-to "out/tests.js"
-   :ns-regexp "-test$"
-   :ns-exclude-regexp "browser-ui"}
+   ;; Negative lookahead keeps wall-clock benchmarks out of the default
+   ;; suite — they flake under parallel agent/CI load (relaxed once in
+   ;; 29a292a3, still flaky). Run them deliberately via `bb test:bench`.
+   ;; NOTE: shadow node-test has no :ns-exclude-regexp option — only
+   ;; :ns-regexp (re-find) and :exclude (set of exact ns symbols); see
+   ;; shadow.build.test-util/find-test-namespaces. The previous
+   ;; `:ns-exclude-regexp "browser-ui"` here was a silent no-op (and no
+   ;; browser-ui namespaces exist).
+   :ns-regexp "^(?!benchmark\\.).*-test$"}
 
   :test-view
   {:target :node-test
@@ -48,6 +55,11 @@
   {:target :node-test
    :output-to "out/tests-specs.js"
    :ns-regexp "^spec\\..*-test$"}
+
+  :test-bench
+  {:target :node-test
+   :output-to "out/tests-bench.js"
+   :ns-regexp "^benchmark\\..*-test$"}
 
   :test-fr-fixtures
   {:target :node-test
