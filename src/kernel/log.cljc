@@ -87,10 +87,13 @@
           log
           (let [absorbed (subvec (vec ops) 0 drop-n)
                 remaining (subvec (vec ops) drop-n)
-                new-root (reduce (fn [d entry]
-                                   (:db (tx/interpret d (:ops entry))))
-                                 root-db
-                                 absorbed)]
+                ;; Same skip-derived fold as head-db: derive once after
+                ;; absorbing so :root-db stays a derived db at rest.
+                new-root (db/derive-indexes
+                          (reduce (fn [d entry]
+                                    (:db (tx/interpret d (:ops entry) {:tx/skip-derived? true})))
+                                  root-db
+                                  absorbed))]
             {:root-db new-root
              :ops (vec remaining)
              :head (- head drop-n)
@@ -136,23 +139,26 @@
     (when (>= head 0)
       (nth ops head))))
 
-(defn previous-entry
-  "Return the entry immediately before head (i.e. the one an undo would
-   step past), or nil if head is at root."
-  [log]
-  (let [{:keys [ops head]} log]
-    (when (>= head 0)
-      (nth ops head))))
-
 (defn head-db
-  "Fold ops[0..head] onto :root-db. Returns the current db value."
+  "Fold ops[0..head] onto :root-db. Returns the current db value.
+
+   Intermediate folds skip index derivation (`:tx/skip-derived?`) — log
+   entries store ops that were normalized + validated at append time, and
+   the only stale-:derived reader in the pipeline (noop-place detection)
+   cannot false-drop against the canonical sibling vectors. Indexes are
+   derived ONCE on the final value, so undo costs O(window-ops + one
+   derive) instead of O(window × derive) — the per-entry derive was
+   multiplied by corpus size once derived plugins (backlinks) registered."
   [log]
   (let [{:keys [root-db ops head]} log
         applied (take (inc head) ops)]
-    (reduce (fn [d entry]
-              (:db (tx/interpret d (:ops entry))))
-            root-db
-            applied)))
+    (if (seq applied)
+      (db/derive-indexes
+       (reduce (fn [d entry]
+                 (:db (tx/interpret d (:ops entry) {:tx/skip-derived? true})))
+               root-db
+               applied))
+      root-db)))
 
 (defn reset-root
   "Build a fresh log whose root is `db` and whose history is empty.

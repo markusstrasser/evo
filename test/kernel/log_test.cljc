@@ -182,6 +182,64 @@
       (is (not (contains? (:nodes head-db-after) "b"))
           "Ops beyond user's head must NOT be absorbed into :root-db"))))
 
+;; ── Refold equivalence (skip-derived fold == full-derive fold) ──────────────
+
+(defn- head-db-full-derive
+  "Oracle: the pre-optimization refold — full interpret (with per-entry
+   index derivation) for every applied entry."
+  [log]
+  (let [{:keys [root-db ops head]} log
+        applied (take (inc head) ops)]
+    (reduce (fn [d log-entry]
+              (:db (tx/interpret d (:ops log-entry))))
+            root-db
+            applied)))
+
+(defn- move-entry
+  "Entry that re-places an existing block (structural move)."
+  [n id under at]
+  (L/make-entry
+   (merge (mint n)
+          {:intent {:type :test-move :n n}
+           :ops [{:op :place :id id :under under :at at}]
+           :session nil})))
+
+(defn- update-entry
+  "Entry that rewrites a block's text (carries a materialized timestamp so
+   replay is deterministic)."
+  [n id text]
+  (L/make-entry
+   (merge (mint n)
+          {:intent {:type :test-update :n n}
+           :ops [{:op :update-node :id id :props {:text text :updated-at n}}]
+           :session nil})))
+
+(deftest head-db-skip-derived-fold-equals-full-derive-fold
+  (testing "head-db (derive once at the end) equals the per-entry-derive oracle
+   on a log mixing creates, moves, nesting, and updates"
+    (let [log (-> L/empty-log
+                  (L/append (entry 1 "a" "A"))
+                  (L/append (entry 2 "b" "B"))
+                  (L/append (entry 3 "c" "C"))
+                  (L/append (move-entry 4 "c" "a" :first))   ; nest c under a
+                  (L/append (move-entry 5 "b" :doc :first))  ; move b to front
+                  (L/append (update-entry 6 "a" "A!"))
+                  (L/append (move-entry 7 "c" :doc :last)))] ; un-nest c
+      (is (= (head-db-full-derive log) (L/head-db log))
+          "skip-derived fold + one final derive == full-derive fold")
+      (is (:ok? (db/validate (L/head-db log)))
+          "refolded db validates, incl. derived freshness")))
+  (testing "equality also holds at every rewound head position"
+    (let [log (-> L/empty-log
+                  (L/append (entry 1 "a" "A"))
+                  (L/append (entry 2 "b" "B"))
+                  (L/append (move-entry 3 "b" :doc :first))
+                  (L/append (move-entry 4 "b" :doc :last)))]
+      (doseq [h (range -1 (count (:ops log)))]
+        (let [rewound (assoc log :head h)]
+          (is (= (head-db-full-derive rewound) (L/head-db rewound))
+              (str "refold equivalence at head=" h)))))))
+
 ;; ── Session snapshot on undo ────────────────────────────────────────────────
 
 (deftest entry-at-head-exposes-session-snapshot
