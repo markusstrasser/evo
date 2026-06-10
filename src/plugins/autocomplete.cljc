@@ -69,7 +69,7 @@
 
 (defmethod search-items :page-ref
   [db {:keys [query]}]
-  (let [page-data (->> (get-in db [:children-by-parent :doc] [])
+  (let [page-data (->> (q/children db :doc)
                        (map (fn [id]
                               {:id id
                                :title (get-in db [:nodes id :props :title])

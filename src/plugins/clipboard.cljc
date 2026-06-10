@@ -84,7 +84,7 @@
   "Collect a block and all its descendants in pre-order.
    Returns lazy seq of {:id :depth} maps."
   [db block-id base-depth]
-  (let [children (get-in db [:children-by-parent block-id] [])]
+  (let [children (q/children db block-id)]
     (cons {:id block-id :depth base-depth}
           (mapcat #(collect-block-tree db % (inc base-depth)) children))))
 
