@@ -143,6 +143,31 @@
           issues (apply-ops-expect-failure db [(place-op "a" "b" :first)])]
       (is (= :cycle-detected (-> issues first :issue))))))
 
+(deftest test-cycle-check-tracks-intermediate-moves
+  (testing "op 2 is VALID only because op 1 moved the node out — the threaded
+   parent-of must reflect op 1, not the pre-transaction tree"
+    ;; Before: a → b (b nested under a). Tx: un-nest b, then nest a under b.
+    ;; Against the STALE pre-tx ancestry this looks like a cycle; against the
+    ;; intermediate state it is legal.
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" "a" :first)])
+          db2 (apply-ops db [(place-op "b" :doc :first)
+                             (place-op "a" "b" :first)])]
+      (is (= "b" (parent-of db2 "a")))
+      (is (db-valid? db2))))
+  (testing "op 2 is INVALID only because op 1 created the nesting — a
+   never-updated ancestry map would wrongly allow the cycle"
+    ;; Before: a, b both top-level. Tx: nest b under a, then place a under b.
+    (let [db (apply-ops [(create-op "a" :div)
+                         (create-op "b" :div)
+                         (place-op "a" :doc :first)
+                         (place-op "b" :doc :last)])
+          issues (apply-ops-expect-failure db [(place-op "b" "a" :first)
+                                               (place-op "a" "b" :first)])]
+      (is (= :cycle-detected (-> issues first :issue))))))
+
 (deftest test-reject-invalid-anchor
   (testing "anchor node must be sibling under same parent"
     (let [db (apply-ops [(create-op "a" :div)

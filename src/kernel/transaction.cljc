@@ -193,34 +193,31 @@
               kid kids]
           [kid parent])))
 
-(defn- descendant-of-fresh?
-  "Check if potential-descendant is a descendant of potential-ancestor.
-   Walks up the parent chain until reaching a root or detecting the ancestor.
+(defn- descendant-via?
+  "Check if potential-descendant is a descendant of potential-ancestor by
+   walking up `parent-of` until a root or the ancestor is reached.
 
-   Builds fresh parent-of map from children-by-parent to avoid stale derived data
-   during multi-op validation."
-  [db potential-ancestor potential-descendant]
-  (let [parent-of (parent-of-from (:children-by-parent db))
-        roots (set (:roots db))]
-    (loop [current potential-descendant]
-      (cond
-        (nil? current) false
-        (= current potential-ancestor) true
-        (contains? roots current) false
-        :else (recur (get parent-of current))))))
+   `parent-of` is the fold-threaded map maintained by validate-ops: built
+   once per transaction from canonical :children-by-parent, then updated
+   per applied :place op. O(depth) per check instead of the previous
+   O(nodes) rebuild per :place op — bulk pastes were O(k·n)."
+  [parent-of roots potential-ancestor potential-descendant]
+  (loop [current potential-descendant]
+    (cond
+      (nil? current) false
+      (= current potential-ancestor) true
+      (contains? roots current) false
+      :else (recur (get parent-of current)))))
 
 (defn- would-create-cycle?
   "Check if placing node-id under parent would create a cycle.
    A cycle occurs when:
    1. node-id equals parent (self-parent)
-   2. parent is a descendant of node-id (would create loop)
-
-   Uses descendant-of-fresh? which rebuilds parent-of from children-by-parent
-   to avoid stale derived data during multi-op validation."
-  [db node-id parent]
+   2. parent is a descendant of node-id (would create loop)"
+  [parent-of roots node-id parent]
   (or (= node-id parent)
       (and (string? parent)
-           (descendant-of-fresh? db node-id parent))))
+           (descendant-via? parent-of roots node-id parent))))
 
 (defn- validate-anchor
   "Validate anchor (keyword, integer, or map).
@@ -283,15 +280,15 @@
 
 (defn- check-no-cycle
   "Validate that placement doesn't create cycle. Returns issue if cycle detected, nil otherwise."
-  [db op op-index id under]
-  (when (would-create-cycle? db id under)
+  [parent-of roots op op-index id under]
+  (when (would-create-cycle? parent-of roots id under)
     (make-issue op op-index :cycle-detected
                 (str "Cannot place " id " under " under " - would create cycle"))))
 
 (defn- validate-place
   "Validate :place operation.
    Checks node existence, parent validity, anchor validity, and cycle prevention."
-  [db op op-index]
+  [db parent-of roots op op-index]
   (let [{:keys [id under at]} op
         node-exists? (contains? (:nodes db) id)
         parent-valid? (db/valid-parent? db under)]
@@ -305,7 +302,7 @@
              (validate-anchor db op op-index under at id))
            ;; Only check for cycles if both node and parent exist
            (when (and node-exists? parent-valid?)
-             [(check-no-cycle db op op-index id under)])])))
+             [(check-no-cycle parent-of roots op op-index id under)])])))
 
 (defn- validate-update-node
   "Validate :update-node operation."
@@ -321,8 +318,10 @@
    1. Check schema validity
    2. Validate operation-specific constraints
 
-   Each validator returns a vector of issues (empty if valid)."
-  [db op op-index]
+   `parent-of`/`roots` are the fold-threaded ancestry context used by
+   :place cycle checks. Each validator returns a vector of issues
+   (empty if valid)."
+  [db parent-of roots op op-index]
   (into []
         cat
         [(when-not (schema/valid-op? op)
@@ -330,7 +329,7 @@
                         (str "Operation does not match schema: " (schema/explain-op op)))])
          (case (:op op)
            :create-node (validate-create-node db op op-index)
-           :place (validate-place db op op-index)
+           :place (validate-place db parent-of roots op op-index)
            :update-node (validate-update-node db op op-index)
            [(make-issue op op-index :unknown-op
                         (str "Unknown operation: " (:op op)))])]))
@@ -350,14 +349,22 @@
 
 (defn- process-operation
   "Process a single operation during validation.
-   Returns updated [db issues] or reduced value if validation fails."
-  [[current-db all-issues applied-count] [op-index op]]
-  (let [op-issues (validate-op current-db op op-index)]
+   Returns the updated accumulator, or a reduced value if validation fails.
+
+   The accumulator threads :parent-of alongside the db: applied :place
+   ops update exactly one entry, mirroring what ops/place does to
+   :children-by-parent. This keeps cycle checks O(depth) per op."
+  [{:keys [db issues applied-count parent-of roots] :as acc} [op-index op]]
+  (let [op-issues (validate-op db parent-of roots op op-index)]
     (if (seq op-issues)
       ;; Stop on first error
-      (reduced [current-db (into all-issues op-issues) applied-count])
+      (reduced (update acc :issues into op-issues))
       ;; Apply valid operation and continue
-      [(apply-op current-db op) all-issues (inc applied-count)])))
+      (cond-> (assoc acc
+                     :db (apply-op db op)
+                     :applied-count (inc applied-count))
+        (= :place (:op op))
+        (assoc :parent-of (assoc parent-of (:id op) (:under op)))))))
 
 (defn- validate-ops
   "Validate all operations in sequence, accumulating issues.
@@ -367,9 +374,20 @@
    - Applies valid operations to maintain DB state
    - Stops on first error, returning DB and accumulated issues
 
+   Ancestry context (parent-of, roots) is built ONCE from canonical
+   :children-by-parent and maintained incrementally per applied :place —
+   the previous per-op O(nodes) rebuild made k-place transactions
+   (bulk paste/move) O(k·n).
+
    Returns: [final-db issues applied-count]"
   [db ops]
-  (reduce process-operation [db [] 0] (m/indexed ops)))
+  (let [acc0 {:db db
+              :issues []
+              :applied-count 0
+              :parent-of (parent-of-from (:children-by-parent db))
+              :roots (set (:roots db))}
+        {:keys [db issues applied-count]} (reduce process-operation acc0 (m/indexed ops))]
+    [db issues applied-count]))
 
 (defn dry-run
   "Run ops through normalize → validate → apply without derive-indexes or trace.
