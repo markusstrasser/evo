@@ -409,6 +409,12 @@
    Returns:
      {:db final-db :issues [...] :trace [...]}
 
+   Identity guarantee: when nothing applies — validation failed, or every op
+   normalized away (no-op :place), or txs was empty — the returned :db is the
+   INPUT db object, untouched (`identical?`). Callers (executor reset guard,
+   log refold) rely on this to skip re-render/save/derive work. A db at rest
+   is already derived, so skipping derive here loses nothing.
+
    Trace format:
    [{:tx-id <id> :seed <seed> :ops [<ops>] :notes \"...\" :num-applied <n>} ...]"
   ([db txs] (interpret db txs nil))
@@ -419,8 +425,10 @@
          normalized-ops (normalize-ops db txs opts)
          [validated-prefix-db issues applied-count] (validate-ops db normalized-ops)
          success? (empty? issues)
+         no-change? (or (not success?) (empty? normalized-ops))
          public-db (if success? validated-prefix-db db)
          derived-db (cond
+                      no-change? db
                       skip-derived? public-db
                       :else (db/derive-indexes public-db))
          public-ops (if success? normalized-ops [])

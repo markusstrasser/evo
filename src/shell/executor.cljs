@@ -218,9 +218,12 @@
     ;; Clean up storage (delete renamed page files)
     (handle-storage-cleanup! session-updates)
 
-    ;; Apply DB changes ONLY IF changed (triggers re-render + debounced save)
-    ;; Skip reset when db unchanged to avoid spurious watcher notifications
-    (when-not (identical? db-before db-after)
+    ;; Apply DB changes ONLY IF changed (triggers re-render + debounced save).
+    ;; Structural not= rather than identical?: tx/interpret preserves object
+    ;; identity on no-op dispatches (see its identity guarantee), and not=
+    ;; additionally catches applied-but-equivalent results. The old identical?
+    ;; guard was dead — derive-indexes allocated a fresh db on every dispatch.
+    (when-not (= db-before db-after)
       (reset! !db db-after))
 
     ;; Clear buffer after successful dispatch (if buffer was injected and used)
