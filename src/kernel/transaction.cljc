@@ -354,7 +354,7 @@
    The accumulator threads :parent-of alongside the db: applied :place
    ops update exactly one entry, mirroring what ops/place does to
    :children-by-parent. This keeps cycle checks O(depth) per op."
-  [{:keys [db issues applied-count parent-of roots] :as acc} [op-index op]]
+  [{:keys [db applied-count parent-of roots] :as acc} [op-index op]]
   (let [op-issues (validate-op db parent-of roots op op-index)]
     (if (seq op-issues)
       ;; Stop on first error
