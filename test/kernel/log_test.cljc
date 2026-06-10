@@ -240,6 +240,88 @@
           (is (= (head-db-full-derive rewound) (L/head-db rewound))
               (str "refold equivalence at head=" h)))))))
 
+;; ── Root ingress derives (at-rest invariant) ────────────────────────────────
+
+(deftest reset-root-derives-stale-root
+  (testing "reset-root re-derives its input, so a stale caller db cannot leak
+   stale indexes through head-db at head=-1 (the verbatim-root path)"
+    (let [fresh (:db (tx/interpret (db/empty-db)
+                                   [{:op :create-node :id "a" :type :block :props {:text "A"}}
+                                    {:op :place :id "a" :under :doc :at :last}]
+                                   {:tx/now-ms 1}))
+          stale (assoc fresh :derived {})          ; hand-corrupted at-rest db
+          log (L/reset-root stale)
+          root (L/head-db log)]
+      (is (= :doc (get-in root [:derived :parent-of "a"]))
+          "stored root has fresh indexes")
+      (is (:ok? (db/validate root))
+          "head-db at root validates incl. derived freshness"))))
+
+;; ── Generative refold equivalence ────────────────────────────────────────────
+
+(defn- make-rng
+  "Deterministic LCG; returns (fn [n] -> int in [0, n))."
+  [seed]
+  (let [state (atom (max 1 seed))]
+    (fn [n]
+      (mod (swap! state (fn [s] (mod (* 48271 s) 2147483647))) n))))
+
+(defn- random-log
+  "Build a log of n-entries valid entries: creates (possibly nested),
+   moves back to :doc (:first/:last — cycle-free by construction), and
+   text updates. Exercises un-nesting and reorder against the stale
+   :derived a skip-derived refold carries."
+  [seed n-entries]
+  (let [rng (make-rng seed)]
+    (loop [log (L/reset-root (db/empty-db))
+           ids []
+           i 0]
+      (if (= i n-entries)
+        log
+        (let [kind (cond
+                     (empty? ids) :create
+                     (zero? (rng 3)) :create
+                     (= 1 (rng 2)) :move
+                     :else :update)
+              n (+ 100 i)
+              target (when (seq ids) (nth ids (rng (count ids))))
+              e (case kind
+                  :create (let [id (str "n" i)
+                                parent (if (or (empty? ids) (zero? (rng 2)))
+                                         :doc
+                                         (nth ids (rng (count ids))))]
+                            (L/make-entry
+                             (merge (mint n)
+                                    {:intent {:type :gen-create}
+                                     :ops [{:op :create-node :id id :type :block
+                                            :props {:text (str "text " i)}}
+                                           {:op :place :id id :under parent :at :last}]
+                                     :session nil})))
+                  :move (L/make-entry
+                         (merge (mint n)
+                                {:intent {:type :gen-move}
+                                 :ops [{:op :place :id target :under :doc
+                                        :at (if (zero? (rng 2)) :first :last)}]
+                                 :session nil}))
+                  :update (L/make-entry
+                           (merge (mint n)
+                                  {:intent {:type :gen-update}
+                                   :ops [{:op :update-node :id target
+                                          :props {:text (str "upd " i) :updated-at n}}]
+                                   :session nil})))]
+          (recur (L/append log e)
+                 (if (= kind :create) (conj ids (str "n" i)) ids)
+                 (inc i)))))))
+
+(deftest head-db-refold-equivalence-generative
+  (testing "skip-derived fold == full-derive fold over seeded random logs"
+    (doseq [seed [7 23 42 99 1234 5678 31337 271828 314159 999983]]
+      (let [log (random-log seed 8)]
+        (is (= (head-db-full-derive log) (L/head-db log))
+            (str "refold equivalence, seed=" seed))
+        (is (:ok? (db/validate (L/head-db log)))
+            (str "refolded db validates, seed=" seed))))))
+
 ;; ── Session snapshot on undo ────────────────────────────────────────────────
 
 (deftest entry-at-head-exposes-session-snapshot
