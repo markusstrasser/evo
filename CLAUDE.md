@@ -46,6 +46,7 @@ bb test                    # Compile + run full suite (shadow :test)
 bb test:view               # Hiccup/view-only tests (<1s)
 bb test:int                # All integration tests under test/integration
 bb test:kernel             # Kernel + script tests only
+bb test:bench              # Wall-clock perf benchmarks — quiet machine only, excluded from bb test
 bb test-watch              # Watch entire suite
 bb test-watch:view         # Watch view tier only
 bb test-watch:int          # Watch integration tier only
