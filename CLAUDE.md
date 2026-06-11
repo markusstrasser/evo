@@ -114,7 +114,7 @@ Use them only for rough orientation; canonical repo truth lives in
 ```
 src/kernel/          # Pure kernel: db, ops, transaction, schema
 src/plugins/         # Intent handlers: navigation, editing, selection
-src/shell/           # UI adapters: Replicant components
+src/shell/           # UI adapters: Replicant components, render-registry (one render dispatch surface)
 src/keymap/          # Keybinding definitions and dispatch
 src/parser/          # Page refs
 src/components/      # Replicant UI components
@@ -601,5 +601,4 @@ commit-freely), autonomy boundaries (autonomous vs ask-first).
 
 ### Known Limitations
 
-- Render-registry (Tier 2 of the parser refactor) is built: inline AST nodes render via `shell.render-registry` (10 handlers; `block.cljs` delegates through `render-node`). Block-level format dispatch (heading/quote/embed) still lives in a `case` in `block.cljs`.
 - Library extractability is not measurable — gated on a concrete consumer requesting it.
