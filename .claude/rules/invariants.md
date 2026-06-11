@@ -22,7 +22,7 @@ Agent work should trend toward:
 - Clean extension surface (three registries + session atom — see docs/GOALS.md)
 - Deletion (remove dead code, consolidate redundancy)
 
-Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording infrastructure, replayable datasets, universal adapter shells, LLVM-of-UI IRs, library extraction on speculation).
+Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording infrastructure, replayable datasets, universal adapter shells, LLVM-of-UI IRs, library extraction on speculation). Sanctioned exception (2026-06, owner-approved): the writerly-expressivity family — `{{type payload}}` macros and the static publish projection — one slice at a time, each behind its own go.
 
 ## Protected Files (require human approval)
 
