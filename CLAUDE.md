@@ -239,7 +239,7 @@ See `src/scripts/script.cljc` for implementation, `test/scripts/` for examples.
 
 - Treat components as **pure render functions**. All persistent state/governance lives in the kernel.
 - Event handlers are simple functions that dispatch intents via `on-intent`. Never mutate DB directly from a component.
-- Lifecycle hooks (`:replicant/on-mount`, `:replicant/on-render`, `:replicant/on-unmount`) are the only place you may touch the DOM (focus, selection, mock text). Guard cursor placement with the `__lastAppliedCursorPos` pattern described in `docs/RENDERING_AND_DISPATCH.md`.
+- Lifecycle hooks (`:replicant/on-mount`, `:replicant/on-render`, `:replicant/on-unmount`) are the only place you may touch the DOM (focus, selection, mock text). Cursor placement lives in `components/block.cljs` lifecycle hooks: `edit-content`'s on-mount reads `vs/cursor-position` and sets text + cursor once; `apply-edit!` keeps DOM, buffer, and cursor in sync afterwards. See `docs/RENDERING_AND_DISPATCH.md`.
 - `set-dispatch!` must stay wired so lifecycle hooks fire; leave it alone unless you know what you're doing.
 
 **CRITICAL**: Always use `:replicant/key` (not `:key`) for conditional elements:
