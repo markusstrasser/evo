@@ -390,7 +390,7 @@ We use `:replicant/on-render` for **ephemeral DOM state only**:
                          (update-mock-text! node (.-textContent node)))}]
 ```
 
-**Key Insight:** Cursor position is stored in DB (`:cursor-position`), but **applying** it requires DOM manipulation in lifecycle hook. To avoid reapplying the same hint on every render, store the last applied value on the DOM node (see `__lastAppliedCursorPos` in `components/block.cljs`).
+**Key Insight:** Cursor position lives in view state (`vs/cursor-position`), but **applying** it requires DOM manipulation in a lifecycle hook. `edit-content`'s `:replicant/on-mount` sets text and cursor once (an on-mount-fired marker coordinates with `on-render`, which fires first in Replicant); `apply-edit!` keeps DOM, buffer, and cursor in sync for subsequent edits. See `components/block.cljs`.
 
 ### Pattern: Atoms for Component-Local State
 
