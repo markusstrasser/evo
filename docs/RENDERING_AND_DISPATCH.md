@@ -7,7 +7,10 @@ flows through function-based Replicant handlers into `shell.editor`,
 
 ## Contents
 - [Replicant Rendering Primer](#replicant-rendering-primer)
-- [Interoperation Notes](#interoperation-notes)
+- [How We Use Replicant in Evo](#how-we-use-replicant-in-evo) — incl. the [render registry](#render-registry-text--ast--hiccup)
+- [Testing Replicant Components](#testing-replicant-components)
+- [Troubleshooting & Common Pitfalls](#troubleshooting--common-pitfalls)
+- [Quick Reference Card](#quick-reference-card)
 
 ## Replicant Rendering Primer
 ## What is Replicant?
@@ -280,6 +283,51 @@ Component Re-renders         <-- Replicant diffs & patches DOM
 ```
 
 **Key Principle:** Components never mutate state directly. They dispatch intents.
+
+### Render Registry: Text → AST → Hiccup
+
+All block content renders through one dispatch surface,
+`shell.render-registry` (`src/shell/render_registry.cljc`):
+
+```
+Block text
+    ↓
+parser.parse/parse              <-- AST nodes [:tag attrs content]
+    ↓
+render-registry/render-node     <-- registry lookup by AST tag
+    ↓
+Hiccup → Replicant
+```
+
+This is the third of the three registries that form the extension surface
+(see `docs/GOALS.md`), and it deliberately mirrors the other two:
+`kernel.intent/register-intent!` and `kernel.derived-registry/register!` —
+a `defonce` atom plus idempotent registration (re-registering a tag
+replaces it, which makes hot reload safe).
+
+```clojure
+(render-registry/register-render! :bold
+  {:handler (fn [node ctx] [:strong ...])})
+```
+
+- **Handler contract:** `(fn [node ctx])` → a string, a single hiccup
+  element, or a vector of sibling elements (flattened by `render-all`,
+  since Replicant 0.x has no `:<>` fragment). Handlers must not mutate
+  `ctx`.
+- **Inline tags** (`:text`, `:bold`, `:italic`, `:link`, `:page-ref`,
+  `:math-inline`, …) each live in their own `shell.render.*` namespace
+  and register at namespace-load time; `shell.render-manifest` is the
+  explicit bootstrap that requires them all (mirroring
+  `plugins.manifest` on the intent side).
+- **Block-level tags** (`:block/heading`, `:block/quote`, `:block/plain`,
+  `:block/image`, `:block/tweet`, `:block/video`) register in
+  `components.block`, which delegates all content through `render-node`
+  — no block-format `case` remains; the `:embed` node type maps onto
+  the same `:block/*` tags.
+- **Unknown tags throw** — there is no plain-text fallback. An unknown
+  tag is a bug (usually a `shell.render.*` namespace that didn't load),
+  not content.
+- REPL introspection: `(render-registry/registered-tags)`.
 
 ### Pattern: Event Handlers Dispatch Intents
 
