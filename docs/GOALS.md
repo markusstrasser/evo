@@ -1,7 +1,8 @@
 # Goals & Governance
 
 > Human-owned. Agents may propose changes but must not modify without explicit approval.
-> Last revised: 2026-04-24 — merged inline Constitution section from CLAUDE.md.
+> Last revised: 2026-06-11 — dropped test/scripts (layer deleted); sanctioned the
+> writerly-expressivity exception. (2026-04-24: merged inline Constitution from CLAUDE.md.)
 
 ## Mission
 
@@ -33,6 +34,8 @@ Agent work should trend toward:
 
 Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording, replayable datasets, library extraction, universal adapters, LLVM-of-UI IRs). Bug fixes and extension-surface cleanup are welcome.
 
+Sanctioned exception (2026-06): the writerly-expressivity family — `{{type payload}}` macros (sn/fn, tldr, voicenote) and the static publish projection — one slice at a time, each behind its own go. Design record: `docs/research/2026-06-11-loc-reduction-tiers.md` §Open forks.
+
 ## Strategy
 
 Keep the kernel pure. Keep the extension surface narrow (three registries + session atom). Fix real bugs. Decline feature work that requires new concepts instead of registering new handlers.
@@ -44,7 +47,7 @@ Keep the kernel pure. Keep the extension surface narrow (three registries + sess
 3. **REPL-verifiable in 30 seconds.** Any kernel behavior must be demonstrable in the REPL with a fixture DB. If it requires a browser to test, it's not kernel — it's shell.
 4. **Specs are the product.** `resources/specs.edn`, `docs/STRUCTURAL_EDITING.md`, and the kernel source ARE the publishable artifacts. Keep them precise, correct, and self-contained.
 5. **Docs: facts not plans.** Keep documentation that states invariants, specs, and verified behaviors. Delete executed plans, stale proposals, and session artifacts. Git preserves history.
-6. **Tests travel with the kernel.** Property tests in `test/kernel/` and `test/scripts/` must work without shell, view, or component dependencies.
+6. **Tests travel with the kernel.** Property tests in `test/kernel/` must work without shell, view, or component dependencies.
 7. **Commit freely.** Same auto-commit policy as other projects. Granular semantic commits after every logical change.
 
 ## Autonomy Boundaries

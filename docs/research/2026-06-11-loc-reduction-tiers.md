@@ -290,7 +290,8 @@ Open forks after execution:
    green-light still required.
    The ~600-line textarea saving is consciously foregone as the option
    premium. Do not re-propose the swap while this ambition stands.
-2. **GOALS.md §6** still references deleted `test/scripts/` — one-line
-   fix awaiting owner approval (human-owned file).
+2. ~~GOALS.md §6 stale `test/scripts/` reference~~ — resolved 2026-06-11
+   with owner approval, together with the expressivity exception
+   amendment (GOALS §Project Mode + invariants.md mirror).
 3. Route B feature-diet menu — standing, owner-initiated, one feature
    per session.
