@@ -254,12 +254,21 @@ classification-on-contact is the real number. Route B/B′ sizes above
 should be read with the same discount.
 
 Open forks after execution:
-1. **Textarea spike vs live-rendered editing** (B′.1) — owner leaning
-   "live editing is cool" as of 2026-06-11 but undecided. Standing
-   recommendation: park BOTH (keep contenteditable, skip the spike,
-   no live-editing build — it is a GOALS-level feature + dependency
-   decision deserving its own /decide). Whichever way it lands, record
-   it here so it isn't re-litigated.
+1. **Textarea spike vs live-rendered editing — RESOLVED 2026-06-11:
+   contenteditable stays; textarea spike (B′.1) declined.** Owner stated
+   an expressivity ambition (live footnotes/marginalia via `[sn …]` →
+   `^1`, math). Decomposition recorded with the decision:
+   - on-exit rendering (math etc.): already shipped (AST + registry);
+   - input transforms (`[sn …]` → rewrite text + create note node +
+     marginalia render surface): substrate-independent, pure
+     parse-trigger→intent→ops idiom; sidenotes/footnotes were already
+     "future plans" in the wysiwyg plan §0.3; NOT built — new feature,
+     needs explicit owner green-light per GOALS;
+   - true mid-edit widget rendering: the only tier that needs
+     contenteditable; remains a someday/major project (own /decide,
+     dependency question included).
+   The ~600-line textarea saving is consciously foregone as the option
+   premium. Do not re-propose the swap while this ambition stands.
 2. **GOALS.md §6** still references deleted `test/scripts/` — one-line
    fix awaiting owner approval (human-owned file).
 3. Route B feature-diet menu — standing, owner-initiated, one feature
