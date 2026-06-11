@@ -14,7 +14,6 @@
             [shell.log :as slog]
             [components.block :as block]
             [components.sidebar :as sidebar]
-            [components.devtools :as devtools]
             [components.backlinks :as backlinks]
             [dataspex.core :as dataspex]
             [components.image :as image]
@@ -50,7 +49,6 @@
     (boolean (and search (>= (.indexOf search param) 0)))))
 
 (defn- test-mode? [] (query-param? "test=true"))
-(defn- devtools-enabled? [] (query-param? "devtools"))
 (defn- embed-mode? [] (query-param? "embed"))
 
 ;; Initial DB - starts with demo content, replaced when folder is loaded
@@ -545,11 +543,6 @@
            ;; All Pages view (no page selected)
            :else
            (all-pages/AllPagesView {:db db :on-intent handle-intent}))
-
-         ;; Dev tools (Simplified: Event → Human-Spec → DB Diff)
-         ;; Auto-show when ?devtools query param present
-         (when (devtools-enabled?)
-           (devtools/DevToolsPanel {:db db}))
 
          ;; Hotkeys reference (toggleable via Cmd+?)
          (when hotkeys-visible?
