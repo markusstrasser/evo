@@ -1,6 +1,8 @@
 # LOC-Reduction Tiers: Is There a 2x/5x/10x Unified Architecture? — 2026-06-11
 
-Status: **proposed** (recommendation memo, no implementation). Successor to
+Status: **Route A partially executed 2026-06-11** (A1/A2/A8/A3 done, A4
+falsified — see Execution record at bottom). Originally proposed as
+recommendation-only. Successor to
 `2026-05-15-architecture-simplification-ledger.md`; builds on its dispositions
 rather than re-litigating them. Survived one cross-model adversarial round
 (Gemini 3.5 Flash + GPT-5.5, 2026-06-11); fold trail at bottom.
@@ -233,3 +235,32 @@ one substrate decision.
   maps + derived indexes), "keymap hand-coded" (bindings_data.cljc is a
   116-line data table). Two memo improvements adopted from the exchange:
   three-op tier-independence note; Datalog added to not-proposed.
+
+## Execution record (2026-06-11, owner-approved items)
+
+src/ measured: 21,962 → **19,732** (−2,230 src; −2,535 with tests/config).
+Estimate-vs-actual per item — the corrections are the calibration data:
+
+| Item | Est. | Actual | Commit | Correction |
+|---|---|---|---|---|
+| A1 scripts/ | 263 | −540 (incl. tests) | e67d4255 | `tx/dry-run` kept (REPL API) |
+| A2 spec_viewer | 1,554 | −1,580 | 2d436500 | as estimated |
+| A8 devtools | 285–470 | −292 | d7c388d2 | **panel only** — `dev.tooling` is e2e-harness infra (`window.DEBUG.lastIntent`/`clipboardLog`/`getOperations`); first cut broke it, reverted |
+| A3 view_state | ~330 | −123 | ba7bc2ae | 30 deleted / 56 kept — "65 trivial wrappers" overcounted: defaulted/coercing accessors are logic. API: `lookup`/`put!`/`mutate!` |
+| A4 defhandler | ~400 | **0 — not built** | — | Premise falsified on contact: shape-preserving conversion is line-neutral (`:toggle-fold` 10→10). The ~400 assumed auto-wrapped returns, which would resurrect the dual handler-return shape the 05-15 ledger removed. De-indentation yield (~200–400 in clipboard/selection/autocomplete) is available macro-free via top-level handler defns — cosmetic, owner-call, not queued. |
+
+Pattern across all five: estimates from file-level probes ran ~2x hot;
+classification-on-contact is the real number. Route B/B′ sizes above
+should be read with the same discount.
+
+Open forks after execution:
+1. **Textarea spike vs live-rendered editing** (B′.1) — owner leaning
+   "live editing is cool" as of 2026-06-11 but undecided. Standing
+   recommendation: park BOTH (keep contenteditable, skip the spike,
+   no live-editing build — it is a GOALS-level feature + dependency
+   decision deserving its own /decide). Whichever way it lands, record
+   it here so it isn't re-litigated.
+2. **GOALS.md §6** still references deleted `test/scripts/` — one-line
+   fix awaiting owner approval (human-owned file).
+3. Route B feature-diet menu — standing, owner-initiated, one feature
+   per session.
