@@ -267,6 +267,15 @@ Open forks after execution:
    - true mid-edit widget rendering: the only tier that needs
      contenteditable; remains a someday/major project (own /decide,
      dependency question included).
+   Syntax direction settled in discussion (2026-06-11): the typed-element
+   family (`sn`/`fn`, `voicenote`, `tldr`, …) uses **`{{type payload}}`
+   macros** (Logseq idiom; dead syntax in evo; no link-label collision —
+   bare `[type …]` rejected for content-vs-syntax ambiguity that grows
+   with the type registry). One parser pattern → typed AST node →
+   render-registry handler per type; unknown macro types degrade to a
+   visible pill, never throw on user content. Open micro-fork: `^[…]`
+   (Pandoc round-trip) vs `{{sn …}}` (uniformity) for prose footnotes —
+   decide at build time.
    The ~600-line textarea saving is consciously foregone as the option
    premium. Do not re-propose the swap while this ambition stands.
 2. **GOALS.md §6** still references deleted `test/scripts/` — one-line
