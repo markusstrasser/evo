@@ -15,14 +15,6 @@
               :watch-dir "public"} ;; Hot-reload CSS when output.css changes
    :preloads [debug]}
 
-  :spec-viewer
-  {:target :browser
-   :output-dir "public/js/spec-viewer"
-   :asset-path "/js/spec-viewer"
-   :modules {:main {:init-fn shell.spec-viewer/main}}
-   :devtools {:reload-strategy :full
-              :watch-dir "public"}}
-
   :test
   {:target :node-test
    :output-to "out/tests.js"
