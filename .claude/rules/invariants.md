@@ -9,7 +9,7 @@ These constraints MUST be maintained at all times, including after compaction.
 3. **No protocols in kernel.** Just pure functions.
 4. **No async in core.** Event sourcing is synchronous.
 5. **Canonical DB shape owned by kernel.** Adapters at edges only.
-6. **Tests travel with the kernel.** `test/kernel/` and `test/scripts/` must work without shell, view, or component dependencies.
+6. **Tests travel with the kernel.** `test/kernel/` must work without shell, view, or component dependencies.
 
 ## Project Mode: Solid Outliner With Clean Extension Surface
 

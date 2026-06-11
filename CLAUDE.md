@@ -45,7 +45,7 @@ npm run build              # Clean + release blocks-ui + minified CSS
 bb test                    # Compile + run full suite (shadow :test)
 bb test:view               # Hiccup/view-only tests (<1s)
 bb test:int                # All integration tests under test/integration
-bb test:kernel             # Kernel + script tests only
+bb test:kernel             # Kernel tests only
 bb test:bench              # Wall-clock perf benchmarks — quiet machine only, excluded from bb test
 bb test-watch              # Watch entire suite
 bb test-watch:view         # Watch view tier only
@@ -194,46 +194,9 @@ Component Re-renders       # Replicant diffs DOM
 
 Components never mutate state directly. They describe what happened via intents.
 
-### Multi-Step Operations: Script Pattern
-
-For operations where step N depends on results of step N-1, use the **script pattern** (`src/scripts/`):
-
-```clojure
-;; Problem: Create and place a block, then tell the caller which ID to focus
-;; Single-pass plugins can't see intermediate state
-
-;; Solution: Script simulates on scratch DB
-(ns scripts.editing
-  (:require [scripts.script :as script]))
-
-(defn insert-block [db {:keys [under at text]}]
-  (let [new-id (str (random-uuid))
-        result (script/run db
-                 [{:op :create-node
-                   :id new-id
-                   :type :block
-                   :props {:text (or text "")}}
-                  {:op :place :id new-id :under under :at at}])]
-    {:ops (:ops result)
-     :new-id new-id}))
-```
-
-**How it works:**
-1. Run steps on scratch DB (throwaway copy)
-2. Each step sees real intermediate state
-3. Accumulate normalized ops
-4. Return structural facts the outer handler can use for session updates
-5. Commit all ops atomically to real DB (one undo entry)
-
-**When to use:**
-- Multi-step with dependencies (step 2 needs result of step 1)
-- Example: Smart backspace, paste multi-line, batch operations
-
-**When NOT to use:**
-- Single-pass logic (one intent → ops)
-- No dependency on intermediate state
-
-See `src/scripts/script.cljc` for implementation, `test/scripts/` for examples.
+For multi-step operations where step N depends on step N-1's result, handlers
+compute intermediate state inline (run `tx/interpret` on a scratch copy and
+inspect the result) — there is no separate script layer.
 
 ### Replicant (View Layer)
 
