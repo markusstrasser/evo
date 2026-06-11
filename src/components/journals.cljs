@@ -25,7 +25,7 @@
         navigate-to-page (fn [e]
                            (.preventDefault e)
                            (.stopPropagation e)
-                           (vs/set-journals-view! false)
+                           (vs/put! [:ui :journals-view?] false)
                            (when on-intent
                              (on-intent {:type :switch-page :page-id page-id})))]
     [:div.journal-item
@@ -82,10 +82,10 @@
         today (journal/today-iso)
         today-human (journal/today-title)
         ;; Session state for editing context (same as Outline)
-        editing-block-id (vs/editing-block-id)
-        focus-block-id (vs/focus-id)
-        selection-set (vs/selection-nodes)
-        folded-set (vs/folded)
+        editing-block-id (vs/lookup [:ui :editing-block-id])
+        focus-block-id (vs/lookup [:selection :focus])
+        selection-set (vs/lookup [:selection :nodes])
+        folded-set (vs/lookup [:ui :folded])
         existing-journals (->> all-pages
                                (keep (fn [pid]
                                        (let [title (q/page-title db pid)

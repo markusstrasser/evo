@@ -174,7 +174,7 @@
   (let [buffer-text (vs/buffer-text block-id)
         dom-text (when target (extract-text-with-newlines target))
         final-text (or buffer-text dom-text)
-        same-block? (= (vs/editing-block-id) block-id)]
+        same-block? (= (vs/lookup [:ui :editing-block-id]) block-id)]
     ;; Dismiss autocomplete if active
     (when (vs/autocomplete-active?)
       (on-intent {:type :autocomplete/dismiss}))
@@ -271,7 +271,7 @@
    overwriting the drag state when dragging child blocks."
   [e block-id]
   (.stopPropagation e) ; Prevent bubbling to parent blocks!
-  (let [selection (vs/selection-nodes)
+  (let [selection (vs/lookup [:selection :nodes])
         drag-ids (if (contains? selection block-id)
                    selection
                    #{block-id})]
@@ -289,7 +289,7 @@
   ;; Also update drop target on enter for immediate feedback
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
-        dragging (vs/dragging-ids)]
+        dragging (vs/lookup [:ui :drag :dragging-ids])]
     (when-not (contains? dragging block-id)
       (vs/drag-over! block-id zone))))
 
@@ -301,7 +301,7 @@
   (set! (.-dropEffect (.-dataTransfer e)) "move")
   (let [target (.-currentTarget e)
         zone (compute-drop-zone e target)
-        dragging (vs/dragging-ids)]
+        dragging (vs/lookup [:ui :drag :dragging-ids])]
     ;; Don't allow dropping on self
     (when-not (contains? dragging block-id)
       (vs/drag-over! block-id zone))))
@@ -327,14 +327,14 @@
         ;; Upload and create image blocks after this block
         (upload-and-insert-images! image-files nil nil block-id on-intent)
         ;; Clear any drag state
-        (vs/drag-end!))
+        (vs/put! [:ui :drag] nil))
 
       ;; BLOCK MOVE: Existing drag-and-drop block reordering logic
-      (let [dragging (vs/dragging-ids)
-            drop-target (vs/drop-target)
+      (let [dragging (vs/lookup [:ui :drag :dragging-ids])
+            drop-target (vs/lookup [:ui :drag :drop-target])
             zone (:zone drop-target)]
         ;; Clear drag state first to prevent race conditions
-        (vs/drag-end!)
+        (vs/put! [:ui :drag] nil)
         ;; Execute move if valid
         (when (and (seq dragging)
                    (not (contains? dragging block-id))
@@ -357,12 +357,12 @@
   "Clean up drag state."
   [e]
   (.stopPropagation e) ; Prevent bubbling to parent blocks
-  (vs/drag-end!))
+  (vs/put! [:ui :drag] nil))
 
 (defn- drop-zone-style
   "Visual feedback style for drop zones."
   [block-id]
-  (let [{:keys [id zone]} (vs/drop-target)]
+  (let [{:keys [id zone]} (vs/lookup [:ui :drag :drop-target])]
     (when (= id block-id)
       (case zone
         :above {:border-top "2px solid #0066cc"}
@@ -943,7 +943,7 @@
 (defn- handle-enter-key
   "Handle Enter key based on document view mode and shift modifier."
   [e db block-id on-intent target shift?]
-  (if (vs/document-view?)
+  (if (vs/lookup [:ui :document-view?])
     ;; Doc-mode: Enter=newline, Shift+Enter=new block
     (if shift?
       (handle-enter e db block-id on-intent)
@@ -1238,7 +1238,7 @@
       ;; On mount: Set text once, focus, position cursor
       :replicant/on-mount
       (fn [{:replicant/keys [node]}]
-        (let [initial-cursor (vs/cursor-position)
+        (let [initial-cursor (vs/lookup [:ui :cursor-position])
               cursor-pos (cond
                            (number? initial-cursor) initial-cursor
                            (= initial-cursor :start) 0
@@ -1266,7 +1266,7 @@
 
           ;; Clear cursor-position AFTER applying it (on-mount is the authority for new elements)
           (when initial-cursor
-            (vs/clear-cursor-position!))))
+            (vs/put! [:ui :cursor-position] nil))))
 
       ;; On render: Maintain focus AND apply pending cursor position
       ;; LOGSEQ PARITY (FR-Undo-01): After undo/redo, cursor-position is set in session
@@ -1285,8 +1285,8 @@
         ;; 2. This block is the current editing block
         ;; For NEW elements, on-mount handles cursor positioning.
         (let [mounted? (.-mounted ^js (.-dataset node))]
-          (when (and mounted? (= block-id (vs/editing-block-id)))
-            (when-let [pending-cursor (vs/cursor-position)]
+          (when (and mounted? (= block-id (vs/lookup [:ui :editing-block-id])))
+            (when-let [pending-cursor (vs/lookup [:ui :cursor-position])]
               (let [text-content (.-textContent node)
                     text-length (count text-content)
                     cursor-pos (cond
@@ -1298,7 +1298,7 @@
                 (when cursor-pos
                   (set-cursor! node cursor-pos))
                 ;; Clear the pending cursor position to prevent reapplication
-                (vs/clear-cursor-position!))))))
+                (vs/put! [:ui :cursor-position] nil))))))
 
       ;; Event handlers for edit mode
       :on {:click (fn [e]
@@ -1322,7 +1322,7 @@
            ;; Blur handler: Commit to canonical DB
            :blur (fn [e]
                    (commit-edit! block-id (.-target e) on-intent)
-                   (when-not (vs/keep-edit-on-blur?)
+                   (when-not (vs/lookup [:ui :keep-edit-on-blur])
                      (on-intent {:type :exit-edit})))
 
            ;; Keydown: Keyboard shortcuts
@@ -1360,8 +1360,8 @@
                                             plain-text)
                               selection-end (max anchor-offset focus-offset)
                               ;; Check if this paste matches our internal clipboard
-                              internal-text (vs/clipboard-text)
-                              internal-blocks (vs/clipboard-blocks)
+                              internal-text (vs/lookup [:ui :clipboard-text])
+                              internal-blocks (vs/lookup [:ui :clipboard-blocks])
                               use-internal? (and (seq internal-blocks)
                                                  (= plain-text internal-text))
                               ;; Detect multi-block paste (markdown or blank lines)
@@ -1663,7 +1663,7 @@
 
         ;; Drag visual feedback
         drop-style (drop-zone-style block-id)
-        is-dragging (contains? (vs/dragging-ids) block-id)
+        is-dragging (contains? (vs/lookup [:ui :drag :dragging-ids]) block-id)
 
         ;; Build CSS class vector (Replicant prefers vectors over space-separated strings)
         block-classes (cond-> ["block"]
@@ -1733,10 +1733,10 @@
                                 (= (:block-id autocomplete-state) block-id))
 
         ;; Session state for children (computed once per render)
-        editing-block-id (vs/editing-block-id)
-        focus-block-id (vs/focus-id)
-        selection-set (vs/selection-nodes)
-        folded-set (vs/folded)
+        editing-block-id (vs/lookup [:ui :editing-block-id])
+        focus-block-id (vs/lookup [:selection :focus])
+        selection-set (vs/lookup [:selection :nodes])
+        folded-set (vs/lookup [:ui :folded])
 
         children-el
         (when (seq children)

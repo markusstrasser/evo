@@ -67,7 +67,7 @@
 
    Returns: [intent-with-buffer editing-block-id buffer-text]"
   [intent-map]
-  (let [editing-block-id (vs/editing-block-id)
+  (let [editing-block-id (vs/lookup [:ui :editing-block-id])
         buffer-text (when editing-block-id (vs/buffer-text editing-block-id))
         intent-with-buffer (if buffer-text
                              (assoc intent-map
@@ -155,7 +155,7 @@
   [!db intent-map label]
   ;; UNDO/REDO: Capture cursor position from intent before dispatch
   (when-let [cursor-pos (:cursor-pos intent-map)]
-    (vs/set-cursor-position! cursor-pos))
+    (vs/put! [:ui :cursor-position] cursor-pos))
 
   ;; BUFFER INJECTION: Attach pending buffer text to intent
   (let [[intent-with-buffer editing-block-id buffer-text] (prepare-intent-with-buffer intent-map)
@@ -175,7 +175,7 @@
 
     ;; Capture old page BEFORE applying session updates
     ;; (so push-history! can seed it into history if needed)
-    (let [old-page (vs/current-page)]
+    (let [old-page (vs/lookup [:ui :current-page])]
 
       ;; CRITICAL: Apply session updates BEFORE DB changes!
       ;; The DB reset triggers Replicant re-render, which fires on-mount hooks.

@@ -174,7 +174,7 @@ All state changes flow through a strict pipeline:
 **Critical**:
 - Derived indexes are recomputed automatically. Never mutate them directly.
 - View state queries use `kernel.query` functions with view-state parameter: `(q/selection view-state)` not `(q/selection db)`
-- View state mutations use `shell.view-state` API functions (e.g., `set-cursor-position!`, `set-current-page!`, `buffer-set!`) - avoid raw `swap-view-state!` outside view_state.cljs
+- Shell-side view state access uses the generic path API in `shell.view-state` with path literals matching the shape above: `(vs/lookup [:ui :editing-block-id])`, `(vs/put! [:ui :current-page] id)`, `(vs/mutate! [:ui :folded] conj id)`. Functions with real behavior keep named APIs (history: `push-history!`/`navigate-back!`; autocomplete state machine; `buffer-set!`/`buffer-text`; notifications; favorites/recents; defaulted predicates like `journals-view?`). Raw `swap-view-state!` stays inside view_state.cljs only.
 
 ### Intent → Operations Pattern
 

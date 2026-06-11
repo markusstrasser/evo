@@ -17,63 +17,64 @@
    - UI updates are triggered by explicit (d/render!) calls
    - This keeps the mental model simple and predictable
 
+   Access model:
+   - One-off reads/writes use the GENERIC PATH API (lookup / put! / mutate!)
+     with path literals into the canonical shape documented on
+     default-view-state below.
+   - Functions with real behavior (absent-key defaults, shape invariants,
+     side effects, state machines) keep named APIs.
+
    ═══════════════════════════════════════════════════════════════════════════════
    TABLE OF CONTENTS
    ═══════════════════════════════════════════════════════════════════════════════
 
-   ATOMS & CORE (lines ~40-120)
+   ATOMS & CORE
      !view-state, !buffer, default-view-state
      get-view-state, swap-view-state!, reset-view-state!
 
-   QUERY HELPERS (lines ~120-180)
-     editing-block-id, cursor-position, folded, zoom-root, current-page
-     selection-nodes, focus-id, sidebar-visible?, hotkeys-visible?
-     journals-view?, editing-page-title?
+   GENERIC PATH API
+     lookup, put!, mutate!
 
-   MUTATION API (lines ~180-240)
-     set-cursor-position!, clear-cursor-position!, set-current-page!
-     merge-view-state-updates!
+   DEFAULTED / COERCING QUERIES
+     sidebar-visible?, hotkeys-visible?, reading-mode?, journals-view?
+     editing-page-title?, lightbox-visible?
 
-   BUFFER API (lines ~240-310)
+   SHAPE-PRESERVING MUTATIONS
+     show-lightbox!, merge-view-state-updates!
+
+   BUFFER API (separate atom, no render trigger)
      buffer-set!, buffer-clear!, buffer-text
-     keep-edit-on-blur?, document-view?
-     toggle-sidebar!, toggle-hotkeys!, toggle-journals-view!
 
-   DRAG STATE (lines ~310-375)
-     drag-start!, drag-end!, drag-over!
-     dragging-ids, drop-target, dragging?
-     keep-edit-on-blur!
+   DRAG STATE
+     drag-start!, drag-over!, keep-edit-on-blur!
 
-   AUTOCOMPLETE (lines ~375-435)
+   AUTOCOMPLETE
      autocomplete, autocomplete-active?, autocomplete-show!
      autocomplete-update!, autocomplete-dismiss!, autocomplete-navigate!
 
-   QUICK SWITCHER (lines ~435-480)
-     quick-switcher, quick-switcher-visible?, quick-switcher-open!
-     quick-switcher-close!, quick-switcher-toggle!
-     quick-switcher-set-query!, quick-switcher-navigate!
+   QUICK SWITCHER
+     quick-switcher-visible?, quick-switcher-set-query!, quick-switcher-navigate!
 
-   CLIPBOARD & DEBUG (lines ~480-515)
-     dump-view-state, clipboard-blocks, clipboard-text
-     clear-clipboard!, clear-view-state!
+   CLIPBOARD & DEBUG
+     dump-view-state, clear-clipboard!, clear-view-state!
 
-   NOTIFICATIONS (lines ~515-570)
+   NOTIFICATIONS
      notification, dismiss-notification!, show-notification!
 
-   PERSISTENCE (lines ~570-620)
+   PERSISTENCE
      load-persisted-state!, save-to-storage!, load-from-storage
 
-   FAVORITES (lines ~620-660)
+   FAVORITES
      favorites, favorite?, toggle-favorite!, add-favorite!, remove-favorite!
 
-   RECENTS (lines ~660-695)
+   RECENTS
      recents, add-to-recents!, clear-recents!
 
-   HISTORY NAVIGATION (lines ~695-795)
+   HISTORY NAVIGATION
      history, history-index, can-go-back?, can-go-forward?
      push-history!, navigate-back!, navigate-forward!, clear-history!
 
-   SIDEBAR (lines ~795-860)
+   SIDEBAR
      sidebar-width, set-sidebar-width!
      section-collapsed?, toggle-section-collapsed!
      queue-auto-trash-check!, take-auto-trash-queue!
@@ -185,44 +186,39 @@
   (reset! !buffer {})
   (reset! !view-state default-view-state))
 
-;; ── Query Helpers (View-state equivalents of kernel.query) ──────────────────────
+;; ── Generic Path API ──────────────────────────────────────────────────────────
+;; Path-literal access for one-off reads/writes. Replaces the former one-line
+;; named wrappers (editing-block-id, set-current-page!, drag-end!, ...).
+;; Canonical paths are documented on default-view-state above.
+;; Named `lookup` (not `get`) to avoid shadowing cljs.core/get in this ns.
 
-(defn editing-block-id
-  "Get currently editing block ID from view state.
+(defn lookup
+  "Read view-state at path.
 
-   View-state equivalent of (q/editing-block-id db)."
-  []
-  (get-in @!view-state [:ui :editing-block-id]))
+   Example:
+     (lookup [:ui :editing-block-id])"
+  [path]
+  (get-in @!view-state path))
 
-(defn cursor-position
-  "Get cursor position for enter-edit from view state."
-  []
-  (get-in @!view-state [:ui :cursor-position]))
+(defn put!
+  "Set view-state at path. Routes through swap-view-state! (triggers re-render).
 
-(defn folded
-  "Get set of folded block IDs from view state."
-  []
-  (get-in @!view-state [:ui :folded]))
+   Example:
+     (put! [:ui :current-page] \"page-1\")"
+  [path v]
+  (swap-view-state! assoc-in path v))
 
-(defn zoom-root
-  "Get current zoom root from view state."
-  []
-  (get-in @!view-state [:ui :zoom-root]))
+(defn mutate!
+  "Update view-state at path with (apply f current-value args).
 
-(defn current-page
-  "Get current active page from view state."
-  []
-  (get-in @!view-state [:ui :current-page]))
+   Example:
+     (mutate! [:ui :folded] conj \"block-1\")"
+  [path f & args]
+  (apply swap-view-state! update-in path f args))
 
-(defn selection-nodes
-  "Get set of selected block IDs from view state."
-  []
-  (get-in @!view-state [:selection :nodes]))
-
-(defn focus-id
-  "Get focused block ID from view state."
-  []
-  (get-in @!view-state [:selection :focus]))
+;; ── Defaulted / Coercing Queries ──────────────────────────────────────────────
+;; These stay as named fns because they encode an absent-key default or a
+;; boolean coercion — a bare (lookup path) would change their semantics.
 
 (defn sidebar-visible?
   "Check if the left sidebar (pages) is visible."
@@ -249,49 +245,17 @@
   []
   (get-in @!view-state [:ui :editing-page-title?] false))
 
-(defn lightbox
-  "Get the current lightbox image data, or nil when closed."
-  []
-  (get-in @!view-state [:ui :lightbox]))
-
 (defn lightbox-visible?
   "Check if the fullscreen lightbox is currently open."
   []
-  (some? (lightbox)))
+  (some? (lookup [:ui :lightbox])))
 
-;; ── View State Mutation API ─────────────────────────────────────────────────────
-
-(defn set-cursor-position!
-  "Set cursor position for enter-edit (number, :start, :end, :max).
-
-   Used when entering edit mode or after undo/redo to restore cursor."
-  [pos]
-  (swap-view-state! assoc-in [:ui :cursor-position] pos))
-
-(defn clear-cursor-position!
-  "Clear pending cursor position after it's been applied to DOM."
-  []
-  (swap-view-state! assoc-in [:ui :cursor-position] nil))
-
-(defn set-current-page!
-  "Set the current active page."
-  [page-id]
-  (swap-view-state! assoc-in [:ui :current-page] page-id))
+;; ── Shape-Preserving Mutations ───────────────────────────────────────────────
 
 (defn show-lightbox!
   "Open the lightbox with image data {:src ... :alt ...}."
   [{:keys [src alt]}]
   (swap-view-state! assoc-in [:ui :lightbox] {:src src :alt alt}))
-
-(defn hide-lightbox!
-  "Close the lightbox."
-  []
-  (swap-view-state! assoc-in [:ui :lightbox] nil))
-
-(defn clear-pending-selection!
-  "Clear pending selection state."
-  []
-  (swap-view-state! assoc-in [:ui :pending-selection] nil))
 
 (defn merge-view-state-updates!
   "Merge view state updates map into current view state.
@@ -340,48 +304,9 @@
   [block-id]
   (get @!buffer block-id))
 
-(defn keep-edit-on-blur?
-  "Check if blur should NOT exit edit mode.
-
-   This is set during structural operations (indent, outdent, move)
-   to prevent the blur handler from exiting edit mode when the DOM
-   re-renders and the contenteditable temporarily loses focus."
-  []
-  (get-in @!view-state [:ui :keep-edit-on-blur]))
-
-(defn document-view?
-  "Check if document-view is active (Enter/Shift+Enter swapped).
-
-   LOGSEQ PARITY: In document-view, Enter inserts newline and Shift+Enter creates new block."
-  []
-  (get-in @!view-state [:ui :document-view?]))
-
-(defn toggle-sidebar!
-  "Toggle left sidebar visibility. Bound to Cmd+B."
-  []
-  (swap-view-state! update-in [:ui :sidebar-visible?] not))
-
-(defn toggle-hotkeys!
-  "Toggle hotkeys reference panel visibility. Bound to Cmd+?."
-  []
-  (swap-view-state! update-in [:ui :hotkeys-visible?] not))
-
-(defn toggle-journals-view!
-  "Toggle journals view (shows all journals stacked, newest first)."
-  []
-  (swap-view-state! update-in [:ui :journals-view?] not))
-
-(defn set-journals-view!
-  "Set journals view state explicitly."
-  [active?]
-  (swap-view-state! assoc-in [:ui :journals-view?] active?))
-
-(defn set-editing-page-title!
-  "Set whether page title is being edited."
-  [editing?]
-  (swap-view-state! assoc-in [:ui :editing-page-title?] editing?))
-
 ;; ── Drag State API ────────────────────────────────────────────────────────────
+;; Reads use the generic API: (lookup [:ui :drag :dragging-ids]),
+;; (lookup [:ui :drag :drop-target]). Clearing drag is (put! [:ui :drag] nil).
 
 (defn drag-start!
   "Start dragging block(s). If block is in selection, drags all selected.
@@ -394,32 +319,12 @@
   (swap-view-state! assoc-in [:ui :drag] {:dragging-ids (set block-ids)
                                           :drop-target nil}))
 
-(defn drag-end!
-  "Clear drag state."
-  []
-  (swap-view-state! assoc-in [:ui :drag] nil))
-
 (defn drag-over!
   "Update drop target during drag.
 
    zone is one of :above, :nested, :below"
   [target-id zone]
   (swap-view-state! assoc-in [:ui :drag :drop-target] {:id target-id :zone zone}))
-
-(defn dragging-ids
-  "Get set of block IDs being dragged."
-  []
-  (get-in @!view-state [:ui :drag :dragging-ids]))
-
-(defn drop-target
-  "Get current drop target {:id :zone}."
-  []
-  (get-in @!view-state [:ui :drag :drop-target]))
-
-(defn dragging?
-  "Check if any drag is in progress."
-  []
-  (some? (get-in @!view-state [:ui :drag])))
 
 (defn keep-edit-on-blur!
   "Set flag to prevent blur from exiting edit mode during structural ops.
@@ -499,34 +404,15 @@
     (swap-view-state! assoc-in [:ui :autocomplete :selected] new-idx)))
 
 ;; ── Quick Switcher (Cmd+K) ────────────────────────────────────────────────────
-
-(defn quick-switcher
-  "Get current quick-switcher state.
-   Returns nil if closed, or {:query \"...\" :selected-idx 0} if open."
-  []
-  (get-in @!view-state [:ui :quick-switcher]))
+;; Open/close are plain path writes:
+;;   open:  (put! [:ui :quick-switcher] {:query "" :selected-idx 0})
+;;   close: (put! [:ui :quick-switcher] nil)
+;; Toggling lives in the :toggle-quick-switcher intent (plugins.folding).
 
 (defn quick-switcher-visible?
   "Check if quick switcher overlay is open."
   []
-  (some? (quick-switcher)))
-
-(defn quick-switcher-open!
-  "Open the quick switcher overlay."
-  []
-  (swap-view-state! assoc-in [:ui :quick-switcher] {:query "" :selected-idx 0}))
-
-(defn quick-switcher-close!
-  "Close the quick switcher overlay."
-  []
-  (swap-view-state! assoc-in [:ui :quick-switcher] nil))
-
-(defn quick-switcher-toggle!
-  "Toggle quick switcher visibility. Bound to Cmd+K."
-  []
-  (if (quick-switcher-visible?)
-    (quick-switcher-close!)
-    (quick-switcher-open!)))
+  (some? (lookup [:ui :quick-switcher])))
 
 (defn quick-switcher-set-query!
   "Update the search query in quick switcher."
@@ -540,7 +426,7 @@
    direction: :up or :down
    result-count: total number of results (needed for bounds checking)"
   [direction result-count]
-  (let [{:keys [selected-idx]} (quick-switcher)
+  (let [{:keys [selected-idx]} (lookup [:ui :quick-switcher])
         max-idx (max 0 (dec result-count))
         new-idx (coll/navigate-index direction selected-idx max-idx)]
     (swap-view-state! assoc-in [:ui :quick-switcher :selected-idx] new-idx)))
@@ -557,17 +443,8 @@
   (js/console.log (clj->js @!view-state)))
 
 ;; ── Clipboard State ──────────────────────────────────────────────────────────
-
-(defn clipboard-blocks
-  "Get internal clipboard blocks (preserves hierarchy from copy/cut).
-   Returns vector of {:depth :text} maps, or nil if not set."
-  []
-  (get-in @!view-state [:ui :clipboard-blocks]))
-
-(defn clipboard-text
-  "Get clipboard text (markdown format for external paste)."
-  []
-  (get-in @!view-state [:ui :clipboard-text]))
+;; Reads use the generic API: (lookup [:ui :clipboard-blocks]),
+;; (lookup [:ui :clipboard-text]).
 
 (defn clear-clipboard!
   "Clear clipboard state."

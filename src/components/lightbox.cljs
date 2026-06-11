@@ -16,7 +16,7 @@
 (defn hide!
   "Close lightbox."
   []
-  (vs/hide-lightbox!))
+  (vs/put! [:ui :lightbox] nil))
 
 (defn visible?
   "Check if lightbox is currently open."
@@ -26,7 +26,7 @@
 (defn current-image
   "Get current lightbox image data."
   []
-  (vs/lightbox))
+  (vs/lookup [:ui :lightbox]))
 
 ;; ── Key Handler ──────────────────────────────────────────────────────────────
 

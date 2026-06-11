@@ -124,7 +124,7 @@
 (defn assert-selection
   "Assert the current selection matches expected IDs."
   [expected-ids]
-  (let [actual (vs/selection-nodes)
+  (let [actual (vs/lookup [:selection :nodes])
         expected-set (set (if (sequential? expected-ids)
                             expected-ids
                             [expected-ids]))]
@@ -138,7 +138,7 @@
 (defn assert-editing
   "Assert a specific block is being edited (or nil for not editing)."
   [expected-block-id]
-  (let [actual (vs/editing-block-id)]
+  (let [actual (vs/lookup [:ui :editing-block-id])]
     (if (= actual expected-block-id)
       {:ok true :editing actual}
       {:ok false
@@ -184,11 +184,11 @@
    :db {:node-count (count (:nodes db))
         :page-count (count (filter #(= :page (:type (val %))) (:nodes db)))
         :roots (:roots db)}
-   :session {:editing (vs/editing-block-id)
-             :selection (vec (vs/selection-nodes))
-             :focus (vs/focus-id)
-             :folded-count (count (vs/folded))
-             :current-page (vs/current-page)}
+   :session {:editing (vs/lookup [:ui :editing-block-id])
+             :selection (vec (vs/lookup [:selection :nodes]))
+             :focus (vs/lookup [:selection :focus])
+             :folded-count (count (vs/lookup [:ui :folded]))
+             :current-page (vs/lookup [:ui :current-page])}
    :history {:undo-count (slog/undo-count)
              :redo-count (slog/redo-count)}
    :log {:entry-count (count (tooling/get-log))

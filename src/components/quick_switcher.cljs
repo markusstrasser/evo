@@ -111,7 +111,7 @@
       "Enter"
       (do (.preventDefault e)
           (when selected-result
-            (vs/quick-switcher-close!)
+            (vs/put! [:ui :quick-switcher] nil)
             (on-intent {:type :switch-page
                         :page-id (:page-id selected-result)})))
 
@@ -145,7 +145,7 @@
    - db: Application database
    - on-intent: Intent dispatch callback"
   [{:keys [db on-intent]}]
-  (let [{:keys [query selected-idx]} (vs/quick-switcher)
+  (let [{:keys [query selected-idx]} (vs/lookup [:ui :quick-switcher])
         results (search-pages db query)
         result-count (count results)
         selected-result (when (and (pos? result-count)
@@ -164,7 +164,7 @@
           (.focus input)))
       ;; Handle close event (works for both closedby and manual close)
       :on {:close (fn [_e]
-                    (vs/quick-switcher-close!))
+                    (vs/put! [:ui :quick-switcher] nil))
            ;; Backdrop click fallback for browsers without closedby
            :click (fn [e]
                     (let [dialog (.-currentTarget e)
@@ -203,7 +203,7 @@
                    {:page-title (highlight-match query page-title)
                     :selected? (= idx selected-idx)
                     :on-click (fn [_]
-                                (vs/quick-switcher-close!)
+                                (vs/put! [:ui :quick-switcher] nil)
                                 (on-intent {:type :switch-page
                                             :page-id page-id}))}))
                 results)))]]]))
