@@ -392,7 +392,8 @@
 (defn dry-run
   "Run ops through normalize → validate → apply without derive-indexes or trace.
 
-   Designed for scratch-DB simulation (e.g., scripts.script macro runner).
+   Designed for scratch-DB simulation (REPL probing, multi-step handlers
+   needing intermediate state without per-step derive cost).
    Caller is responsible for calling db/derive-indexes on the result if needed.
 
    Args:

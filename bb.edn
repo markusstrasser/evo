@@ -67,7 +67,7 @@
                     (shell "npx shadow-cljs compile :test-integration")
                     (shell "node out/tests-integration.js"))}
 
-  test:kernel {:doc "Run kernel + script tests only"
+  test:kernel {:doc "Run kernel tests only"
                :task (do
                        (run 'cache:guard)
                        (shell "npx shadow-cljs compile :test-kernel")
@@ -82,7 +82,7 @@
   test:verify-harness {:doc "Verify isolated test tiers declare explicit bootstrap fixtures"
                        :task (shell "bb scripts/verify_test_harness.clj")}
 
-  check:kernel {:doc "Kernel purity scan + kernel/script tests"
+  check:kernel {:doc "Kernel purity scan + kernel tests"
                 :task (do
                         (run 'test:verify-harness)
                         (shell "bb scripts/verify_kernel_boundaries.clj")
@@ -275,7 +275,7 @@
                 (println "  bb format:check    - Check Clojure code formatting")
                 (println "  bb format:fix      - Fix Clojure code formatting")
                 (println "  bb check           - Lint + architecture verification + compile check")
-                (println "  bb check:kernel    - Kernel purity scan + kernel/script tests")
+                (println "  bb check:kernel    - Kernel purity scan + kernel tests")
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
                 (println "  bb test:int        - All integration tests")

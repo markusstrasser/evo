@@ -49,7 +49,7 @@
   :test-kernel
   {:target :node-test
    :output-to "out/tests-kernel.js"
-   :ns-regexp "^(kernel|scripts)\\..*-test$"}
+   :ns-regexp "^kernel\\..*-test$"}
 
   :test-specs
   {:target :node-test
