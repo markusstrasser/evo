@@ -15,11 +15,11 @@ These constraints MUST be maintained at all times, including after compaction.
 
 *Updated 2026-04-22. Supersedes earlier "Extraction" and "Reference Implementation" framings.*
 
-Evo is a solid outliner with a clean, data-driven extension surface. See `docs/GOALS.md` and `VISION.md`.
+Evo is a solid outliner with a clean, data-driven extension surface. See `docs/GOALS.md`.
 
 Agent work should trend toward:
 - Kernel purity (zero shell/UI imports in `src/kernel/`)
-- Clean extension surface (three registries + session atom — see VISION.md)
+- Clean extension surface (three registries + session atom — see docs/GOALS.md)
 - Deletion (remove dead code, consolidate redundancy)
 
 Do NOT: add new outliner features, chase Logseq parity, or build speculative infrastructure (trace recording infrastructure, replayable datasets, universal adapter shells, LLVM-of-UI IRs, library extraction on speculation).
