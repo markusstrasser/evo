@@ -261,6 +261,14 @@ All intents use `{:type ...}` map format. See `docs/RENDERING_AND_DISPATCH.md` +
 
 Always check `src/kernel/query.cljc` for the actual signature. ClojureScript won't error on wrong arity - it will silently use wrong values as parameters, causing `null` returns.
 
+### Classpath Includes Repo-Root `dev/`
+
+The CLJS classpath is `src/` **and** repo-root `dev/` (not `src/dev/`).
+`dev/debug_api.cljs` installs the `window.DEBUG` API the e2e harness and
+`browser_guard.js` consume. Liveness greps scoped to `src/` miss these
+consumers — always grep `src/ dev/`. (A 2026-06-11 deletion pass nearly
+broke the e2e harness this way; `bb check` caught it.)
+
 ### Keyboard & Selection
 - `shell.executor/apply-intent!` is the canonical runtime entrypoint. `shell.editor` composes the shell and routes app-global shortcuts through `shell.global-keyboard`.
 - `shell.global-keyboard` owns app-global shortcuts and non-editing selection policy. `components.block` owns contenteditable keyboard behavior.

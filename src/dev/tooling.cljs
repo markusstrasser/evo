@@ -1,8 +1,12 @@
 (ns dev.tooling
-  "Developer-visible logging helpers consumed by components.devtools.
+  "Rolling dispatch log (intent, DB before/after, clipboard ops).
 
-   Stores a rolling log of dispatches (intent, DB before/after, optional hotkey)
-   so humans/agents can inspect ops without leaving the browser."
+   LOAD-BEARING FOR THE E2E HARNESS — not dead dev chrome. Consumers:
+   dev/debug_api.cljs backs window.DEBUG.lastIntent / .clipboardLog /
+   .getOperations from this log; test/e2e specs and dev/browser_guard.js
+   call those. shell.executor feeds the log on every dispatch. The
+   devtools PANEL that used to display it was retired (d7c388d2);
+   deleting this namespace breaks e2e, not just a panel."
   (:require [clojure.pprint :as pprint]
             [clojure.string :as str]
             [shell.view-state :as vs]))
