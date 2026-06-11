@@ -144,7 +144,7 @@
   (reset! !db (db/empty-db))
   (slog/reset-with-db! (db/empty-db))
   (storage/sync-managed-from-db! (db/empty-db))
-  (vs/set-current-page! nil))
+  (vs/put! [:ui :current-page] nil))
 
 ;; Try to restore previously selected folder on startup
 (defonce _restore-folder
@@ -296,17 +296,17 @@
    Also handles drag & drop at the container level for drops to first position."
   [{:keys [db root-id on-intent]}]
   (let [children (get-in db [:children-by-parent root-id] [])
-        editing-block-id (vs/editing-block-id)
-        focus-block-id (vs/focus-id)
-        selection-set (vs/selection-nodes)
-        folded-set (vs/folded)
+        editing-block-id (vs/lookup [:ui :editing-block-id])
+        focus-block-id (vs/lookup [:selection :focus])
+        selection-set (vs/lookup [:selection :nodes])
+        folded-set (vs/lookup [:ui :folded])
         first-child-id (first children)
         ;; Check if dropping at top of outline
-        drop-target (vs/drop-target)
+        drop-target (vs/lookup [:ui :drag :drop-target])
         dropping-at-top? (and (= (:id drop-target) ::outline-top)
                               (= (:zone drop-target) :first))
         ;; Check if actively dragging
-        dragging? (seq (vs/dragging-ids))]
+        dragging? (seq (vs/lookup [:ui :drag :dragging-ids]))]
     (if (empty? children)
       ;; Empty page: auto-seed a first block and put the cursor in it on
       ;; mount (no click-to-edit placeholder). The keyed mount hook fires
@@ -337,17 +337,17 @@
                             (.preventDefault e)
                             (.stopPropagation e)
                             (set! (.-dropEffect (.-dataTransfer e)) "move")
-                            (let [dragging (vs/dragging-ids)]
+                            (let [dragging (vs/lookup [:ui :drag :dragging-ids])]
                               (when-not (contains? dragging first-child-id)
                                 (vs/drag-over! ::outline-top :first))))
                 :dragleave (fn [_e]
-                             (when (= (:id (vs/drop-target)) ::outline-top)
+                             (when (= (:id (vs/lookup [:ui :drag :drop-target])) ::outline-top)
                                (vs/drag-over! nil nil)))
                 :drop (fn [e]
                         (.preventDefault e)
                         (.stopPropagation e)
-                        (let [dragging (vs/dragging-ids)]
-                          (vs/drag-end!)
+                        (let [dragging (vs/lookup [:ui :drag :dragging-ids])]
+                          (vs/put! [:ui :drag] nil)
                           (when (seq dragging)
                             (on-intent {:type :move
                                         :selection (vec dragging)
@@ -395,7 +395,7 @@
                           (on-intent {:type :rename-page
                                       :page-id page-id
                                       :new-title new-title}))
-                        (vs/set-editing-page-title! false)))
+                        (vs/put! [:ui :editing-page-title?] false)))
               :keydown (fn [e]
                          (case (.-key e)
                            "Enter" (do (.preventDefault e)
@@ -403,14 +403,14 @@
                            "Escape" (do (.preventDefault e)
                                         ;; Reset value and exit without saving
                                         (set! (.-value (.-target e)) page-title)
-                                        (vs/set-editing-page-title! false))
+                                        (vs/put! [:ui :editing-page-title?] false))
                            nil))}}]]
       ;; View mode - clickable h1
       [:div.page-title-header
        [:h1.page-title-display
         {:replicant/key (str page-id "-view")
          :on {:click (fn [_e]
-                       (vs/set-editing-page-title! true))}}
+                       (vs/put! [:ui :editing-page-title?] true))}}
         page-title]])))
 
 (defn HotkeysReference []
@@ -480,7 +480,7 @@
         storage-status @!storage-status
         checking? (:checking? storage-status)
         embed? (embed-mode?)
-        current-page-id (vs/current-page)
+        current-page-id (vs/lookup [:ui :current-page])
         page-title (when current-page-id (q/page-title db current-page-id))
         sidebar-visible? (vs/sidebar-visible?)
         hotkeys-visible? (vs/hotkeys-visible?)
@@ -506,7 +506,7 @@
         [:main {:class (str "main-content" (when embed? " main-content--embed"))
                 :on {:click (fn [_e]
                               ;; Background click to clear selection (Logseq parity)
-                              (when-not (vs/editing-block-id)
+                              (when-not (vs/lookup [:ui :editing-block-id])
                                 (handle-intent {:type :selection :mode :clear})))}} 
 
          ;; Mock-text for cursor detection
@@ -633,8 +633,8 @@
     (slog/reset-with-db! initial))
   ;; Reset session and set current page
   (vs/reset-view-state!)
-  (vs/set-journals-view! false) ; Disable journals view so test-page is visible
-  (vs/set-current-page! "test-page")
+  (vs/put! [:ui :journals-view?] false) ; Disable journals view so test-page is visible
+  (vs/put! [:ui :current-page] "test-page")
   ;; Clear storage checking state (no folder check needed in test mode)
   (swap! !storage-status assoc :checking? false))
 
@@ -890,6 +890,6 @@
                         (catch js/Error e
                           (js/console.error "Text selection failed:" e))))
                     ;; Clear pending selection after applying
-                    (vs/clear-pending-selection!))))))
+                    (vs/put! [:ui :pending-selection] nil))))))
 
   (render!))

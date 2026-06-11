@@ -158,7 +158,7 @@
                         :block-id editing-block-id
                         :text final-text}))
       (when saved-cursor-pos
-        (vs/set-cursor-position! saved-cursor-pos)))))
+        (vs/put! [:ui :cursor-position] saved-cursor-pos)))))
 
 (defn handle-keydown
   "Global keyboard resolver for app-level shortcuts."
@@ -167,7 +167,7 @@
     (.preventDefault e))
 
   (when-not (.-defaultPrevented e)
-    (let [session-editing-block-id (vs/editing-block-id)
+    (let [session-editing-block-id (vs/lookup [:ui :editing-block-id])
           editing-context (editing-target-context e session-editing-block-id)
           target-el (event-target-element e)
           foreign-editable? (and (form-control-target? target-el)
@@ -183,7 +183,7 @@
               mod? (:mod event)
               shift? (:shift event)
               alt (:alt event)
-              focus-id (vs/focus-id)
+              focus-id (vs/lookup [:selection :focus])
               editing-block-id (when editing-context session-editing-block-id)
               idle? (idle-state? editing-block-id focus-id)
               intent-type (keymap/resolve-intent-type event current-session)

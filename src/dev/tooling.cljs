@@ -51,8 +51,8 @@
                       (when (= type :page) id))
                     nodes)
         ;; Read from session atom (not from deprecated DB nodes)
-        selection (vs/selection-nodes)
-        editing (vs/editing-block-id)]
+        selection (vs/lookup [:selection :nodes])
+        editing (vs/lookup [:ui :editing-block-id])]
     {:node-count (count nodes)
      :page-count (count pages)
      :selection-count (count selection)
@@ -111,8 +111,8 @@
 
 (defn format-entry-with-diff [{:keys [intent hotkey timestamp summary]} current-page-id]
   (let [;; Read current session state (not historical - we no longer track session in DB history)
-        editing (vs/editing-block-id)
-        selection (vs/selection-nodes)]
+        editing (vs/lookup [:ui :editing-block-id])
+        selection (vs/lookup [:selection :nodes])]
     (with-out-str
       (pprint/pprint
        {:intent intent

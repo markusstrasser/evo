@@ -281,7 +281,7 @@
    - Invalid pages (Untitled, blank) are filtered"
   [{:keys [db on-intent on-pick-folder on-clear-folder storage-status]}]
   (let [all-pages (q/all-pages db)
-        current-page-id (vs/current-page)
+        current-page-id (vs/lookup [:ui :current-page])
         folder-name (:folder-name storage-status)
         loading? (:loading? storage-status)
         favorites-set (vs/favorites)
