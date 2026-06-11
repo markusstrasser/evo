@@ -276,6 +276,18 @@ Open forks after execution:
    visible pill, never throw on user content. Open micro-fork: `^[…]`
    (Pandoc round-trip) vs `{{sn …}}` (uniformity) for prose footnotes —
    decide at build time.
+   Publishing direction (2026-06-11 discussion): site export = a second
+   STATIC render target over the same AST (~10 twin handlers emitting
+   HTML strings — do not parameterize the live Replicant handlers), plus
+   outline→prose mapping rules (the real design work; doc-mode is the
+   precedent), evo:// link rewriting, assets copy, `bb publish`.
+   Interactives = islands: `{{widget assets/x.html}}` renders a
+   sandboxed iframe in-app and an iframe/mount-div on the site; one
+   self-contained artifact serves both surfaces. Server-dependent
+   dynamics (comments, live data) explicitly out of static scope.
+   Sequencing: macro family first (it is the content model), projection
+   second. Extends wysiwyg plan §0.3 "HTML export pipeline"; GOALS
+   green-light still required.
    The ~600-line textarea saving is consciously foregone as the option
    premium. Do not re-propose the swap while this ambition stands.
 2. **GOALS.md §6** still references deleted `test/scripts/` — one-line
