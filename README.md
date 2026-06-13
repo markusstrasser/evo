@@ -12,7 +12,7 @@ I now think that idea was too broad. Creative tools need stable primitives more 
 
 Coding agents are relevant here because Evo exposes editor behavior as data.
 
-A user action becomes an intent map. A plugin turns that intent into ops. The kernel validates and applies those ops through one transaction path. That gives coding agents a narrow surface: change an intent handler, inspect the emitted ops, and test the result without inventing DOM behavior.
+A user action becomes an intent map, a plugin turns that intent into ops, and the kernel validates and applies them through one transaction path. That gives coding agents a narrow surface: change an intent handler, inspect the emitted ops, and test the result without inventing DOM behavior.
 
 I used to think of the kernel and plugin system as something like an IR for tree editing. That analogy is too heavy.
 
