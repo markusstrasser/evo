@@ -279,7 +279,7 @@
                 (println "  bb test            - Run full shadow-cljs tests")
                 (println "  bb test:view       - View (hiccup) tests")
                 (println "  bb test:int        - All integration tests")
-                (println "  bb test:kernel     - Kernel + script tests only")
+                (println "  bb test:kernel     - Kernel tests only")
                 (println "  bb test:verify-harness - Verify isolated test bootstrap\n")
                 (println "E2E Testing:")
                 (println "  bb e2e             - Run Playwright E2E tests")
