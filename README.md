@@ -178,7 +178,7 @@ The extension surface has three registries:
 
 Each registry is a `defonce` atom plus validation and dispatch. Re-registering a key replaces the old handler, which keeps hot reload and test fixtures simple. Bootstrapping goes through [`src/plugins/manifest.cljc`](src/plugins/manifest.cljc), [`src/shell/render_manifest.cljc`](src/shell/render_manifest.cljc), and [`src/shell/editor.cljs`](src/shell/editor.cljs).
 
-The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading.
+The intent registry maps intent keywords such as `:indent`, `:navigate-to-page`, and `:collapse` to validated handlers that return `{:ops ... :session-updates ... :effects ...}`. Those ops flow through [`src/kernel/transaction.cljc`](src/kernel/transaction.cljc); session updates land in [`src/shell/view_state.cljs`](src/shell/view_state.cljs). The derived-index registry owns materialized views under `db[:derived]`; [`src/plugins/backlinks_index.cljc`](src/plugins/backlinks_index.cljc) is the canonical example. The render registry maps AST tags to pure hiccup handlers; unknown tags throw instead of silently degrading.
 
 Where a change belongs:
 
@@ -198,9 +198,7 @@ Two non-registry files matter:
 
 Undo, persistence, and replay all read the same transaction history.
 
-[`src/scripts/`](src/scripts/) handles edits where one step needs the result of a previous step.
-
-A script runs against a scratch DB, collects normalized ops, and commits once. The runtime still sees one atomic edit.
+Multi-step edits, where one step needs the result of the previous one, run inline in the handler: it interprets ops against a scratch DB, inspects the result, and emits the final op set. The runtime still sees one atomic edit.
 
 Backlinks show the split:
 
@@ -239,7 +237,6 @@ Most editor behavior lives in [`src/kernel/`](src/kernel/) and [`src/plugins/`](
 | [`src/utils/`](src/utils/) | ~1.8k | DOM, text, cursor, image, helper code |
 | [`src/spec/`](src/spec/) | ~0.8k | FR/spec runner and registry glue |
 | [`src/parser/`](src/parser/) | ~0.8k | inline text parsing into AST nodes |
-| [`src/scripts/`](src/scripts/) | ~0.4k | scratch-DB multi-step edits |
 | [`src/keymap/`](src/keymap/) | ~0.2k | keybinding tables and dispatch glue |
 | [`test/`](test/) | - | unit, property, integration, and Playwright E2E tests |
 | [`resources/`](resources/) | - | FR registry, failure modes, seed data |
@@ -251,7 +248,7 @@ Most editor behavior lives in [`src/kernel/`](src/kernel/) and [`src/plugins/`](
 ```bash
 bb test                       # full unit/property suite (CLJS via shadow-cljs)
 bb test:view                  # hiccup-only tier (<1s)
-bb test:kernel                # kernel purity + script tests
+bb test:kernel                # kernel tests only
 bb check                      # lint + arch verification + compile
 npm run test:e2e:smoke        # Playwright smoke (~10s)
 npm run test:e2e              # full Playwright suite (~4min)
