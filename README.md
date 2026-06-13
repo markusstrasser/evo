@@ -125,10 +125,11 @@ That is the boundary:
 
 ```clojure
 (db, intent) -> {:ops [...]
-                 :session-updates {...}}
+                 :session-updates {...}
+                 :effects [...]}
 ```
 
-Plugins do not mutate the DB. They return data. The executor sends that data through the transaction pipeline and applies session updates separately.
+Plugins do not mutate the DB. They return data. The executor sends ops through the transaction pipeline, applies session updates, and runs effects. Effects are `[kind arg-map]` tuples for side effects that are not document ops — system clipboard writes, file deletion. Handlers stay pure; the executor owns the I/O.
 
 Page refs and backlinks stay out of the kernel. Plugins interpret the intent, emit normal ops, and add derived views when they need faster reads.
 
@@ -165,7 +166,7 @@ DOM event
   -> DOM
 ```
 
-[`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops and session updates. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
+[`src/kernel/`](src/kernel/) owns the document machine. [`src/plugins/`](src/plugins/) compiles intents into ops, session updates, and effects. [`src/shell/`](src/shell/) wires the browser/runtime path. [`src/components/`](src/components/) owns UI behavior. [`src/parser/`](src/parser/) turns text into AST, and [`src/shell/render/`](src/shell/render/) turns AST tags into hiccup.
 
 The extension surface has three registries:
 
