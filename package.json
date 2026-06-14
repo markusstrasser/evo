@@ -2,6 +2,7 @@
   "name": "evolver",
   "version": "0.0.1",
   "scripts": {
+    "prepare": "bash scripts/install-hooks.sh",
     "start": "node scripts/watch-runner.mjs",
     "clean": "rm -rf .shadow-cljs .cpcache out public/js/blocks-ui",
     "dev": "node scripts/watch-runner.mjs --clean",
