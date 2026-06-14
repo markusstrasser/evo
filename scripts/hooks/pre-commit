@@ -3,9 +3,10 @@
 #
 # Checks (only on staged files):
 # 1. Shadowed core vars (Clojure/ClojureScript)
-# 2. E2E keyboard usage anti-patterns (Playwright)
-# 3. Namespace/path consistency (dev/, mcp/ classpath roots)
-# 4. Missing goog.string.format import
+# 2. Biome format/lint (JS/TS/JSON) — mirrors CI's `npm run lint:js`
+# 3. E2E keyboard usage anti-patterns (Playwright)
+# 4. Namespace/path consistency (dev/, mcp/ classpath roots)
+# 5. Missing goog.string.format import
 
 set -e  # Exit on first error
 
@@ -31,6 +32,28 @@ if [ -n "$CLOJURE_FILES" ]; then
     fi
 
     echo "✓ No shadowed variables found"
+fi
+
+# ── Biome format/lint on staged JS/TS/JSON (mirrors CI lint:js) ───────────────
+
+JS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(js|jsx|ts|tsx|json|jsonc)$' || true)
+
+if [ -n "$JS_FILES" ]; then
+    echo "🔍 Running biome on staged JS/TS/JSON..."
+
+    if ! echo "$JS_FILES" | xargs npx biome check >/dev/null 2>&1; then
+        echo ""
+        echo "❌ Biome found format/lint issues in staged files (this fails CI)."
+        echo ""
+        echo "Fix automatically, then re-stage:"
+        echo "  npm run lint:js:fix && git add -u"
+        echo ""
+        echo "Offending files:"
+        echo "$JS_FILES" | xargs npx biome check 2>&1 | grep -E '^\s+×|format|lint' | head -10
+        exit 1
+    fi
+
+    echo "✓ Biome clean"
 fi
 
 # ── Check E2E tests for risky keyboard usage ─────────────────────────────────
