@@ -36,7 +36,7 @@ npm run build              # Clean + release blocks-ui + minified CSS
 
 **Important**: Always use `npm start` for development. It runs **watch mode** which prevents "stale output" errors. Never use `npx shadow-cljs compile` directly.
 
-**Agent gotcha — `bb` alias**: On this machine `bb` is shell-aliased to `bun build`. When running babashka tasks from Bash, use `\bb` (escapes the alias) or the absolute path. A bare `bb test` will fail with a `bun build` usage error.
+**Agent gotcha — `bb` alias**: On this machine `bb` was historically shell-aliased to `bun build`, so a bare `bb test` failed with a `bun build` usage error. Fixed 2026-06-14 — `~/.zshrc` now defines `bb` as a context-aware function: in a babashka project (a `bb.edn` exists up the tree) it runs the real babashka binary, otherwise `bun build`. So `bb test` works directly here. If you ever hit the old `bun build` error (a shell that predates the fix, or one not sourcing `.zshrc`), fall back to `\bb` (escapes to the PATH babashka binary) or the absolute path.
 
 ### Testing
 
