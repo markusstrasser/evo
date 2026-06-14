@@ -108,14 +108,14 @@
                             (shell "npx shadow-cljs compile :test-fr-fixtures")
                             (shell "node out/tests-fr-fixtures.js"))}
 
-  test-watch {:doc "Watch entire suite (shadow-cljs)"
-              :task (shell "npx shadow-cljs watch :test")}
+  test-watch {:doc "Watch entire suite (shadow-cljs), auto-run on save"
+              :task (shell "npx shadow-cljs watch :test --config-merge '{:autorun true}'")}
 
-  test-watch:view {:doc "Watch view tests"
-                   :task (shell "npx shadow-cljs watch :test-view")}
+  test-watch:view {:doc "Watch view tests, auto-run on save (sub-second inner loop)"
+                   :task (shell "npx shadow-cljs watch :test-view --config-merge '{:autorun true}'")}
 
-  test-watch:int {:doc "Watch all integration tests"
-                  :task (shell "npx shadow-cljs watch :test-integration")}
+  test-watch:int {:doc "Watch all integration tests, auto-run on save"
+                  :task (shell "npx shadow-cljs watch :test-integration --config-merge '{:autorun true}'")}
 
   ;; FR Coverage (Spec-as-Database pattern)
   fr-audit {:doc "Audit FR implementation coverage (fails if critical FRs uncited)"
