@@ -118,9 +118,12 @@ export async function waitForState(page, expectedState, timeout = 5000) {
     (state) => {
       const session = window.TEST_HELPERS?.getSession();
       if (!session) return false;
-      const editing = session.ui?.editing_block_id;
-      const hasSelection =
-        session.selection?.nodes && Object.keys(session.selection.nodes).length > 0;
+      // getSession() = (clj->js view-state): keys are kebab strings, and the
+      // :nodes set serializes to a JS array. Match the proven helpers
+      // (block-helpers.js isBlockSelected, navigate-then-type's local waitForEditing).
+      const editing = session.ui?.['editing-block-id'] ?? session.ui?.editing_block_id;
+      const nodes = session.selection?.nodes ?? [];
+      const hasSelection = (Array.isArray(nodes) ? nodes : Object.keys(nodes)).length > 0;
       const current = editing ? 'editing' : hasSelection ? 'selection' : 'idle';
       return current === state;
     },
@@ -140,7 +143,7 @@ export async function waitForEditing(page, blockId, timeout = 5000) {
   await page.waitForFunction(
     (id) => {
       const session = window.TEST_HELPERS?.getSession();
-      return session?.ui?.editing_block_id === id;
+      return (session?.ui?.['editing-block-id'] ?? session?.ui?.editing_block_id) === id;
     },
     blockId,
     { timeout }
@@ -159,8 +162,10 @@ export async function waitForSelection(page, blockIds, timeout = 5000) {
   await page.waitForFunction(
     (expectedIds) => {
       const session = window.TEST_HELPERS?.getSession();
-      if (!session?.selection?.nodes) return false;
-      const selected = Object.keys(session.selection.nodes);
+      const nodes = session?.selection?.nodes;
+      if (!nodes) return false;
+      // :nodes set → JS array; fall back to Object.keys for object shapes.
+      const selected = Array.isArray(nodes) ? nodes : Object.keys(nodes);
       return expectedIds.every((id) => selected.includes(id));
     },
     ids,
@@ -291,8 +296,6 @@ export async function assertSelectionState(page, expected) {
  * @param {number} [timeout=5000]
  */
 export async function waitForSelectionState(page, expected, timeout = 5000) {
-  const _expectedNodes = expected.nodes ? new Set(expected.nodes) : null;
-
   await page.waitForFunction(
     ({ nodes, anchor, focus, direction }) => {
       const session = window.TEST_HELPERS?.getSession();

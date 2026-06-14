@@ -11,11 +11,14 @@
  * 3. Check selection via inline styles (app uses background-color, not .selected)
  * 4. Target specific elements (div.block, .block-content) to avoid ambiguity
  *
- * TODO: Replace waitForTimeout with waitForFunction/waitForSelector
- * Current helpers use fixed waits which is an anti-pattern. Prefer:
+ * TODO: Replace the fixed waitForTimeout calls below with state-based waits —
+ * they are a flakiness/slowness anti-pattern. Prefer:
  * - waitForFunction(() => condition) for state-based waits
  * - waitForSelector for DOM-based waits
- * See helpers/index.js for waitForState, waitForEditing, waitForSelection
+ * helpers/index.js exposes waitForState/waitForEditing/waitForSelection for this
+ * (verified to read the correct clj->js kebab keys + :nodes-as-array, 2026-06-14).
+ * The swap is deferred — do it under a real e2e run to validate timing, since
+ * block-helpers is consumed by most specs.
  */
 
 /**
