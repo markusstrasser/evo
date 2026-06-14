@@ -48,6 +48,14 @@
                  (run 'lint:kernel-imports)
                  (shell "npx shadow-cljs compile :blocks-ui"))}
 
+  ci {:doc "Run the exact gate sequence CI's `test` job runs (single source of truth)"
+      :task (do
+              (run 'check)
+              (shell "npm run lint:js")
+              (run 'lint:fr-tests)
+              (run 'docs:verify)
+              (run 'test))}
+
   test {:doc "Compile + run the full shadow-cljs test suite"
         :task (do
                 (run 'cache:guard)

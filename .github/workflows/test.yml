@@ -42,20 +42,8 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
-      - name: Quality gate (lint + compile check)
-        run: bb check
-
-      - name: Lint JavaScript/TypeScript
-        run: npm run lint:js
-
-      - name: Check FR scenario coverage
-        run: bb lint:fr-tests
-
-      - name: Verify documentation references
-        run: bb docs:verify
-
-      - name: Run unit tests
-        run: bb test
+      - name: CI gate sequence (check + lint:js + fr-tests + docs:verify + test)
+        run: bb ci
 
   # E2E smoke tier (all pushes) - ~15 critical tests, <30s
   e2e-smoke:
