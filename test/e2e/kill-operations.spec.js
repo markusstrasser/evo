@@ -94,7 +94,6 @@ test.describe('Kill Operations', () => {
       expect((await lastCopy(page))?.text).toBe('Hello');
     });
   });
-
 });
 
 test.describe('DEBUG API Verification', () => {
