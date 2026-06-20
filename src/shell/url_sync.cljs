@@ -35,6 +35,18 @@
             (str base path "?" param-str)
             (str base path)))))))
 
+(defn- notify-parent!
+  "Tell a same-origin embedding shell that Evo navigated internally.
+
+   The standalone app owns its own URL. When mounted inside markusstrasser.org/evo,
+   the parent route also needs to reflect page changes."
+  [page-title]
+  (when (and page-title (not= js/window (.-parent js/window)))
+    (.postMessage (.-parent js/window)
+                  (clj->js {:type "evo:navigate"
+                            :pageTitle page-title})
+                  (.-origin js/location))))
+
 ;; ── Public API ──────────────────────────────────────────────────────────────
 
 (defn get-page-from-url
@@ -63,7 +75,8 @@
        (let [new-url (build-url-with-page new-title)]
          (if replace?
            (.replaceState js/history nil "" new-url)
-           (.pushState js/history nil "" new-url)))))))
+           (.pushState js/history nil "" new-url))
+         (notify-parent! new-title))))))
 
 (defn init!
   "Initialize URL sync with popstate handler.
