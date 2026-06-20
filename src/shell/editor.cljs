@@ -50,6 +50,7 @@
 
 (defn- test-mode? [] (query-param? "test=true"))
 (defn- embed-mode? [] (query-param? "embed"))
+(defn- fixture-mode? [] (query-param? "fixture"))
 
 ;; Initial DB - starts with demo content, replaced when folder is loaded
 (defonce !db
@@ -148,7 +149,7 @@
 
 ;; Try to restore previously selected folder on startup
 (defonce _restore-folder
-  (when-not (test-mode?)
+  (when-not (or (test-mode?) (fixture-mode?))
     (-> (storage/restore-folder!)
         (.then (fn [restored?]
                  (if restored?
@@ -795,7 +796,7 @@
 	                                 (js/console.log "Debug state:" debug-data)
 	                                 json-str))})
 
-  (when (and (embed-mode?) (seq (.-name js/window)))
+  (when (and (or (embed-mode?) (fixture-mode?)) (seq (.-name js/window)))
     (try
       (load-fixture! (.parse js/JSON (.-name js/window)))
       (catch :default err
@@ -814,8 +815,10 @@
   ;; Tracks compositionstart/compositionend at document level
   (cursor-bounds/setup-composition-tracking!)
 
-  ;; Load persisted favorites and recents from localStorage
-  (vs/load-persisted-state!)
+  ;; Fixture demos should be deterministic; persisted recents/favorites from
+  ;; the hosting origin would otherwise erase the seeded sidebar state.
+  (when-not (fixture-mode?)
+    (vs/load-persisted-state!))
 
   ;; Cleanup old trash (30+ days) and scan for empty pages on startup
   ;; Deferred to allow DB to load first
